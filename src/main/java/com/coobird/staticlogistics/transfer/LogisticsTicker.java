@@ -1,18 +1,24 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.core.FaceConfig;
 import com.coobird.staticlogistics.core.StaticLink;
 import com.coobird.staticlogistics.core.TransferType;
+import com.coobird.staticlogistics.storage.LinkManager;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public class LogisticsTicker {
+
+    private static final TransferType[] TYPES = TransferType.values();
 
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
@@ -26,18 +32,39 @@ public class LogisticsTicker {
         long gameTime = level.getGameTime();
 
         for (long sourceKey : manager.getAllSourceKeys()) {
-            List<StaticLink> links = manager.getLinksByKey(sourceKey);
-            if (links == null || links.isEmpty()) continue;
+            List<StaticLink> allLinks = manager.getLinksByKey(sourceKey);
+            if (allLinks.isEmpty()) continue;
 
-            // 核心：遍历所有可能的传输类型
-            for (TransferType type : TransferType.values()) {
-                // 获取该接口下，针对特定类型的配置（比如物品有物品的频率，流体有流体的频率）
-                TransferSettings settings = manager.getSettings(sourceKey, type);
+            BlockPos pos = BlockPos.of(sourceKey >> 3);
+            Direction face = Direction.from3DDataValue((int) (sourceKey & 0x7));
+            FaceConfig faceConfig = manager.getOrCreateFaceConfig(pos, face);
 
-                // 检查该类型的 Tick 频率
-                if (gameTime % Math.max(1, settings.interval()) == 0) {
-                    // 执行搬运：这里只传入包含该 type 的 link 列表
-                    TransferEngine.execute(level, links, type, settings);
+            boolean dimEffective = faceConfig.isDimensionEffective();
+            List<StaticLink> validLinks = allLinks.stream()
+                .filter(l -> !l.isCrossDim(level.dimension()) || dimEffective)
+                .collect(Collectors.toList());
+
+            if (validLinks.isEmpty()) continue;
+
+            int combinedFlags = 0;
+            for (StaticLink link : validLinks) {
+                combinedFlags |= link.transferFlags();
+            }
+
+            int speedMult = faceConfig.getSpeedMultiplier();
+            int baseInterval = 20;
+            int finalInterval = (speedMult >= baseInterval) ? 1 : Math.max(1, baseInterval / speedMult);
+
+            for (TransferType type : TYPES) {
+                if ((combinedFlags & (1 << type.ordinal())) == 0) continue;
+
+                FaceConfig.SideData sideData = faceConfig.getSettings(type);
+                if (!sideData.mode.allowsOutput()) continue;
+
+                if (type == TransferType.ENERGY) {
+                    TransferEngine.execute(level, validLinks, type, faceConfig, sideData.rrCursor);
+                } else if ((gameTime + sourceKey) % finalInterval == 0) {
+                    TransferEngine.execute(level, validLinks, type, faceConfig, sideData.rrCursor);
                 }
             }
         }

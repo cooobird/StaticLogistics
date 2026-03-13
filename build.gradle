@@ -65,6 +65,12 @@ repositories {
         url = "https://maven.blamejared.com/"
     }
     maven { url 'https://modmaven.dev/' }
+    maven {
+        url = "https://www.cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
     mavenLocal()
 }
 
@@ -78,6 +84,9 @@ dependencies {
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:additions")
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:generators")
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:tools")
+
+    compileOnly "curse.maven:jade-324717:6011258"
+    runtimeOnly "curse.maven:jade-324717:6011258"
 }
 
 tasks.named('processResources', ProcessResources) {

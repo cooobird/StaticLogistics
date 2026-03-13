@@ -12,7 +12,7 @@ import net.neoforged.neoforge.data.event.GatherDataEvent;
 import java.util.concurrent.CompletableFuture;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
-public class ModDataGenerator {
+public class SLDataGenerator {
     @SubscribeEvent
     public static void onGatherData(GatherDataEvent event) {
         DataGenerator generator = event.getGenerator();
@@ -21,8 +21,8 @@ public class ModDataGenerator {
         CompletableFuture<HolderLookup.Provider> lookup = event.getLookupProvider();
 
         boolean client = event.includeClient();
-        generator.addProvider(client, new ModLanguageProvider(output, "en_us"));
-        generator.addProvider(client, new ModLanguageProvider(output, "zh_cn"));
+        generator.addProvider(client, new SlLanguageProvider(output, "en_us"));
+        generator.addProvider(client, new SlLanguageProvider(output, "zh_cn"));
 
         boolean server = event.includeServer();
     }

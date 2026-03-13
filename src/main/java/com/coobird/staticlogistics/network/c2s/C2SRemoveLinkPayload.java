@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.core.StaticLink;
+import com.coobird.staticlogistics.storage.LinkManager;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;

@@ -9,7 +9,7 @@ import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-public class ModCreativeTabs {
+public class SLCreativeTabs {
     public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Staticlogistics.MODID);
 
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB_STATIC_LOGISTICS = CREATIVE_TABS.register(Staticlogistics.MODID,
@@ -17,7 +17,7 @@ public class ModCreativeTabs {
             .title(Component.translatable("itemGroup.staticlogistics"))
             .icon(() -> new ItemStack(Items.REDSTONE))
             .displayItems((parameters, output) -> {
-                ModItems.ITEMS.getEntries().forEach(entry -> output.accept(entry.get()));
+                SLItems.ITEMS.getEntries().forEach(entry -> output.accept(entry.get()));
             })
             .build());
 }
