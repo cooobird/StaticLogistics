@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.core.StaticLink;
+import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -27,9 +28,9 @@ public record C2SRemoveLinkPayload(StaticLink link) implements CustomPacketPaylo
         context.enqueueWork(() -> {
             var player = context.player();
             if (player.level() instanceof ServerLevel serverLevel) {
+                if (!GroupService.canAccess(payload.link().owner(), player.getUUID())) return;
                 LinkManager manager = LinkManager.get(serverLevel);
-                manager.removeLink(payload.link());
-                manager.syncToAll(serverLevel);
+                manager.removeLink(payload.link(), serverLevel);
             }
         });
     }

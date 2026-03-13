@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.client.ClientLinkCache;
+import com.coobird.staticlogistics.core.ClientLinkCache;
 import com.coobird.staticlogistics.core.StaticLink;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -11,13 +11,13 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
 
-public record S2CSyncLinksPacket(List<StaticLink> links) implements CustomPacketPayload {
+public record S2CSyncLinksPacket(List<StaticLink> links, boolean isFullSync) implements CustomPacketPayload {
 
     public static final Type<S2CSyncLinksPacket> TYPE = new Type<>(Staticlogistics.asResource("sync_links"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, S2CSyncLinksPacket> STREAM_CODEC = StreamCodec.composite(
-        StaticLink.STREAM_CODEC.apply(ByteBufCodecs.list()),
-        S2CSyncLinksPacket::links,
+        StaticLink.STREAM_CODEC.apply(ByteBufCodecs.list()), S2CSyncLinksPacket::links,
+        ByteBufCodecs.BOOL, S2CSyncLinksPacket::isFullSync,
         S2CSyncLinksPacket::new
     );
 
@@ -26,9 +26,14 @@ public record S2CSyncLinksPacket(List<StaticLink> links) implements CustomPacket
         return TYPE;
     }
 
-    public void handle(IPayloadContext context) {
+    public static void handle(final S2CSyncLinksPacket payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            ClientLinkCache.updateLinks(this.links);
+            if (payload.links() == null) return;
+            if (payload.isFullSync()) {
+                ClientLinkCache.updateLinks(payload.links());
+            } else {
+                payload.links().forEach(ClientLinkCache::addOrUpdateLink);
+            }
         });
     }
 }

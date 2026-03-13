@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.common.event.entity;
+package com.coobird.staticlogistics.common.event.game.entity;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.storage.LinkManager;
@@ -13,21 +13,21 @@ public class PlayerEvents {
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            LinkManager.get(player.level()).syncToPlayer(player);
+            LinkManager.get(player.level()).syncAllToPlayer(player);
         }
     }
 
     @SubscribeEvent
     public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            LinkManager.get(player.level()).syncToPlayer(player);
+            LinkManager.get(player.level()).syncAllToPlayer(player);
         }
     }
 
     @SubscribeEvent
     public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            LinkManager.get(player.level()).syncToPlayer(player);
+            LinkManager.get(player.level()).syncAllToPlayer(player);
         }
     }
 }

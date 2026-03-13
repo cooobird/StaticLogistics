@@ -3,8 +3,9 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.core.ConnectionMode;
 import com.coobird.staticlogistics.core.FaceConfig;
-import com.coobird.staticlogistics.core.TransferType;
 import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.transfer.TransferType;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -14,6 +15,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import org.slf4j.Logger;
 
 public record C2SConfigureFacePayload(
     BlockPos pos,
@@ -22,6 +24,7 @@ public record C2SConfigureFacePayload(
     CompoundTag data
 ) implements CustomPacketPayload {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     public static final Type<C2SConfigureFacePayload> TYPE = new Type<>(Staticlogistics.asResource("configure_face"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SConfigureFacePayload> STREAM_CODEC = StreamCodec.composite(
@@ -39,23 +42,40 @@ public record C2SConfigureFacePayload(
 
     public static void handle(final C2SConfigureFacePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            if (context.player().level() instanceof ServerLevel serverLevel) {
-                LinkManager manager = LinkManager.get(serverLevel);
-                FaceConfig config = manager.getOrCreateFaceConfig(payload.pos(), payload.face());
-                FaceConfig.SideData sideData = config.getSettings(payload.transferType());
+            if (!(context.player().level() instanceof ServerLevel serverLevel)) return;
+            if (context.player().blockPosition().distSqr(payload.pos()) > 128) return;
 
-                if (payload.data().contains("mode")) {
-                    try {
-                        sideData.mode = ConnectionMode.valueOf(payload.data().getString("mode"));
-                    } catch (Exception ignored) {
+            LinkManager manager = LinkManager.get(serverLevel);
+            FaceConfig config = manager.getOrCreateFaceConfig(payload.pos(), payload.face(), serverLevel);
+            FaceConfig.SideData sideData = config.getSettings(payload.transferType());
+
+            boolean changed = false;
+
+            if (payload.data().contains("mode")) {
+                try {
+                    ConnectionMode newMode = ConnectionMode.valueOf(payload.data().getString("mode"));
+                    if (sideData.mode != newMode) {
+                        sideData.mode = newMode;
+                        changed = true;
                     }
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn("Invalid mode from {}: {}", context.player().getName().getString(), payload.data().getString("mode"));
                 }
-                if (payload.data().contains("channel")) {
-                    sideData.channelColor = payload.data().getInt("channel");
-                }
+            }
 
+            if (payload.data().contains("channel")) {
+                int newColor = payload.data().getInt("channel");
+                if (sideData.channelColor != newColor) {
+                    sideData.channelColor = newColor;
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                long key = manager.posToKey(payload.pos(), payload.face());
                 manager.setDirty();
-                manager.syncToAll(serverLevel);
+                manager.refreshCache(key);
+                manager.syncFaceConfigToAll(serverLevel, payload.pos(), payload.face(), config);
             }
         });
     }

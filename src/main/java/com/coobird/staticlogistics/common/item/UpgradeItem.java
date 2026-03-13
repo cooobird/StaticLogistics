@@ -38,20 +38,15 @@ public class UpgradeItem extends Item {
         tooltip.add(type.getDescription().withStyle(ChatFormatting.GRAY));
 
         if (type == UpgradeType.DIMENSION) {
-
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.dimension_feature")
                 .withStyle(ChatFormatting.GOLD));
-
-            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.dimension_requirement")
+            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.dimension_requirement_netherite")
                 .withStyle(ChatFormatting.RED));
-
         } else if (tier != null) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.tier_display", tier.getDisplayName()));
+            int multiplier = tier.getMultiplier();
+            String valueDisplay = (multiplier == Integer.MAX_VALUE) ? "∞" : "x" + multiplier;
 
-            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.tier_label")
-                .append(": ")
-                .append(tier.getDisplayName()));
-
-            String valueDisplay = (tier == UpgradeTier.CREATIVE) ? "∞" : "x" + tier.getMultiplier();
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
                 .withStyle(ChatFormatting.GREEN));
         }
@@ -109,13 +104,7 @@ public class UpgradeItem extends Item {
         }
 
         public int getMultiplier() {
-            return switch (this) {
-                case IRON -> SLConfig.getIronMult();
-                case GOLD -> SLConfig.getGoldMult();
-                case DIAMOND -> SLConfig.getDiamondMult();
-                case NETHERITE -> SLConfig.getNetheriteMult();
-                case CREATIVE -> Integer.MAX_VALUE;
-            };
+            return SLConfig.getMultiplierForTier(this.name);
         }
 
         public Component getDisplayName() {

@@ -1,15 +1,20 @@
 package com.coobird.staticlogistics.common.item;
 
+import com.coobird.staticlogistics.SLConfig;
 import com.coobird.staticlogistics.client.gui.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.common.init.SLDataComponents;
+import com.coobird.staticlogistics.common.util.TransferUtils;
+import com.coobird.staticlogistics.core.FaceConfig;
 import com.coobird.staticlogistics.core.StaticLink;
-import com.coobird.staticlogistics.core.TransferType;
+import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.transfer.TransferType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -22,7 +27,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
-import net.neoforged.neoforge.capabilities.Capabilities;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -31,22 +36,39 @@ public class LinkConfiguratorItem extends Item {
         super(new Properties().stacksTo(1));
     }
 
+    private record CachedToolSettings(
+        ToolMode mode,
+        TransferType type,
+        String group,
+        @Nullable BlockPos firstPos,
+        @Nullable Direction firstFace,
+        @Nullable ResourceKey<Level> firstDim
+    ) {
+    }
+
+    private CachedToolSettings getSettings(ItemStack stack) {
+        return new CachedToolSettings(
+            ToolMode.values()[stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)],
+            stack.getOrDefault(SLDataComponents.SELECTED_TYPE.get(), TransferType.ITEM),
+            stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1"),
+            stack.get(SLDataComponents.FIRST_POS.get()),
+            stack.get(SLDataComponents.FIRST_FACE.get()),
+            stack.get(SLDataComponents.FIRST_DIM.get())
+        );
+    }
+
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-
         if (player.isSecondaryUseActive()) {
             if (stack.has(SLDataComponents.FIRST_POS.get())) {
-                if (!level.isClientSide) {
-                    resetSource(stack, player, level, player.blockPosition());
-                }
+                resetSource(stack, player, level, player.blockPosition());
                 return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
             }
         } else if (level.isClientSide) {
             Minecraft.getInstance().setScreen(new LinkConfiguratorScreen(stack));
             return InteractionResultHolder.sidedSuccess(stack, true);
         }
-
         return InteractionResultHolder.pass(stack);
     }
 
@@ -57,68 +79,79 @@ public class LinkConfiguratorItem extends Item {
         if (player == null) return InteractionResult.PASS;
 
         ItemStack stack = context.getItemInHand();
-        ToolMode mode = ToolMode.values()[stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)];
+        CachedToolSettings settings = getSettings(stack);
         BlockPos clickedPos = context.getClickedPos();
         Direction clickedFace = context.getClickedFace();
 
         if (player.isSecondaryUseActive()) {
-            if (mode == ToolMode.CONNECT) {
-                BlockPos sourcePos = stack.get(SLDataComponents.FIRST_POS.get());
-                Direction sourceFace = stack.get(SLDataComponents.FIRST_FACE.get());
-                if (clickedPos.equals(sourcePos) && clickedFace == sourceFace) {
-                    resetSource(stack, player, level, clickedPos);
-                    return InteractionResult.sidedSuccess(level.isClientSide);
-                }
-            }
-
-            if (mode == ToolMode.REMOVE) {
-                if (!level.isClientSide) {
-                    LinkManager manager = LinkManager.get(level);
-                    if (manager.smartRemoveLinks(clickedPos, clickedFace)) {
-                        manager.syncToAll((ServerLevel) level);
+            if (settings.mode == ToolMode.REMOVE) {
+                if (level instanceof ServerLevel serverLevel) {
+                    if (GroupService.smartRemove(serverLevel, clickedPos, clickedFace, player.getUUID())) {
                         player.displayClientMessage(Component.translatable("msg.staticlogistics.links_cleared", clickedPos.toShortString()), true);
+                    } else {
+                        player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission").withStyle(ChatFormatting.RED), true);
                     }
                 }
                 level.playSound(player, clickedPos, SoundEvents.GRINDSTONE_USE, SoundSource.BLOCKS, 0.5f, 1.2f);
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }
 
-            if (!isLinkable(level, clickedPos, clickedFace)) {
-                if (mode == ToolMode.CONNECT && stack.has(SLDataComponents.FIRST_POS.get())) {
-                    resetSource(stack, player, level, clickedPos);
-                    return InteractionResult.sidedSuccess(level.isClientSide);
-                }
-                return InteractionResult.PASS;
-            }
-
-            if (mode == ToolMode.CONFIGURE) {
-                if (!level.isClientSide) {
+            if (settings.mode == ToolMode.CONFIGURE) {
+                if (level instanceof ServerLevel) {
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.todo.face_gui", clickedFace.getName()).withStyle(ChatFormatting.GOLD), true);
                 }
                 level.playSound(player, clickedPos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.8f, 1.2f);
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }
 
-            if (mode == ToolMode.CONNECT) {
-                BlockPos sourcePos = stack.get(SLDataComponents.FIRST_POS.get());
-                Direction sourceFace = stack.get(SLDataComponents.FIRST_FACE.get());
+            if (settings.mode == ToolMode.CONNECT) {
+                if (!TransferUtils.hasLogisticsCapability(level, clickedPos, clickedFace))
+                    return InteractionResult.FAIL;
 
-                if (sourcePos == null || sourceFace == null) {
+                if (clickedPos.equals(settings.firstPos) && clickedFace == settings.firstFace) {
+                    resetSource(stack, player, level, clickedPos);
+                    return InteractionResult.sidedSuccess(level.isClientSide);
+                }
+
+                if (settings.firstPos == null || settings.firstFace == null) {
                     setSource(stack, clickedPos, clickedFace, player, level);
                     return InteractionResult.sidedSuccess(level.isClientSide);
                 }
 
-                if (!level.isClientSide) {
-                    LinkManager manager = LinkManager.get(level);
-                    TransferType type = stack.getOrDefault(SLDataComponents.SELECTED_TYPE.get(), TransferType.ITEM);
+                if (level instanceof ServerLevel serverLevel) {
+                    LinkManager manager = LinkManager.get(serverLevel);
+                    FaceConfig sourceConfig = manager.getFaceConfig(settings.firstPos, settings.firstFace);
+                    boolean isCrossDim = !serverLevel.dimension().equals(settings.firstDim);
+
+                    if (isCrossDim && !sourceConfig.isDimensionEffective()) {
+                        player.displayClientMessage(Component.translatable("msg.staticlogistics.no_dimension_upgrade").withStyle(ChatFormatting.RED), true);
+                        return InteractionResult.FAIL;
+                    }
+
+                    if (!sourceConfig.isDimensionEffective()) {
+                        int multiplier = sourceConfig.getMaxRangeMultiplier();
+                        if (multiplier < 1000000) {
+                            int baseRadius = SLConfig.getDefaultRadius();
+                            long maxDist = (long) baseRadius * multiplier;
+                            double distSq = settings.firstPos.distSqr(clickedPos);
+
+                            if (distSq > (double) maxDist * maxDist) {
+                                player.displayClientMessage(Component.translatable("msg.staticlogistics.too_far", maxDist).withStyle(ChatFormatting.RED), true);
+                                return InteractionResult.FAIL;
+                            }
+                        }
+                    }
+
                     int priority = stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0);
-                    String groupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "default");
+                    StaticLink newLink = new StaticLink(
+                        settings.firstPos, settings.firstFace, clickedPos, clickedFace, serverLevel.dimension(),
+                        (1 << settings.type.ordinal()), priority, player.getUUID(), settings.group,
+                        sourceConfig.getMaxRangeMultiplier(), sourceConfig.isDimensionEffective()
+                    );
 
-                    manager.addLink(new StaticLink(sourcePos, sourceFace, clickedPos, clickedFace, level.dimension(), (1 << type.ordinal()), priority, groupId, 64, false));
-                    manager.syncToAll((ServerLevel) level);
-                    player.displayClientMessage(Component.translatable("msg.staticlogistics.link_created_multiple", clickedPos.toShortString()).withStyle(ChatFormatting.AQUA), true);
+                    manager.addLink(newLink, serverLevel);
+                    player.displayClientMessage(Component.translatable("msg.staticlogistics.link_created", clickedPos.toShortString()).withStyle(ChatFormatting.AQUA), true);
                 }
-
                 level.playSound(player, clickedPos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 0.4f, 1.8f);
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }
@@ -129,36 +162,41 @@ public class LinkConfiguratorItem extends Item {
     private void setSource(ItemStack stack, BlockPos pos, Direction face, Player player, Level level) {
         stack.set(SLDataComponents.FIRST_POS.get(), pos);
         stack.set(SLDataComponents.FIRST_FACE.get(), face);
-        player.displayClientMessage(Component.translatable("msg.staticlogistics.source_set", pos.toShortString(), face.getName()).withStyle(ChatFormatting.GREEN), true);
+        stack.set(SLDataComponents.FIRST_DIM.get(), level.dimension());
+
+        if (level instanceof ServerLevel serverLevel) {
+            String groupId = String.valueOf(GroupService.getNextAvailableGroupId(serverLevel, player.getUUID()));
+            stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.source_set", pos.toShortString(), face.getName(), groupId).withStyle(ChatFormatting.GREEN), true);
+        }
         level.playSound(player, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.8f, 1.2f);
     }
 
     private void resetSource(ItemStack stack, Player player, Level level, BlockPos pos) {
         stack.remove(SLDataComponents.FIRST_POS.get());
         stack.remove(SLDataComponents.FIRST_FACE.get());
-        player.displayClientMessage(Component.translatable("msg.staticlogistics.source_reset").withStyle(ChatFormatting.YELLOW), true);
+        stack.remove(SLDataComponents.FIRST_DIM.get());
+        if (level instanceof ServerLevel) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.source_reset").withStyle(ChatFormatting.YELLOW), true);
+        }
         level.playSound(player, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 0.5f);
-    }
-
-    private boolean isLinkable(Level level, BlockPos pos, Direction face) {
-        return level.getCapability(Capabilities.ItemHandler.BLOCK, pos, face) != null ||
-            level.getCapability(Capabilities.FluidHandler.BLOCK, pos, face) != null ||
-            level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, face) != null;
     }
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        ToolMode mode = ToolMode.values()[stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)];
-        tooltip.add(Component.translatable("tooltip.staticlogistics.linker.mode", mode.getDisplayName()).withStyle(ChatFormatting.GRAY));
+        CachedToolSettings settings = getSettings(stack);
+        tooltip.add(Component.translatable("tooltip.staticlogistics.linker.mode", settings.mode.getDisplayName()).withStyle(ChatFormatting.GRAY));
 
-        BlockPos pos = stack.get(SLDataComponents.FIRST_POS.get());
-        Direction face = stack.get(SLDataComponents.FIRST_FACE.get());
-        if (pos != null && face != null) {
-            tooltip.add(Component.translatable("tooltip.staticlogistics.linker.source", pos.toShortString(), face.getName()).withStyle(ChatFormatting.GREEN));
+        if (settings.firstPos != null && settings.firstFace != null) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.linker.source", settings.firstPos.toShortString(), settings.firstFace.getName()).withStyle(ChatFormatting.GREEN));
         }
 
-        TransferType type = stack.getOrDefault(SLDataComponents.SELECTED_TYPE.get(), TransferType.ITEM);
-        tooltip.add(Component.translatable("tooltip.staticlogistics.linker.type", Component.translatable("type.staticlogistics." + type.getSerializedName())).withStyle(ChatFormatting.AQUA));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.linker.type", Component.translatable("type.staticlogistics." + settings.type.getSerializedName())).withStyle(ChatFormatting.AQUA));
+        tooltip.add(Component.translatable("gui.staticlogistics.label.group").withStyle(ChatFormatting.GOLD));
+
+        tooltip.add(Component.empty());
+        tooltip.add(Component.translatable("tooltip.staticlogistics.linker.hint.gui").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.linker.hint.action").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
     }
 
     public enum ToolMode {

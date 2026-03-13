@@ -71,6 +71,13 @@ repositories {
             includeGroup "curse.maven"
         }
     }
+    maven {
+        name = "ftbMavenReleases"
+        url = uri("https://maven.ftb.dev/releases")
+    }
+    maven {
+        url = "https://maven.architectury.dev/"
+    }
     mavenLocal()
 }
 
@@ -80,10 +87,14 @@ dependencies {
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
 
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
+    compileOnly "mekanism:Mekanism:${mekanism_version}"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}"
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:additions")
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:generators")
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:tools")
+
+    compileOnly ("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"){transitive = false}
+    runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
 
     compileOnly "curse.maven:jade-324717:6011258"
     runtimeOnly "curse.maven:jade-324717:6011258"

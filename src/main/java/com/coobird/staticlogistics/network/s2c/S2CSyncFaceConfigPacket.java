@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.client.ClientLinkCache;
+import com.coobird.staticlogistics.core.ClientLinkCache;
 import com.coobird.staticlogistics.core.FaceConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -38,9 +38,9 @@ public record S2CSyncFaceConfigPacket(BlockPos pos, Direction face, FaceConfig c
         return TYPE;
     }
 
-    public void handle(IPayloadContext context) {
+    public static void handle(final S2CSyncFaceConfigPacket payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            ClientLinkCache.updateFaceConfig(this.pos, this.face, this.config);
+            ClientLinkCache.updateFaceConfig(payload.pos(), payload.face(), payload.config());
         });
     }
 }

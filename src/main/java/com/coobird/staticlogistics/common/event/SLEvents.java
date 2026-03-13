@@ -4,6 +4,8 @@ import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
 import com.coobird.staticlogistics.network.c2s.C2SRemoveLinkPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
+import com.coobird.staticlogistics.network.s2c.S2CAddLinkPayload;
+import com.coobird.staticlogistics.network.s2c.S2CRemoveLinkPayload;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncLinksPacket;
 import com.coobird.staticlogistics.storage.LinkManager;
@@ -21,11 +23,13 @@ public class SLEvents {
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
+
         BlockPos pos = event.getPos();
         LinkManager manager = LinkManager.get(level);
 
-        manager.onBlockRemoved(pos);
-        manager.syncToAll(level);
+        manager.onBlockRemoved(pos, level);
+
+        manager.syncLinksToAll(level);
     }
 
     @SubscribeEvent
@@ -34,6 +38,8 @@ public class SLEvents {
 
         registrar.playToClient(S2CSyncLinksPacket.TYPE, S2CSyncLinksPacket.STREAM_CODEC, S2CSyncLinksPacket::handle);
         registrar.playToClient(S2CSyncFaceConfigPacket.TYPE, S2CSyncFaceConfigPacket.STREAM_CODEC, S2CSyncFaceConfigPacket::handle);
+        registrar.playToClient(S2CRemoveLinkPayload.TYPE, S2CRemoveLinkPayload.STREAM_CODEC, S2CRemoveLinkPayload::handle);
+        registrar.playToClient(S2CAddLinkPayload.TYPE, S2CAddLinkPayload.STREAM_CODEC, S2CAddLinkPayload::handle);
 
         registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);

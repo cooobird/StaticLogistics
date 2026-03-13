@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.core;
 
 import com.coobird.staticlogistics.SLConfig;
 import com.coobird.staticlogistics.common.item.UpgradeItem;
+import com.coobird.staticlogistics.transfer.TransferType;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -21,10 +22,12 @@ import java.util.function.Consumer;
 
 public class FaceConfig {
     private int cachedSpeedMult = 1;
+    private int cachedRangeMult = 1;
     private int cachedStackMult = 1;
     private boolean cachedDimEffective = false;
     private boolean cacheDirty = true;
-    private Consumer<FaceConfig> onDirty = (c) -> {};
+    private Consumer<FaceConfig> onDirty = (c) -> {
+    };
 
     private final ItemStackHandler upgrades = new ItemStackHandler(4) {
         @Override
@@ -68,21 +71,11 @@ public class FaceConfig {
 
     private void updateCache() {
         if (!cacheDirty) return;
-
         this.cachedSpeedMult = calculateMultiplier(0, 1);
+        this.cachedRangeMult = calculateMultiplier(1, 1);
         this.cachedStackMult = calculateMultiplier(2, 1);
-
-        ItemStack rangeStack = upgrades.getStackInSlot(1);
         ItemStack dimStack = upgrades.getStackInSlot(3);
-
-        boolean hasDimCard = !dimStack.isEmpty() && dimStack.getItem() instanceof UpgradeItem;
-
-        boolean rangeMaxed = false;
-        if (!rangeStack.isEmpty() && rangeStack.getItem() instanceof UpgradeItem u) {
-            rangeMaxed = rangeStack.getCount() >= 64 || u.getTier() == UpgradeItem.UpgradeTier.CREATIVE;
-        }
-
-        this.cachedDimEffective = hasDimCard && rangeMaxed;
+        this.cachedDimEffective = !dimStack.isEmpty() && dimStack.getItem() instanceof UpgradeItem;
         this.cacheDirty = false;
     }
 
@@ -106,6 +99,11 @@ public class FaceConfig {
         return cachedSpeedMult;
     }
 
+    public int getMaxRangeMultiplier() {
+        updateCache();
+        return cachedRangeMult;
+    }
+
     public boolean isDimensionEffective() {
         updateCache();
         return cachedDimEffective;
@@ -127,7 +125,14 @@ public class FaceConfig {
         }
 
         public int getRenderColor(TransferType type) {
-            return (channelColor != -1) ? channelColor : type.getRenderColor(mode);
+            if (channelColor != -1) return channelColor;
+
+            return switch (mode) {
+                case INPUT -> 0xFF3498DB;
+                case OUTPUT -> 0xFFF1C40F;
+                case BOTH -> 0xFF9B59B6;
+                case DISABLED -> type.getColor();
+            };
         }
     }
 

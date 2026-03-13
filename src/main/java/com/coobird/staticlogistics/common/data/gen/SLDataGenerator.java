@@ -25,6 +25,6 @@ public class SLDataGenerator {
         generator.addProvider(client, new SlLanguageProvider(output, "zh_cn"));
 
         boolean server = event.includeServer();
+        generator.addProvider(server, new VanillaRecipeProvider(output, lookup));
     }
-
 }

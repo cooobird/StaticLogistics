@@ -1,14 +1,16 @@
 package com.coobird.staticlogistics.common.init;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.TransferType;
+import com.coobird.staticlogistics.transfer.TransferType;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -23,6 +25,9 @@ public class SLDataComponents {
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Direction>> FIRST_FACE =
         register("first_face", builder -> builder.persistent(Direction.CODEC).networkSynchronized(Direction.STREAM_CODEC));
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<ResourceKey<Level>>> FIRST_DIM =
+        register("first_dim", builder -> builder.persistent(ResourceKey.codec(Registries.DIMENSION)).networkSynchronized(ResourceKey.streamCodec(Registries.DIMENSION)));
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> SELECTED_GROUP =
         register("selected_group", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
