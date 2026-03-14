@@ -5,9 +5,9 @@
   * [x] **物品 (Items)**：通过 IItemHandler 实现。
   * [x] **流体 (Fluids)**：通过 IFluidHandler 实现。
   * [x] **能量 (Energy/FE)**：支持 FE 能量调度。
-  * [ ] 化学品 (Chemicals) - 计划对接 Mekanism
+  * [x] 化学品 (Chemicals) - 计划对接 Mekanism
   * [ ] 魔源 (Essentia) - 计划对接 新生魔艺
-  * [ ] 魔力 (Mana) - 计划对接 Botania
+  * [ ] 魔力 (Mana) - 计划对接 Botania（等待1.21.1更新中）
 * **传输逻辑**
   * [x] **点对点硬链接**：基于物理坐标的 StaticLink 映射，不依赖逻辑频道。
   * [x] **多维拓扑结构**：支持 1:N、N:1 和网格化链路。

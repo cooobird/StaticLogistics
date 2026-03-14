@@ -81,6 +81,7 @@ sourceSets {
 }
 
 repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
     maven {
         name = "Jared's maven"
         url = "https://maven.blamejared.com/"
@@ -99,6 +100,18 @@ repositories {
     maven {
         url = "https://maven.architectury.dev/"
     }
+    maven { url 'https://maven.blamejared.com' }
+    maven {
+        name = 'GeckoLib'
+        url 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+        content {
+            includeGroup("software.bernie.geckolib")
+        }
+    }
+    maven {
+        name = 'TerraformersMC'
+        url = 'https://maven.terraformersmc.com/'
+    }
     mavenLocal()
 }
 
@@ -113,6 +126,9 @@ dependencies {
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:additions")
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:generators")
     runtimeOnly ("mekanism:Mekanism:${mekanism_version}:tools")
+
+    compileOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
+    runtimeOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
 
     compileOnly ("dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"){transitive = false}
     runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"

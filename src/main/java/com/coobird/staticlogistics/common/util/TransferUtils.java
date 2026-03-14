@@ -83,7 +83,15 @@ public class TransferUtils {
                     return true;
                 }
             } catch (Throwable ignored) {
+            }
+        }
 
+        if (ModList.get().isLoaded("ars_nouveau")) {
+            try {
+                if (level.getCapability(com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry.SOURCE_CAPABILITY, pos, face) != null) {
+                    return true;
+                }
+            } catch (Throwable ignored) {
             }
         }
 

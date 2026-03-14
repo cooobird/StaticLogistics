@@ -10,7 +10,8 @@ public enum TransferType implements StringRepresentable {
     ITEM("item", 0xFFFFFFFF),
     FLUID("fluid", 0xFF3366FF),
     ENERGY("energy", 0xFFFFFF00),
-    CHEMICALS("chemicals", 0xFFFF66FF);
+    MEK_CHEMICALS("mek_chemicals", 0xFFFF66FF),
+    ARS_SOURCE("ars_source", 0xFF8000FF);
 
     private final String name;
     private final int color;

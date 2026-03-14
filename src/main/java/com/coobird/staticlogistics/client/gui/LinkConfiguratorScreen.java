@@ -12,13 +12,12 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
 
 public class LinkConfiguratorScreen extends Screen {
     private final ItemStack stack;
     private EditBox groupEdit;
     private EditBox priorityEdit;
-    private Button modeButton;
-    private Button typeButton;
     private int currentMode;
     private TransferType currentType;
 
@@ -36,44 +35,30 @@ public class LinkConfiguratorScreen extends Screen {
         int centerX = this.width / 2;
         int centerY = this.height / 2;
 
-        createModeButton(centerX - 105, centerY - 60);
-        createTypeButton(centerX + 5, centerY - 60);
-        createInputBoxes(centerX, centerY);
+        this.addRenderableWidget(Button.builder(getModeComponent(), b -> {
+            currentMode = (currentMode + 1) % LinkConfiguratorItem.ToolMode.values().length;
+            b.setMessage(getModeComponent());
+        }).bounds(centerX - 105, centerY - 60, 100, 20).build());
+
+        this.addRenderableWidget(Button.builder(getTypeComponent(), b -> {
+            int nextIdx = (currentType.ordinal() + 1) % TransferType.values().length;
+            currentType = TransferType.values()[nextIdx];
+            b.setMessage(getTypeComponent());
+        }).bounds(centerX + 5, centerY - 60, 100, 20).build());
+
+        this.priorityEdit = new EditBox(this.font, centerX - 45, centerY - 20, 150, 20, Component.empty());
+        this.priorityEdit.setValue(String.valueOf(stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0)));
+        this.priorityEdit.setFilter(s -> s.matches("-?\\d*"));
+        this.addRenderableWidget(priorityEdit);
+
+        this.groupEdit = new EditBox(this.font, centerX - 45, centerY + 10, 150, 20, Component.empty());
+        this.groupEdit.setValue(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1"));
+        this.addRenderableWidget(groupEdit);
 
         this.addRenderableWidget(Button.builder(
             Component.translatable("gui.staticlogistics.save").withStyle(ChatFormatting.BOLD),
             b -> saveAndClose()
         ).bounds(centerX - 50, centerY + 50, 100, 20).build());
-    }
-
-    private void createModeButton(int x, int y) {
-        this.modeButton = Button.builder(getModeComponent(), b -> {
-            currentMode = (currentMode + 1) % LinkConfiguratorItem.ToolMode.values().length;
-            b.setMessage(getModeComponent());
-        }).bounds(x, y, 100, 20).build();
-        this.addRenderableWidget(modeButton);
-    }
-
-    private void createTypeButton(int x, int y) {
-        this.typeButton = Button.builder(getTypeComponent(), b -> {
-            int nextIdx = (currentType.ordinal() + 1) % TransferType.values().length;
-            currentType = TransferType.values()[nextIdx];
-            b.setMessage(getTypeComponent());
-        }).bounds(x, y, 100, 20).build();
-        this.addRenderableWidget(typeButton);
-    }
-
-    private void createInputBoxes(int centerX, int centerY) {
-        this.priorityEdit = new EditBox(this.font, centerX - 45, centerY - 20, 150, 20, Component.translatable("gui.staticlogistics.label.priority"));
-        this.priorityEdit.setValue(String.valueOf(stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0)));
-        this.priorityEdit.setFilter(s -> s.matches("-?\\d*"));
-        this.priorityEdit.setHint(Component.literal("0").withStyle(ChatFormatting.DARK_GRAY));
-        this.addRenderableWidget(priorityEdit);
-
-        this.groupEdit = new EditBox(this.font, centerX - 45, centerY + 10, 150, 20, Component.translatable("gui.staticlogistics.label.group"));
-        this.groupEdit.setValue(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1"));
-        this.groupEdit.setHint(Component.literal("Group Name/ID").withStyle(ChatFormatting.DARK_GRAY));
-        this.addRenderableWidget(groupEdit);
     }
 
     private Component getModeComponent() {
@@ -83,28 +68,31 @@ public class LinkConfiguratorScreen extends Screen {
 
     private Component getTypeComponent() {
         String typeKey = "type.staticlogistics." + currentType.getSerializedName();
-        Component typeName = Component.translatable(typeKey).withStyle(style -> style.withColor(currentType.getColor()));
-        return Component.translatable("tooltip.staticlogistics.type", typeName);
+        return Component.translatable("tooltip.staticlogistics.type",
+            Component.translatable(typeKey).withStyle(s -> s.withColor(currentType.getColor())));
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+            saveAndClose();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     private void saveAndClose() {
         int priority = 0;
         try {
             priority = Integer.parseInt(priorityEdit.getValue());
-        } catch (NumberFormatException ignored) {}
+        } catch (NumberFormatException ignored) {
+        }
 
         String group = groupEdit.getValue().trim();
-
-        stack.set(SLDataComponents.PRIORITY.get(), priority);
-        stack.set(SLDataComponents.SELECTED_GROUP.get(), group);
-        stack.set(SLDataComponents.TOOL_MODE.get(), currentMode);
-        stack.set(SLDataComponents.SELECTED_TYPE.get(), currentType);
+        if (group.isEmpty()) group = "1";
 
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
-            priority,
-            group,
-            currentMode,
-            this.currentType
+            priority, group, currentMode, currentType
         ));
 
         this.onClose();
@@ -113,12 +101,14 @@ public class LinkConfiguratorScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(graphics, mouseX, mouseY, partialTick);
-        super.render(graphics, mouseX, mouseY, partialTick);
-
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xF8F8FF);
 
         int centerX = this.width / 2;
         int centerY = this.height / 2;
+
+        graphics.fill(centerX - 120, centerY - 80, centerX + 120, centerY + 80, 0x88000000);
+
+        super.render(graphics, mouseX, mouseY, partialTick);
+        graphics.drawCenteredString(this.font, this.title, centerX, centerY - 75, 0xFFFFFF);
 
         renderLabel(graphics, "gui.staticlogistics.label.priority", centerX - 55, centerY - 20 + 6);
         renderLabel(graphics, "gui.staticlogistics.label.group", centerX - 55, centerY + 10 + 6);
@@ -126,8 +116,7 @@ public class LinkConfiguratorScreen extends Screen {
 
     private void renderLabel(GuiGraphics graphics, String translationKey, int x, int y) {
         Component text = Component.translatable(translationKey).withStyle(ChatFormatting.YELLOW);
-        int textWidth = this.font.width(text);
-        graphics.drawString(this.font, text, x - textWidth, y, COLOR_LABEL, true);
+        graphics.drawString(this.font, text, x - this.font.width(text), y, COLOR_LABEL, true);
     }
 
     @Override

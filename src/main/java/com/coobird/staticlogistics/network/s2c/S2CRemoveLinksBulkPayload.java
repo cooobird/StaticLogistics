@@ -26,7 +26,9 @@ public record S2CRemoveLinksBulkPayload(List<StaticLink> links) implements Custo
 
     public static void handle(final S2CRemoveLinksBulkPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            payload.links().forEach(ClientLinkCache::removeLink);
+            for (StaticLink link : payload.links()) {
+                ClientLinkCache.removeLinkById(link.linkId());
+            }
         });
     }
 }

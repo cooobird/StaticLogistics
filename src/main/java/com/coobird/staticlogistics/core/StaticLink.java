@@ -18,6 +18,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 public record StaticLink(
+    UUID linkId,
     BlockPos sourcePos,
     Direction sourceFace,
     ResourceKey<Level> sourceDimension,
@@ -34,6 +35,7 @@ public record StaticLink(
 ) {
     public static final Codec<StaticLink> CODEC = RecordCodecBuilder.create(instance ->
         instance.group(
+            UUIDUtil.CODEC.fieldOf("id").forGetter(StaticLink::linkId),
             BlockPos.CODEC.fieldOf("src").forGetter(StaticLink::sourcePos),
             Direction.CODEC.fieldOf("src_f").forGetter(StaticLink::sourceFace),
             ResourceKey.codec(Registries.DIMENSION).fieldOf("src_dim").forGetter(StaticLink::sourceDimension),
@@ -58,16 +60,16 @@ public record StaticLink(
     }
 
     public boolean canTransfer(Level currentLevel, FaceConfig config) {
-        if (config.isDimensionEffective()) return true;
-        if (isCrossDim(currentLevel.dimension())) return false;
+        if (isCrossDim(currentLevel.dimension())) {
+            return config.isDimensionEffective();
+        }
 
         int multiplier = config.getMaxRangeMultiplier();
-        if (multiplier >= 1000000) return true;
-
         int baseRadius = SLConfig.getDefaultRadius();
-        long effectiveMaxRange = (long) baseRadius * multiplier;
 
+        long effectiveMaxRange = (long) baseRadius * multiplier;
         double distSq = sourcePos.distSqr(destPos);
+
         return distSq <= (double) effectiveMaxRange * effectiveMaxRange;
     }
 
@@ -79,18 +81,11 @@ public record StaticLink(
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof StaticLink that)) return false;
-        return sourcePos.equals(that.sourcePos) &&
-            sourceFace == that.sourceFace &&
-            sourceDimension.equals(that.sourceDimension) &&
-            destPos.equals(that.destPos) &&
-            destFace == that.destFace &&
-            destDimension.equals(that.destDimension) &&
-            owner.equals(that.owner) &&
-            groupId.equals(that.groupId);
+        return linkId.equals(that.linkId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(sourcePos, sourceFace, sourceDimension, destPos, destFace, destDimension, owner, groupId);
+        return Objects.hash(linkId);
     }
 }

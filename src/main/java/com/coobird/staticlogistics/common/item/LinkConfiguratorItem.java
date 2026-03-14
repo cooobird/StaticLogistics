@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.transfer.TransferType;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -24,6 +25,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.neoforged.fml.loading.FMLEnvironment;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -34,18 +36,31 @@ public class LinkConfiguratorItem extends Item {
         super(new Properties().stacksTo(1));
     }
 
-    private record ToolSettings(ToolMode mode, TransferType type, String group, @Nullable BlockPos firstPos,
-                                @Nullable Direction firstFace, @Nullable ResourceKey<Level> firstDim) {
+    public record ToolSettings(ToolMode mode, TransferType type, String group, @Nullable BlockPos firstPos,
+                               @Nullable Direction firstFace, @Nullable ResourceKey<Level> firstDim) {
     }
 
-    private ToolSettings getSettings(ItemStack stack) {
+    public ToolSettings getSettings(ItemStack stack, @Nullable Level level) {
+        BlockPos fPos = stack.get(SLDataComponents.FIRST_POS.get());
+        Direction fFace = stack.get(SLDataComponents.FIRST_FACE.get());
+        ResourceKey<Level> fDim = stack.get(SLDataComponents.FIRST_DIM.get());
+
+        if (level != null && fPos != null && level.dimension().equals(fDim)) {
+            if (level.getBlockState(fPos).isAir() || !TransferUtils.hasLogisticsCapability(level, fPos, fFace)) {
+                stack.remove(SLDataComponents.FIRST_POS.get());
+                stack.remove(SLDataComponents.FIRST_FACE.get());
+                stack.remove(SLDataComponents.FIRST_DIM.get());
+                fPos = null;
+                fFace = null;
+                fDim = null;
+            }
+        }
+
         return new ToolSettings(
             ToolMode.values()[stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)],
             stack.getOrDefault(SLDataComponents.SELECTED_TYPE.get(), TransferType.ITEM),
             stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1"),
-            stack.get(SLDataComponents.FIRST_POS.get()),
-            stack.get(SLDataComponents.FIRST_FACE.get()),
-            stack.get(SLDataComponents.FIRST_DIM.get())
+            fPos, fFace, fDim
         );
     }
 
@@ -58,7 +73,9 @@ public class LinkConfiguratorItem extends Item {
                 return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
             }
         } else {
-            if (level.isClientSide) ClientAccess.openLinkerScreen(stack);
+            if (level.isClientSide) {
+                ClientAccess.openLinkerScreen(stack);
+            }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         }
         return InteractionResultHolder.pass(stack);
@@ -69,10 +86,12 @@ public class LinkConfiguratorItem extends Item {
         Level level = context.getLevel();
         Player player = context.getPlayer();
         if (player == null || !player.isSecondaryUseActive()) return InteractionResult.PASS;
-        if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
 
         ItemStack stack = context.getItemInHand();
-        ToolSettings settings = getSettings(stack);
+        ToolSettings settings = getSettings(stack, level);
+
+        if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
+
         BlockPos pos = context.getClickedPos();
         Direction face = context.getClickedFace();
         LinkManager manager = LinkManager.get(serverLevel);
@@ -119,21 +138,18 @@ public class LinkConfiguratorItem extends Item {
                 if (pos.equals(settings.firstPos) && face == settings.firstFace && level.dimension().equals(settings.firstDim)) {
                     resetSource(stack, player, level);
                 } else {
-                    LinkManager.ActionResult result = null;
-                    if (settings.firstFace != null && settings.firstDim != null) {
-                        result = manager.tryAddLink(
-                            player, settings.firstPos, settings.firstFace, settings.firstDim,
-                            pos, face, level.dimension(),
-                            settings.type, settings.group,
-                            stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0),
-                            serverLevel
-                        );
-                    }
+                    LinkManager.ActionResult result = manager.tryAddLink(
+                        player, settings.firstPos, settings.firstFace, settings.firstDim,
+                        pos, face, level.dimension(),
+                        settings.type, settings.group,
+                        stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0),
+                        serverLevel
+                    );
 
-                    if (result != null && result.success()) {
+                    if (result.success()) {
                         player.displayClientMessage(Component.translatable("msg.staticlogistics.link_created", pos.toShortString()).withStyle(ChatFormatting.AQUA), true);
                         level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 0.4f, 1.8f);
-                    } else if (result != null && result.message() != null) {
+                    } else if (result.message() != null) {
                         player.displayClientMessage(result.message().copy().withStyle(ChatFormatting.RED), true);
                     }
                 }
@@ -148,15 +164,19 @@ public class LinkConfiguratorItem extends Item {
         try {
             int id = Integer.parseInt(currentGroup);
             stack.set(SLDataComponents.SELECTED_GROUP.get(), String.valueOf(id + 1));
-        } catch (NumberFormatException ignored) {}
+        } catch (NumberFormatException ignored) {
+        }
     }
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        ToolSettings settings = getSettings(stack);
+        Level level = null;
+        if (FMLEnvironment.dist.isClient()) {
+            level = Minecraft.getInstance().level;
+        }
 
-        // 【修改点】统一传参模式：使用 Component.translatable(Key, Argument)
-        // 这样在语言文件里定义了 "当前模式: %s" 时，翻译系统会自动把模式名填入 %s
+        ToolSettings settings = getSettings(stack, level);
+
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode.getDisplayName()));
 
         String typeKey = "type.staticlogistics." + settings.type.getSerializedName();

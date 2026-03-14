@@ -42,15 +42,31 @@ public class LinkManager extends SavedData {
     private final LongSet activeSourceCache = new LongOpenHashSet();
     private final Map<Long, CachedSourceData> cachedSourceObjects = new HashMap<>();
 
-    public record CachedSourceData(BlockPos pos, Direction face, FaceConfig config, Map<TransferType, List<StaticLink>> sortedLinks) {}
-    public record ActionResult(boolean success, @Nullable MutableComponent message) {}
+    private final Map<UUID, Set<String>> ownerGroupsIndex = new HashMap<>();
+    private final Map<UUID, Map<String, Integer>> groupReferenceCounts = new HashMap<>();
 
-    public LinkManager() {}
+    public record CachedSourceData(BlockPos pos, Direction face, FaceConfig config,
+                                   Map<TransferType, List<StaticLink>> sortedLinks) {
+    }
 
-    public LongSet getActiveSourceKeys() { return this.activeSourceCache; }
+    public record ActionResult(boolean success, @Nullable MutableComponent message) {
+    }
+
+    public LinkManager() {
+    }
+
+    public LongSet getActiveSourceKeys() {
+        return this.activeSourceCache;
+    }
 
     @Nullable
-    public CachedSourceData getCachedSource(long key) { return this.cachedSourceObjects.get(key); }
+    public CachedSourceData getCachedSource(long key) {
+        return this.cachedSourceObjects.get(key);
+    }
+
+    public Set<String> getGroupsByOwner(UUID ownerId) {
+        return ownerGroupsIndex.getOrDefault(ownerId, Collections.emptySet());
+    }
 
     public List<StaticLink> getLinksByPos(BlockPos pos) {
         List<StaticLink> allOut = new ArrayList<>();
@@ -73,9 +89,11 @@ public class LinkManager extends SavedData {
                 Iterator<StaticLink> it = list.iterator();
                 while (it.hasNext()) {
                     StaticLink existing = it.next();
-                    if (isMatch(existing, template) && GroupService.canModify(existing, actor)) {
+                    boolean match = (existing.linkId() != null && existing.linkId().equals(template.linkId())) || isMatch(existing, template);
+                    if (match && GroupService.canModify(existing, actor)) {
                         it.remove();
                         updateReverseIndex(existing, srcKey);
+                        removeFromIndex(existing);
                         affectedKeys.add(srcKey);
                         removed.add(existing);
                     }
@@ -89,6 +107,23 @@ public class LinkManager extends SavedData {
             PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinksBulkPayload(removed));
         }
         return removed.size();
+    }
+
+    private void removeFromIndex(StaticLink link) {
+        Map<String, Integer> counts = groupReferenceCounts.get(link.owner());
+        if (counts != null) {
+            int newCount = counts.getOrDefault(link.groupId(), 1) - 1;
+            if (newCount <= 0) {
+                counts.remove(link.groupId());
+                Set<String> groups = ownerGroupsIndex.get(link.owner());
+                if (groups != null) {
+                    groups.remove(link.groupId());
+                    if (groups.isEmpty()) ownerGroupsIndex.remove(link.owner());
+                }
+            } else {
+                counts.put(link.groupId(), newCount);
+            }
+        }
     }
 
     private boolean isMatch(StaticLink a, StaticLink b) {
@@ -113,13 +148,15 @@ public class LinkManager extends SavedData {
         if (list != null) {
             for (int i = 0; i < list.size(); i++) {
                 StaticLink existing = list.get(i);
-                if (isMatch(existing, link)) {
+                if (existing.linkId().equals(link.linkId())) {
                     PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinksBulkPayload(Collections.singletonList(existing)));
-                    StaticLink updated = new StaticLink(existing.sourcePos(), existing.sourceFace(), existing.sourceDimension(),
+                    removeFromIndex(existing);
+                    StaticLink updated = new StaticLink(existing.linkId(), existing.sourcePos(), existing.sourceFace(), existing.sourceDimension(),
                         existing.destPos(), existing.destFace(), existing.destDimension(),
                         existing.transferFlags(), existing.priority(), newOwnerUuid, newOwnerName,
                         existing.groupId(), existing.maxRange(), existing.allowCrossDim());
                     list.set(i, updated);
+                    addLinkToIndex(updated);
                     PacketDistributor.sendToPlayersInDimension(level, new S2CAddLinksBulkPayload(Collections.singletonList(updated)));
                     this.setDirty();
                     refreshCache(srcKey);
@@ -134,7 +171,7 @@ public class LinkManager extends SavedData {
             return new ActionResult(false, Component.translatable("msg.staticlogistics.cannot_link_self"));
         }
         FaceConfig config = getOrCreateFaceConfig(srcPos, srcFace, level);
-        StaticLink newLink = new StaticLink(srcPos, srcFace, srcDim, dstPos, dstFace, dstDim, (1 << type.ordinal()), priority, player.getUUID(), player.getGameProfile().getName(), groupId, 1, !srcDim.equals(dstDim));
+        StaticLink newLink = new StaticLink(UUID.randomUUID(), srcPos, srcFace, srcDim, dstPos, dstFace, dstDim, (1 << type.ordinal()), priority, player.getUUID(), player.getGameProfile().getName(), groupId, 1, !srcDim.equals(dstDim));
         if (!newLink.canTransfer(level, config)) {
             int effectiveRange = SLConfig.getDefaultRadius() * config.getMaxRangeMultiplier();
             return new ActionResult(false, Component.translatable("msg.staticlogistics.out_of_range", effectiveRange));
@@ -181,7 +218,10 @@ public class LinkManager extends SavedData {
         for (Direction dir : Direction.values()) {
             long key = posToKey(pos, dir);
             List<StaticLink> out = links.remove(key);
-            if (out != null) removed.addAll(out);
+            if (out != null) {
+                out.forEach(this::removeFromIndex);
+                removed.addAll(out);
+            }
             faceConfigs.remove(key);
             activeSourceCache.remove(key);
             cachedSourceObjects.remove(key);
@@ -191,7 +231,14 @@ public class LinkManager extends SavedData {
         if (affectedSources != null) {
             for (long srcKey : affectedSources) {
                 List<StaticLink> srcLinks = links.get(srcKey);
-                if (srcLinks != null && srcLinks.removeIf(l -> l.destPos().equals(pos) && l.destDimension().equals(level.dimension()))) {
+                if (srcLinks != null) {
+                    srcLinks.removeIf(l -> {
+                        if (l.destPos().equals(pos) && l.destDimension().equals(level.dimension())) {
+                            removeFromIndex(l);
+                            return true;
+                        }
+                        return false;
+                    });
                     if (srcLinks.isEmpty()) links.remove(srcKey);
                     refreshCache(srcKey);
                 }
@@ -274,10 +321,17 @@ public class LinkManager extends SavedData {
     private void addLinkInternal(StaticLink link) {
         long srcKey = posToKey(link.sourcePos(), link.sourceFace());
         List<StaticLink> list = links.computeIfAbsent(srcKey, k -> new ArrayList<>(2));
-        if (list.stream().noneMatch(l -> isMatch(l, link))) {
+        if (list.stream().noneMatch(l -> l.linkId().equals(link.linkId()) || isMatch(l, link))) {
             list.add(link);
             reverseLinks.computeIfAbsent(link.destPos().asLong(), k -> new LongOpenHashSet()).add(srcKey);
+            addLinkToIndex(link);
         }
+    }
+
+    private void addLinkToIndex(StaticLink link) {
+        ownerGroupsIndex.computeIfAbsent(link.owner(), k -> new HashSet<>()).add(link.groupId());
+        groupReferenceCounts.computeIfAbsent(link.owner(), k -> new HashMap<>())
+            .merge(link.groupId(), 1, Integer::sum);
     }
 
     @Override
@@ -293,14 +347,18 @@ public class LinkManager extends SavedData {
 
     public static LinkManager load(CompoundTag tag, HolderLookup.Provider provider) {
         LinkManager m = new LinkManager();
-        if (tag.contains("links")) tag.getList("links", Tag.TAG_COMPOUND).forEach(t -> StaticLink.CODEC.parse(NbtOps.INSTANCE, t).result().ifPresent(m::addLinkInternal));
+        if (tag.contains("links"))
+            tag.getList("links", Tag.TAG_COMPOUND).forEach(t -> StaticLink.CODEC.parse(NbtOps.INSTANCE, t).result().ifPresent(m::addLinkInternal));
         if (tag.contains("face_configs")) {
             CompoundTag fTag = tag.getCompound("face_configs");
             fTag.getAllKeys().forEach(keyStr -> {
                 FaceConfig cfg = new FaceConfig();
                 cfg.deserializeNBT(provider, fTag.getCompound(keyStr));
                 long k = Long.parseLong(keyStr);
-                cfg.setOnDirty(c -> { m.setDirty(); m.refreshCache(k); });
+                cfg.setOnDirty(c -> {
+                    m.setDirty();
+                    m.refreshCache(k);
+                });
                 m.faceConfigs.put(k, cfg);
                 m.refreshCache(k);
             });

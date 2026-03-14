@@ -86,12 +86,25 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.no_dimension_upgrade", "Cross-dimension upgrade required!", "需要跨维度升级插件！");
         add("msg.staticlogistics.cannot_link_self", "Cannot link a face to itself!", "不能连接到自身！");
 
+        add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
+        add("config.staticlogistics.default_tick_interval", "Default Tick Interval", "默认传输间隔(Tick)");
+        add("config.staticlogistics.item_stack_size", "Base Item Stack Size", "基础物品传输量");
+        add("config.staticlogistics.fluid_stack_size", "Base Fluid Amount (mB)", "基础流体传输量");
+        add("config.staticlogistics.energy_stack_size", "Base Energy Amount (FE)", "基础能量传输量");
+        add("config.staticlogistics.mek_chemical_stack_size", "Base Chemical Amount (mB)", "基础化学品传输量");
+        add("config.staticlogistics.ars_source_stack_size", "Base Source Amount", "基础魔源传输量");
+        add("config.staticlogistics.iron_multiplier", "Iron Tier Multiplier", "铁等级倍率");
+        add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金等级倍率");
+        add("config.staticlogistics.diamond_multiplier", "Diamond Tier Multiplier", "钻石等级倍率");
+        add("config.staticlogistics.netherite_multiplier", "Netherite Tier Multiplier", "下界合金等级倍率");
+
         for (TransferType type : TransferType.values()) {
             String cn = switch (type) {
                 case ITEM -> "物品";
                 case FLUID -> "流体";
                 case ENERGY -> "能量";
-                case CHEMICALS -> "化学品";
+                case MEK_CHEMICALS -> "化学品";
+                case ARS_SOURCE -> "魔源";
             };
             add("type.staticlogistics." + type.getSerializedName(), toTitleCase(type.getSerializedName()), cn);
         }

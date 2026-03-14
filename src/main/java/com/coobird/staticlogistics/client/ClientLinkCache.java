@@ -14,6 +14,10 @@ public class ClientLinkCache {
     private static final Map<String, List<StaticLink>> LINKS_BY_GROUP = new ConcurrentHashMap<>();
     private static final Map<Long, Map<Direction, FaceConfig>> FACE_CONFIGS = new ConcurrentHashMap<>();
 
+    public static Set<StaticLink> getAllLinks() {
+        return ALL_LINKS;
+    }
+
     public static void setLinks(List<StaticLink> newLinks) {
         ALL_LINKS.clear();
         LINKS_BY_GROUP.clear();
@@ -23,17 +27,25 @@ public class ClientLinkCache {
     }
 
     public static void addOrUpdateLink(StaticLink link) {
-        removeLink(link);
+        removeLinkById(link.linkId());
         ALL_LINKS.add(link);
         LINKS_BY_GROUP.computeIfAbsent(link.groupId(), k -> new CopyOnWriteArrayList<>()).add(link);
     }
 
-    public static void removeLink(StaticLink link) {
-        if (ALL_LINKS.remove(link)) {
-            List<StaticLink> groupLinks = LINKS_BY_GROUP.get(link.groupId());
-            if (groupLinks != null) {
-                groupLinks.remove(link);
-                if (groupLinks.isEmpty()) LINKS_BY_GROUP.remove(link.groupId());
+    public static void removeLinkById(UUID id) {
+        if (id == null) return;
+
+        ALL_LINKS.removeIf(link -> link.linkId().equals(id));
+
+        Iterator<Map.Entry<String, List<StaticLink>>> it = LINKS_BY_GROUP.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, List<StaticLink>> entry = it.next();
+            List<StaticLink> list = entry.getValue();
+
+            list.removeIf(l -> l.linkId().equals(id));
+
+            if (list.isEmpty()) {
+                it.remove();
             }
         }
     }
@@ -53,7 +65,7 @@ public class ClientLinkCache {
 
     public static FaceConfig getFaceConfig(BlockPos pos, Direction face) {
         Map<Direction, FaceConfig> map = FACE_CONFIGS.get(pos.asLong());
-        return (map == null) ? null : map.get(face);
+        return map == null ? null : map.get(face);
     }
 
     public static void invalidate() {
