@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.ClientLinkCache;
+import com.coobird.staticlogistics.client.ClientLinkCache;
 import com.coobird.staticlogistics.core.FaceConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

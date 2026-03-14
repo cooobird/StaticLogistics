@@ -1,11 +1,12 @@
 package com.coobird.staticlogistics.storage;
 
+import com.coobird.staticlogistics.SLConfig;
 import com.coobird.staticlogistics.common.util.TransferUtils;
 import com.coobird.staticlogistics.core.ConnectionMode;
 import com.coobird.staticlogistics.core.FaceConfig;
 import com.coobird.staticlogistics.core.StaticLink;
-import com.coobird.staticlogistics.network.s2c.S2CAddLinkPayload;
-import com.coobird.staticlogistics.network.s2c.S2CRemoveLinkPayload;
+import com.coobird.staticlogistics.network.s2c.S2CAddLinksBulkPayload;
+import com.coobird.staticlogistics.network.s2c.S2CRemoveLinksBulkPayload;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncLinksPacket;
 import com.coobird.staticlogistics.transfer.LogisticsTicker;
@@ -21,10 +22,12 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -39,61 +42,183 @@ public class LinkManager extends SavedData {
     private final LongSet activeSourceCache = new LongOpenHashSet();
     private final Map<Long, CachedSourceData> cachedSourceObjects = new HashMap<>();
 
-    public record CachedSourceData(
-        BlockPos pos,
-        Direction face,
-        FaceConfig config,
-        Map<TransferType, List<StaticLink>> sortedLinks
-    ) {
+    public record CachedSourceData(BlockPos pos, Direction face, FaceConfig config, Map<TransferType, List<StaticLink>> sortedLinks) {}
+    public record ActionResult(boolean success, @Nullable MutableComponent message) {}
+
+    public LinkManager() {}
+
+    public LongSet getActiveSourceKeys() { return this.activeSourceCache; }
+
+    @Nullable
+    public CachedSourceData getCachedSource(long key) { return this.cachedSourceObjects.get(key); }
+
+    public List<StaticLink> getLinksByPos(BlockPos pos) {
+        List<StaticLink> allOut = new ArrayList<>();
+        for (Direction dir : Direction.values()) allOut.addAll(getLinksByKey(posToKey(pos, dir)));
+        return allOut;
     }
 
-    public LinkManager() {
+    public void removeLink(StaticLink link, ServerLevel level, Player actor) {
+        this.removeLinksBulk(Collections.singletonList(link), level, actor);
     }
 
-    public LongSet getActiveSourceKeys() {
-        return activeSourceCache;
+    public int removeLinksBulk(List<StaticLink> toRemove, ServerLevel level, Player actor) {
+        if (toRemove.isEmpty()) return 0;
+        List<StaticLink> removed = new ArrayList<>();
+        LongSet affectedKeys = new LongOpenHashSet();
+        for (StaticLink template : toRemove) {
+            long srcKey = posToKey(template.sourcePos(), template.sourceFace());
+            List<StaticLink> list = links.get(srcKey);
+            if (list != null) {
+                Iterator<StaticLink> it = list.iterator();
+                while (it.hasNext()) {
+                    StaticLink existing = it.next();
+                    if (isMatch(existing, template) && GroupService.canModify(existing, actor)) {
+                        it.remove();
+                        updateReverseIndex(existing, srcKey);
+                        affectedKeys.add(srcKey);
+                        removed.add(existing);
+                    }
+                }
+                if (list.isEmpty()) links.remove(srcKey);
+            }
+        }
+        if (!removed.isEmpty()) {
+            affectedKeys.forEach(this::refreshCache);
+            this.setDirty();
+            PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinksBulkPayload(removed));
+        }
+        return removed.size();
     }
 
-    public CachedSourceData getCachedSource(long key) {
-        return cachedSourceObjects.get(key);
+    private boolean isMatch(StaticLink a, StaticLink b) {
+        return a.sourcePos().equals(b.sourcePos()) && a.sourceFace() == b.sourceFace() &&
+            a.sourceDimension().equals(b.sourceDimension()) &&
+            a.destPos().equals(b.destPos()) && a.destFace() == b.destFace() &&
+            a.destDimension().equals(b.destDimension()) &&
+            a.groupId().equals(b.groupId());
     }
 
-    public List<StaticLink> getLinksByKey(long key) {
-        return links.getOrDefault(key, Collections.emptyList());
+    private void updateReverseIndex(StaticLink link, long srcKey) {
+        LongSet rev = reverseLinks.get(link.destPos().asLong());
+        if (rev != null) {
+            rev.remove(srcKey);
+            if (rev.isEmpty()) reverseLinks.remove(link.destPos().asLong());
+        }
     }
 
-    public FaceConfig getFaceConfig(BlockPos pos, Direction face) {
-        return getOrCreateFaceConfig(pos, face, null);
+    public void updateLinkOwner(StaticLink link, UUID newOwnerUuid, String newOwnerName, ServerLevel level) {
+        long srcKey = posToKey(link.sourcePos(), link.sourceFace());
+        List<StaticLink> list = links.get(srcKey);
+        if (list != null) {
+            for (int i = 0; i < list.size(); i++) {
+                StaticLink existing = list.get(i);
+                if (isMatch(existing, link)) {
+                    PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinksBulkPayload(Collections.singletonList(existing)));
+                    StaticLink updated = new StaticLink(existing.sourcePos(), existing.sourceFace(), existing.sourceDimension(),
+                        existing.destPos(), existing.destFace(), existing.destDimension(),
+                        existing.transferFlags(), existing.priority(), newOwnerUuid, newOwnerName,
+                        existing.groupId(), existing.maxRange(), existing.allowCrossDim());
+                    list.set(i, updated);
+                    PacketDistributor.sendToPlayersInDimension(level, new S2CAddLinksBulkPayload(Collections.singletonList(updated)));
+                    this.setDirty();
+                    refreshCache(srcKey);
+                    break;
+                }
+            }
+        }
+    }
+
+    public ActionResult tryAddLink(Player player, BlockPos srcPos, Direction srcFace, ResourceKey<Level> srcDim, BlockPos dstPos, Direction dstFace, ResourceKey<Level> dstDim, TransferType type, String groupId, int priority, ServerLevel level) {
+        if (srcPos.equals(dstPos) && srcFace == dstFace && srcDim.equals(dstDim)) {
+            return new ActionResult(false, Component.translatable("msg.staticlogistics.cannot_link_self"));
+        }
+        FaceConfig config = getOrCreateFaceConfig(srcPos, srcFace, level);
+        StaticLink newLink = new StaticLink(srcPos, srcFace, srcDim, dstPos, dstFace, dstDim, (1 << type.ordinal()), priority, player.getUUID(), player.getGameProfile().getName(), groupId, 1, !srcDim.equals(dstDim));
+        if (!newLink.canTransfer(level, config)) {
+            int effectiveRange = SLConfig.getDefaultRadius() * config.getMaxRangeMultiplier();
+            return new ActionResult(false, Component.translatable("msg.staticlogistics.out_of_range", effectiveRange));
+        }
+        this.addLink(newLink, level, player);
+        return new ActionResult(true, null);
+    }
+
+    public void addLink(StaticLink newLink, ServerLevel level, Player player) {
+        this.addLinksBulk(Collections.singletonList(newLink), level, player);
+    }
+
+    public void addLinksBulk(List<StaticLink> toAdd, ServerLevel level, Player player) {
+        if (toAdd.isEmpty()) return;
+        LongSet affectedKeys = new LongOpenHashSet();
+        for (StaticLink link : toAdd) {
+            addLinkInternal(link);
+            long key = posToKey(link.sourcePos(), link.sourceFace());
+            affectedKeys.add(key);
+            autoConfigureFace(link, level);
+        }
+        affectedKeys.forEach(this::refreshCache);
+        this.setDirty();
+        PacketDistributor.sendToPlayersInDimension(level, new S2CAddLinksBulkPayload(toAdd));
+    }
+
+    private void autoConfigureFace(StaticLink link, ServerLevel level) {
+        FaceConfig config = getOrCreateFaceConfig(link.sourcePos(), link.sourceFace(), level);
+        boolean changed = false;
+        for (TransferType type : TransferType.values()) {
+            if (link.hasType(type)) {
+                FaceConfig.SideData side = config.getSettings(type);
+                if (side.mode == ConnectionMode.DISABLED) {
+                    side.mode = ConnectionMode.OUTPUT;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) syncFaceConfigToAll(level, link.sourcePos(), link.sourceFace(), config);
+    }
+
+    public void onBlockRemoved(BlockPos pos, ServerLevel level) {
+        List<StaticLink> removed = new ArrayList<>();
+        for (Direction dir : Direction.values()) {
+            long key = posToKey(pos, dir);
+            List<StaticLink> out = links.remove(key);
+            if (out != null) removed.addAll(out);
+            faceConfigs.remove(key);
+            activeSourceCache.remove(key);
+            cachedSourceObjects.remove(key);
+            LogisticsTicker.wakeup(key);
+        }
+        LongSet affectedSources = reverseLinks.remove(pos.asLong());
+        if (affectedSources != null) {
+            for (long srcKey : affectedSources) {
+                List<StaticLink> srcLinks = links.get(srcKey);
+                if (srcLinks != null && srcLinks.removeIf(l -> l.destPos().equals(pos) && l.destDimension().equals(level.dimension()))) {
+                    if (srcLinks.isEmpty()) links.remove(srcKey);
+                    refreshCache(srcKey);
+                }
+            }
+        }
+        if (!removed.isEmpty()) {
+            this.setDirty();
+            PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinksBulkPayload(removed));
+        }
     }
 
     public void refreshCache(long key) {
         LogisticsTicker.wakeup(key);
         TransferUtils.clearCache();
-
         List<StaticLink> linkList = links.get(key);
         FaceConfig config = faceConfigs.get(key);
-
         if (linkList != null && !linkList.isEmpty() && config != null) {
             Map<TransferType, List<StaticLink>> sortedMap = new EnumMap<>(TransferType.class);
-            boolean anyOutputActive = false;
-
+            boolean active = false;
             for (TransferType type : TransferType.values()) {
-                List<StaticLink> filteredAndSorted = linkList.stream()
-                    .filter(l -> l.hasType(type))
-                    .sorted(Comparator.comparingInt(StaticLink::priority).reversed())
-                    .toList();
-                sortedMap.put(type, filteredAndSorted);
-                if (config.getSettings(type).mode.allowsOutput()) anyOutputActive = true;
+                List<StaticLink> filtered = linkList.stream().filter(l -> l.hasType(type)).sorted(Comparator.comparingInt(StaticLink::priority).reversed()).toList();
+                sortedMap.put(type, filtered);
+                if (config.getSettings(type).mode.allowsOutput()) active = true;
             }
-
-            if (anyOutputActive) {
+            if (active) {
                 activeSourceCache.add(key);
-                cachedSourceObjects.put(key, new CachedSourceData(
-                    BlockPos.of(key >> 3),
-                    Direction.from3DDataValue((int) (key & 0x7)),
-                    config,
-                    sortedMap
-                ));
+                cachedSourceObjects.put(key, new CachedSourceData(BlockPos.of(key >> 3), Direction.from3DDataValue((int) (key & 0x7)), config, sortedMap));
                 return;
             }
         }
@@ -101,130 +226,35 @@ public class LinkManager extends SavedData {
         cachedSourceObjects.remove(key);
     }
 
-    public void addLink(StaticLink newLink, ServerLevel level) {
-        addLinkInternal(newLink);
-        long key = posToKey(newLink.sourcePos(), newLink.sourceFace());
-        FaceConfig config = getOrCreateFaceConfig(newLink.sourcePos(), newLink.sourceFace(), level);
-
-        boolean configChanged = false;
-        for (TransferType type : TransferType.values()) {
-            if (newLink.hasType(type)) {
-                FaceConfig.SideData sideData = config.getSettings(type);
-                if (sideData.mode == ConnectionMode.DISABLED) {
-                    sideData.mode = ConnectionMode.OUTPUT;
-                    configChanged = true;
-                }
-            }
-        }
-
-        refreshCache(key);
-        if (configChanged) {
-            this.setDirty();
-            syncFaceConfigToAll(level, newLink.sourcePos(), newLink.sourceFace(), config);
-        }
-
-        PacketDistributor.sendToPlayersInDimension(level, new S2CAddLinkPayload(newLink));
+    public void syncAllToPlayer(ServerPlayer player) {
+        this.syncLinksFull(player);
+        faceConfigs.forEach((key, config) -> {
+            BlockPos pos = BlockPos.of(key >> 3);
+            Direction face = Direction.from3DDataValue((int) (key & 0x7));
+            PacketDistributor.sendToPlayer(player, new S2CSyncFaceConfigPacket(pos, face, config));
+        });
     }
 
-    public void addLinksBulk(List<StaticLink> toAdd, ServerLevel level) {
-        if (toAdd.isEmpty()) return;
-        LongSet affectedKeys = new LongOpenHashSet();
-        for (StaticLink link : toAdd) {
-            addLinkInternal(link);
-            affectedKeys.add(posToKey(link.sourcePos(), link.sourceFace()));
-        }
-        for (long key : affectedKeys) refreshCache(key);
-        this.setDirty();
-        PacketDistributor.sendToPlayersInDimension(level, new S2CSyncLinksPacket(toAdd, false));
+    public void syncLinksFull(ServerPlayer player) {
+        PacketDistributor.sendToPlayer(player, new S2CSyncLinksPacket(this.getLinksList(), true));
     }
 
-    public void addLinkInternal(StaticLink link) {
-        long srcKey = posToKey(link.sourcePos(), link.sourceFace());
-        List<StaticLink> list = links.computeIfAbsent(srcKey, k -> new ArrayList<>(2));
-        if (list.stream().noneMatch(existing -> existing.equals(link))) {
-            list.add(link);
-            reverseLinks.computeIfAbsent(link.destPos().asLong(), k -> new LongOpenHashSet()).add(srcKey);
-            this.setDirty();
-        }
+    public void syncFaceConfigToAll(ServerLevel level, BlockPos pos, Direction face, FaceConfig config) {
+        PacketDistributor.sendToPlayersInDimension(level, new S2CSyncFaceConfigPacket(pos, face, config));
     }
 
-    public void removeLink(StaticLink link, ServerLevel level) {
-        long srcKey = posToKey(link.sourcePos(), link.sourceFace());
-        List<StaticLink> list = links.get(srcKey);
-        if (list != null && list.removeIf(l -> l.equals(link))) {
-            if (list.isEmpty()) links.remove(srcKey);
-            LongSet rev = reverseLinks.get(link.destPos().asLong());
-            if (rev != null) {
-                rev.remove(srcKey);
-                if (rev.isEmpty()) reverseLinks.remove(link.destPos().asLong());
-            }
-            refreshCache(srcKey);
-            this.setDirty();
-
-            PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinkPayload(link));
-        }
+    public long posToKey(BlockPos pos, Direction face) {
+        return (pos.asLong() << 3) | (long) (face.get3DDataValue() & 0x7);
     }
 
-    public void removeLinksBulk(List<StaticLink> toRemove, ServerLevel level) {
-        if (toRemove.isEmpty()) return;
-        List<StaticLink> actuallyRemoved = new ArrayList<>();
-        LongSet affectedKeys = new LongOpenHashSet();
-        for (StaticLink link : toRemove) {
-            long srcKey = posToKey(link.sourcePos(), link.sourceFace());
-            List<StaticLink> list = links.get(srcKey);
-            if (list != null && list.removeIf(l -> l.equals(link))) {
-                if (list.isEmpty()) links.remove(srcKey);
-                LongSet rev = reverseLinks.get(link.destPos().asLong());
-                if (rev != null) {
-                    rev.remove(srcKey);
-                    if (rev.isEmpty()) reverseLinks.remove(link.destPos().asLong());
-                }
-                affectedKeys.add(srcKey);
-                actuallyRemoved.add(link);
-            }
-        }
-        if (!actuallyRemoved.isEmpty()) {
-            for (long key : affectedKeys) refreshCache(key);
-            this.setDirty();
-            actuallyRemoved.forEach(link ->
-                PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinkPayload(link)));
-        }
+    public List<StaticLink> getLinksList() {
+        List<StaticLink> all = new ArrayList<>();
+        links.values().forEach(all::addAll);
+        return all;
     }
 
-    public void onBlockRemoved(BlockPos pos, ServerLevel level) {
-        List<StaticLink> removedLinks = new ArrayList<>();
-        long posLong = pos.asLong();
-        TransferUtils.clearCache();
-
-        for (Direction dir : Direction.values()) {
-            long key = posToKey(pos, dir);
-            List<StaticLink> outLinks = links.remove(key);
-            if (outLinks != null) removedLinks.addAll(outLinks);
-
-            faceConfigs.remove(key);
-            activeSourceCache.remove(key);
-            cachedSourceObjects.remove(key);
-            LogisticsTicker.wakeup(key);
-        }
-
-        LongSet affectedSources = reverseLinks.remove(posLong);
-        if (affectedSources != null) {
-            for (long srcKey : affectedSources) {
-                List<StaticLink> srcLinks = links.get(srcKey);
-                if (srcLinks != null) {
-                    srcLinks.stream().filter(l -> l.destPos().equals(pos)).forEach(removedLinks::add);
-                    if (srcLinks.removeIf(l -> l.destPos().equals(pos))) {
-                        if (srcLinks.isEmpty()) links.remove(srcKey);
-                        refreshCache(srcKey);
-                    }
-                }
-            }
-        }
-        if (!removedLinks.isEmpty()) {
-            this.setDirty();
-            removedLinks.forEach(link ->
-                PacketDistributor.sendToPlayersInDimension(level, new S2CRemoveLinkPayload(link)));
-        }
+    public List<StaticLink> getLinksByKey(long key) {
+        return links.getOrDefault(key, Collections.emptyList());
     }
 
     public FaceConfig getOrCreateFaceConfig(BlockPos pos, Direction face, @Nullable ServerLevel level) {
@@ -241,39 +271,19 @@ public class LinkManager extends SavedData {
         });
     }
 
-    public long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << 3) | (long) (face.get3DDataValue() & 0x7);
-    }
-
-    public List<StaticLink> getLinksList() {
-        List<StaticLink> all = new ArrayList<>();
-        links.values().forEach(all::addAll);
-        return all;
-    }
-
-    public void syncLinksToAll(ServerLevel level) {
-        S2CSyncLinksPacket packet = new S2CSyncLinksPacket(getLinksList(), true);
-        PacketDistributor.sendToPlayersInDimension(level, packet);
-    }
-
-    public void syncFaceConfigToAll(ServerLevel level, BlockPos pos, Direction face, FaceConfig config) {
-        PacketDistributor.sendToPlayersInDimension(level, new S2CSyncFaceConfigPacket(pos, face, config));
-    }
-
-    public void syncAllToPlayer(ServerPlayer player) {
-        player.connection.send(new S2CSyncLinksPacket(getLinksList(), true));
-        faceConfigs.forEach((key, config) -> {
-            BlockPos pos = BlockPos.of(key >> 3);
-            Direction face = Direction.from3DDataValue((int) (key & 0x7));
-            player.connection.send(new S2CSyncFaceConfigPacket(pos, face, config));
-        });
+    private void addLinkInternal(StaticLink link) {
+        long srcKey = posToKey(link.sourcePos(), link.sourceFace());
+        List<StaticLink> list = links.computeIfAbsent(srcKey, k -> new ArrayList<>(2));
+        if (list.stream().noneMatch(l -> isMatch(l, link))) {
+            list.add(link);
+            reverseLinks.computeIfAbsent(link.destPos().asLong(), k -> new LongOpenHashSet()).add(srcKey);
+        }
     }
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
         ListTag linkList = new ListTag();
-        links.values().forEach(list -> list.forEach(link ->
-            StaticLink.CODEC.encodeStart(NbtOps.INSTANCE, link).result().ifPresent(linkList::add)));
+        links.values().forEach(list -> list.forEach(link -> StaticLink.CODEC.encodeStart(NbtOps.INSTANCE, link).result().ifPresent(linkList::add)));
         tag.put("links", linkList);
         CompoundTag fConfigs = new CompoundTag();
         faceConfigs.forEach((k, v) -> fConfigs.put(k.toString(), v.serializeNBT(provider)));
@@ -283,23 +293,17 @@ public class LinkManager extends SavedData {
 
     public static LinkManager load(CompoundTag tag, HolderLookup.Provider provider) {
         LinkManager m = new LinkManager();
-        if (tag.contains("links")) {
-            tag.getList("links", Tag.TAG_COMPOUND).forEach(t ->
-                StaticLink.CODEC.parse(NbtOps.INSTANCE, t).result().ifPresent(m::addLinkInternal));
-        }
+        if (tag.contains("links")) tag.getList("links", Tag.TAG_COMPOUND).forEach(t -> StaticLink.CODEC.parse(NbtOps.INSTANCE, t).result().ifPresent(m::addLinkInternal));
         if (tag.contains("face_configs")) {
             CompoundTag fTag = tag.getCompound("face_configs");
-            for (String keyStr : fTag.getAllKeys()) {
-                FaceConfig config = new FaceConfig();
-                config.deserializeNBT(provider, fTag.getCompound(keyStr));
-                long key = Long.parseLong(keyStr);
-                config.setOnDirty(c -> {
-                    m.setDirty();
-                    m.refreshCache(key);
-                });
-                m.faceConfigs.put(key, config);
-                m.refreshCache(key);
-            }
+            fTag.getAllKeys().forEach(keyStr -> {
+                FaceConfig cfg = new FaceConfig();
+                cfg.deserializeNBT(provider, fTag.getCompound(keyStr));
+                long k = Long.parseLong(keyStr);
+                cfg.setOnDirty(c -> { m.setDirty(); m.refreshCache(k); });
+                m.faceConfigs.put(k, cfg);
+                m.refreshCache(k);
+            });
         }
         return m;
     }
@@ -307,12 +311,6 @@ public class LinkManager extends SavedData {
     public static final SavedData.Factory<LinkManager> FACTORY = new SavedData.Factory<>(LinkManager::new, LinkManager::load);
 
     public static LinkManager get(Level level) {
-        if (level.isClientSide || !(level instanceof ServerLevel serverLevel)) return null;
-        return serverLevel.getDataStorage().computeIfAbsent(FACTORY, "static_logistics_links");
-    }
-
-    public static LinkManager getByDimension(MinecraftServer server, ResourceKey<Level> dim) {
-        ServerLevel target = server.getLevel(dim);
-        return target != null ? get(target) : null;
+        return (level instanceof ServerLevel sl) ? sl.getDataStorage().computeIfAbsent(FACTORY, "static_logistics_links") : null;
     }
 }

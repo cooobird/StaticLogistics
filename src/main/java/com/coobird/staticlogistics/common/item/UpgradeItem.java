@@ -40,8 +40,6 @@ public class UpgradeItem extends Item {
         if (type == UpgradeType.DIMENSION) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.dimension_feature")
                 .withStyle(ChatFormatting.GOLD));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.dimension_requirement_netherite")
-                .withStyle(ChatFormatting.RED));
         } else if (tier != null) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.tier_display", tier.getDisplayName()));
             int multiplier = tier.getMultiplier();

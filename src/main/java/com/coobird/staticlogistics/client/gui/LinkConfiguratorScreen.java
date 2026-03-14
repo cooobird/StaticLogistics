@@ -15,19 +15,14 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 public class LinkConfiguratorScreen extends Screen {
     private final ItemStack stack;
-
-    // UI 组件
     private EditBox groupEdit;
     private EditBox priorityEdit;
     private Button modeButton;
     private Button typeButton;
-
-    // 临时状态
     private int currentMode;
     private TransferType currentType;
 
-    private static final int COLOR_GOLD = 0xFFFFAA00;
-    private static final int COLOR_WHITE = 0xFFFFFFFF;
+    private static final int COLOR_LABEL = 0xFFE1E1E1;
 
     public LinkConfiguratorScreen(ItemStack stack) {
         super(Component.translatable("gui.staticlogistics.linker_settings"));
@@ -43,18 +38,14 @@ public class LinkConfiguratorScreen extends Screen {
 
         createModeButton(centerX - 105, centerY - 60);
         createTypeButton(centerX + 5, centerY - 60);
-
         createInputBoxes(centerX, centerY);
 
         this.addRenderableWidget(Button.builder(
             Component.translatable("gui.staticlogistics.save").withStyle(ChatFormatting.BOLD),
             b -> saveAndClose()
-        ).bounds(centerX - 50, centerY + 45, 100, 20).build());
+        ).bounds(centerX - 50, centerY + 50, 100, 20).build());
     }
 
-    /**
-     * 创建工具模式切换按钮（连接、断开等）
-     */
     private void createModeButton(int x, int y) {
         this.modeButton = Button.builder(getModeComponent(), b -> {
             currentMode = (currentMode + 1) % LinkConfiguratorItem.ToolMode.values().length;
@@ -63,9 +54,6 @@ public class LinkConfiguratorScreen extends Screen {
         this.addRenderableWidget(modeButton);
     }
 
-    /**
-     * 创建传输类型切换按钮（物品、流体、能量）
-     */
     private void createTypeButton(int x, int y) {
         this.typeButton = Button.builder(getTypeComponent(), b -> {
             int nextIdx = (currentType.ordinal() + 1) % TransferType.values().length;
@@ -75,49 +63,46 @@ public class LinkConfiguratorScreen extends Screen {
         this.addRenderableWidget(typeButton);
     }
 
-    /**
-     * 初始化数值输入框及其标签
-     */
     private void createInputBoxes(int centerX, int centerY) {
-        // 优先级输入框
-        this.priorityEdit = new EditBox(this.font, centerX - 45, centerY - 25, 150, 20, Component.literal("Priority"));
+        this.priorityEdit = new EditBox(this.font, centerX - 45, centerY - 20, 150, 20, Component.translatable("gui.staticlogistics.label.priority"));
         this.priorityEdit.setValue(String.valueOf(stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0)));
-        this.priorityEdit.setFilter(s -> s.matches("-?\\d*")); // 仅允许数字和负号
+        this.priorityEdit.setFilter(s -> s.matches("-?\\d*"));
+        this.priorityEdit.setHint(Component.literal("0").withStyle(ChatFormatting.DARK_GRAY));
         this.addRenderableWidget(priorityEdit);
 
-        // 分组 ID 输入框
-        this.groupEdit = new EditBox(this.font, centerX - 45, centerY + 5, 150, 20, Component.literal("Group ID"));
+        this.groupEdit = new EditBox(this.font, centerX - 45, centerY + 10, 150, 20, Component.translatable("gui.staticlogistics.label.group"));
         this.groupEdit.setValue(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1"));
+        this.groupEdit.setHint(Component.literal("Group Name/ID").withStyle(ChatFormatting.DARK_GRAY));
         this.addRenderableWidget(groupEdit);
     }
 
-    /**
-     * 获取带样式的模式文本
-     */
     private Component getModeComponent() {
         Component modeName = LinkConfiguratorItem.ToolMode.values()[currentMode].getDisplayName();
-        return Component.translatable("tooltip.staticlogistics.linker.mode", modeName);
+        return Component.translatable("tooltip.staticlogistics.mode", modeName);
     }
 
-    /**
-     * 获取带样式的传输类型文本（颜色与 TransferType 对应）
-     */
     private Component getTypeComponent() {
         String typeKey = "type.staticlogistics." + currentType.getSerializedName();
-        return Component.translatable("tooltip.staticlogistics.linker.type",
-            Component.translatable(typeKey).withColor(currentType.getColor()));
+        Component typeName = Component.translatable(typeKey).withStyle(style -> style.withColor(currentType.getColor()));
+        return Component.translatable("tooltip.staticlogistics.type", typeName);
     }
 
     private void saveAndClose() {
         int priority = 0;
         try {
             priority = Integer.parseInt(priorityEdit.getValue());
-        } catch (NumberFormatException ignored) {
-        }
+        } catch (NumberFormatException ignored) {}
+
+        String group = groupEdit.getValue().trim();
+
+        stack.set(SLDataComponents.PRIORITY.get(), priority);
+        stack.set(SLDataComponents.SELECTED_GROUP.get(), group);
+        stack.set(SLDataComponents.TOOL_MODE.get(), currentMode);
+        stack.set(SLDataComponents.SELECTED_TYPE.get(), currentType);
 
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
             priority,
-            groupEdit.getValue(),
+            group,
             currentMode,
             this.currentType
         ));
@@ -127,27 +112,26 @@ public class LinkConfiguratorScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // 渲染暗色背景
         this.renderBackground(graphics, mouseX, mouseY, partialTick);
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // 绘制标题
-        graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, COLOR_WHITE);
+        graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xF8F8FF);
 
         int centerX = this.width / 2;
         int centerY = this.height / 2;
 
-        // 绘制输入框左侧的标签文本
-        renderLabel(graphics, "gui.staticlogistics.label.priority", centerX - 55, centerY - 25 + 6);
-        renderLabel(graphics, "gui.staticlogistics.label.group", centerX - 55, centerY + 5 + 6);
+        renderLabel(graphics, "gui.staticlogistics.label.priority", centerX - 55, centerY - 20 + 6);
+        renderLabel(graphics, "gui.staticlogistics.label.group", centerX - 55, centerY + 10 + 6);
     }
 
-    /**
-     * 渲染右对齐的黄色标签
-     */
     private void renderLabel(GuiGraphics graphics, String translationKey, int x, int y) {
         Component text = Component.translatable(translationKey).withStyle(ChatFormatting.YELLOW);
         int textWidth = this.font.width(text);
-        graphics.drawString(this.font, text, x - textWidth, y, COLOR_WHITE, true);
+        graphics.drawString(this.font, text, x - textWidth, y, COLOR_LABEL, true);
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
     }
 }

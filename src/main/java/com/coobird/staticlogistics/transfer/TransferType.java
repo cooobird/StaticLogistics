@@ -9,7 +9,7 @@ import net.minecraft.util.StringRepresentable;
 public enum TransferType implements StringRepresentable {
     ITEM("item", 0xFFFFFFFF),
     FLUID("fluid", 0xFF3366FF),
-    ENERGY("energy", 0xFFFF0000),
+    ENERGY("energy", 0xFFFFFF00),
     CHEMICALS("chemicals", 0xFFFF66FF);
 
     private final String name;

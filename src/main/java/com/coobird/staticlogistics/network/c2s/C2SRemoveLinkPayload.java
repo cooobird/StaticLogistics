@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.core.StaticLink;
-import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -10,8 +9,9 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-public record C2SRemoveLinkPayload(StaticLink link) implements CustomPacketPayload {
+import java.util.Collections;
 
+public record C2SRemoveLinkPayload(StaticLink link) implements CustomPacketPayload {
     public static final Type<C2SRemoveLinkPayload> TYPE = new Type<>(Staticlogistics.asResource("remove_link"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SRemoveLinkPayload> STREAM_CODEC = StreamCodec.composite(
@@ -28,9 +28,11 @@ public record C2SRemoveLinkPayload(StaticLink link) implements CustomPacketPaylo
         context.enqueueWork(() -> {
             var player = context.player();
             if (player.level() instanceof ServerLevel serverLevel) {
-                if (!GroupService.canAccess(payload.link().owner(), player.getUUID())) return;
-                LinkManager manager = LinkManager.get(serverLevel);
-                manager.removeLink(payload.link(), serverLevel);
+                LinkManager.get(serverLevel).removeLinksBulk(
+                    Collections.singletonList(payload.link()),
+                    serverLevel,
+                    player
+                );
             }
         });
     }

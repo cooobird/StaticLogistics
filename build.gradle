@@ -16,15 +16,27 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 neoForge {
     version = project.neo_version
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+    validateAccessTransformers = true
     runs {
         client {
             client()
+            programArguments.addAll '--username', 'gu_gu_'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        client1 {
+            client()
+            programArguments.addAll '--username', 'gu_gu__', '--uuid', '12345678-1234-1234-1234-123456789012'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
         server {
             server()
-            programArgument '--nogui'
+            //programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
@@ -41,6 +53,15 @@ neoForge {
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             logLevel = org.slf4j.event.Level.DEBUG
+            jvmArguments.addAll([
+                    // 忽略无效指令，避免有的人没安装 JetBrain Runtime 无法启动游戏
+                    "-XX:+IgnoreUnrecognizedVMOptions",
+                    // 启用 JetBrain Runtime 热重载功能
+                    "-XX:+AllowEnhancedClassRedefinition",
+                    "-Djava.net.preferIPv4Stack=true"
+                    // 并发修改检测
+                    //"-javaagent:mods/CMESuckMyDuck-1.0.5.jar=net/minecraft/util/ClassInstanceMultiMap;byClass;Map;nonstatic"
+            ])
         }
     }
 

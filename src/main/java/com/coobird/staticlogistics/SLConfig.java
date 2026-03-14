@@ -12,7 +12,6 @@ public final class SLConfig {
 
     private static ModConfigSpec CONFIG_SPEC;
 
-    // 配置项
     public static ModConfigSpec.IntValue DEFAULT_RADIUS;
     public static ModConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
     public static ModConfigSpec.IntValue DEFAULT_ITEM_STACK;

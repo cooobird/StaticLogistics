@@ -20,12 +20,14 @@ import java.util.UUID;
 public record StaticLink(
     BlockPos sourcePos,
     Direction sourceFace,
+    ResourceKey<Level> sourceDimension,
     BlockPos destPos,
     Direction destFace,
     ResourceKey<Level> destDimension,
     int transferFlags,
     int priority,
     UUID owner,
+    String ownerName,
     String groupId,
     int maxRange,
     boolean allowCrossDim
@@ -34,14 +36,16 @@ public record StaticLink(
         instance.group(
             BlockPos.CODEC.fieldOf("src").forGetter(StaticLink::sourcePos),
             Direction.CODEC.fieldOf("src_f").forGetter(StaticLink::sourceFace),
+            ResourceKey.codec(Registries.DIMENSION).fieldOf("src_dim").forGetter(StaticLink::sourceDimension),
             BlockPos.CODEC.fieldOf("dst").forGetter(StaticLink::destPos),
             Direction.CODEC.fieldOf("dst_f").forGetter(StaticLink::destFace),
             ResourceKey.codec(Registries.DIMENSION).fieldOf("dst_dim").forGetter(StaticLink::destDimension),
             Codec.INT.fieldOf("flags").forGetter(StaticLink::transferFlags),
             Codec.INT.optionalFieldOf("priority", 0).forGetter(StaticLink::priority),
             UUIDUtil.CODEC.fieldOf("owner").forGetter(StaticLink::owner),
+            Codec.STRING.optionalFieldOf("owner_name", "Unknown").forGetter(StaticLink::ownerName),
             Codec.STRING.optionalFieldOf("group", "1").forGetter(StaticLink::groupId),
-            Codec.INT.optionalFieldOf("range", 8).forGetter(StaticLink::maxRange),
+            Codec.INT.optionalFieldOf("range", 1).forGetter(StaticLink::maxRange),
             Codec.BOOL.optionalFieldOf("cross_dim", false).forGetter(StaticLink::allowCrossDim)
         ).apply(instance, StaticLink::new)
     );
@@ -55,7 +59,6 @@ public record StaticLink(
 
     public boolean canTransfer(Level currentLevel, FaceConfig config) {
         if (config.isDimensionEffective()) return true;
-
         if (isCrossDim(currentLevel.dimension())) return false;
 
         int multiplier = config.getMaxRangeMultiplier();
@@ -69,24 +72,25 @@ public record StaticLink(
     }
 
     public boolean isCrossDim(ResourceKey<Level> currentDim) {
-        return !this.destDimension.equals(currentDim);
+        return !this.destDimension.equals(this.sourceDimension);
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof StaticLink that)) return false;
-        return Objects.equals(sourcePos, that.sourcePos) &&
+        return sourcePos.equals(that.sourcePos) &&
             sourceFace == that.sourceFace &&
-            Objects.equals(destPos, that.destPos) &&
+            sourceDimension.equals(that.sourceDimension) &&
+            destPos.equals(that.destPos) &&
             destFace == that.destFace &&
-            Objects.equals(destDimension, that.destDimension) &&
-            Objects.equals(owner, that.owner) &&
-            Objects.equals(groupId, that.groupId);
+            destDimension.equals(that.destDimension) &&
+            owner.equals(that.owner) &&
+            groupId.equals(that.groupId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(sourcePos, sourceFace, destPos, destFace, destDimension, owner, groupId);
+        return Objects.hash(sourcePos, sourceFace, sourceDimension, destPos, destFace, destDimension, owner, groupId);
     }
 }

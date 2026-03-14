@@ -1,11 +1,12 @@
 package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.client.ClientLinkCache;
 import com.coobird.staticlogistics.common.init.SLDataComponents;
 import com.coobird.staticlogistics.common.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.core.ClientLinkCache;
 import com.coobird.staticlogistics.core.FaceConfig;
 import com.coobird.staticlogistics.core.StaticLink;
+import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.transfer.TransferType;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -16,7 +17,9 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -25,26 +28,21 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
-
     private static final float PIXEL = 1.0f / 16.0f;
     private static final float TUBE_WIDTH = PIXEL / 2.0f;
 
-    public static final RenderType PIPE_TRANSLUCENT = RenderType.create(
-        "pipe_translucent",
-        DefaultVertexFormat.POSITION_COLOR,
-        VertexFormat.Mode.QUADS,
-        1536,
-        false,
-        false,
+    public static final RenderType PIPE_XRAY = RenderType.create(
+        "pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
         RenderType.CompositeState.builder()
-            .setShaderState(RenderType.RENDERTYPE_GUI_SHADER)
+            .setShaderState(RenderType.POSITION_COLOR_SHADER)
             .setTransparencyState(RenderType.TRANSLUCENT_TRANSPARENCY)
             .setWriteMaskState(RenderType.COLOR_WRITE)
-            .setDepthTestState(RenderType.LEQUAL_DEPTH_TEST)
+            .setDepthTestState(RenderType.NO_DEPTH_TEST)
             .setCullState(RenderType.NO_CULL)
             .createCompositeState(false)
     );
@@ -52,41 +50,40 @@ public class LinkWorldRenderer {
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+        if (mc.player == null || mc.level == null) return;
 
         ItemStack stack = getActiveConfigurator(mc);
         if (stack.isEmpty()) return;
 
+        String activeGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1");
+        List<StaticLink> groupLinks = ClientLinkCache.getLinksByGroup(activeGroupId);
+        if (groupLinks.isEmpty() && stack.get(SLDataComponents.FIRST_POS.get()) == null) return;
+
         PoseStack poseStack = event.getPoseStack();
         Vec3 cam = event.getCamera().getPosition();
         MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-
-        VertexConsumer builder = bufferSource.getBuffer(PIPE_TRANSLUCENT);
+        VertexConsumer builder = bufferSource.getBuffer(PIPE_XRAY);
 
         poseStack.pushPose();
         poseStack.translate(-cam.x, -cam.y, -cam.z);
         Matrix4f mat = poseStack.last().pose();
+        float pulse = (float) Math.sin(System.currentTimeMillis() / 200.0) * 0.03f;
+        ResourceKey<Level> currentDim = mc.level.dimension();
 
-        BlockPos firstPos = stack.get(SLDataComponents.FIRST_POS.get());
-        Direction firstFace = stack.get(SLDataComponents.FIRST_FACE.get());
+        renderFirstPosMarker(stack, builder, mat, pulse);
 
-        if (firstPos != null && firstFace != null) {
-            double fx = firstPos.getX() + 0.5 + firstFace.getStepX() * 0.51;
-            double fy = firstPos.getY() + 0.5 + firstFace.getStepY() * 0.51;
-            double fz = firstPos.getZ() + 0.5 + firstFace.getStepZ() * 0.51;
-            drawSimpleFace(builder, mat, fx, fy, fz, firstFace, 0.3f, 1.0f, 0.3f, 0.6f);
-        }
+        for (StaticLink link : groupLinks) {
+            if (!GroupService.canAccess(link, mc.player)) continue;
 
-        String activeGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "1");
-        List<StaticLink> nearby = ClientLinkCache.getLinksInArea(mc.player.blockPosition(), 64);
+            boolean srcIn = link.sourceDimension().equals(currentDim);
+            boolean dstIn = link.destDimension().equals(currentDim);
+            if (!srcIn && !dstIn) continue;
 
-        for (StaticLink link : nearby) {
-            if (!link.groupId().equals(activeGroupId)) continue;
+            AABB bounds = (srcIn && dstIn) ? AABB.encapsulatingFullBlocks(link.sourcePos(), link.destPos())
+                : new AABB(srcIn ? link.sourcePos() : link.destPos()).inflate(1.0);
 
-            AABB linkBounds = AABB.encapsulatingFullBlocks(link.sourcePos(), link.destPos());
-            if (!event.getFrustum().isVisible(linkBounds)) continue;
+            if (!event.getFrustum().isVisible(bounds) || bounds.distanceToSqr(mc.player.position()) > 256 * 256) continue;
 
             double sx = link.sourcePos().getX() + 0.5 + link.sourceFace().getStepX() * 0.505;
             double sy = link.sourcePos().getY() + 0.5 + link.sourceFace().getStepY() * 0.505;
@@ -95,108 +92,88 @@ public class LinkWorldRenderer {
             double ey = link.destPos().getY() + 0.5 + link.destFace().getStepY() * 0.505;
             double ez = link.destPos().getZ() + 0.5 + link.destFace().getStepZ() * 0.505;
 
-            drawSimpleFace(builder, mat, sx, sy, sz, link.sourceFace(), 0.2f, 0.6f, 1.0f, 0.4f);
-            drawSimpleFace(builder, mat, ex, ey, ez, link.destFace(), 1.0f, 0.8f, 0.2f, 0.4f);
-
-            renderDirectionalPipes(builder, mat, link, sx, sy, sz, ex, ey, ez);
+            if (srcIn) drawSimpleFace(builder, mat, sx, sy, sz, link.sourceFace(), 0.0f, 0.8f, 1.0f, 0.6f, 0.45f + pulse);
+            if (dstIn) drawSimpleFace(builder, mat, ex, ey, ez, link.destFace(), 1.0f, 0.6f, 0.0f, 0.6f, 0.45f + pulse);
+            if (srcIn && dstIn) renderDirectionalPipes(builder, mat, link, sx, sy, sz, ex, ey, ez);
         }
 
         poseStack.popPose();
-        bufferSource.endBatch(PIPE_TRANSLUCENT);
+        bufferSource.endBatch(PIPE_XRAY);
+    }
+
+    private static void renderFirstPosMarker(ItemStack stack, VertexConsumer builder, Matrix4f mat, float pulse) {
+        BlockPos firstPos = stack.get(SLDataComponents.FIRST_POS.get());
+        Direction firstFace = stack.get(SLDataComponents.FIRST_FACE.get());
+        if (firstPos != null && firstFace != null) {
+            double fx = firstPos.getX() + 0.5 + firstFace.getStepX() * 0.51;
+            double fy = firstPos.getY() + 0.5 + firstFace.getStepY() * 0.51;
+            double fz = firstPos.getZ() + 0.5 + firstFace.getStepZ() * 0.51;
+            drawSimpleFace(builder, mat, fx, fy, fz, firstFace, 0.3f, 1.0f, 0.3f, 0.8f, 0.45f + pulse);
+        }
     }
 
     private static void renderDirectionalPipes(VertexConsumer builder, Matrix4f mat, StaticLink link, double sx, double sy, double sz, double ex, double ey, double ez) {
         FaceConfig config = ClientLinkCache.getFaceConfig(link.sourcePos(), link.sourceFace());
         if (config == null) return;
-
-        boolean hasIn = false, hasOut = false;
-        int inColor = 0xFF3498DB, outColor = 0xFFF1C40F;
-
-        for (TransferType type : TransferType.values()) {
-            if (!link.hasType(type)) continue;
-            FaceConfig.SideData data = config.getSettings(type);
-            if (data.mode.allowsInput()) {
-                hasIn = true;
-                inColor = data.getRenderColor(type);
-            }
-            if (data.mode.allowsOutput()) {
-                hasOut = true;
-                outColor = data.getRenderColor(type);
-            }
+        List<Integer> in = new ArrayList<>(), out = new ArrayList<>();
+        for (TransferType t : TransferType.values()) {
+            if (!link.hasType(t)) continue;
+            FaceConfig.SideData d = config.getSettings(t);
+            if (d.mode.allowsInput()) in.add(d.getRenderColor(t));
+            if (d.mode.allowsOutput()) out.add(d.getRenderColor(t));
         }
-
-        if (!hasIn && !hasOut) return;
-
-        if (hasIn && hasOut) {
-            Vec3 norm = Vec3.atLowerCornerOf(link.sourceFace().getNormal());
-            Vec3 offset = (Math.abs(norm.y) > 0.5) ? new Vec3(0.08, 0, 0) : new Vec3(0, 0.08, 0);
-            drawPipe(builder, mat, sx + offset.x, sy + offset.y, sz + offset.z, ex + offset.x, ey + offset.y, ez + offset.z, TUBE_WIDTH, inColor);
-            drawPipe(builder, mat, sx - offset.x, sy - offset.y, sz - offset.z, ex - offset.x, ey - offset.y, ez - offset.z, TUBE_WIDTH, outColor);
+        if (in.isEmpty() && out.isEmpty()) return;
+        if (!in.isEmpty() && !out.isEmpty()) {
+            Vec3 n = Vec3.atLowerCornerOf(link.sourceFace().getNormal());
+            Vec3 off = (Math.abs(n.y) > 0.5) ? new Vec3(0.08, 0, 0) : new Vec3(0, 0, 0.08);
+            drawPipe(builder, mat, sx + off.x, sy + off.y, sz + off.z, ex + off.x, ey + off.y, ez + off.z, TUBE_WIDTH, in.get(0));
+            drawPipe(builder, mat, sx - off.x, sy - off.y, sz - off.z, ex - off.x, ey - off.y, ez - off.z, TUBE_WIDTH, out.get(0));
         } else {
-            drawPipe(builder, mat, sx, sy, sz, ex, ey, ez, TUBE_WIDTH, hasIn ? inColor : outColor);
+            drawPipe(builder, mat, sx, sy, sz, ex, ey, ez, TUBE_WIDTH, !in.isEmpty() ? in.get(0) : out.get(0));
         }
     }
 
-    private static void drawPipe(VertexConsumer b, Matrix4f mat, double sx, double sy, double sz, double ex, double ey, double ez, float w, int color) {
-        int a = (color >> 24) & 0xFF, r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, bl = color & 0xFF;
-        if (a == 0) a = 255;
-
-        float dx = (float) (ex - sx), dy = (float) (ey - sy), dz = (float) (ez - sz);
-
-        float v1x, v1y, v1z;
-        if (Math.abs(dx) < 0.001f && Math.abs(dz) < 0.001f) {
-            v1x = w;
-            v1y = 0;
-            v1z = 0;
-        } else {
-            float hLen = (float) Math.sqrt(dx * dx + dz * dz);
-            v1x = (dz / hLen) * w;
-            v1y = 0;
-            v1z = (-dx / hLen) * w;
-        }
-
-        float v2x = dy * v1z - dz * v1y, v2y = dz * v1x - dx * v1z, v2z = dx * v1y - dy * v1x;
-        float f = w / (float) Math.sqrt(v2x * v2x + v2y * v2y + v2z * v2z);
-        v2x *= f;
-        v2y *= f;
-        v2z *= f;
-
-
-        renderQuadPoints(b, mat, sx + v1x, sy + v1y, sz + v1z, ex + v1x, ey + v1y, ez + v1z, ex + v2x, ey + v2y, ez + v2z, sx + v2x, sy + v2y, sz + v2z, r, g, bl, a);
-        renderQuadPoints(b, mat, sx - v1x, sy - v1y, sz - v1z, ex - v1x, ey - v1y, ez - v1z, ex - v2x, ey - v2y, ez - v2z, sx - v2x, sy - v2y, sz - v2z, r, g, bl, a);
-        renderQuadPoints(b, mat, sx + v1x, sy + v1y, sz + v1z, ex + v1x, ey + v1y, ez + v1z, ex - v2x, ey - v2y, ez - v2z, sx - v2x, sy - v2y, sz - v2z, r, g, bl, a);
-        renderQuadPoints(b, mat, sx - v1x, sy - v1y, sz - v1z, ex - v1x, ey - v1y, ez - v1z, ex + v2x, ey + v2y, ez + v2z, sx + v2x, sy + v2y, sz + v2z, r, g, bl, a);
+    private static void drawPipe(VertexConsumer b, Matrix4f mat, double sx, double sy, double sz, double ex, double ey, double ez, float w, int c) {
+        int a = (c >> 24) & 0xFF; if (a == 0) a = 255;
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, bl = c & 0xFF;
+        float dx = (float)(ex-sx), dy = (float)(ey-sy), dz = (float)(ez-sz);
+        if (Math.abs(dx) < 0.001f && Math.abs(dy) < 0.001f && Math.abs(dz) < 0.001f) return;
+        float v1x, v1y = 0, v1z;
+        if (Math.abs(dx) < 0.001f && Math.abs(dz) < 0.001f) { v1x = w; v1z = 0; }
+        else { float h = (float)Math.sqrt(dx*dx+dz*dz); v1x = (dz/h)*w; v1z = (-dx/h)*w; }
+        float v2x = dy*v1z-dz*v1y, v2y = dz*v1x-dx*v1z, v2z = dx*v1y-dy*v1x;
+        float f = w / (float)Math.sqrt(v2x*v2x+v2y*v2y+v2z*v2z); v2x *= f; v2y *= f; v2z *= f;
+        renderQuadPoints(b, mat, sx+v1x, sy+v1y, sz+v1z, ex+v1x, ey+v1y, ez+v1z, ex+v2x, ey+v2y, ez+v2z, sx+v2x, sy+v2y, sz+v2z, r, g, bl, a);
+        renderQuadPoints(b, mat, sx-v1x, sy-v1y, sz-v1z, ex-v1x, ey-v1y, ez-v1z, ex-v2x, ey-v2y, ez-v2z, sx-v2x, sy-v2y, sz-v2z, r, g, bl, a);
+        renderQuadPoints(b, mat, sx+v1x, sy+v1y, sz+v1z, ex+v1x, ey+v1y, ez+v1z, ex-v2x, ey-v2y, ez-v2z, sx-v2x, sy-v2y, sz-v2z, r, g, bl, a);
+        renderQuadPoints(b, mat, sx-v1x, sy-v1y, sz-v1z, ex-v1x, ey-v1y, ez-v1z, ex+v2x, ey+v2y, ez+v2z, sx+v2x, sy+v2y, sz+v2z, r, g, bl, a);
     }
 
     private static void renderQuadPoints(VertexConsumer b, Matrix4f mat, double x1, double y1, double z1, double x2, double y2, double z2, double x3, double y3, double z3, double x4, double y4, double z4, int r, int g, int bl, int a) {
-        b.addVertex(mat, (float) x1, (float) y1, (float) z1).setColor(r, g, bl, a);
-        b.addVertex(mat, (float) x2, (float) y2, (float) z2).setColor(r, g, bl, a);
-        b.addVertex(mat, (float) x3, (float) y3, (float) z3).setColor(r, g, bl, a);
-        b.addVertex(mat, (float) x4, (float) y4, (float) z4).setColor(r, g, bl, a);
+        b.addVertex(mat, (float)x1, (float)y1, (float)z1).setColor(r, g, bl, a);
+        b.addVertex(mat, (float)x2, (float)y2, (float)z2).setColor(r, g, bl, a);
+        b.addVertex(mat, (float)x3, (float)y3, (float)z3).setColor(r, g, bl, a);
+        b.addVertex(mat, (float)x4, (float)y4, (float)z4).setColor(r, g, bl, a);
     }
 
-    private static void drawSimpleFace(VertexConsumer b, Matrix4f mat, double x, double y, double z, Direction face, float r, float g, float bl, float a) {
-        float s = 0.42f;
-        int ir = (int) (r * 255), ig = (int) (g * 255), ibl = (int) (bl * 255), ia = (int) (a * 255);
-        Vec3 norm = Vec3.atLowerCornerOf(face.getNormal());
-        Vec3 axis1 = (Math.abs(norm.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
-        Vec3 axis2 = norm.cross(axis1).normalize();
-        axis1 = norm.cross(axis2).normalize();
-
-        float x1 = (float) (axis1.x * s), y1 = (float) (axis1.y * s), z1 = (float) (axis1.z * s);
-        float x2 = (float) (axis2.x * s), y2 = (float) (axis2.y * s), z2 = (float) (axis2.z * s);
-
-        b.addVertex(mat, (float) x - x1 - x2, (float) y - y1 - y2, (float) z - z1 - z2).setColor(ir, ig, ibl, ia);
-        b.addVertex(mat, (float) x + x1 - x2, (float) y + y1 - y2, (float) z + z1 - z2).setColor(ir, ig, ibl, ia);
-        b.addVertex(mat, (float) x + x1 + x2, (float) y + y1 + y2, (float) z + z1 + z2).setColor(ir, ig, ibl, ia);
-        b.addVertex(mat, (float) x - x1 + x2, (float) y - y1 + y2, (float) z - z1 + z2).setColor(ir, ig, ibl, ia);
+    private static void drawSimpleFace(VertexConsumer b, Matrix4f mat, double x, double y, double z, Direction face, float r, float g, float bl, float a, float s) {
+        int ir = (int)(r*255), ig = (int)(g*255), ibl = (int)(bl*255), ia = (int)(a*255);
+        Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
+        Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+        Vec3 a2 = n.cross(a1).normalize(); a1 = n.cross(a2).normalize();
+        float x1 = (float)(a1.x*s), y1 = (float)(a1.y*s), z1 = (float)(a1.z*s);
+        float x2 = (float)(a2.x*s), y2 = (float)(a2.y*s), z2 = (float)(a2.z*s);
+        b.addVertex(mat, (float)x-x1-x2, (float)y-y1-y2, (float)z-z1-z2).setColor(ir, ig, ibl, ia);
+        b.addVertex(mat, (float)x+x1-x2, (float)y+y1-y2, (float)z+z1-z2).setColor(ir, ig, ibl, ia);
+        b.addVertex(mat, (float)x+x1+x2, (float)y+y1+y2, (float)z+z1+z2).setColor(ir, ig, ibl, ia);
+        b.addVertex(mat, (float)x-x1+x2, (float)y-y1+y2, (float)z-z1+z2).setColor(ir, ig, ibl, ia);
     }
 
     private static ItemStack getActiveConfigurator(Minecraft mc) {
         if (mc.player == null) return ItemStack.EMPTY;
-        ItemStack main = mc.player.getMainHandItem();
-        if (main.getItem() instanceof LinkConfiguratorItem) return main;
-        ItemStack off = mc.player.getOffhandItem();
-        return (off.getItem() instanceof LinkConfiguratorItem) ? off : ItemStack.EMPTY;
+        ItemStack m = mc.player.getMainHandItem();
+        if (m.getItem() instanceof LinkConfiguratorItem) return m;
+        ItemStack o = mc.player.getOffhandItem();
+        return (o.getItem() instanceof LinkConfiguratorItem) ? o : ItemStack.EMPTY;
     }
 }

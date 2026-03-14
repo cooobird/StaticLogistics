@@ -1,16 +1,13 @@
 package com.coobird.staticlogistics.core;
 
-import com.coobird.staticlogistics.SLConfig;
 import com.coobird.staticlogistics.common.item.UpgradeItem;
 import com.coobird.staticlogistics.transfer.TransferType;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 
@@ -21,11 +18,8 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 public class FaceConfig {
-    private int cachedSpeedMult = 1;
-    private int cachedRangeMult = 1;
-    private int cachedStackMult = 1;
-    private boolean cachedDimEffective = false;
-    private boolean cacheDirty = true;
+    private int cachedSpeedMult = 1, cachedRangeMult = 1, cachedStackMult = 1;
+    private boolean cachedDimEffective = false, cacheDirty = true;
     private Consumer<FaceConfig> onDirty = (c) -> {
     };
 
@@ -35,63 +29,55 @@ public class FaceConfig {
             cacheDirty = true;
             onDirty.accept(FaceConfig.this);
         }
-
-        @Override
-        public boolean isItemValid(int slot, ItemStack stack) {
-            if (!(stack.getItem() instanceof UpgradeItem upgrade)) return false;
-            return switch (slot) {
-                case 0 -> upgrade.getType() == UpgradeItem.UpgradeType.SPEED;
-                case 1 -> upgrade.getType() == UpgradeItem.UpgradeType.RANGE;
-                case 2 -> upgrade.getType() == UpgradeItem.UpgradeType.STACK;
-                case 3 -> upgrade.getType() == UpgradeItem.UpgradeType.DIMENSION;
-                default -> false;
-            };
-        }
     };
 
     private final Map<TransferType, SideData> typeSettings = new EnumMap<>(TransferType.class);
 
     public FaceConfig() {
         for (TransferType type : TransferType.values()) {
-            typeSettings.put(type, new SideData(this));
+            typeSettings.put(type, new SideData());
         }
     }
 
-    public void setOnDirty(Consumer<FaceConfig> listener) {
-        this.onDirty = listener;
+    public static class SideData {
+        public ConnectionMode mode = ConnectionMode.DISABLED;
+        public DistributionStrategy strategy = DistributionStrategy.SEQUENTIAL;
+        public int channelColor = 0xFFFFFFFF;
+        public int priority = 0, customBulkSize = 0;
+        public boolean isBlacklist = true;
+        public final Set<net.minecraft.world.item.Item> filterItems = new HashSet<>();
+        public final int[] rrCursor = new int[1];
+
+        public int getRenderColor(TransferType type) {
+            if (channelColor != 0xFFFFFFFF && (channelColor >> 24 != 0)) {
+                return channelColor;
+            }
+            return type.getColor();
+        }
     }
 
-    public SideData getSettings(TransferType type) {
-        return typeSettings.get(type);
-    }
-
-    public ItemStackHandler getUpgrades() {
-        return upgrades;
+    public void setOnDirty(Consumer<FaceConfig> onDirty) {
+        this.onDirty = onDirty;
     }
 
     private void updateCache() {
         if (!cacheDirty) return;
-        this.cachedSpeedMult = calculateMultiplier(0, 1);
-        this.cachedRangeMult = calculateMultiplier(1, 1);
-        this.cachedStackMult = calculateMultiplier(2, 1);
-        ItemStack dimStack = upgrades.getStackInSlot(3);
-        this.cachedDimEffective = !dimStack.isEmpty() && dimStack.getItem() instanceof UpgradeItem;
-        this.cacheDirty = false;
-    }
-
-    private int calculateMultiplier(int slot, int defaultValue) {
-        ItemStack s = upgrades.getStackInSlot(slot);
-        if (s.getItem() instanceof UpgradeItem u && u.getTier() != null) {
-            String tierName = u.getTier().getSerializedName();
-            if (tierName.equalsIgnoreCase("creative")) return Integer.MAX_VALUE;
-            return SLConfig.getMultiplierForTier(tierName);
+        cachedSpeedMult = 1;
+        cachedRangeMult = 1;
+        cachedStackMult = 1;
+        cachedDimEffective = false;
+        for (int i = 0; i < upgrades.getSlots(); i++) {
+            ItemStack stack = upgrades.getStackInSlot(i);
+            if (stack.getItem() instanceof UpgradeItem upgrade) {
+                switch (upgrade.getType()) {
+                    case SPEED -> cachedSpeedMult = Math.max(cachedSpeedMult, upgrade.getTier().getMultiplier());
+                    case RANGE -> cachedRangeMult = Math.max(cachedRangeMult, upgrade.getTier().getMultiplier());
+                    case STACK -> cachedStackMult = Math.max(cachedStackMult, upgrade.getTier().getMultiplier());
+                    case DIMENSION -> cachedDimEffective = true;
+                }
+            }
         }
-        return defaultValue;
-    }
-
-    public int getStackMultiplier() {
-        updateCache();
-        return cachedStackMult;
+        cacheDirty = false;
     }
 
     public int getSpeedMultiplier() {
@@ -104,36 +90,18 @@ public class FaceConfig {
         return cachedRangeMult;
     }
 
+    public int getStackMultiplier() {
+        updateCache();
+        return cachedStackMult;
+    }
+
     public boolean isDimensionEffective() {
         updateCache();
         return cachedDimEffective;
     }
 
-    public static class SideData {
-        private final FaceConfig parent;
-        public ConnectionMode mode = ConnectionMode.DISABLED;
-        public int channelColor = -1;
-        public boolean isBlacklist = false;
-        public final Set<Item> filterItems = new HashSet<>();
-        public int priority = 0;
-        public int customBulkSize = -1;
-        public DistributionStrategy strategy = DistributionStrategy.SEQUENTIAL;
-        public final int[] rrCursor = new int[]{0};
-
-        public SideData(FaceConfig parent) {
-            this.parent = parent;
-        }
-
-        public int getRenderColor(TransferType type) {
-            if (channelColor != -1) return channelColor;
-
-            return switch (mode) {
-                case INPUT -> 0xFF3498DB;
-                case OUTPUT -> 0xFFF1C40F;
-                case BOTH -> 0xFF9B59B6;
-                case DISABLED -> type.getColor();
-            };
-        }
+    public SideData getSettings(TransferType type) {
+        return typeSettings.get(type);
     }
 
     public CompoundTag serializeNBT(HolderLookup.Provider p) {
@@ -143,14 +111,14 @@ public class FaceConfig {
         typeSettings.forEach((type, data) -> {
             CompoundTag d = new CompoundTag();
             d.putString("mode", data.mode.name());
+            d.putString("strategy", data.strategy.name());
             d.putInt("channel", data.channelColor);
             d.putBoolean("blacklist", data.isBlacklist);
             d.putInt("priority", data.priority);
             d.putInt("bulk", data.customBulkSize);
-            d.putString("strategy", data.strategy.name());
             d.putInt("rr_cursor", data.rrCursor[0]);
             ListTag list = new ListTag();
-            data.filterItems.forEach(item -> list.add(StringTag.valueOf(BuiltInRegistries.ITEM.getKey(item).toString())));
+            data.filterItems.forEach(item -> list.add(net.minecraft.nbt.StringTag.valueOf(BuiltInRegistries.ITEM.getKey(item).toString())));
             d.put("filter", list);
             typesNbt.put(type.getSerializedName(), d);
         });
@@ -165,29 +133,25 @@ public class FaceConfig {
             String key = type.getSerializedName();
             if (typesNbt.contains(key)) {
                 CompoundTag d = typesNbt.getCompound(key);
-                try {
-                    data.mode = ConnectionMode.valueOf(d.getString("mode"));
-                } catch (Exception e) {
-                    data.mode = ConnectionMode.DISABLED;
-                }
+                data.mode = ConnectionMode.byName(d.getString("mode"), ConnectionMode.DISABLED);
+                data.strategy = DistributionStrategy.byName(d.getString("strategy"), DistributionStrategy.SEQUENTIAL);
                 data.channelColor = d.getInt("channel");
                 data.isBlacklist = d.getBoolean("blacklist");
                 data.priority = d.getInt("priority");
                 data.customBulkSize = d.getInt("bulk");
-                try {
-                    data.strategy = DistributionStrategy.valueOf(d.getString("strategy"));
-                } catch (Exception e) {
-                    data.strategy = DistributionStrategy.SEQUENTIAL;
-                }
                 data.rrCursor[0] = d.getInt("rr_cursor");
                 data.filterItems.clear();
                 ListTag list = d.getList("filter", Tag.TAG_STRING);
                 for (int i = 0; i < list.size(); i++) {
-                    ResourceLocation rl = ResourceLocation.parse(list.getString(i));
-                    BuiltInRegistries.ITEM.getOptional(rl).ifPresent(data.filterItems::add);
+                    ResourceLocation rl = ResourceLocation.tryParse(list.getString(i));
+                    if (rl != null) BuiltInRegistries.ITEM.getOptional(rl).ifPresent(data.filterItems::add);
                 }
             }
         });
         this.cacheDirty = true;
+    }
+
+    public ItemStackHandler getUpgrades() {
+        return upgrades;
     }
 }

@@ -22,7 +22,14 @@ public class TransferEngine {
 
     public static boolean execute(ServerLevel level, List<StaticLink> filteredLinks, TransferType type, FaceConfig faceConfig, int[] rrCursor, UUID sourceOwner) {
         List<StaticLink> validLinks = filteredLinks.stream()
-            .filter(link -> link.canTransfer(level, faceConfig))
+            .filter(link -> {
+                if (!link.owner().equals(sourceOwner)) return false;
+                if (!link.canTransfer(level, faceConfig)) return false;
+
+                ServerLevel destLevel = level.getServer().getLevel(link.destDimension());
+                if (destLevel == null) return false;
+                return destLevel.isLoaded(link.destPos());
+            })
             .toList();
 
         if (validLinks.isEmpty()) return false;
@@ -34,7 +41,6 @@ public class TransferEngine {
         return switch (type) {
             case ITEM ->
                 TransferUtils.doTransfer(level, validLinks, Capabilities.ItemHandler.BLOCK, limit, activeRR, createItemProtocol(data));
-
             case FLUID -> TransferUtils.doTransfer(level, validLinks, Capabilities.FluidHandler.BLOCK, limit, activeRR,
                 new TransferUtils.SimpleProtocol<>(
                     (src, max) -> src.drain(max, IFluidHandler.FluidAction.SIMULATE),
@@ -43,16 +49,15 @@ public class TransferEngine {
                     stack -> stack == null || stack.isEmpty()
                 )
             );
-
-            case CHEMICALS -> TransferUtils.doTransfer(level, validLinks, mekanism.common.capabilities.Capabilities.CHEMICAL.block(), limit, activeRR,
-                new TransferUtils.SimpleProtocol<>(
-                    (src, max) -> src.extractChemical((long) max, Action.SIMULATE),
-                    (dst, stack) -> (int) (stack.getAmount() - dst.insertChemical(stack, Action.EXECUTE).getAmount()),
-                    (src, stack, act) -> src.extractChemical(stack.copyWithAmount((long) act), Action.EXECUTE),
-                    ChemicalStack::isEmpty
-                )
-            );
-
+            case CHEMICALS ->
+                TransferUtils.doTransfer(level, validLinks, mekanism.common.capabilities.Capabilities.CHEMICAL.block(), limit, activeRR,
+                    new TransferUtils.SimpleProtocol<>(
+                        (src, max) -> src.extractChemical((long) max, Action.SIMULATE),
+                        (dst, stack) -> (int) (stack.getAmount() - dst.insertChemical(stack, Action.EXECUTE).getAmount()),
+                        (src, stack, act) -> src.extractChemical(stack.copyWithAmount((long) act), Action.EXECUTE),
+                        ChemicalStack::isEmpty
+                    )
+                );
             case ENERGY ->
                 TransferUtils.doTransfer(level, validLinks, Capabilities.EnergyStorage.BLOCK, limit, activeRR,
                     new TransferUtils.SimpleProtocol<>(
@@ -66,19 +71,22 @@ public class TransferEngine {
     }
 
     private static TransferUtils.TransferProtocol<IItemHandler, ItemStack> createItemProtocol(FaceConfig.SideData data) {
-        final int[] slot = {-1};
-        Predicate<ItemStack> filter = s -> !data.filterItems.isEmpty() && (data.isBlacklist == data.filterItems.contains(s.getItem()));
-
         return new TransferUtils.TransferProtocol<>() {
+            private int lastSlot = -1;
+            private final Predicate<ItemStack> filter = s -> {
+                if (data.filterItems.isEmpty()) return false;
+                return data.isBlacklist == data.filterItems.contains(s.getItem());
+            };
+
             @Override
             public ItemStack simulateExtract(IItemHandler src, int max) {
                 for (int i = 0; i < src.getSlots(); i++) {
                     ItemStack s = src.getStackInSlot(i);
                     if (s.isEmpty() || filter.test(s)) continue;
-                    slot[0] = i;
+                    lastSlot = i;
                     return src.extractItem(i, max, true);
                 }
-                slot[0] = -1;
+                lastSlot = -1;
                 return ItemStack.EMPTY;
             }
 
@@ -90,7 +98,7 @@ public class TransferEngine {
 
             @Override
             public void commitExtract(IItemHandler src, ItemStack s, int a) {
-                if (slot[0] != -1) src.extractItem(slot[0], a, false);
+                if (lastSlot != -1) src.extractItem(lastSlot, a, false);
             }
 
             @Override
@@ -102,15 +110,11 @@ public class TransferEngine {
 
     private static int calculateLimit(TransferType type, FaceConfig fc, FaceConfig.SideData sd) {
         if (sd.customBulkSize > 0) return sd.customBulkSize;
-
         long base = switch (type) {
             case ITEM -> SLConfig.getItemStack();
-            case FLUID -> SLConfig.getFluidStack();
             case ENERGY -> SLConfig.getEnergyStack();
-            case CHEMICALS -> SLConfig.getFluidStack();
+            default -> SLConfig.getFluidStack();
         };
-
-        int multiplier = fc.getStackMultiplier();
-        return (int) Math.min(base * multiplier, Integer.MAX_VALUE);
+        return (int) Math.min(base * fc.getStackMultiplier(), Integer.MAX_VALUE);
     }
 }

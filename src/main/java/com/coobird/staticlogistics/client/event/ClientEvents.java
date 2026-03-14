@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.client.event;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.ClientLinkCache;
+import com.coobird.staticlogistics.client.ClientLinkCache;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;

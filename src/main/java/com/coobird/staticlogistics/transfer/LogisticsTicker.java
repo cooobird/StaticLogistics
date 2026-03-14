@@ -2,8 +2,6 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.SLConfig;
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.FaceConfig;
-import com.coobird.staticlogistics.core.StaticLink;
 import com.coobird.staticlogistics.storage.LinkManager;
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
@@ -16,15 +14,11 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public class LogisticsTicker {
-
     private static final TransferType[] TYPES = TransferType.values();
-
     private static final Map<ResourceKey<Level>, Long2ByteMap> DIMENSION_COOLDOWNS = new HashMap<>();
 
     @SubscribeEvent
@@ -38,11 +32,10 @@ public class LogisticsTicker {
         LinkManager manager = LinkManager.get(level);
         if (manager == null) return;
 
-        long gameTime = level.getGameTime();
         var activeKeys = manager.getActiveSourceKeys();
         if (activeKeys.isEmpty()) return;
 
-        int defaultInterval = SLConfig.getDefaultTickInterval();
+        long gameTime = level.getGameTime();
         Long2ByteMap cooldownMap = DIMENSION_COOLDOWNS.computeIfAbsent(level.dimension(), k -> new Long2ByteOpenHashMap());
 
         LongIterator iterator = activeKeys.iterator();
@@ -56,45 +49,34 @@ public class LogisticsTicker {
             }
 
             LinkManager.CachedSourceData cached = manager.getCachedSource(sourceKey);
-            if (cached == null || cached.sortedLinks() == null) continue;
+            if (cached == null) continue;
 
             int speedMult = cached.config().getSpeedMultiplier();
-            int currentInterval = (speedMult >= defaultInterval) ? 1 : Math.max(1, defaultInterval / speedMult);
+            int interval = Math.max(1, SLConfig.getDefaultTickInterval() / speedMult);
 
             boolean anyMoved = false;
-            boolean anyTypeProcessed = false;
+            boolean processedAny = false;
 
             for (TransferType type : TYPES) {
-                List<StaticLink> linksForType = cached.sortedLinks().get(type);
-                if (linksForType == null || linksForType.isEmpty()) continue;
+                var links = cached.sortedLinks().get(type);
+                if (links == null || links.isEmpty()) continue;
 
-                FaceConfig.SideData sideData = cached.config().getSettings(type);
-                if (!sideData.mode.allowsOutput()) continue;
+                var side = cached.config().getSettings(type);
+                if (!side.mode.allowsOutput()) continue;
 
-                anyTypeProcessed = true;
-                UUID sourceOwner = linksForType.getFirst().owner();
+                processedAny = true;
 
-                if (type == TransferType.ENERGY) {
-                    boolean moved = TransferEngine.execute(level, linksForType, type, cached.config(), sideData.rrCursor, sourceOwner);
-                    if (moved) anyMoved = true;
-                } else if (gameTime % currentInterval == 0) {
-                    boolean moved = TransferEngine.execute(level, linksForType, type, cached.config(), sideData.rrCursor, sourceOwner);
-                    if (moved) anyMoved = true;
+                if (type == TransferType.ENERGY || gameTime % interval == 0) {
+                    if (TransferEngine.execute(level, links, type, cached.config(), side.rrCursor, links.get(0).owner())) {
+                        anyMoved = true;
+                    }
                 } else {
                     anyMoved = true;
                 }
             }
-
-            if (anyTypeProcessed && !anyMoved) {
+            if (processedAny && !anyMoved) {
                 cooldownMap.put(sourceKey, (byte) 10);
             }
-        }
-    }
-
-    public static void wakeup(ServerLevel level, long sourceKey) {
-        Long2ByteMap cooldownMap = DIMENSION_COOLDOWNS.get(level.dimension());
-        if (cooldownMap != null) {
-            cooldownMap.remove(sourceKey);
         }
     }
 

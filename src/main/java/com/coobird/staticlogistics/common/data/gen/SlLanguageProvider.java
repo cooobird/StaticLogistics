@@ -2,11 +2,12 @@ package com.coobird.staticlogistics.common.data.gen;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.common.init.SLCreativeTabs;
+import com.coobird.staticlogistics.core.ConnectionMode;
+import com.coobird.staticlogistics.core.DistributionStrategy;
 import com.coobird.staticlogistics.transfer.TransferType;
 import net.minecraft.data.PackOutput;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -26,6 +27,7 @@ public class SlLanguageProvider extends LanguageProvider {
     }
 
     private static String toTitleCase(String raw) {
+        if (raw == null || raw.isEmpty()) return "";
         String name = raw.substring(raw.lastIndexOf('.') + 1);
         return Arrays.stream(name.split("_"))
             .filter(word -> !word.isEmpty())
@@ -37,45 +39,52 @@ public class SlLanguageProvider extends LanguageProvider {
     protected void addTranslations() {
         addCreativeTab(SLCreativeTabs.TAB_STATIC_LOGISTICS, "Static Logistics", "静态物流");
 
-        add("config.staticlogistics.default_radius", "Base Radius", "基础半径");
-        add("config.staticlogistics.default_radius.comment", "Base connection range without upgrades.", "无升级时的基础连接距离(方块)。");
-        add("config.staticlogistics.default_tick_interval", "Tick Interval", "传输频率");
-        add("config.staticlogistics.default_tick_interval.comment", "Ticks between operations (20=1s).", "两次操作间的Ticks间隔。");
-        add("config.staticlogistics.item_stack_size", "Item Limit", "物品传输上限");
-        add("config.staticlogistics.item_stack_size.comment", "Max items per transfer.", "单次搬运的物品上限。");
-        add("config.staticlogistics.fluid_stack_size", "Fluid Limit", "流体传输上限");
-        add("config.staticlogistics.fluid_stack_size.comment", "Max mB per transfer.", "单次搬运的流体上限(mB)。");
-        add("config.staticlogistics.energy_stack_size", "Energy Limit", "能量传输上限");
-        add("config.staticlogistics.energy_stack_size.comment", "Max FE per transfer.", "单次搬运的能量上限(FE)。");
-
-        add("config.staticlogistics.iron_multiplier", "Iron Multiplier", "铁级倍率");
-        add("config.staticlogistics.gold_multiplier", "Gold Multiplier", "金级倍率");
-        add("config.staticlogistics.diamond_multiplier", "Diamond Multiplier", "钻石级倍率");
-        add("config.staticlogistics.netherite_multiplier", "Netherite Multiplier", "下界合金级倍率");
+        add("gui.staticlogistics.linker_settings", "Linker Configuration", "链路配置工具");
+        add("gui.staticlogistics.save", "Save Settings", "保存设置");
+        add("gui.staticlogistics.label.priority", "Priority:", "优先级:");
+        add("gui.staticlogistics.label.group", "Group ID:", "分组:");
+        add("gui.staticlogistics.label.strategy", "Strategy:", "分配策略:");
+        add("gui.staticlogistics.label.bulk", "Bulk Size:", "传输步长:");
 
         add("mode.staticlogistics.connect", "Connect", "连接模式");
         add("mode.staticlogistics.remove", "Remove", "移除模式");
         add("mode.staticlogistics.configure", "Configure", "配置模式");
 
-        add("msg.staticlogistics.source_set", "Source Set: %s (%s)", "已设置起点: %s (%s)");
-        add("msg.staticlogistics.source_reset", "Source Cleared", "选点已清除");
-        add("msg.staticlogistics.link_created", "Linked to: %s", "已连接至: %s");
-        add("msg.staticlogistics.links_cleared", "Cleared links at %s", "已清除 %s 的所有链路");
-        add("msg.staticlogistics.no_permission", "Access Denied!", "权限不足！");
-        add("msg.staticlogistics.no_dimension_upgrade", "Cross-dimension upgrade missing!", "缺失跨维度升级！");
-        add("msg.staticlogistics.too_far", "Target out of range! (Max: %s)", "超出范围！（当前上限：%s）");
+        add("tooltip.staticlogistics.mode", "Mode: %s", "当前模式: %s");
+        add("tooltip.staticlogistics.type", "Type: %s", "传输类型: %s");
+        add("tooltip.staticlogistics.group", "Group: %s", "分组: %s");
 
-        add("tooltip.staticlogistics.linker.mode", "Mode: %s", "当前模式: %s");
-        add("tooltip.staticlogistics.linker.source", "Source: %s (%s)", "起点: %s (%s)");
-        add("tooltip.staticlogistics.linker.type", "Type: %s", "类型: %s");
+        add("tooltip.staticlogistics.linked_from", "Source Locked: %s", "当前起点 (锁定): %s");
+        add("tooltip.staticlogistics.no_source", "No Source Selected", "尚未选择起点方块");
+        add("tooltip.staticlogistics.use_hint", "Right-click: Open Config GUI", "右键: 打开设置界面");
+        add("tooltip.staticlogistics.shift_use_hint", "Sneak + Right-click: Set Source / Link Multiple", "潜行+右键: 设定起点 / 连续连接终点");
+        add("tooltip.staticlogistics.reset_hint", "Sneak + Right-click Air or Source: Clear selection", "潜行+右键空气或起点: 手动清除选点");
 
-        add("gui.staticlogistics.linker_settings", "Linker Settings", "配置器设置");
-        add("gui.staticlogistics.save", "Save", "保存");
-        add("gui.staticlogistics.label.priority", "Priority:", "优先级:");
-        add("gui.staticlogistics.label.group", "Group ID:", "组 ID:");
+        add("tooltip.staticlogistics.upgrade.install_hint", "Install in nodes to enhance capabilities.", "安装至节点以增强功能。");
+        add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "数值倍率: %s");
+        add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级: %s");
+        add("tooltip.staticlogistics.upgrade.dimension_feature", "Enables cross-dimensional transport.", "解锁跨维度传输功能。");
+        add("tooltip.staticlogistics.upgrade.speed_desc", "Increases transfer frequency.", "提升传输频率。");
+        add("tooltip.staticlogistics.upgrade.range_desc", "Extends the maximum link distance.", "延伸最大连接距离。");
+        add("tooltip.staticlogistics.upgrade.stack_desc", "Increases items moved per operation.", "增加单次传输的堆叠数量。");
+        add("tooltip.staticlogistics.upgrade.dimension_desc", "Allows linking across different worlds.", "允许跨越不同世界进行连接。");
 
-        String[][] tiers = {{"iron", "铁"}, {"gold", "金"}, {"diamond", "钻石"}, {"netherite", "下界合金"}, {"creative", "创造"}};
-        for (String[] t : tiers) add("tier.staticlogistics." + t[0], toTitleCase(t[0]), t[1]);
+        add("tier.staticlogistics.iron", "Iron", "铁");
+        add("tier.staticlogistics.gold", "Gold", "金");
+        add("tier.staticlogistics.diamond", "Diamond", "钻石");
+        add("tier.staticlogistics.netherite", "Netherite", "下界合金");
+        add("tier.staticlogistics.creative", "Creative", "创造");
+
+        add("msg.staticlogistics.source_set", "Source Set: %s (%s) [Group: %s]", "已锁定起点: %s (%s) [分组: %s]");
+        add("msg.staticlogistics.source_reset", "Selection Cleared", "选点已手动清除");
+        add("msg.staticlogistics.link_created", "Linked to: %s (Source Kept)", "连接成功 -> %s (起点已保留)");
+        add("msg.staticlogistics.out_of_range", "Target out of range! (Max: %s)", "距离过远！(最大距离: %s)");
+        add("msg.staticlogistics.owner_updated", "Ownership updated to yours.", "链路所有权已更新。");
+        add("msg.staticlogistics.links_cleared", "Cleared %s link(s).", "已成功拆除 %s 条链路。");
+        add("msg.staticlogistics.no_link_found", "No link detected here.", "此位置没有任何链路。");
+        add("msg.staticlogistics.no_permission", "You don't have permission to modify this link!", "你没有权限修改此链路！");
+        add("msg.staticlogistics.no_dimension_upgrade", "Cross-dimension upgrade required!", "需要跨维度升级插件！");
+        add("msg.staticlogistics.cannot_link_self", "Cannot link a face to itself!", "不能连接到自身！");
 
         for (TransferType type : TransferType.values()) {
             String cn = switch (type) {
@@ -85,6 +94,27 @@ public class SlLanguageProvider extends LanguageProvider {
                 case CHEMICALS -> "化学品";
             };
             add("type.staticlogistics." + type.getSerializedName(), toTitleCase(type.getSerializedName()), cn);
+        }
+
+        for (DistributionStrategy strategy : DistributionStrategy.values()) {
+            String zh = switch (strategy) {
+                case SEQUENTIAL -> "顺序优先";
+                case ROUND_ROBIN -> "轮询分发";
+                case NEAREST -> "最近优先";
+                case FURTHEST -> "最远优先";
+                case RANDOM -> "随机分发";
+            };
+            add(strategy.getDescriptionId(), toTitleCase(strategy.getSerializedName()), zh);
+        }
+
+        for (ConnectionMode mode : ConnectionMode.values()) {
+            String zh = switch (mode) {
+                case DISABLED -> "禁用";
+                case INPUT -> "仅输入";
+                case OUTPUT -> "仅输出";
+                case BOTH -> "双向";
+            };
+            add("connection.staticlogistics." + mode.getSerializedName(), toTitleCase(mode.getSerializedName()), zh);
         }
 
         Staticlogistics.chineseProviders.forEach(action -> action.accept(this));
@@ -99,10 +129,6 @@ public class SlLanguageProvider extends LanguageProvider {
     }
 
     public void addItem(DeferredHolder<Item, ? extends Item> key, String zh) {
-        this.add(key.get().getDescriptionId(), toTitleCase(key.get().getDescriptionId()), zh);
-    }
-
-    public void addEffect(DeferredHolder<MobEffect, ? extends MobEffect> key, String zh) {
         this.add(key.get().getDescriptionId(), toTitleCase(key.get().getDescriptionId()), zh);
     }
 
