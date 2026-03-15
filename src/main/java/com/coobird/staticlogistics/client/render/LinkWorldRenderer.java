@@ -103,7 +103,8 @@ public class LinkWorldRenderer {
             double ey = link.destPos().getY() + 0.5 + link.destFace().getStepY() * 0.505;
             double ez = link.destPos().getZ() + 0.5 + link.destFace().getStepZ() * 0.505;
 
-            if (srcIn) drawSimpleFace(builder, mat, sx, sy, sz, link.sourceFace(), 0.0f, 0.8f, 1.0f, 0.6f, 0.45f + pulse);
+            if (srcIn)
+                drawSimpleFace(builder, mat, sx, sy, sz, link.sourceFace(), 0.0f, 0.8f, 1.0f, 0.6f, 0.45f + pulse);
             if (dstIn) drawSimpleFace(builder, mat, ex, ey, ez, link.destFace(), 1.0f, 0.6f, 0.0f, 0.6f, 0.45f + pulse);
             if (srcIn && dstIn) renderDirectionalPipes(builder, mat, link, sx, sy, sz, ex, ey, ez);
         }
@@ -118,7 +119,7 @@ public class LinkWorldRenderer {
             if (level.getBlockState(link.sourcePos()).isAir()) return true;
         }
         if (link.destDimension().equals(dim) && level.isLoaded(link.destPos())) {
-            if (level.getBlockState(link.destPos()).isAir()) return true;
+            return level.getBlockState(link.destPos()).isAir();
         }
         return false;
     }
@@ -147,20 +148,26 @@ public class LinkWorldRenderer {
     }
 
     private static void drawPipe(VertexConsumer b, Matrix4f mat, double sx, double sy, double sz, double ex, double ey, double ez, float w, int c) {
-        int a = (c >> 24) & 0xFF; if (a == 0) a = 255;
+        int a = (c >> 24) & 0xFF;
+        if (a == 0) a = 255;
         int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, bl = c & 0xFF;
         float dx = (float) (ex - sx), dy = (float) (ey - sy), dz = (float) (ez - sz);
         if (Math.abs(dx) < 0.001f && Math.abs(dy) < 0.001f && Math.abs(dz) < 0.001f) return;
 
         float v1x, v1y = 0, v1z;
-        if (Math.abs(dx) < 0.001f && Math.abs(dz) < 0.001f) { v1x = w; v1z = 0; }
-        else {
+        if (Math.abs(dx) < 0.001f && Math.abs(dz) < 0.001f) {
+            v1x = w;
+            v1z = 0;
+        } else {
             float h = (float) Math.sqrt(dx * dx + dz * dz);
-            v1x = (dz / h) * w; v1z = (-dx / h) * w;
+            v1x = (dz / h) * w;
+            v1z = (-dx / h) * w;
         }
         float v2x = dy * v1z - dz * v1y, v2y = dz * v1x - dx * v1z, v2z = dx * v1y - dy * v1x;
         float f = w / (float) Math.sqrt(v2x * v2x + v2y * v2y + v2z * v2z);
-        v2x *= f; v2y *= f; v2z *= f;
+        v2x *= f;
+        v2y *= f;
+        v2z *= f;
 
         renderQuad(b, mat, sx + v1x, sy + v1y, sz + v1z, ex + v1x, ey + v1y, ez + v1z, ex + v2x, ey + v2y, ez + v2z, sx + v2x, sy + v2y, sz + v2z, r, g, bl, a);
         renderQuad(b, mat, sx - v1x, sy - v1y, sz - v1z, ex - v1x, ey - v1y, ez - v1z, ex - v2x, ey - v2y, ez - v2z, sx - v2x, sy - v2y, sz - v2z, r, g, bl, a);

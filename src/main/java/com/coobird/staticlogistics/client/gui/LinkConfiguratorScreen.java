@@ -27,7 +27,9 @@ public class LinkConfiguratorScreen extends Screen {
         super(Component.translatable("gui.staticlogistics.linker_settings"));
         this.stack = stack;
         this.currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
-        this.currentType = stack.getOrDefault(SLDataComponents.SELECTED_TYPE.get(), TransferType.ITEM);
+
+        TransferType savedType = stack.getOrDefault(SLDataComponents.SELECTED_TYPE.get(), TransferType.ITEM);
+        this.currentType = savedType.isAvailable() ? savedType : TransferType.ITEM;
     }
 
     @Override
@@ -41,8 +43,13 @@ public class LinkConfiguratorScreen extends Screen {
         }).bounds(centerX - 105, centerY - 60, 100, 20).build());
 
         this.addRenderableWidget(Button.builder(getTypeComponent(), b -> {
-            int nextIdx = (currentType.ordinal() + 1) % TransferType.values().length;
-            currentType = TransferType.values()[nextIdx];
+            TransferType[] types = TransferType.values();
+            int nextIdx = currentType.ordinal();
+            do {
+                nextIdx = (nextIdx + 1) % types.length;
+            } while (!types[nextIdx].isAvailable());
+
+            currentType = types[nextIdx];
             b.setMessage(getTypeComponent());
         }).bounds(centerX + 5, centerY - 60, 100, 20).build());
 

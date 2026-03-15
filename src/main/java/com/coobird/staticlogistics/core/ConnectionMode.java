@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.core;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
 
 import java.util.HashMap;
@@ -27,6 +28,10 @@ public enum ConnectionMode implements StringRepresentable {
     @Override
     public String getSerializedName() {
         return this.name;
+    }
+
+    public Component getLabel() {
+        return Component.translatable("mode.staticlogistics." + name);
     }
 
     public boolean allowsInput() {

@@ -43,6 +43,7 @@ public record C2SConfigureFacePayload(
     public static void handle(final C2SConfigureFacePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player().level() instanceof ServerLevel serverLevel)) return;
+
             if (context.player().blockPosition().distSqr(payload.pos()) > 128) return;
 
             LinkManager manager = LinkManager.get(serverLevel);
@@ -60,6 +61,34 @@ public record C2SConfigureFacePayload(
                     }
                 } catch (IllegalArgumentException e) {
                     LOGGER.warn("Invalid mode from {}: {}", context.player().getName().getString(), payload.data().getString("mode"));
+                }
+            }
+
+            if (payload.data().contains("strategy")) {
+                try {
+                    var newStrategy = com.coobird.staticlogistics.core.DistributionStrategy.valueOf(payload.data().getString("strategy"));
+                    if (sideData.strategy != newStrategy) {
+                        sideData.strategy = newStrategy;
+                        changed = true;
+                    }
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn("Invalid strategy from {}", context.player().getName().getString());
+                }
+            }
+
+            if (payload.data().contains("priority")) {
+                int newPriority = payload.data().getInt("priority");
+                if (sideData.priority != newPriority) {
+                    sideData.priority = newPriority;
+                    changed = true;
+                }
+            }
+
+            if (payload.data().contains("isBlacklist")) {
+                boolean newBlacklist = payload.data().getBoolean("isBlacklist");
+                if (sideData.isBlacklist != newBlacklist) {
+                    sideData.isBlacklist = newBlacklist;
+                    changed = true;
                 }
             }
 

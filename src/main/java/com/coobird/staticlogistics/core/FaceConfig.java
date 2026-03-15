@@ -69,6 +69,7 @@ public class FaceConfig {
         for (int i = 0; i < upgrades.getSlots(); i++) {
             ItemStack stack = upgrades.getStackInSlot(i);
             if (stack.getItem() instanceof UpgradeItem upgrade) {
+                if (upgrade.getTier() == null) return;
                 switch (upgrade.getType()) {
                     case SPEED -> cachedSpeedMult = Math.max(cachedSpeedMult, upgrade.getTier().getMultiplier());
                     case RANGE -> cachedRangeMult = Math.max(cachedRangeMult, upgrade.getTier().getMultiplier());

@@ -8,7 +8,6 @@ import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.transfer.TransferType;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -89,12 +88,17 @@ public class LinkConfiguratorItem extends Item {
 
         ItemStack stack = context.getItemInHand();
         ToolSettings settings = getSettings(stack, level);
+        BlockPos pos = context.getClickedPos();
+        Direction face = context.getClickedFace();
 
         if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
 
-        BlockPos pos = context.getClickedPos();
-        Direction face = context.getClickedFace();
         LinkManager manager = LinkManager.get(serverLevel);
+
+        if (settings.mode == ToolMode.CONFIGURE) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.todo.face_config"), true);
+            return InteractionResult.PASS;
+        }
 
         if (settings.mode == ToolMode.REMOVE) {
             List<StaticLink> toRemove = new ArrayList<>();
@@ -172,17 +176,15 @@ public class LinkConfiguratorItem extends Item {
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         Level level = null;
         if (FMLEnvironment.dist.isClient()) {
-            level = Minecraft.getInstance().level;
+            level = ClientAccess.getClientLevel();
         }
 
         ToolSettings settings = getSettings(stack, level);
 
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode.getDisplayName()));
-
         String typeKey = "type.staticlogistics." + settings.type.getSerializedName();
         Component typeName = Component.translatable(typeKey).withStyle(style -> style.withColor(settings.type.getColor()));
         tooltip.add(Component.translatable("tooltip.staticlogistics.type", typeName));
-
         tooltip.add(Component.translatable("tooltip.staticlogistics.group", Component.literal(settings.group).withStyle(ChatFormatting.GRAY)));
 
         if (settings.firstPos != null) {
@@ -209,7 +211,6 @@ public class LinkConfiguratorItem extends Item {
         String dimName = level.dimension().location().getPath();
         player.displayClientMessage(Component.translatable("msg.staticlogistics.source_set",
             pos.toShortString(), dimName, group).withStyle(ChatFormatting.GREEN), true);
-
         level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.8f, 1.2f);
     }
 

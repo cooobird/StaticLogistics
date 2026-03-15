@@ -39,12 +39,10 @@ public class SlLanguageProvider extends LanguageProvider {
     protected void addTranslations() {
         addCreativeTab(SLCreativeTabs.TAB_STATIC_LOGISTICS, "Static Logistics", "静态物流");
 
-        add("gui.staticlogistics.linker_settings", "Linker Configuration", "链路配置工具");
         add("gui.staticlogistics.save", "Save Settings", "保存设置");
+        add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置工具");
         add("gui.staticlogistics.label.priority", "Priority:", "优先级:");
-        add("gui.staticlogistics.label.group", "Group ID:", "分组:");
-        add("gui.staticlogistics.label.strategy", "Strategy:", "分配策略:");
-        add("gui.staticlogistics.label.bulk", "Bulk Size:", "传输步长:");
+        add("gui.staticlogistics.label.group", "Group ID:", "分组频率:");
 
         add("mode.staticlogistics.connect", "Connect", "连接模式");
         add("mode.staticlogistics.remove", "Remove", "移除模式");
@@ -53,21 +51,20 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.mode", "Mode: %s", "当前模式: %s");
         add("tooltip.staticlogistics.type", "Type: %s", "传输类型: %s");
         add("tooltip.staticlogistics.group", "Group: %s", "分组: %s");
+        add("tooltip.staticlogistics.linked_from", "Linked from: %s", "起始点: %s");
+        add("tooltip.staticlogistics.no_source", "No source selected", "尚未选择起始点");
+        add("tooltip.staticlogistics.use_hint", "Right-click: Open Settings", "右键: 打开设置界面");
+        add("tooltip.staticlogistics.shift_use_hint", "Sneak + Right-click: Set Source/Link", "潜行+右键: 设定起点/建立连接");
+        add("tooltip.staticlogistics.reset_hint", "Sneak + Right-click Air: Clear Selection", "潜行+右键空气: 清除选点");
 
-        add("tooltip.staticlogistics.linked_from", "Source Locked: %s", "当前起点 (锁定): %s");
-        add("tooltip.staticlogistics.no_source", "No Source Selected", "尚未选择起点方块");
-        add("tooltip.staticlogistics.use_hint", "Right-click: Open Config GUI", "右键: 打开设置界面");
-        add("tooltip.staticlogistics.shift_use_hint", "Sneak + Right-click: Set Source / Link Multiple", "潜行+右键: 设定起点 / 连续连接终点");
-        add("tooltip.staticlogistics.reset_hint", "Sneak + Right-click Air or Source: Clear selection", "潜行+右键空气或起点: 手动清除选点");
-
-        add("tooltip.staticlogistics.upgrade.install_hint", "Install in nodes to enhance capabilities.", "安装至节点以增强功能。");
-        add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "数值倍率: %s");
-        add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级: %s");
-        add("tooltip.staticlogistics.upgrade.dimension_feature", "Enables cross-dimensional transport.", "解锁跨维度传输功能。");
         add("tooltip.staticlogistics.upgrade.speed_desc", "Increases transfer frequency.", "提升传输频率。");
         add("tooltip.staticlogistics.upgrade.range_desc", "Extends the maximum link distance.", "延伸最大连接距离。");
         add("tooltip.staticlogistics.upgrade.stack_desc", "Increases items moved per operation.", "增加单次传输的堆叠数量。");
-        add("tooltip.staticlogistics.upgrade.dimension_desc", "Allows linking across different worlds.", "允许跨越不同世界进行连接。");
+        add("tooltip.staticlogistics.upgrade.dimension_desc", "Allows linking across different worlds.", "允许跨维度建立连接。");
+        add("tooltip.staticlogistics.upgrade.dimension_feature", "Cross-dimensional capability", "具备跨维度传输能力");
+        add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级: %s");
+        add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "数值倍率: %s");
+        add("tooltip.staticlogistics.upgrade.install_hint", "Install in nodes to enhance capabilities.", "安装至节点以增强功能。");
 
         add("tier.staticlogistics.iron", "Iron", "铁");
         add("tier.staticlogistics.gold", "Gold", "金");
@@ -75,36 +72,25 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tier.staticlogistics.netherite", "Netherite", "下界合金");
         add("tier.staticlogistics.creative", "Creative", "创造");
 
-        add("msg.staticlogistics.source_set", "Source Set: %s (%s) [Group: %s]", "已锁定起点: %s (%s) [分组: %s]");
-        add("msg.staticlogistics.source_reset", "Selection Cleared", "选点已手动清除");
-        add("msg.staticlogistics.link_created", "Linked to: %s (Source Kept)", "连接成功 -> %s (起点已保留)");
-        add("msg.staticlogistics.out_of_range", "Target out of range! (Max: %s)", "距离过远！(最大距离: %s)");
-        add("msg.staticlogistics.owner_updated", "Ownership updated to yours.", "链路所有权已更新。");
-        add("msg.staticlogistics.links_cleared", "Cleared %s link(s).", "已成功拆除 %s 条链路。");
-        add("msg.staticlogistics.no_link_found", "No link detected here.", "此位置没有任何链路。");
-        add("msg.staticlogistics.no_permission", "You don't have permission to modify this link!", "你没有权限修改此链路！");
+        add("msg.staticlogistics.todo.face_config", "Face configuration is not yet implemented.", "面配置尚未实现。");
+        add("msg.staticlogistics.source_set", "Source Set: %s (%s) [Group: %s]", "已设定起点: %s (%s) [分组: %s]");
+        add("msg.staticlogistics.source_reset", "Selection Cleared", "选点已清除");
+        add("msg.staticlogistics.link_created", "Linked to: %s", "已成功连接至: %s");
+        add("msg.staticlogistics.out_of_range", "Target out of range!", "目标超出范围！");
+        add("msg.staticlogistics.no_permission", "No permission to modify this!", "你没有权限修改此项！");
         add("msg.staticlogistics.no_dimension_upgrade", "Cross-dimension upgrade required!", "需要跨维度升级插件！");
-        add("msg.staticlogistics.cannot_link_self", "Cannot link a face to itself!", "不能连接到自身！");
-
-        add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
-        add("config.staticlogistics.default_tick_interval", "Default Tick Interval", "默认传输间隔(Tick)");
-        add("config.staticlogistics.item_stack_size", "Base Item Stack Size", "基础物品传输量");
-        add("config.staticlogistics.fluid_stack_size", "Base Fluid Amount (mB)", "基础流体传输量");
-        add("config.staticlogistics.energy_stack_size", "Base Energy Amount (FE)", "基础能量传输量");
-        add("config.staticlogistics.mek_chemical_stack_size", "Base Chemical Amount (mB)", "基础化学品传输量");
-        add("config.staticlogistics.ars_source_stack_size", "Base Source Amount", "基础魔源传输量");
-        add("config.staticlogistics.iron_multiplier", "Iron Tier Multiplier", "铁等级倍率");
-        add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金等级倍率");
-        add("config.staticlogistics.diamond_multiplier", "Diamond Tier Multiplier", "钻石等级倍率");
-        add("config.staticlogistics.netherite_multiplier", "Netherite Tier Multiplier", "下界合金等级倍率");
+        add("msg.staticlogistics.owner_updated", "Link ownership updated.", "链路所有权已更新。");
+        add("msg.staticlogistics.links_cleared", "Cleared %s link(s).", "已成功清除 %s 条链路。");
+        add("msg.staticlogistics.no_link_found", "No link detected here.", "该位置未检测到链路。");
+        add("msg.staticlogistics.invalid_target", "Invalid target for logistics!", "非法的物流目标！");
 
         for (TransferType type : TransferType.values()) {
             String cn = switch (type) {
                 case ITEM -> "物品";
                 case FLUID -> "流体";
                 case ENERGY -> "能量";
-                case MEK_CHEMICALS -> "化学品";
-                case ARS_SOURCE -> "魔源";
+                case MEK_CHEMICALS -> "化学品 (Mekanism)";
+                case ARS_SOURCE -> "魔源 (Ars Nouveau)";
             };
             add("type.staticlogistics." + type.getSerializedName(), toTitleCase(type.getSerializedName()), cn);
         }
@@ -123,13 +109,12 @@ public class SlLanguageProvider extends LanguageProvider {
         for (ConnectionMode mode : ConnectionMode.values()) {
             String zh = switch (mode) {
                 case DISABLED -> "禁用";
-                case INPUT -> "仅输入";
-                case OUTPUT -> "仅输出";
-                case BOTH -> "双向";
+                case INPUT -> "仅提取 (Input)";
+                case OUTPUT -> "仅注入 (Output)";
+                case BOTH -> "双向 (Both)";
             };
             add("connection.staticlogistics." + mode.getSerializedName(), toTitleCase(mode.getSerializedName()), zh);
         }
-
         Staticlogistics.chineseProviders.forEach(action -> action.accept(this));
     }
 

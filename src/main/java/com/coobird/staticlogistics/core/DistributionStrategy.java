@@ -12,29 +12,33 @@ public enum DistributionStrategy implements StringRepresentable {
     SEQUENTIAL("sequential") {
         @Override
         public List<StaticLink> sort(List<StaticLink> links) {
-            return links;
+            return links.stream()
+                .sorted(Comparator.comparingInt(StaticLink::priority).reversed())
+                .toList();
         }
     },
     ROUND_ROBIN("round_robin") {
         @Override
         public List<StaticLink> sort(List<StaticLink> links) {
-            return links;
+            return SEQUENTIAL.sort(links);
         }
     },
     NEAREST("nearest") {
         @Override
         public List<StaticLink> sort(List<StaticLink> links) {
-            List<StaticLink> sorted = new ArrayList<>(links);
-            sorted.sort(Comparator.comparingDouble(l -> l.sourcePos().distSqr(l.destPos())));
-            return sorted;
+            return links.stream()
+                .sorted(Comparator.comparingInt(StaticLink::priority).reversed()
+                    .thenComparingDouble(l -> l.sourcePos().distSqr(l.destPos())))
+                .toList();
         }
     },
     FURTHEST("furthest") {
         @Override
         public List<StaticLink> sort(List<StaticLink> links) {
-            List<StaticLink> sorted = new ArrayList<>(links);
-            sorted.sort((l1, l2) -> Double.compare(l2.destPos().distSqr(l2.sourcePos()), l1.destPos().distSqr(l1.sourcePos())));
-            return sorted;
+            return links.stream()
+                .sorted(Comparator.comparingInt(StaticLink::priority).reversed()
+                    .thenComparing((l1, l2) -> Double.compare(l2.sourcePos().distSqr(l2.destPos()), l1.sourcePos().distSqr(l1.destPos()))))
+                .toList();
         }
     },
     RANDOM("random") {
@@ -42,6 +46,7 @@ public enum DistributionStrategy implements StringRepresentable {
         public List<StaticLink> sort(List<StaticLink> links) {
             List<StaticLink> sorted = new ArrayList<>(links);
             Collections.shuffle(sorted);
+            sorted.sort(Comparator.comparingInt(StaticLink::priority).reversed());
             return sorted;
         }
     };
@@ -50,7 +55,7 @@ public enum DistributionStrategy implements StringRepresentable {
 
     static {
         for (DistributionStrategy strategy : values()) {
-            NAME_CACHE.put(strategy.name(), strategy);
+            NAME_CACHE.put(strategy.getSerializedName(), strategy);
         }
     }
 
@@ -69,8 +74,12 @@ public enum DistributionStrategy implements StringRepresentable {
         return "strategy.staticlogistics." + name;
     }
 
-    public Component getDisplayName() {
+    public Component getLabel() {
         return Component.translatable(getDescriptionId());
+    }
+
+    public Component getDisplayName() {
+        return getLabel();
     }
 
     public abstract List<StaticLink> sort(List<StaticLink> links);

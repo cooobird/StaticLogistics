@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.common.util;
 
 import com.coobird.staticlogistics.core.StaticLink;
+import com.coobird.staticlogistics.transfer.ModCompat;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.BlockCapabilityCache;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -20,7 +20,6 @@ import java.util.function.Predicate;
 public class TransferUtils {
 
     private static final Map<CacheKey, BlockCapabilityCache<?, Direction>> CACHE_POOL = new ConcurrentHashMap<>();
-
 
     public static <C, T> boolean doTransfer(ServerLevel sourceLevel, List<StaticLink> links, BlockCapability<C, Direction> cap, int limit, int[] roundRobinCursor, TransferProtocol<C, T> protocol) {
         if (links.isEmpty() || limit <= 0) return false;
@@ -70,32 +69,12 @@ public class TransferUtils {
     }
 
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
-
         if (level.getCapability(Capabilities.ItemHandler.BLOCK, pos, face) != null
             || level.getCapability(Capabilities.FluidHandler.BLOCK, pos, face) != null
             || level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, face) != null) {
             return true;
         }
-
-        if (ModList.get().isLoaded("mekanism")) {
-            try {
-                if (level.getCapability(mekanism.common.capabilities.Capabilities.CHEMICAL.block(), pos, face) != null) {
-                    return true;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-
-        if (ModList.get().isLoaded("ars_nouveau")) {
-            try {
-                if (level.getCapability(com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry.SOURCE_CAPABILITY, pos, face) != null) {
-                    return true;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-
-        return false;
+        return ModCompat.hasModdedCapability(level, pos, face);
     }
 
     public interface TransferProtocol<C, T> {
@@ -139,7 +118,6 @@ public class TransferUtils {
     public interface TriConsumer<A, B, C> {
         void accept(A a, B b, C c);
     }
-
 
     public record CacheKey(ResourceKey<Level> dimension, BlockPos pos, Direction side,
                            BlockCapability<?, Direction> cap) {

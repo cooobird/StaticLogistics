@@ -32,6 +32,7 @@ public class Staticlogistics {
         if (FMLEnvironment.dist.isClient())
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
         SLItems.ITEMS.register(modEventBus);
+//        SLMenuTypes.TYPES.register(modEventBus);
         SLDataComponents.DATA_COMPONENT_TYPES.register(modEventBus);
         SLCreativeTabs.CREATIVE_TABS.register(modEventBus);
     }
