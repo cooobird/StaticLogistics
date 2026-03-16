@@ -41,6 +41,16 @@ public class FaceConfig {
         }
     }
 
+    public boolean isDefault() {
+        for (int i = 0; i < upgrades.getSlots(); i++) {
+            if (!upgrades.getStackInSlot(i).isEmpty()) return false;
+        }
+        for (SideData data : typeSettings.values()) {
+            if (!data.isDefault()) return false;
+        }
+        return true;
+    }
+
     public static class SideData {
         public ConnectionMode mode = ConnectionMode.DISABLED;
         public DistributionStrategy strategy = DistributionStrategy.SEQUENTIAL;
@@ -56,19 +66,40 @@ public class FaceConfig {
                 isBlacklist && filterItems.isEmpty();
         }
 
+        public boolean allowsOutput() {
+            return mode == ConnectionMode.OUTPUT || mode == ConnectionMode.BOTH;
+        }
+
+        public boolean allowsInput() {
+            return mode == ConnectionMode.INPUT || mode == ConnectionMode.BOTH;
+        }
+
         public int getRenderColor(TransferType type) {
             return (channelColor == 0xFFFFFFFF || (channelColor >> 24) == 0) ? type.getColor() : channelColor;
         }
     }
 
-    public boolean isDefault() {
+    private void updateCache() {
+        if (!cacheDirty) return;
+        cachedSpeedMult = 1;
+        cachedRangeMult = 1;
+        cachedStackMult = 1;
+        cachedDimEffective = false;
+
         for (int i = 0; i < upgrades.getSlots(); i++) {
-            if (!upgrades.getStackInSlot(i).isEmpty()) return false;
+            ItemStack stack = upgrades.getStackInSlot(i);
+            if (stack.getItem() instanceof UpgradeItem upgrade) {
+                int bonus = (upgrade.getTier() != null) ? upgrade.getTier().getMultiplier() : 0;
+                switch (upgrade.getType()) {
+                    case SPEED -> cachedSpeedMult += bonus;
+                    case RANGE -> cachedRangeMult += bonus;
+                    case STACK -> cachedStackMult += bonus;
+                    case DIMENSION -> cachedDimEffective = true;
+                }
+            }
         }
-        for (SideData data : typeSettings.values()) {
-            if (!data.isDefault()) return false;
-        }
-        return true;
+        cachedSpeedMult = Math.max(1, cachedSpeedMult);
+        cacheDirty = false;
     }
 
     public void setOnDirty(Consumer<FaceConfig> onDirty) {
@@ -78,25 +109,6 @@ public class FaceConfig {
     public void markDirty() {
         this.cacheDirty = true;
         this.onDirty.accept(this);
-    }
-
-    private void updateCache() {
-        if (!cacheDirty) return;
-        cachedSpeedMult = cachedRangeMult = cachedStackMult = 1;
-        cachedDimEffective = false;
-        for (int i = 0; i < upgrades.getSlots(); i++) {
-            ItemStack stack = upgrades.getStackInSlot(i);
-            if (stack.getItem() instanceof UpgradeItem upgrade) {
-                int multiplier = upgrade.getTier().getMultiplier();
-                switch (upgrade.getType()) {
-                    case SPEED -> cachedSpeedMult = Math.max(cachedSpeedMult, multiplier);
-                    case RANGE -> cachedRangeMult = Math.max(cachedRangeMult, multiplier);
-                    case STACK -> cachedStackMult = Math.max(cachedStackMult, multiplier);
-                    case DIMENSION -> cachedDimEffective = true;
-                }
-            }
-        }
-        cacheDirty = false;
     }
 
     public int getSpeedMultiplier() {
@@ -137,9 +149,11 @@ public class FaceConfig {
             d.putInt("priority", data.priority);
             d.putInt("bulk", data.customBulkSize);
             d.putInt("rr_cursor", data.rrCursor[0]);
-            ListTag list = new ListTag();
-            data.filterItems.forEach(item -> list.add(StringTag.valueOf(BuiltInRegistries.ITEM.getKey(item).toString())));
-            d.put("filter", list);
+            if (!data.filterItems.isEmpty()) {
+                ListTag list = new ListTag();
+                data.filterItems.forEach(item -> list.add(StringTag.valueOf(BuiltInRegistries.ITEM.getKey(item).toString())));
+                d.put("filter", list);
+            }
             typesNbt.put(type.getSerializedName(), d);
         });
         nbt.put("types", typesNbt);
@@ -153,16 +167,8 @@ public class FaceConfig {
             String key = type.getSerializedName();
             if (typesNbt.contains(key)) {
                 CompoundTag d = typesNbt.getCompound(key);
-                try {
-                    data.mode = ConnectionMode.valueOf(d.getString("mode"));
-                } catch (Exception e) {
-                    data.mode = ConnectionMode.DISABLED;
-                }
-                try {
-                    data.strategy = DistributionStrategy.valueOf(d.getString("strategy"));
-                } catch (Exception e) {
-                    data.strategy = DistributionStrategy.SEQUENTIAL;
-                }
+                data.mode = parseEnum(ConnectionMode.class, d.getString("mode"), ConnectionMode.DISABLED);
+                data.strategy = parseEnum(DistributionStrategy.class, d.getString("strategy"), DistributionStrategy.SEQUENTIAL);
                 data.channelColor = d.getInt("channel");
                 data.isBlacklist = d.getBoolean("blacklist");
                 data.priority = d.getInt("priority");
@@ -172,13 +178,24 @@ public class FaceConfig {
                 ListTag list = d.getList("filter", Tag.TAG_STRING);
                 for (int i = 0; i < list.size(); i++) {
                     ResourceLocation rl = ResourceLocation.tryParse(list.getString(i));
-                    if (rl != null) BuiltInRegistries.ITEM.getOptional(rl).ifPresent(item -> {
-                        if (!item.getDefaultInstance().isEmpty()) data.filterItems.add(item);
-                    });
+                    if (rl != null) BuiltInRegistries.ITEM.getOptional(rl).ifPresent(data.filterItems::add);
                 }
+            } else {
+                data.mode = ConnectionMode.DISABLED;
+                data.strategy = DistributionStrategy.SEQUENTIAL;
+                data.channelColor = 0xFFFFFFFF;
+                data.filterItems.clear();
             }
         });
         this.cacheDirty = true;
+    }
+
+    private <E extends Enum<E>> E parseEnum(Class<E> clazz, String name, E defaultValue) {
+        try {
+            return Enum.valueOf(clazz, name);
+        } catch (Exception e) {
+            return defaultValue;
+        }
     }
 
     public ItemStackHandler getUpgrades() {

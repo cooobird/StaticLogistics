@@ -2,10 +2,12 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.SLConfig;
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.core.StaticLink;
 import com.coobird.staticlogistics.storage.LinkManager;
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongIterator;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -14,13 +16,15 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
-import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public class LogisticsTicker {
     private static final TransferType[] TYPES = TransferType.values();
-    private static final Map<ResourceKey<Level>, Long2ByteMap> DIMENSION_COOLDOWNS = new HashMap<>();
+    private static final Map<ResourceKey<Level>, Long2ByteMap> DIMENSION_COOLDOWNS = new ConcurrentHashMap<>();
 
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
@@ -31,19 +35,22 @@ public class LogisticsTicker {
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
-        if (!event.getLevel().isClientSide()) {
-            DIMENSION_COOLDOWNS.remove(event.getLevel().getServer().getLevel(Level.OVERWORLD).dimension()); // 简单的维度Key匹配
+        if (event.getLevel() instanceof ServerLevel serverLevel) {
+            DIMENSION_COOLDOWNS.remove(serverLevel.dimension());
         }
     }
 
     private static void tick(ServerLevel level) {
         LinkManager manager = LinkManager.get(level);
+        if (manager == null) return;
 
-        var activeKeys = manager.getActiveSourceKeys();
+        LongSet activeKeys = manager.getActiveSourceKeys();
         if (activeKeys.isEmpty()) return;
 
         long gameTime = level.getGameTime();
-        Long2ByteMap cooldownMap = DIMENSION_COOLDOWNS.computeIfAbsent(level.dimension(), k -> {
+        ResourceKey<Level> dimKey = level.dimension();
+
+        Long2ByteMap cooldownMap = DIMENSION_COOLDOWNS.computeIfAbsent(dimKey, k -> {
             Long2ByteMap map = new Long2ByteOpenHashMap();
             map.defaultReturnValue((byte) 0);
             return map;
@@ -60,8 +67,9 @@ public class LogisticsTicker {
             }
 
             LinkManager.CachedSourceData cached = manager.getCachedSource(sourceKey);
+            if (cached == null || cached.config() == null) continue;
 
-            int speedMult = cached.config().getSpeedMultiplier();
+            int speedMult = Math.max(1, cached.config().getSpeedMultiplier());
             int interval = Math.max(1, SLConfig.getDefaultTickInterval() / speedMult);
             boolean isIntervalTick = (gameTime % interval == 0);
 
@@ -69,19 +77,22 @@ public class LogisticsTicker {
             boolean hadWorkToDo = false;
 
             for (TransferType type : TYPES) {
-                var links = cached.sortedLinks().get(type);
-                if (links == null || links.isEmpty()) continue;
+                Map<UUID, List<StaticLink>> ownerMap = cached.groupedLinks().get(type);
+                if (ownerMap == null || ownerMap.isEmpty()) continue;
 
                 var settings = cached.config().getSettings(type);
-                if (!settings.mode.allowsOutput()) continue;
+                if (settings == null || !settings.mode.allowsOutput()) continue;
 
                 hadWorkToDo = true;
 
-                boolean shouldTryTransfer = (type == TransferType.ENERGY) || isIntervalTick;
+                if (type == TransferType.ENERGY || isIntervalTick) {
+                    for (Map.Entry<UUID, List<StaticLink>> entry : ownerMap.entrySet()) {
+                        UUID owner = entry.getKey();
+                        List<StaticLink> linksOfOwner = entry.getValue();
 
-                if (shouldTryTransfer) {
-                    if (TransferEngine.execute(level, links, type, cached.config(), settings.rrCursor, links.getFirst().owner())) {
-                        movedSomething = true;
+                        if (TransferEngine.execute(level, linksOfOwner, type, cached.config(), settings.rrCursor, owner)) {
+                            movedSomething = true;
+                        }
                     }
                 } else {
                     movedSomething = true;
@@ -94,6 +105,8 @@ public class LogisticsTicker {
     }
 
     public static void wakeup(long sourceKey) {
-        DIMENSION_COOLDOWNS.values().forEach(map -> map.remove(sourceKey));
+        for (Long2ByteMap map : DIMENSION_COOLDOWNS.values()) {
+            map.remove(sourceKey);
+        }
     }
 }

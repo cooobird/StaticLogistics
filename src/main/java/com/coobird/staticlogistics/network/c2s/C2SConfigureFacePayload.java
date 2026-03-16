@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.core.ConnectionMode;
+import com.coobird.staticlogistics.core.DistributionStrategy;
 import com.coobird.staticlogistics.core.FaceConfig;
+import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.transfer.TransferType;
 import com.mojang.logging.LogUtils;
@@ -37,10 +39,21 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, TransferType
 
     public static void handle(final C2SConfigureFacePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            if (!(context.player().level() instanceof ServerLevel serverLevel)) return;
-            if (context.player().blockPosition().distSqr(payload.pos()) > 128) return;
+            var player = context.player();
+            if (!(player.level() instanceof ServerLevel serverLevel)) return;
+            if (player.blockPosition().distSqr(payload.pos()) > 128) return;
 
             LinkManager manager = LinkManager.get(serverLevel);
+            if (manager == null) return;
+            var existingLinks = manager.getLinksByKey(manager.posToKey(payload.pos(), payload.face()));
+            if (!existingLinks.isEmpty()) {
+                boolean canModifyAny = existingLinks.stream()
+                    .anyMatch(link -> GroupService.canModify(link, player));
+                if (!canModifyAny) {
+                    return;
+                }
+            }
+
             FaceConfig config = manager.getOrCreateFaceConfig(payload.pos(), payload.face(), serverLevel);
             FaceConfig.SideData sideData = config.getSettings(payload.transferType());
             boolean changed = false;
@@ -53,20 +66,22 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, TransferType
                         changed = true;
                     }
                 } catch (Exception e) {
-                    LOGGER.warn("Invalid mode: {}", payload.data().getString("mode"));
+                    LOGGER.warn("Invalid mode received from player {}: {}", player.getName().getString(), payload.data().getString("mode"));
                 }
             }
+
             if (payload.data().contains("strategy")) {
                 try {
-                    var s = com.coobird.staticlogistics.core.DistributionStrategy.valueOf(payload.data().getString("strategy"));
+                    var s = DistributionStrategy.valueOf(payload.data().getString("strategy"));
                     if (sideData.strategy != s) {
                         sideData.strategy = s;
                         changed = true;
                     }
                 } catch (Exception e) {
-                    LOGGER.warn("Invalid strategy");
+                    LOGGER.warn("Invalid strategy received from player {}", player.getName().getString());
                 }
             }
+
             if (payload.data().contains("priority")) {
                 int p = payload.data().getInt("priority");
                 if (sideData.priority != p) {
@@ -74,6 +89,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, TransferType
                     changed = true;
                 }
             }
+
             if (payload.data().contains("isBlacklist")) {
                 boolean b = payload.data().getBoolean("isBlacklist");
                 if (sideData.isBlacklist != b) {
@@ -81,6 +97,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, TransferType
                     changed = true;
                 }
             }
+
             if (payload.data().contains("channel")) {
                 int c = payload.data().getInt("channel");
                 if (sideData.channelColor != c) {
@@ -90,7 +107,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, TransferType
             }
 
             if (changed) {
-                config.markDirty(); // 触发 LinkManager 缓存刷新
+                config.markDirty();
                 manager.syncFaceConfigToAll(serverLevel, payload.pos(), payload.face(), config);
             }
         });

@@ -18,13 +18,13 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class SLCommands {
@@ -74,13 +74,14 @@ public class SLCommands {
 
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
         LinkManager manager = LinkManager.get(source.getLevel());
+        if (manager == null) return 0;
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.header", pos.toShortString())
             .withStyle(ChatFormatting.GOLD), false);
 
         boolean found = false;
         for (Direction dir : Direction.values()) {
-            long key = manager.posToKey(pos, dir);
+            final long key = manager.posToKey(pos, dir);
             List<StaticLink> outLinks = manager.getLinksByKey(key);
 
             if (!outLinks.isEmpty()) {
@@ -90,7 +91,7 @@ public class SLCommands {
                 for (var entry : grouped.entrySet()) {
                     String groupId = entry.getKey();
                     int count = entry.getValue().size();
-                    String ownerName = entry.getValue().getFirst().ownerName();
+                    String ownerName = entry.getValue().get(0).ownerName();
 
                     source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.line_format",
                         dir.name(),
@@ -112,7 +113,9 @@ public class SLCommands {
         ServerLevel level = context.getSource().getLevel();
         LinkManager manager = LinkManager.get(level);
 
-        List<StaticLink> targets = manager.getLinksList().stream()
+        if (manager == null) return 0;
+
+        final List<StaticLink> targets = manager.getLinksList().stream()
             .filter(l -> l.owner().equals(fromProfile.getId())).toList();
 
         for (StaticLink link : targets) {
@@ -131,8 +134,9 @@ public class SLCommands {
 
         ServerLevel level = context.getSource().getLevel();
         LinkManager manager = LinkManager.get(level);
+        if (manager == null) return 0;
 
-        List<StaticLink> targets = manager.getLinksList().stream()
+        final List<StaticLink> targets = manager.getLinksList().stream()
             .filter(l -> l.owner().equals(fromProfile.getId()) && l.groupId().equals(groupId))
             .toList();
 
@@ -158,8 +162,11 @@ public class SLCommands {
         String newGroup = StringArgumentType.getString(context, "newGroup");
         ServerLevel level = context.getSource().getLevel();
         LinkManager manager = LinkManager.get(level);
+        Player actor = context.getSource().getPlayer();
 
-        List<StaticLink> toChange = manager.getLinksList().stream()
+        if (manager == null) return 0;
+
+        final List<StaticLink> toChange = manager.getLinksList().stream()
             .filter(l -> l.owner().equals(profile.getId()) && l.groupId().equals(oldGroup))
             .toList();
 
@@ -168,16 +175,22 @@ public class SLCommands {
             return 0;
         }
 
-        List<StaticLink> newLinks = toChange.stream().map(l -> new StaticLink(
-            UUID.randomUUID(), l.sourcePos(), l.sourceFace(), l.sourceDimension(),
+        final List<StaticLink> newLinks = toChange.stream().map(l -> new StaticLink(
+            l.linkId(), l.sourcePos(), l.sourceFace(), l.sourceDimension(),
             l.destPos(), l.destFace(), l.destDimension(),
             l.transferFlags(), l.priority(), l.owner(), l.ownerName(), newGroup,
             l.tier(), l.allowCrossDim()
         )).toList();
 
-        manager.removeLinksBulk(toChange, level, null);
-        manager.addLinksBulk(newLinks, level, null);
+        LinkManager.ActionResult result = manager.removeLinksBulk(toChange, level, actor);
+        if (!result.success()) {
+            if (result.message() != null) {
+                context.getSource().sendFailure(result.message());
+            }
+            return 0;
+        }
 
+        manager.addLinksBulk(newLinks, level, actor);
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.rename.success", oldGroup, newGroup, profile.getName()), true);
         return newLinks.size();
     }
@@ -187,13 +200,26 @@ public class SLCommands {
         GameProfile profile = profiles.iterator().next();
         ServerLevel level = context.getSource().getLevel();
         LinkManager manager = LinkManager.get(level);
+        Player actor = context.getSource().getPlayer();
 
-        List<StaticLink> toRemove = manager.getLinksList().stream()
+        if (manager == null) return 0;
+
+        final List<StaticLink> toRemove = manager.getLinksList().stream()
             .filter(l -> l.owner().equals(profile.getId())).toList();
 
-        int removed = toRemove.size();
-        manager.removeLinksBulk(toRemove, level, null);
-        context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.cleanup.success", removed, profile.getName()), true);
-        return removed;
+        LinkManager.ActionResult result = manager.removeLinksBulk(toRemove, level, actor);
+
+        if (!result.success()) {
+            context.getSource().sendFailure(result.message() != null ? result.message() : Component.translatable("msg.staticlogistics.no_permission_to_remove"));
+            return 0;
+        }
+
+        if (result.count() == 0 && !toRemove.isEmpty()) {
+            context.getSource().sendFailure(Component.translatable("msg.staticlogistics.no_permission_to_remove"));
+            return 0;
+        }
+
+        context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.cleanup.success", result.count(), profile.getName()), true);
+        return result.count();
     }
 }

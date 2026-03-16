@@ -23,6 +23,7 @@ public class ClientLinkCache {
         if (link == null) return;
         StaticLink old = ID_TO_LINK.put(link.linkId(), link);
         if (old != null) removeFromGroupAndPos(old);
+
         LINKS_BY_GROUP.computeIfAbsent(link.groupId(), k -> new CopyOnWriteArrayList<>()).add(link);
         LINKS_BY_POS.computeIfAbsent(link.sourcePos().asLong(), k -> new CopyOnWriteArrayList<>()).add(link);
     }
@@ -35,6 +36,7 @@ public class ClientLinkCache {
     private static void removeFromGroupAndPos(StaticLink link) {
         List<StaticLink> groupList = LINKS_BY_GROUP.get(link.groupId());
         if (groupList != null) groupList.remove(link);
+
         List<StaticLink> posList = LINKS_BY_POS.get(link.sourcePos().asLong());
         if (posList != null) posList.remove(link);
     }
@@ -57,7 +59,8 @@ public class ClientLinkCache {
 
     public static FaceConfig getFaceConfig(BlockPos pos, Direction face) {
         FaceConfig[] configs = FACE_CONFIGS.get(pos.asLong());
-        return (configs == null) ? null : configs[face.get3DDataValue()];
+        if (configs == null) return null;
+        return configs[face.get3DDataValue()];
     }
 
     public static void invalidate() {

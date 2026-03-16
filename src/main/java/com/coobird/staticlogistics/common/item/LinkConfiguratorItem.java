@@ -92,19 +92,29 @@ public class LinkConfiguratorItem extends Item {
         Direction face = context.getClickedFace();
         ToolSettings settings = getSettings(stack);
 
+        if (!TransferUtils.hasLogisticsCapability(level, pos, face)) return InteractionResult.FAIL;
+
         if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
         LinkManager manager = LinkManager.get(serverLevel);
+        if (manager == null) return InteractionResult.PASS;
 
         if (settings.mode == ToolMode.REMOVE) {
-            if (manager.onBlockRemovedWithResult(pos, serverLevel)) {
-                level.playSound(null, pos, SoundEvents.ITEM_BREAK, SoundSource.BLOCKS, 0.5f, 0.8f);
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.links_cleaned_at", pos.toShortString()).withStyle(ChatFormatting.RED), true);
+            LinkManager.ActionResult res = manager.removeAllLinksContextual(serverLevel, pos, face, player);
+
+            if (res.success()) {
+                if (res.count() > 0) {
+                    level.playSound(null, pos, SoundEvents.ITEM_BREAK, SoundSource.BLOCKS, 0.5f, 0.8f);
+                } else {
+                    player.displayClientMessage(Component.translatable("msg.staticlogistics.no_links_found").withStyle(ChatFormatting.GRAY), true);
+                }
+            } else {
+                if (res.message() != null)
+                    player.displayClientMessage(res.message().withStyle(ChatFormatting.RED), true);
             }
             return InteractionResult.SUCCESS;
         }
 
         if (settings.mode == ToolMode.CONFIGURE) return InteractionResult.SUCCESS;
-        if (!TransferUtils.hasLogisticsCapability(level, pos, face)) return InteractionResult.FAIL;
 
         if (settings.storedMode != null && settings.storedMode != settings.mode) {
             executeBatchLink(stack, settings, pos, face, serverLevel, manager, player);
@@ -116,12 +126,10 @@ public class LinkConfiguratorItem extends Item {
 
     private void executeBatchLink(ItemStack stack, ToolSettings settings, BlockPos pos, Direction face, ServerLevel level, LinkManager manager, Player player) {
         int priority = stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0);
-
         LinkManager.ActionResult res = manager.executeBatchLink(level, player, settings.storedNodes, pos, face, settings.type, settings.group, priority, settings.mode);
 
         if (res.success()) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.batch_linked_to_group", res.count(), settings.group).withStyle(ChatFormatting.AQUA), true);
-            level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 0.6f, 1.2f);
         }
     }
 
@@ -163,14 +171,19 @@ public class LinkConfiguratorItem extends Item {
         ToolSettings s = getSettings(stack);
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", s.mode.getDisplayName()));
         tooltip.add(Component.translatable("tooltip.staticlogistics.group", s.group).withStyle(ChatFormatting.WHITE));
+
         if (!s.storedNodes.isEmpty()) {
             tooltip.add(Component.empty());
             if (s.storedMode != null) {
                 tooltip.add(Component.translatable("tooltip.staticlogistics.stored_nodes", s.storedNodes.size(), s.storedMode.getDisplayName()).withStyle(ChatFormatting.BLUE, ChatFormatting.BOLD));
             }
-            for (int i = 0; i < Math.min(s.storedNodes.size(), 5); i++) {
+            int displayCount = Math.min(s.storedNodes.size(), 5);
+            for (int i = 0; i < displayCount; i++) {
                 BlockPos p = s.storedNodes.get(i).pos().pos();
                 tooltip.add(Component.literal(" • ").withStyle(ChatFormatting.GRAY).append(Component.literal(String.format("[%d, %d, %d]", p.getX(), p.getY(), p.getZ())).withStyle(ChatFormatting.AQUA)));
+            }
+            if (s.storedNodes.size() > 5) {
+                tooltip.add(Component.literal(" ...").withStyle(ChatFormatting.GRAY));
             }
         }
     }

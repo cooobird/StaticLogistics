@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.common.init.SLCreativeTabs;
 import com.coobird.staticlogistics.common.init.SLDataComponents;
 import com.coobird.staticlogistics.common.init.SLItems;
 import com.coobird.staticlogistics.compat.ModIds;
+import com.coobird.staticlogistics.compat.ftb.FTBEventHandlers;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
@@ -38,7 +39,7 @@ public class Staticlogistics {
         SLDataComponents.DATA_COMPONENT_TYPES.register(modEventBus);
         SLCreativeTabs.CREATIVE_TABS.register(modEventBus);
         if (ModList.get().isLoaded(ModIds.FTB_TEAMS)) {
-            com.coobird.staticlogistics.compat.ftb.FTBEventHandlers.init();
+            FTBEventHandlers.init();
             LOGGER.info("Static Logistics: FTB Teams integration movement detected and initialized.");
         }
     }

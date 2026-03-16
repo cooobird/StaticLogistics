@@ -35,12 +35,12 @@ public record StaticLink(
     public static final Codec<StaticLink> CODEC = RecordCodecBuilder.create(instance ->
         instance.group(
             UUIDUtil.CODEC.fieldOf("id").forGetter(StaticLink::linkId),
-            BlockPos.CODEC.fieldOf("src").forGetter(StaticLink::sourcePos),
-            Direction.CODEC.fieldOf("src_f").forGetter(StaticLink::sourceFace),
-            ResourceKey.codec(Registries.DIMENSION).fieldOf("src_dim").forGetter(StaticLink::sourceDimension),
-            BlockPos.CODEC.fieldOf("dst").forGetter(StaticLink::destPos),
-            Direction.CODEC.fieldOf("dst_f").forGetter(StaticLink::destFace),
-            ResourceKey.codec(Registries.DIMENSION).fieldOf("dst_dim").forGetter(StaticLink::destDimension),
+            BlockPos.CODEC.fieldOf("source_pos").forGetter(StaticLink::sourcePos),
+            Direction.CODEC.fieldOf("source_face").forGetter(StaticLink::sourceFace),
+            ResourceKey.codec(Registries.DIMENSION).fieldOf("source_dim").forGetter(StaticLink::sourceDimension),
+            BlockPos.CODEC.fieldOf("dest_pos").forGetter(StaticLink::destPos),
+            Direction.CODEC.fieldOf("dest_face").forGetter(StaticLink::destFace),
+            ResourceKey.codec(Registries.DIMENSION).fieldOf("dest_dim").forGetter(StaticLink::destDimension),
             Codec.INT.fieldOf("flags").forGetter(StaticLink::transferFlags),
             Codec.INT.optionalFieldOf("priority", 0).forGetter(StaticLink::priority),
             UUIDUtil.CODEC.fieldOf("owner").forGetter(StaticLink::owner),
@@ -58,25 +58,28 @@ public record StaticLink(
         return (transferFlags & type.getFlag()) != 0;
     }
 
-    public StaticLink withMergedFlags(int otherFlags) {
-        return new StaticLink(linkId, sourcePos, sourceFace, sourceDimension, destPos, destFace, destDimension,
-            this.transferFlags | otherFlags, priority, owner, ownerName, groupId, tier, allowCrossDim);
+    public boolean isCrossDim() {
+        return !this.sourceDimension.equals(this.destDimension);
     }
 
     public boolean canTransfer(Level level, FaceConfig config) {
-        boolean crossDim = isCrossDim();
-        if (crossDim) {
+        ResourceKey<Level> currentDim = level.dimension();
+        if (!currentDim.equals(this.sourceDimension) && !currentDim.equals(this.destDimension)) return false;
+
+        if (isCrossDim()) {
             return this.allowCrossDim && config.isDimensionEffective();
         }
 
-        if (!level.dimension().equals(this.sourceDimension)) return false;
+        double baseRadius = SLConfig.getDefaultRadius();
+        double maxRange = baseRadius * config.getMaxRangeMultiplier();
 
-        double maxRange = (double) SLConfig.getDefaultRadius() * config.getMaxRangeMultiplier();
         return sourcePos.distSqr(destPos) <= (maxRange * maxRange);
     }
 
-    public boolean isCrossDim() {
-        return !this.sourceDimension.equals(this.destDimension);
+    public StaticLink withMergedFlags(int otherFlags) {
+        if ((this.transferFlags | otherFlags) == this.transferFlags) return this;
+        return new StaticLink(linkId, sourcePos, sourceFace, sourceDimension, destPos, destFace, destDimension,
+            this.transferFlags | otherFlags, priority, owner, ownerName, groupId, tier, allowCrossDim);
     }
 
     @Override

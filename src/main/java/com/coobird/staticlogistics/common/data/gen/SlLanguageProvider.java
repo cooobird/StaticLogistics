@@ -64,9 +64,31 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.group_display", "Group Id: %s", "分组 ID：%s");
         add("msg.staticlogistics.target_count", "Targets: %s", "目的地：%s");
         add("msg.staticlogistics.owner_display", "Owner: %s", "所有者：%s");
+        add("msg.staticlogistics.node_added", "Node recorded. Total: %s", "节点已记录，当前共计：%s");
+        add("msg.staticlogistics.node_removed", "Node unrecorded. Remaining: %s", "节点记录已移除，剩余：%s");
+        add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
+        add("msg.staticlogistics.batch_linked", "Successfully linked %s nodes!", "成功建立了 %s 条链路！");
+        add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
+        add("msg.staticlogistics.no_nodes_stored", "No nodes stored in linker!", "连接器中未存储任何节点！");
+        add("msg.staticlogistics.link_failed", "Failed to create links. Check connection rules.", "建立连接失败。请检查连接规则。");
+        add("msg.staticlogistics.links_created", "Created %s new link(s)", "建立了 %s 条新链路");
+        add("msg.staticlogistics.links_merged", "Merged %s link(s) with %s", "合并了 %s 条链路的 %s 传输");
+        add("msg.staticlogistics.no_valid_links", "No valid connections possible.", "无法建立有效的连接。");
+        add("msg.staticlogistics.out_of_range", "Target out of range!", "目标超出范围！");
+        add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
+        add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
+        add("msg.staticlogistics.links_removed", "Successfully removed %s logistics links", "已成功移除 %s 条物流链接");
+        add("msg.staticlogistics.no_links_found", "No links found or access denied", "未发现可操作的链路或访问被拒绝");
+        add("msg.staticlogistics.links_cleaned_at", "Cleared all authorized links at %s", "已清除位置 %s 处所有你有权管理的链路");
+        add("msg.staticlogistics.no_links_on_face", "No removable links found on face: %s", "在 %s 面上未发现属于你或你团队的链路");
 
-        add("mode.staticlogistics.link_as_input", "Select the point as the input", "选取点为输入");
-        add("mode.staticlogistics.link_as_output", "Select the point as the output", "选取点为输出");
+        add("msg.staticlogistics.no_permission", "Access Denied: Insufficient permissions.", "访问拒绝：权限不足。");
+        add("msg.staticlogistics.no_permission_to_remove", "Cannot remove: You must be the owner or a Team Officer.", "无法移除：你必须是所有者或具备团队管理员权限。");
+        add("msg.staticlogistics.links_removed_partial", "Cleaned %s links; %s others were skipped (Protected).", "清理了 %s 条链路；另有 %s 条受保护无法移除。");
+        add("msg.staticlogistics.ftb_team_required", "This node belongs to an FTB Team you are not an Officer of.", "该节点属于你未担任管理员职务的 FTB 团队。");
+
+        add("mode.staticlogistics.link_as_input", "Select point as Input", "选取点为输入");
+        add("mode.staticlogistics.link_as_output", "Select point as Output", "选取点为输出");
         add("mode.staticlogistics.configure", "Configure Node Face", "配置节点面");
         add("mode.staticlogistics.remove", "Remove Links", "移除现有链路");
 
@@ -79,6 +101,16 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "效果倍率：%s");
         add("tooltip.staticlogistics.upgrade.dimension_feature", "Enables interdimensional logistics.", "解锁跨维度物流传输。");
         add("tooltip.staticlogistics.upgrade.install_hint", "Install into nodes to enhance capabilities.", "安装至节点以增强其传输属性。");
+
+        add("commands.staticlogistics.info.header", "--- Logistics Info at %s ---", "--- 位置 %s 的物流信息 ---");
+        add("commands.staticlogistics.info.no_links", "No active source links on this block face.", "该方块表面没有活动的源链路。");
+        add("commands.staticlogistics.info.line_format", "  [%s] %s | %s | %s", "  [%s] %s | %s | %s");
+        add("commands.staticlogistics.transfer.success", "Successfully transferred %s link(s) from %s to %s", "成功将 %s 条链路从玩家 %s 转移给 %s");
+        add("commands.staticlogistics.transfer.group_not_found", "No matching groups found for that player.", "未找到该玩家匹配的分组。");
+        add("commands.staticlogistics.transfer.group_success", "Successfully transferred Group '%2$s' (%3$s links) from %1$s to %4$s", "已成功将玩家 %1$s 的分组“%2$s”（共 %3$s 条链路）转移给 %4$s");
+        add("commands.staticlogistics.rename.not_found", "No matching groups found to rename.", "未找到匹配的分组进行重命名。");
+        add("commands.staticlogistics.rename.success", "Group '%s' renamed to '%s' for player %s", "已为玩家 %3$s 将分组“%1$s”重命名为“%2$s”");
+        add("commands.staticlogistics.cleanup.success", "Deleted %s link(s) owned by %s", "已清理属于玩家 %2$s 的 %1$s 条链路");
 
         add("staticlogistics.configuration.general", "General Settings", "基础设置");
         add("staticlogistics.configuration.upgrades", "Upgrade Settings", "插件参数");
@@ -95,35 +127,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金倍率插件系数");
         add("config.staticlogistics.diamond_multiplier", "Diamond Tier Multiplier", "钻石倍率插件系数");
         add("config.staticlogistics.netherite_multiplier", "Netherite Tier Multiplier", "下界合金倍率插件系数");
-
-        add("msg.staticlogistics.node_added", "Node recorded. Total: %s", "节点已记录，当前共计：%s");
-        add("msg.staticlogistics.node_removed", "Node unrecorded. Remaining: %s", "节点记录已移除，剩余：%s");
-        add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
-        add("msg.staticlogistics.batch_linked", "Successfully linked %s nodes!", "成功建立了 %s 条链路！");
-        add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
-        add("msg.staticlogistics.no_nodes_stored", "No nodes stored in linker!", "连接器中未存储任何节点！");
-        add("msg.staticlogistics.link_failed", "Failed to create links. Check connection rules.", "建立连接失败。请检查连接规则。");
-        add("msg.staticlogistics.links_created", "Created %s new link(s)", "建立了 %s 条新链路");
-        add("msg.staticlogistics.links_merged", "Merged %s link(s) with %s", "合并了 %s 条链路的 %s 传输");
-        add("msg.staticlogistics.no_valid_links", "No valid connections possible.", "无法建立有效的连接。");
-        add("msg.staticlogistics.out_of_range", "Target out of range!", "目标超出范围！");
-        add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
-        add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
-        add("msg.staticlogistics.links_removed", "Successfully removed %s logistics links", "已成功移除 %s 条物流链接");
-        add("msg.staticlogistics.no_links_found", "No active links found at this position", "该位置未发现活动的物流链接");
-        add("msg.staticlogistics.links_cleaned_at", "Cleared all links at %s", "已清除位置 %s 处的所有链路");
-        add("msg.staticlogistics.no_permission", "You do not have permission to modify this link.", "你没有权限修改此链路。");
-        add("msg.staticlogistics.ftb_team_required", "This action requires an FTB Team with appropriate permissions.", "此操作需要具备相应权限的 FTB 团队。");
-
-        add("commands.staticlogistics.info.header", "--- Logistics Info at %s ---", "--- 位置 %s 的物流信息 ---");
-        add("commands.staticlogistics.info.no_links", "No active source links on this block face.", "该方块表面没有活动的源链路。");
-        add("commands.staticlogistics.info.line_format", "  [%s] %s | %s | %s", "  [%s] %s | %s | %s");
-        add("commands.staticlogistics.transfer.success", "Successfully transferred %s link(s) from %s to %s", "成功将 %s 条链路从玩家 %s 转移给 %s");
-        add("commands.staticlogistics.transfer.group_not_found", "No matching groups found for that player.", "未找到该玩家匹配的分组。");
-        add("commands.staticlogistics.transfer.group_success", "Successfully transferred Group '%2$s' (%3$s links) from %1$s to %4$s", "已成功将玩家 %1$s 的分组“%2$s”（共 %3$s 条链路）转移给 %4$s");
-        add("commands.staticlogistics.rename.not_found", "No matching groups found to rename.", "未找到匹配的分组进行重命名。");
-        add("commands.staticlogistics.rename.success", "Group '%s' renamed to '%s' for player %s", "已为玩家 %3$s 将分组“%1$s”重命名为“%2$s”");
-        add("commands.staticlogistics.cleanup.success", "Deleted %s link(s) owned by %s", "已清理属于玩家 %2$s 的 %1$s 条链路");
 
         for (UpgradeItem.UpgradeType type : UpgradeItem.UpgradeType.values()) {
             String key = "tooltip.staticlogistics.upgrade." + type.name().toLowerCase() + "_desc";

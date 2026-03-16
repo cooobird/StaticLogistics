@@ -13,6 +13,7 @@ import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -34,26 +35,35 @@ public class ClientEvents {
     }
 
     @SubscribeEvent
+    public static void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        ClientLinkCache.invalidate();
+    }
+
+    @SubscribeEvent
     public static void onClientTick(PlayerTickEvent.Post event) {
-        if (!event.getEntity().level().isClientSide || event.getEntity().level().getGameTime() % 20 != 0) return;
+        if (!event.getEntity().level().isClientSide) return;
+
+        long time = event.getEntity().level().getGameTime();
+        if (time % 40 != 0) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
 
         List<UUID> toRemove = new ArrayList<>();
+        ResourceKey<Level> currentDim = mc.level.dimension();
+
         for (StaticLink link : ClientLinkCache.getAllLinks()) {
-            ResourceKey<Level> dim = mc.level.dimension();
+            if (link.sourceDimension().equals(currentDim)) {
+                if (mc.level.isLoaded(link.sourcePos()) && mc.level.getBlockState(link.sourcePos()).isAir()) {
+                    toRemove.add(link.linkId());
+                    continue;
+                }
+            }
 
-            boolean sourceInvalid = link.sourceDimension().equals(dim) &&
-                mc.level.isLoaded(link.sourcePos()) &&
-                mc.level.getBlockState(link.sourcePos()).isAir();
-
-            boolean destInvalid = link.destDimension().equals(dim) &&
-                mc.level.isLoaded(link.destPos()) &&
-                mc.level.getBlockState(link.destPos()).isAir();
-
-            if (sourceInvalid || destInvalid) {
-                toRemove.add(link.linkId());
+            if (link.destDimension().equals(currentDim)) {
+                if (mc.level.isLoaded(link.destPos()) && mc.level.getBlockState(link.destPos()).isAir()) {
+                    toRemove.add(link.linkId());
+                }
             }
         }
 
@@ -64,22 +74,24 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void registerScreens(RegisterMenuScreensEvent event) {
-        // event.register(SLMenuTypes.FACE_CONFIG_MENU.get(), FaceConfigScreen::new);
     }
 
     @SubscribeEvent
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.screen != null || !mc.player.isSecondaryUseActive()) return;
+
         ItemStack stack = mc.player.getMainHandItem();
         if (!(stack.getItem() instanceof LinkConfiguratorItem linker)) return;
+
         double scrollY = event.getScrollDeltaY();
         if (scrollY == 0) return;
+
         event.setCanceled(true);
+
         LinkConfiguratorItem.ToolSettings settings = linker.getSettings(stack);
-        LinkConfiguratorItem.ToolMode nextMode = (scrollY > 0) ?
-            settings.mode().next() :
-            settings.mode().previous();
+        LinkConfiguratorItem.ToolMode nextMode = (scrollY > 0) ? settings.mode().next() : settings.mode().previous();
+
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
             stack.getOrDefault(SLDataComponents.PRIORITY.get(), 0),
             settings.group(),

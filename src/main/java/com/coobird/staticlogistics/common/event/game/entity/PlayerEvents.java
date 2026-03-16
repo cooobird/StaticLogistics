@@ -12,25 +12,22 @@ public class PlayerEvents {
 
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
-        syncData(event);
+        if (event.getEntity() instanceof ServerPlayer sp) {
+            LinkManager.syncAllDimensionsToPlayer(sp);
+        }
     }
 
     @SubscribeEvent
     public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
-        syncData(event);
+        if (event.getEntity() instanceof ServerPlayer sp) {
+            LinkManager.syncAllDimensionsToPlayer(sp);
+        }
     }
 
     @SubscribeEvent
     public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
-        syncData(event);
-    }
-
-    private static void syncData(PlayerEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
-            LinkManager manager = LinkManager.get(player.level());
-            if (manager != null) {
-                manager.syncAllToPlayer(player);
-            }
+        if (event.getEntity() instanceof ServerPlayer sp) {
+            LinkManager.syncAllDimensionsToPlayer(sp);
         }
     }
 }

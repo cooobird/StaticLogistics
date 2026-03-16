@@ -6,7 +6,6 @@ import com.coobird.staticlogistics.common.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.core.FaceConfig;
 import com.coobird.staticlogistics.core.NodeEntry;
 import com.coobird.staticlogistics.core.StaticLink;
-import com.coobird.staticlogistics.storage.GroupService;
 import com.coobird.staticlogistics.transfer.TransferType;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -98,7 +97,6 @@ public class LinkWorldRenderer {
                 ClientLinkCache.removeLinkById(link.linkId());
                 continue;
             }
-            if (!GroupService.canAccess(link, mc.player)) continue;
 
             if (link.sourcePos().distToCenterSqr(cam.x, cam.y, cam.z) > MAX_RENDER_DIST_SQ) continue;
 
@@ -109,7 +107,13 @@ public class LinkWorldRenderer {
             boolean dstIn = link.destDimension().equals(currentDim);
             if (!srcIn && !dstIn) continue;
 
-            AABB bounds = new AABB(link.sourcePos()).minmax(new AABB(link.destPos())).inflate(1.0);
+            AABB bounds;
+            if (srcIn && dstIn) {
+                bounds = new AABB(link.sourcePos()).minmax(new AABB(link.destPos())).inflate(1.0);
+            } else {
+                bounds = new AABB(link.sourcePos()).inflate(128.0);
+            }
+
             if (!event.getFrustum().isVisible(bounds)) continue;
 
             double sx = link.sourcePos().getX() + 0.5 + link.sourceFace().getStepX() * 0.51;
@@ -156,10 +160,10 @@ public class LinkWorldRenderer {
         Vec3 ortho = normal.cross(axis).scale(0.08);
 
         if (!in.isEmpty() && !out.isEmpty()) {
-            drawPipe(builder, mat, sx + ortho.x, sy + ortho.y, sz + ortho.z, ex + ortho.x, ey + ortho.y, ez + ortho.z, TUBE_WIDTH, in.get(0), alphaMod);
-            drawPipe(builder, mat, sx - ortho.x, sy - ortho.y, sz - ortho.z, ex - ortho.x, ey - ortho.y, ez - ortho.z, TUBE_WIDTH, out.get(0), alphaMod);
+            drawPipe(builder, mat, sx + ortho.x, sy + ortho.y, sz + ortho.z, ex + ortho.x, ey + ortho.y, ez + ortho.z, TUBE_WIDTH, in.getFirst(), alphaMod);
+            drawPipe(builder, mat, sx - ortho.x, sy - ortho.y, sz - ortho.z, ex - ortho.x, ey - ortho.y, ez - ortho.z, TUBE_WIDTH, out.getFirst(), alphaMod);
         } else {
-            drawPipe(builder, mat, sx, sy, sz, ex, ey, ez, TUBE_WIDTH, !in.isEmpty() ? in.get(0) : out.get(0), alphaMod);
+            drawPipe(builder, mat, sx, sy, sz, ex, ey, ez, TUBE_WIDTH, !in.isEmpty() ? in.getFirst() : out.getFirst(), alphaMod);
         }
     }
 

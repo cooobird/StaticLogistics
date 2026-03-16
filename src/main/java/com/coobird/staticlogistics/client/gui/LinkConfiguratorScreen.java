@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.client.gui;
 
-import com.coobird.staticlogistics.client.ClientLinkCache;
 import com.coobird.staticlogistics.common.init.SLDataComponents;
 import com.coobird.staticlogistics.common.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
@@ -17,7 +16,6 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -36,7 +34,7 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     public void onDataSynced() {
-        if (this.groupEdit != null && this.groupEdit.getValue().isEmpty()) {
+        if (this.groupEdit != null) {
             this.groupEdit.setValue(calculateDefaultGroup());
         }
     }
@@ -85,8 +83,8 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     private String calculateDefaultGroup() {
-        Set<String> existing = new HashSet<>();
-        ClientLinkCache.getAllLinks().forEach(l -> existing.add(l.groupId()));
+        Set<String> existing = GroupService.getGroupsForPlayer(this.minecraft.level, this.minecraft.player);
+        if (existing.isEmpty()) return "1";
         return GroupService.getNextGroupId("1", existing);
     }
 
@@ -106,6 +104,14 @@ public class LinkConfiguratorScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
             saveAndClose();
+            return true;
+        }
+        if (this.minecraft != null && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+            if (this.groupEdit.isFocused() || this.priorityEdit.isFocused()) {
+                saveAndClose();
+                return false;
+            }
+            this.onClose();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
