@@ -6,8 +6,10 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 
@@ -45,35 +47,51 @@ public class FaceConfig {
         public int channelColor = 0xFFFFFFFF;
         public int priority = 0, customBulkSize = 0;
         public boolean isBlacklist = true;
-        public final Set<net.minecraft.world.item.Item> filterItems = new HashSet<>();
+        public final Set<Item> filterItems = new HashSet<>();
         public final int[] rrCursor = new int[1];
 
-        public int getRenderColor(TransferType type) {
-            if (channelColor != 0xFFFFFFFF && (channelColor >> 24 != 0)) {
-                return channelColor;
-            }
-            return type.getColor();
+        public boolean isDefault() {
+            return mode == ConnectionMode.DISABLED && strategy == DistributionStrategy.SEQUENTIAL &&
+                channelColor == 0xFFFFFFFF && priority == 0 && customBulkSize == 0 &&
+                isBlacklist && filterItems.isEmpty();
         }
+
+        public int getRenderColor(TransferType type) {
+            return (channelColor == 0xFFFFFFFF || (channelColor >> 24) == 0) ? type.getColor() : channelColor;
+        }
+    }
+
+    public boolean isDefault() {
+        for (int i = 0; i < upgrades.getSlots(); i++) {
+            if (!upgrades.getStackInSlot(i).isEmpty()) return false;
+        }
+        for (SideData data : typeSettings.values()) {
+            if (!data.isDefault()) return false;
+        }
+        return true;
     }
 
     public void setOnDirty(Consumer<FaceConfig> onDirty) {
         this.onDirty = onDirty;
     }
 
+    public void markDirty() {
+        this.cacheDirty = true;
+        this.onDirty.accept(this);
+    }
+
     private void updateCache() {
         if (!cacheDirty) return;
-        cachedSpeedMult = 1;
-        cachedRangeMult = 1;
-        cachedStackMult = 1;
+        cachedSpeedMult = cachedRangeMult = cachedStackMult = 1;
         cachedDimEffective = false;
         for (int i = 0; i < upgrades.getSlots(); i++) {
             ItemStack stack = upgrades.getStackInSlot(i);
             if (stack.getItem() instanceof UpgradeItem upgrade) {
-                if (upgrade.getTier() == null) return;
+                int multiplier = upgrade.getTier().getMultiplier();
                 switch (upgrade.getType()) {
-                    case SPEED -> cachedSpeedMult = Math.max(cachedSpeedMult, upgrade.getTier().getMultiplier());
-                    case RANGE -> cachedRangeMult = Math.max(cachedRangeMult, upgrade.getTier().getMultiplier());
-                    case STACK -> cachedStackMult = Math.max(cachedStackMult, upgrade.getTier().getMultiplier());
+                    case SPEED -> cachedSpeedMult = Math.max(cachedSpeedMult, multiplier);
+                    case RANGE -> cachedRangeMult = Math.max(cachedRangeMult, multiplier);
+                    case STACK -> cachedStackMult = Math.max(cachedStackMult, multiplier);
                     case DIMENSION -> cachedDimEffective = true;
                 }
             }
@@ -110,6 +128,7 @@ public class FaceConfig {
         nbt.put("upgrades", upgrades.serializeNBT(p));
         CompoundTag typesNbt = new CompoundTag();
         typeSettings.forEach((type, data) -> {
+            if (data.isDefault()) return;
             CompoundTag d = new CompoundTag();
             d.putString("mode", data.mode.name());
             d.putString("strategy", data.strategy.name());
@@ -119,7 +138,7 @@ public class FaceConfig {
             d.putInt("bulk", data.customBulkSize);
             d.putInt("rr_cursor", data.rrCursor[0]);
             ListTag list = new ListTag();
-            data.filterItems.forEach(item -> list.add(net.minecraft.nbt.StringTag.valueOf(BuiltInRegistries.ITEM.getKey(item).toString())));
+            data.filterItems.forEach(item -> list.add(StringTag.valueOf(BuiltInRegistries.ITEM.getKey(item).toString())));
             d.put("filter", list);
             typesNbt.put(type.getSerializedName(), d);
         });
@@ -134,8 +153,16 @@ public class FaceConfig {
             String key = type.getSerializedName();
             if (typesNbt.contains(key)) {
                 CompoundTag d = typesNbt.getCompound(key);
-                data.mode = ConnectionMode.byName(d.getString("mode"), ConnectionMode.DISABLED);
-                data.strategy = DistributionStrategy.byName(d.getString("strategy"), DistributionStrategy.SEQUENTIAL);
+                try {
+                    data.mode = ConnectionMode.valueOf(d.getString("mode"));
+                } catch (Exception e) {
+                    data.mode = ConnectionMode.DISABLED;
+                }
+                try {
+                    data.strategy = DistributionStrategy.valueOf(d.getString("strategy"));
+                } catch (Exception e) {
+                    data.strategy = DistributionStrategy.SEQUENTIAL;
+                }
                 data.channelColor = d.getInt("channel");
                 data.isBlacklist = d.getBoolean("blacklist");
                 data.priority = d.getInt("priority");
@@ -145,7 +172,9 @@ public class FaceConfig {
                 ListTag list = d.getList("filter", Tag.TAG_STRING);
                 for (int i = 0; i < list.size(); i++) {
                     ResourceLocation rl = ResourceLocation.tryParse(list.getString(i));
-                    if (rl != null) BuiltInRegistries.ITEM.getOptional(rl).ifPresent(data.filterItems::add);
+                    if (rl != null) BuiltInRegistries.ITEM.getOptional(rl).ifPresent(item -> {
+                        if (!item.getDefaultInstance().isEmpty()) data.filterItems.add(item);
+                    });
                 }
             }
         });

@@ -11,6 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.HashMap;
@@ -28,15 +29,25 @@ public class LogisticsTicker {
         }
     }
 
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (!event.getLevel().isClientSide()) {
+            DIMENSION_COOLDOWNS.remove(event.getLevel().getServer().getLevel(Level.OVERWORLD).dimension()); // 简单的维度Key匹配
+        }
+    }
+
     private static void tick(ServerLevel level) {
         LinkManager manager = LinkManager.get(level);
-        if (manager == null) return;
 
         var activeKeys = manager.getActiveSourceKeys();
         if (activeKeys.isEmpty()) return;
 
         long gameTime = level.getGameTime();
-        Long2ByteMap cooldownMap = DIMENSION_COOLDOWNS.computeIfAbsent(level.dimension(), k -> new Long2ByteOpenHashMap());
+        Long2ByteMap cooldownMap = DIMENSION_COOLDOWNS.computeIfAbsent(level.dimension(), k -> {
+            Long2ByteMap map = new Long2ByteOpenHashMap();
+            map.defaultReturnValue((byte) 0);
+            return map;
+        });
 
         LongIterator iterator = activeKeys.iterator();
         while (iterator.hasNext()) {
@@ -49,32 +60,34 @@ public class LogisticsTicker {
             }
 
             LinkManager.CachedSourceData cached = manager.getCachedSource(sourceKey);
-            if (cached == null) continue;
 
             int speedMult = cached.config().getSpeedMultiplier();
             int interval = Math.max(1, SLConfig.getDefaultTickInterval() / speedMult);
+            boolean isIntervalTick = (gameTime % interval == 0);
 
-            boolean anyMoved = false;
-            boolean processedAny = false;
+            boolean movedSomething = false;
+            boolean hadWorkToDo = false;
 
             for (TransferType type : TYPES) {
                 var links = cached.sortedLinks().get(type);
                 if (links == null || links.isEmpty()) continue;
 
-                var side = cached.config().getSettings(type);
-                if (!side.mode.allowsOutput()) continue;
+                var settings = cached.config().getSettings(type);
+                if (!settings.mode.allowsOutput()) continue;
 
-                processedAny = true;
+                hadWorkToDo = true;
 
-                if (type == TransferType.ENERGY || gameTime % interval == 0) {
-                    if (TransferEngine.execute(level, links, type, cached.config(), side.rrCursor, links.get(0).owner())) {
-                        anyMoved = true;
+                boolean shouldTryTransfer = (type == TransferType.ENERGY) || isIntervalTick;
+
+                if (shouldTryTransfer) {
+                    if (TransferEngine.execute(level, links, type, cached.config(), settings.rrCursor, links.getFirst().owner())) {
+                        movedSomething = true;
                     }
                 } else {
-                    anyMoved = true;
+                    movedSomething = true;
                 }
             }
-            if (processedAny && !anyMoved) {
+            if (hadWorkToDo && !movedSomething) {
                 cooldownMap.put(sourceKey, (byte) 10);
             }
         }

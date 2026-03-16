@@ -1,6 +1,5 @@
-package com.coobird.staticlogistics.transfer;
+package com.coobird.staticlogistics.compat;
 
-import com.coobird.staticlogistics.common.util.ModIds;
 import com.coobird.staticlogistics.common.util.TransferUtils;
 import com.coobird.staticlogistics.core.StaticLink;
 import mekanism.api.Action;

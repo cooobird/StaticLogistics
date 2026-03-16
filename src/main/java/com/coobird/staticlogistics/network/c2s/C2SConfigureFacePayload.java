@@ -17,13 +17,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.slf4j.Logger;
 
-public record C2SConfigureFacePayload(
-    BlockPos pos,
-    Direction face,
-    TransferType transferType,
-    CompoundTag data
-) implements CustomPacketPayload {
-
+public record C2SConfigureFacePayload(BlockPos pos, Direction face, TransferType transferType,
+                                      CompoundTag data) implements CustomPacketPayload {
     private static final Logger LOGGER = LogUtils.getLogger();
     public static final Type<C2SConfigureFacePayload> TYPE = new Type<>(Staticlogistics.asResource("configure_face"));
 
@@ -43,67 +38,59 @@ public record C2SConfigureFacePayload(
     public static void handle(final C2SConfigureFacePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player().level() instanceof ServerLevel serverLevel)) return;
-
             if (context.player().blockPosition().distSqr(payload.pos()) > 128) return;
 
             LinkManager manager = LinkManager.get(serverLevel);
             FaceConfig config = manager.getOrCreateFaceConfig(payload.pos(), payload.face(), serverLevel);
             FaceConfig.SideData sideData = config.getSettings(payload.transferType());
-
             boolean changed = false;
 
             if (payload.data().contains("mode")) {
                 try {
-                    ConnectionMode newMode = ConnectionMode.valueOf(payload.data().getString("mode"));
-                    if (sideData.mode != newMode) {
-                        sideData.mode = newMode;
+                    ConnectionMode m = ConnectionMode.valueOf(payload.data().getString("mode"));
+                    if (sideData.mode != m) {
+                        sideData.mode = m;
                         changed = true;
                     }
-                } catch (IllegalArgumentException e) {
-                    LOGGER.warn("Invalid mode from {}: {}", context.player().getName().getString(), payload.data().getString("mode"));
+                } catch (Exception e) {
+                    LOGGER.warn("Invalid mode: {}", payload.data().getString("mode"));
                 }
             }
-
             if (payload.data().contains("strategy")) {
                 try {
-                    var newStrategy = com.coobird.staticlogistics.core.DistributionStrategy.valueOf(payload.data().getString("strategy"));
-                    if (sideData.strategy != newStrategy) {
-                        sideData.strategy = newStrategy;
+                    var s = com.coobird.staticlogistics.core.DistributionStrategy.valueOf(payload.data().getString("strategy"));
+                    if (sideData.strategy != s) {
+                        sideData.strategy = s;
                         changed = true;
                     }
-                } catch (IllegalArgumentException e) {
-                    LOGGER.warn("Invalid strategy from {}", context.player().getName().getString());
+                } catch (Exception e) {
+                    LOGGER.warn("Invalid strategy");
                 }
             }
-
             if (payload.data().contains("priority")) {
-                int newPriority = payload.data().getInt("priority");
-                if (sideData.priority != newPriority) {
-                    sideData.priority = newPriority;
+                int p = payload.data().getInt("priority");
+                if (sideData.priority != p) {
+                    sideData.priority = p;
                     changed = true;
                 }
             }
-
             if (payload.data().contains("isBlacklist")) {
-                boolean newBlacklist = payload.data().getBoolean("isBlacklist");
-                if (sideData.isBlacklist != newBlacklist) {
-                    sideData.isBlacklist = newBlacklist;
+                boolean b = payload.data().getBoolean("isBlacklist");
+                if (sideData.isBlacklist != b) {
+                    sideData.isBlacklist = b;
                     changed = true;
                 }
             }
-
             if (payload.data().contains("channel")) {
-                int newColor = payload.data().getInt("channel");
-                if (sideData.channelColor != newColor) {
-                    sideData.channelColor = newColor;
+                int c = payload.data().getInt("channel");
+                if (sideData.channelColor != c) {
+                    sideData.channelColor = c;
                     changed = true;
                 }
             }
 
             if (changed) {
-                long key = manager.posToKey(payload.pos(), payload.face());
-                manager.setDirty();
-                manager.refreshCache(key);
+                config.markDirty(); // 触发 LinkManager 缓存刷新
                 manager.syncFaceConfigToAll(serverLevel, payload.pos(), payload.face(), config);
             }
         });

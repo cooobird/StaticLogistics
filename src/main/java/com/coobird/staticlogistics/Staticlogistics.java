@@ -4,12 +4,14 @@ import com.coobird.staticlogistics.common.data.gen.SlLanguageProvider;
 import com.coobird.staticlogistics.common.init.SLCreativeTabs;
 import com.coobird.staticlogistics.common.init.SLDataComponents;
 import com.coobird.staticlogistics.common.init.SLItems;
+import com.coobird.staticlogistics.compat.ModIds;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
@@ -35,6 +37,10 @@ public class Staticlogistics {
 //        SLMenuTypes.TYPES.register(modEventBus);
         SLDataComponents.DATA_COMPONENT_TYPES.register(modEventBus);
         SLCreativeTabs.CREATIVE_TABS.register(modEventBus);
+        if (ModList.get().isLoaded(ModIds.FTB_TEAMS)) {
+            com.coobird.staticlogistics.compat.ftb.FTBEventHandlers.init();
+            LOGGER.info("Static Logistics: FTB Teams integration movement detected and initialized.");
+        }
     }
 
     public static ResourceLocation asResource(String path) {

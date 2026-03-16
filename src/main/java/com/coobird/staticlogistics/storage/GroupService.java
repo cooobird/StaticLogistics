@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.storage;
 
+import com.coobird.staticlogistics.compat.ModIds;
 import com.coobird.staticlogistics.core.StaticLink;
 import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import dev.ftb.mods.ftbteams.api.TeamRank;
@@ -12,24 +13,18 @@ import java.util.*;
 
 public class GroupService {
 
-    private static final String FTB_TEAMS_MODID = "ftbteams";
-
     public static boolean canAccess(StaticLink link, Player actor) {
-        if (link == null || actor == null) return false;
         if (link.owner().equals(actor.getUUID())) return true;
-
-        if (!ModList.get().isLoaded(FTB_TEAMS_MODID)) return false;
-
-        return checkFTBTeamAlliance(link.owner(), actor.getUUID());
+        return isFtbLoaded() && checkFTBTeamAlliance(link.owner(), actor.getUUID());
     }
 
     public static boolean canModify(StaticLink link, Player actor) {
-        if (link == null || actor == null) return false;
         if (link.owner().equals(actor.getUUID())) return true;
+        return isFtbLoaded() && isTeamAdminOf(link.owner(), actor.getUUID());
+    }
 
-        if (!ModList.get().isLoaded(FTB_TEAMS_MODID)) return false;
-
-        return isTeamAdminOf(link.owner(), actor.getUUID());
+    private static boolean isFtbLoaded() {
+        return ModList.get().isLoaded(ModIds.FTB_TEAMS);
     }
 
     private static boolean checkFTBTeamAlliance(UUID owner, UUID actor) {
@@ -45,14 +40,9 @@ public class GroupService {
         try {
             var manager = FTBTeamsAPI.api().getManager();
             if (manager == null) return false;
-
-            return manager.getTeamForPlayerID(owner).map(team -> {
-                if (team.getMembers().contains(actor)) {
-                    TeamRank rank = team.getRankForPlayer(actor);
-                    return rank.getPower() >= TeamRank.OFFICER.getPower();
-                }
-                return false;
-            }).orElse(false);
+            return manager.getTeamForPlayerID(owner)
+                .map(team -> team.getRankForPlayer(actor).getPower() >= TeamRank.OFFICER.getPower())
+                .orElse(false);
         } catch (Exception e) {
             return false;
         }
@@ -60,17 +50,13 @@ public class GroupService {
 
     public static Set<String> getGroupsForPlayer(Level level, Player actor) {
         LinkManager manager = LinkManager.get(level);
-        if (manager == null) return Collections.emptySet();
+        Set<String> allGroups = new HashSet<>(manager.getGroupsByOwner(actor.getUUID()));
 
-        Set<String> allGroups = new HashSet<>();
-
-        allGroups.addAll(manager.getGroupsByOwner(actor.getUUID()));
-
-        if (ModList.get().isLoaded(FTB_TEAMS_MODID)) {
+        if (isFtbLoaded()) {
             try {
-                var teamManager = FTBTeamsAPI.api().getManager();
-                if (teamManager != null) {
-                    teamManager.getTeamForPlayerID(actor.getUUID()).ifPresent(team -> {
+                var ftbManager = FTBTeamsAPI.api().getManager();
+                if (ftbManager != null) {
+                    ftbManager.getTeamForPlayerID(actor.getUUID()).ifPresent(team -> {
                         for (UUID memberId : team.getMembers()) {
                             if (!memberId.equals(actor.getUUID())) {
                                 allGroups.addAll(manager.getGroupsByOwner(memberId));
@@ -81,14 +67,12 @@ public class GroupService {
             } catch (Exception ignored) {
             }
         }
-
         return allGroups;
     }
 
     public static void deleteGroup(Level level, Player actor, String groupId) {
         if (!(level instanceof ServerLevel sl)) return;
-        LinkManager manager = LinkManager.get(level);
-        if (manager == null) return;
+        LinkManager manager = LinkManager.get(sl);
 
         List<StaticLink> toRemove = manager.getLinksList().stream()
             .filter(l -> l.groupId().equals(groupId) && canModify(l, actor))
@@ -100,9 +84,8 @@ public class GroupService {
     }
 
     public static void renameGroup(Level level, Player actor, String oldId, String newId) {
-        if (!(level instanceof ServerLevel sl) || oldId.equals(newId)) return;
-        LinkManager manager = LinkManager.get(level);
-        if (manager == null) return;
+        if (!(level instanceof ServerLevel sl) || oldId.equals(newId) || newId.isBlank()) return;
+        LinkManager manager = LinkManager.get(sl);
 
         List<StaticLink> toRemove = new ArrayList<>();
         List<StaticLink> toAdd = new ArrayList<>();
@@ -110,19 +93,38 @@ public class GroupService {
         for (StaticLink l : manager.getLinksList()) {
             if (l.groupId().equals(oldId) && canModify(l, actor)) {
                 toRemove.add(l);
-                toAdd.add(new StaticLink(
-                    l.linkId(), l.sourcePos(), l.sourceFace(), l.sourceDimension(),
-                    l.destPos(), l.destFace(), l.destDimension(),
-                    l.transferFlags(), l.priority(),
-                    l.owner(), l.ownerName(), newId,
-                    l.maxRange(), l.allowCrossDim()
-                ));
+                toAdd.add(createNewLinkWithNewGroup(l, newId));
             }
         }
 
         if (!toRemove.isEmpty()) {
             manager.removeLinksBulk(toRemove, sl, actor);
             manager.addLinksBulk(toAdd, sl, actor);
+        }
+    }
+
+    private static StaticLink createNewLinkWithNewGroup(StaticLink l, String newId) {
+        return new StaticLink(
+            l.linkId(), l.sourcePos(), l.sourceFace(), l.sourceDimension(),
+            l.destPos(), l.destFace(), l.destDimension(),
+            l.transferFlags(), l.priority(),
+            l.owner(), l.ownerName(), newId,
+            l.tier(), l.allowCrossDim()
+        );
+    }
+
+    public static String getNextGroupId(String currentId, Set<String> existing) {
+        if (!existing.contains(currentId)) {
+            return currentId;
+        }
+
+        try {
+            int val = Integer.parseInt(currentId);
+            String next = String.valueOf(val + 1);
+            return getNextGroupId(next, existing);
+        } catch (NumberFormatException e) {
+            String next = currentId + "_copy";
+            return existing.contains(next) ? next : next + "_" + existing.size();
         }
     }
 }

@@ -27,9 +27,7 @@ public class SLEvents {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         BlockPos pos = event.getPos();
         LinkManager manager = LinkManager.get(level);
-        if (manager != null) {
-            manager.onBlockRemoved(pos, level);
-        }
+        manager.onBlockRemovedWithResult(pos, level);
     }
 
     @SubscribeEvent

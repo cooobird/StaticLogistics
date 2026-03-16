@@ -13,10 +13,8 @@ import java.util.List;
 
 public record S2CAddLinksBulkPayload(List<StaticLink> links) implements CustomPacketPayload {
     public static final Type<S2CAddLinksBulkPayload> TYPE = new Type<>(Staticlogistics.asResource("add_links_bulk_s2c"));
-
     public static final StreamCodec<RegistryFriendlyByteBuf, S2CAddLinksBulkPayload> STREAM_CODEC = StreamCodec.composite(
-        StaticLink.STREAM_CODEC.apply(ByteBufCodecs.list()), S2CAddLinksBulkPayload::links,
-        S2CAddLinksBulkPayload::new
+        StaticLink.STREAM_CODEC.apply(ByteBufCodecs.list()), S2CAddLinksBulkPayload::links, S2CAddLinksBulkPayload::new
     );
 
     @Override
@@ -24,9 +22,9 @@ public record S2CAddLinksBulkPayload(List<StaticLink> links) implements CustomPa
         return TYPE;
     }
 
-    public static void handle(final S2CAddLinksBulkPayload payload, final IPayloadContext context) {
-        context.enqueueWork(() -> {
-            payload.links().forEach(ClientLinkCache::addOrUpdateLink);
-        });
+    public static void handle(final S2CAddLinksBulkPayload p, final IPayloadContext c) {
+        c.enqueueWork(() -> p.links().forEach(l -> {
+            if (l != null) ClientLinkCache.addOrUpdateLink(l);
+        }));
     }
 }

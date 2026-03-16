@@ -12,24 +12,23 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record S2CSyncFaceConfigPacket(BlockPos pos, Direction face, FaceConfig config) implements CustomPacketPayload {
-
     public static final Type<S2CSyncFaceConfigPacket> TYPE = new Type<>(Staticlogistics.asResource("sync_face_config"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, S2CSyncFaceConfigPacket> STREAM_CODEC = new StreamCodec<>() {
         @Override
         public S2CSyncFaceConfigPacket decode(RegistryFriendlyByteBuf buf) {
-            BlockPos pos = BlockPos.STREAM_CODEC.decode(buf);
-            Direction face = Direction.STREAM_CODEC.decode(buf);
-            FaceConfig config = new FaceConfig();
-            config.deserializeNBT(buf.registryAccess(), ByteBufCodecs.COMPOUND_TAG.decode(buf));
-            return new S2CSyncFaceConfigPacket(pos, face, config);
+            BlockPos p = BlockPos.STREAM_CODEC.decode(buf);
+            Direction f = Direction.STREAM_CODEC.decode(buf);
+            FaceConfig cfg = new FaceConfig();
+            cfg.deserializeNBT(buf.registryAccess(), ByteBufCodecs.COMPOUND_TAG.decode(buf));
+            return new S2CSyncFaceConfigPacket(p, f, cfg);
         }
 
         @Override
-        public void encode(RegistryFriendlyByteBuf buf, S2CSyncFaceConfigPacket packet) {
-            BlockPos.STREAM_CODEC.encode(buf, packet.pos());
-            Direction.STREAM_CODEC.encode(buf, packet.face());
-            ByteBufCodecs.COMPOUND_TAG.encode(buf, packet.config().serializeNBT(buf.registryAccess()));
+        public void encode(RegistryFriendlyByteBuf buf, S2CSyncFaceConfigPacket p) {
+            BlockPos.STREAM_CODEC.encode(buf, p.pos());
+            Direction.STREAM_CODEC.encode(buf, p.face());
+            ByteBufCodecs.COMPOUND_TAG.encode(buf, p.config().serializeNBT(buf.registryAccess()));
         }
     };
 
@@ -38,9 +37,7 @@ public record S2CSyncFaceConfigPacket(BlockPos pos, Direction face, FaceConfig c
         return TYPE;
     }
 
-    public static void handle(final S2CSyncFaceConfigPacket payload, final IPayloadContext context) {
-        context.enqueueWork(() -> {
-            ClientLinkCache.updateFaceConfig(payload.pos(), payload.face(), payload.config());
-        });
+    public static void handle(final S2CSyncFaceConfigPacket p, final IPayloadContext c) {
+        c.enqueueWork(() -> ClientLinkCache.updateFaceConfig(p.pos(), p.face(), p.config()));
     }
 }

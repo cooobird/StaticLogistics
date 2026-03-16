@@ -14,7 +14,6 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
-import java.util.Objects;
 import java.util.UUID;
 
 public record StaticLink(
@@ -30,7 +29,7 @@ public record StaticLink(
     UUID owner,
     String ownerName,
     String groupId,
-    int maxRange,
+    int tier,
     boolean allowCrossDim
 ) {
     public static final Codec<StaticLink> CODEC = RecordCodecBuilder.create(instance ->
@@ -47,7 +46,7 @@ public record StaticLink(
             UUIDUtil.CODEC.fieldOf("owner").forGetter(StaticLink::owner),
             Codec.STRING.optionalFieldOf("owner_name", "Unknown").forGetter(StaticLink::ownerName),
             Codec.STRING.optionalFieldOf("group", "1").forGetter(StaticLink::groupId),
-            Codec.INT.optionalFieldOf("range", 1).forGetter(StaticLink::maxRange),
+            Codec.INT.optionalFieldOf("tier", 1).forGetter(StaticLink::tier),
             Codec.BOOL.optionalFieldOf("cross_dim", false).forGetter(StaticLink::allowCrossDim)
         ).apply(instance, StaticLink::new)
     );
@@ -56,25 +55,28 @@ public record StaticLink(
         ByteBufCodecs.fromCodecWithRegistries(CODEC);
 
     public boolean hasType(TransferType type) {
-        return (transferFlags & (1 << type.ordinal())) != 0;
+        return (transferFlags & type.getFlag()) != 0;
     }
 
-    public boolean canTransfer(Level currentLevel, FaceConfig config) {
-        if (isCrossDim(currentLevel.dimension())) {
-            return config.isDimensionEffective();
+    public StaticLink withMergedFlags(int otherFlags) {
+        return new StaticLink(linkId, sourcePos, sourceFace, sourceDimension, destPos, destFace, destDimension,
+            this.transferFlags | otherFlags, priority, owner, ownerName, groupId, tier, allowCrossDim);
+    }
+
+    public boolean canTransfer(Level level, FaceConfig config) {
+        boolean crossDim = isCrossDim();
+        if (crossDim) {
+            return this.allowCrossDim && config.isDimensionEffective();
         }
 
-        int multiplier = config.getMaxRangeMultiplier();
-        int baseRadius = SLConfig.getDefaultRadius();
+        if (!level.dimension().equals(this.sourceDimension)) return false;
 
-        long effectiveMaxRange = (long) baseRadius * multiplier;
-        double distSq = sourcePos.distSqr(destPos);
-
-        return distSq <= (double) effectiveMaxRange * effectiveMaxRange;
+        double maxRange = (double) SLConfig.getDefaultRadius() * config.getMaxRangeMultiplier();
+        return sourcePos.distSqr(destPos) <= (maxRange * maxRange);
     }
 
-    public boolean isCrossDim(ResourceKey<Level> currentDim) {
-        return !this.destDimension.equals(this.sourceDimension);
+    public boolean isCrossDim() {
+        return !this.sourceDimension.equals(this.destDimension);
     }
 
     @Override
@@ -86,6 +88,6 @@ public record StaticLink(
 
     @Override
     public int hashCode() {
-        return Objects.hash(linkId);
+        return linkId.hashCode();
     }
 }

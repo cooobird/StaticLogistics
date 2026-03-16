@@ -1,33 +1,23 @@
 package com.coobird.staticlogistics.common.init;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.core.NodeEntry;
 import com.coobird.staticlogistics.transfer.TransferType;
 import com.mojang.serialization.Codec;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.ExtraCodecs;
-import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
+import java.util.List;
 import java.util.function.UnaryOperator;
 
 public class SLDataComponents {
     public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES =
         DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, Staticlogistics.MODID);
 
-    public static final DeferredHolder<DataComponentType<?>, DataComponentType<BlockPos>> FIRST_POS =
-        register("first_pos", builder -> builder.persistent(BlockPos.CODEC).networkSynchronized(BlockPos.STREAM_CODEC));
-
-    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Direction>> FIRST_FACE =
-        register("first_face", builder -> builder.persistent(Direction.CODEC).networkSynchronized(Direction.STREAM_CODEC));
-
-    public static final DeferredHolder<DataComponentType<?>, DataComponentType<ResourceKey<Level>>> FIRST_DIM =
-        register("first_dim", builder -> builder.persistent(ResourceKey.codec(Registries.DIMENSION)).networkSynchronized(ResourceKey.streamCodec(Registries.DIMENSION)));
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> SELECTED_GROUP =
         register("selected_group", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
@@ -40,6 +30,16 @@ public class SLDataComponents {
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> TOOL_MODE =
         register("tool_mode", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<List<NodeEntry>>> STORED_NODES =
+        register("stored_nodes", builder -> builder
+            .persistent(Codec.list(NodeEntry.CODEC))
+            .networkSynchronized(ByteBufCodecs.collection(java.util.ArrayList::new, NodeEntry.STREAM_CODEC)));
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> STORED_MODE =
+        register("stored_mode", builder -> builder
+            .persistent(Codec.INT)
+            .networkSynchronized(ByteBufCodecs.VAR_INT));
 
     private static <T> DeferredHolder<DataComponentType<?>, DataComponentType<T>> register(String name, UnaryOperator<DataComponentType.Builder<T>> builder) {
         return DATA_COMPONENT_TYPES.register(name, () -> builder.apply(DataComponentType.builder()).build());

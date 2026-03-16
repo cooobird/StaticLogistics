@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.common.util;
 
+import com.coobird.staticlogistics.compat.ModCompat;
 import com.coobird.staticlogistics.core.StaticLink;
-import com.coobird.staticlogistics.transfer.ModCompat;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
@@ -24,7 +24,8 @@ public class TransferUtils {
     public static <C, T> boolean doTransfer(ServerLevel sourceLevel, List<StaticLink> links, BlockCapability<C, Direction> cap, int limit, int[] roundRobinCursor, TransferProtocol<C, T> protocol) {
         if (links.isEmpty() || limit <= 0) return false;
 
-        C source = getOrCreateCache(sourceLevel, links.getFirst().sourcePos(), links.getFirst().sourceFace(), cap).getCapability();
+        StaticLink firstLink = links.getFirst();
+        C source = getOrCreateCache(sourceLevel, firstLink.sourcePos(), firstLink.sourceFace(), cap).getCapability();
         if (source == null) return false;
 
         boolean movedAny = false;
@@ -33,11 +34,12 @@ public class TransferUtils {
         int startIndex = (roundRobinCursor != null) ? (roundRobinCursor[0] % size) : 0;
 
         for (int i = 0; i < size; i++) {
-            if (remaining <= 0) break;
             int currentIndex = (startIndex + i) % size;
             StaticLink link = links.get(currentIndex);
 
-            ServerLevel destLevel = link.destDimension().equals(sourceLevel.dimension()) ? sourceLevel : sourceLevel.getServer().getLevel(link.destDimension());
+            ServerLevel destLevel = link.destDimension().equals(sourceLevel.dimension())
+                ? sourceLevel
+                : sourceLevel.getServer().getLevel(link.destDimension());
 
             if (destLevel == null || !destLevel.getChunkSource().hasChunk(link.destPos().getX() >> 4, link.destPos().getZ() >> 4))
                 continue;
@@ -47,7 +49,7 @@ public class TransferUtils {
 
             boolean linkMoved = false;
 
-            while (remaining > 0) {
+            while (true) {
                 T available = protocol.simulateExtract(source, remaining);
                 if (protocol.isEmpty(available)) break;
 
@@ -58,10 +60,14 @@ public class TransferUtils {
                 remaining -= accepted;
                 movedAny = true;
                 linkMoved = true;
+
+                if (remaining <= 0) break;
             }
 
-            if (linkMoved && roundRobinCursor != null) {
-                roundRobinCursor[0] = (currentIndex + 1) % size;
+            if (linkMoved) {
+                if (roundRobinCursor != null) {
+                    roundRobinCursor[0] = (currentIndex + 1) % size;
+                }
                 break;
             }
         }
