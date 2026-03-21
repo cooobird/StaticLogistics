@@ -23,6 +23,7 @@ public class SLDataGenerator {
         boolean client = event.includeClient();
         generator.addProvider(client, new SlLanguageProvider(output, "en_us"));
         generator.addProvider(client, new SlLanguageProvider(output, "zh_cn"));
+        generator.addProvider(client, new SLItemModelProvider(output, helper));
 
         boolean server = event.includeServer();
         generator.addProvider(server, new VanillaRecipeProvider(output, lookup));
