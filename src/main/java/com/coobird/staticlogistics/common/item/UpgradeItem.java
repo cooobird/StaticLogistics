@@ -85,7 +85,7 @@ public class UpgradeItem extends Item {
         GOLD("gold", ChatFormatting.GOLD, Rarity.COMMON),
         DIAMOND("diamond", ChatFormatting.AQUA, Rarity.RARE),
         NETHERITE("netherite", ChatFormatting.DARK_PURPLE, Rarity.EPIC),
-        CREATIVE("creative", ChatFormatting.LIGHT_PURPLE, Rarity.EPIC);
+        NETHER_STAR("nether_star", ChatFormatting.DARK_PURPLE, Rarity.EPIC);
 
         private final String name;
         private final ChatFormatting color;

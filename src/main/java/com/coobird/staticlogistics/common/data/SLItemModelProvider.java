@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.common.data.gen;
+package com.coobird.staticlogistics.common.data;
 
 
 import com.coobird.staticlogistics.Staticlogistics;
@@ -23,7 +23,6 @@ public class SLItemModelProvider extends ItemModelProvider {
 
     @Override
     protected void registerModels() {
-        skip.add(SLItems.LINK_CONFIGURATOR.get());
         simpleItem(SLItems.ITEMS);
     }
 

@@ -26,7 +26,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             java.util.Map.of(
                 'N', Ingredient.of(Items.NETHERITE_INGOT),
                 'S', Ingredient.of(Items.NETHER_STAR),
-                'U', Ingredient.of(SLItems.RANGE_UPGRADE_NETHERITE.get())
+                'U', Ingredient.of(SLItems.RANGE_UPGRADE_NETHER_STAR.get())
             ),
             "NSN",
             "NUN",

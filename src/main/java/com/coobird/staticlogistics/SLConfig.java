@@ -24,6 +24,7 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue GOLD_MULTIPLIER;
     public static ModConfigSpec.IntValue DIAMOND_MULTIPLIER;
     public static ModConfigSpec.IntValue NETHERITE_MULTIPLIER;
+    public static ModConfigSpec.IntValue NETHER_STAR_MULTIPLIER;
 
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
@@ -37,6 +38,7 @@ public final class SLConfig {
     private static volatile int goldMultCache = 8;
     private static volatile int diamondMultCache = 16;
     private static volatile int netheriteMultCache = 32;
+    private static volatile int netherStarMultCache = Integer.MAX_VALUE;
 
     public static void register(ModContainer container) {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -77,19 +79,23 @@ public final class SLConfig {
 
         IRON_MULTIPLIER = builder
             .translation("config.staticlogistics.iron_multiplier")
-            .defineInRange("iron_multiplier", 4, 1, 1024);
+            .defineInRange("iron_multiplier", ironMultCache, 1, 1024);
 
         GOLD_MULTIPLIER = builder
             .translation("config.staticlogistics.gold_multiplier")
-            .defineInRange("gold_multiplier", 8, 1, 2048);
+            .defineInRange("gold_multiplier", goldMultCache, 1, 2048);
 
         DIAMOND_MULTIPLIER = builder
             .translation("config.staticlogistics.diamond_multiplier")
-            .defineInRange("diamond_multiplier", 16, 1, 4096);
+            .defineInRange("diamond_multiplier", diamondMultCache, 1, 4096);
 
         NETHERITE_MULTIPLIER = builder
             .translation("config.staticlogistics.netherite_multiplier")
-            .defineInRange("netherite_multiplier", 32, 1, 8192);
+            .defineInRange("netherite_multiplier", netheriteMultCache, 1, 8192);
+
+        NETHER_STAR_MULTIPLIER = builder
+            .translation("config.staticlogistics.nether_star_multiplier")
+            .defineInRange("nether_star_multiplier", netherStarMultCache, 1, Integer.MAX_VALUE);
 
         builder.pop();
 
@@ -118,6 +124,7 @@ public final class SLConfig {
             goldMultCache = GOLD_MULTIPLIER.get();
             diamondMultCache = DIAMOND_MULTIPLIER.get();
             netheriteMultCache = NETHERITE_MULTIPLIER.get();
+            netherStarMultCache = NETHER_STAR_MULTIPLIER.get();
         }
     }
 
@@ -156,7 +163,7 @@ public final class SLConfig {
             case "gold" -> goldMultCache;
             case "diamond" -> diamondMultCache;
             case "netherite" -> netheriteMultCache;
-            case "creative" -> Integer.MAX_VALUE;
+            case "nether_star" -> Integer.MAX_VALUE;
             default -> 1;
         };
     }

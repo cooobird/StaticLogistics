@@ -29,8 +29,8 @@ public class SLItems {
         () -> new UpgradeItem(UpgradeType.SPEED, UpgradeTier.DIAMOND));
     public static final DeferredItem<UpgradeItem> SPEED_UPGRADE_NETHERITE = register("speed_upgrade_netherite", "下界合金速率升级插件",
         () -> new UpgradeItem(UpgradeType.SPEED, UpgradeTier.NETHERITE));
-    public static final DeferredItem<UpgradeItem> SPEED_UPGRADE_CREATIVE = register("speed_upgrade_creative", "创造速率升级插件",
-        () -> new UpgradeItem(UpgradeType.SPEED, UpgradeTier.CREATIVE));
+    public static final DeferredItem<UpgradeItem> SPEED_UPGRADE_NETHER_STAR = register("speed_upgrade_nether_star", "下界之星速率升级插件",
+        () -> new UpgradeItem(UpgradeType.SPEED, UpgradeTier.NETHER_STAR));
 
     public static final DeferredItem<UpgradeItem> RANGE_UPGRADE_IRON = register("range_upgrade_iron", "铁范围升级插件",
         () -> new UpgradeItem(UpgradeType.RANGE, UpgradeTier.IRON));
@@ -40,8 +40,8 @@ public class SLItems {
         () -> new UpgradeItem(UpgradeType.RANGE, UpgradeTier.DIAMOND));
     public static final DeferredItem<UpgradeItem> RANGE_UPGRADE_NETHERITE = register("range_upgrade_netherite", "下界合金范围升级插件",
         () -> new UpgradeItem(UpgradeType.RANGE, UpgradeTier.NETHERITE));
-    public static final DeferredItem<UpgradeItem> RANGE_UPGRADE_CREATIVE = register("range_upgrade_creative", "创造范围升级插件",
-        () -> new UpgradeItem(UpgradeType.RANGE, UpgradeTier.CREATIVE));
+    public static final DeferredItem<UpgradeItem> RANGE_UPGRADE_NETHER_STAR = register("range_upgrade_nether_star", "下界之星范围升级插件",
+        () -> new UpgradeItem(UpgradeType.RANGE, UpgradeTier.NETHER_STAR));
 
     public static final DeferredItem<UpgradeItem> STACK_UPGRADE_IRON = register("stack_upgrade_iron", "铁堆叠升级插件",
         () -> new UpgradeItem(UpgradeType.STACK, UpgradeTier.IRON));
@@ -51,8 +51,8 @@ public class SLItems {
         () -> new UpgradeItem(UpgradeType.STACK, UpgradeTier.DIAMOND));
     public static final DeferredItem<UpgradeItem> STACK_UPGRADE_NETHERITE = register("stack_upgrade_netherite", "下界合金堆叠升级插件",
         () -> new UpgradeItem(UpgradeType.STACK, UpgradeTier.NETHERITE));
-    public static final DeferredItem<UpgradeItem> STACK_UPGRADE_CREATIVE = register("stack_upgrade_creative", "创造堆叠升级插件",
-        () -> new UpgradeItem(UpgradeType.STACK, UpgradeTier.CREATIVE));
+    public static final DeferredItem<UpgradeItem> STACK_UPGRADE_NETHER_STAR = register("stack_upgrade_nether_star", "下界之星堆叠升级插件",
+        () -> new UpgradeItem(UpgradeType.STACK, UpgradeTier.NETHER_STAR));
 
     public static <I extends Item> DeferredItem<I> register(final String en, final String zh, Supplier<I> it) {
         DeferredItem<I> item = ITEMS.register(en, it);

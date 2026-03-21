@@ -127,6 +127,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金倍率插件系数");
         add("config.staticlogistics.diamond_multiplier", "Diamond Tier Multiplier", "钻石倍率插件系数");
         add("config.staticlogistics.netherite_multiplier", "Netherite Tier Multiplier", "下界合金倍率插件系数");
+        add("config.staticlogistics.nether_star_multiplier", "Nether Star Tier Multiplier", "下界之星倍率插件系数");
 
         for (UpgradeItem.UpgradeType type : UpgradeItem.UpgradeType.values()) {
             String key = "tooltip.staticlogistics.upgrade." + type.name().toLowerCase() + "_desc";
@@ -152,7 +153,7 @@ public class SlLanguageProvider extends LanguageProvider {
                 case GOLD -> "金";
                 case DIAMOND -> "钻石";
                 case NETHERITE -> "下界合金";
-                case CREATIVE -> "创造";
+                case NETHER_STAR -> "下界之星";
             };
             add("tier.staticlogistics." + tier.getSerializedName(), toTitleCase(tier.getSerializedName()), zh);
         }

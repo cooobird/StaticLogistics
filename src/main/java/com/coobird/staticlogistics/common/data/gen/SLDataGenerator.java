@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.common.data.gen;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.common.data.SLItemModelProvider;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
