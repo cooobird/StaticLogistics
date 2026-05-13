@@ -112,6 +112,8 @@ repositories {
         name = 'TerraformersMC'
         url = 'https://maven.terraformersmc.com/'
     }
+    maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
+    maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
     mavenLocal()
 }
 
@@ -136,6 +138,12 @@ dependencies {
 
     compileOnly "curse.maven:jade-324717:6011258"
     runtimeOnly "curse.maven:jade-324717:6011258"
+
+    runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
+    runtimeOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
+    runtimeOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
+    runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+    runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
 }
 
 tasks.named('processResources', ProcessResources) {

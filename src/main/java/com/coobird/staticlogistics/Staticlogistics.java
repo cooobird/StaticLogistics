@@ -1,11 +1,15 @@
 package com.coobird.staticlogistics;
 
-import com.coobird.staticlogistics.common.data.gen.SlLanguageProvider;
-import com.coobird.staticlogistics.common.init.SLCreativeTabs;
-import com.coobird.staticlogistics.common.init.SLDataComponents;
-import com.coobird.staticlogistics.common.init.SLItems;
+import com.coobird.staticlogistics.compat.CompatHandler;
 import com.coobird.staticlogistics.compat.ModIds;
 import com.coobird.staticlogistics.compat.ftb.FTBEventHandlers;
+import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.core.registration.TransferRegistries;
+import com.coobird.staticlogistics.datagen.SlLanguageProvider;
+import com.coobird.staticlogistics.registry.SLCreativeTabs;
+import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.registry.SLItems;
+import com.coobird.staticlogistics.registry.SLMenuTypes;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
@@ -34,14 +38,24 @@ public class Staticlogistics {
         SLConfig.register(modContainer);
         if (FMLEnvironment.dist.isClient())
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
-        SLItems.ITEMS.register(modEventBus);
-//        SLMenuTypes.TYPES.register(modEventBus);
+        SLItems.register(modEventBus);
+        SLMenuTypes.TYPES.register(modEventBus);
         SLDataComponents.DATA_COMPONENT_TYPES.register(modEventBus);
         SLCreativeTabs.CREATIVE_TABS.register(modEventBus);
+        modEventBus.addListener(this::commonSetup);
         if (ModList.get().isLoaded(ModIds.FTB_TEAMS)) {
             FTBEventHandlers.init();
             LOGGER.info("Static Logistics: FTB Teams integration movement detected and initialized.");
         }
+    }
+
+    private void commonSetup(final net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent event) {
+        LOGGER.info("Static Logistics: Starting common setup...");
+        event.enqueueWork(() -> {
+            TransferRegistries.init();
+            CompatHandler.init();
+            LOGGER.info("Static Logistics: Logistics system successfully initialized with {} active transfer types.", TransferRegistries.getAllActive().size());
+        });
     }
 
     public static ResourceLocation asResource(String path) {
