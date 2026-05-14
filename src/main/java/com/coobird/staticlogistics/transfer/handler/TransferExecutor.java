@@ -25,6 +25,10 @@ public class TransferExecutor {
      * @return 是否发生了实际传输
      */
     public boolean executeTransfer(TransferContext context) {
+        if (context.isDepthExceeded()) {
+            return false;
+        }
+
         FaceConfigComposite config = context.sourceConfig();
         LogisticsNode sourceNode = context.sourceNode();
         TransferType type = context.type();

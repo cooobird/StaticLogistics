@@ -92,6 +92,7 @@ public class LinkConfiguratorItem extends Item {
             String nodesInfo = settings.storedNodes().stream().map(n -> n.gPos().pos().toShortString() + " " + n.face()).collect(Collectors.joining(", "));
             tooltip.add(Component.translatable("tooltip.staticlogistics.stored_nodes", nodesInfo, settings.storedMode().getDisplayName()));
         }
+        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint").withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);
     }
 
@@ -322,10 +323,10 @@ public class LinkConfiguratorItem extends Item {
             currentData.linkedInputs.add(stored);
             storedData.linkedInputs.add(current);
 
-            if (settings.storedMode() == ToolMode.LINK_AS_INPUT) {
+            if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
                 currentData.outputEnabled = true;
                 storedData.inputEnabled = true;
-            } else if (settings.storedMode() == ToolMode.LINK_AS_OUTPUT) {
+            } else if (settings.storedMode() == ToolMode.LINK_AS_EXTRACT) {
                 storedData.outputEnabled = true;
                 currentData.inputEnabled = true;
             }

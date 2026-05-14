@@ -12,7 +12,6 @@ import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
-import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
@@ -41,19 +40,15 @@ public class ClientEvents {
         ClientLinkData.INSTANCE.invalidate();
     }
 
-    private static long lastScrollTime = 0;
-
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.screen != null || !mc.player.isSecondaryUseActive()) return;
+        if (mc.player == null || mc.screen != null) return;
 
         ItemStack stack = mc.player.getMainHandItem();
         if (!(stack.getItem() instanceof LinkConfiguratorItem)) return;
 
-        long now = Util.getMillis();
-        if (now - lastScrollTime < 100) return;
-        lastScrollTime = now;
+        if (!mc.player.isShiftKeyDown()) return;
 
         double scrollY = event.getScrollDeltaY();
         if (scrollY == 0) return;
@@ -64,16 +59,12 @@ public class ClientEvents {
         int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
         int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
 
-        int modeCount = ToolMode.values().length;
-        int nextMode = (currentMode + (scrollY < 0 ? 1 : modeCount - 1)) % modeCount;
+        ToolMode mode = ToolMode.fromId(currentMode);
+        ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
+        int nextMode = newMode.getId();
 
         stack.set(SLDataComponents.TOOL_MODE.get(), nextMode);
-
-        PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
-            currentGroup,
-            nextMode,
-            typeMask
-        ));
+        PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(currentGroup, nextMode, typeMask));
 
         mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
     }

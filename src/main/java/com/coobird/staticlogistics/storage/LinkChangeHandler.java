@@ -121,6 +121,7 @@ public class LinkChangeHandler {
                 if (!remoteData.linkedInputs.contains(currentNode)) {
                     remoteData.linkedInputs.add(currentNode);
                     globalManager.addIncomingLink(remoteNode, currentNode);
+                    remoteCfg.markDirty();
                     remoteMgr.setDirty();
                     remoteMgr.getNetworkSyncManager().syncToDimension(remoteNode.gPos().pos(), remoteNode.face(), remoteCfg);
                 }

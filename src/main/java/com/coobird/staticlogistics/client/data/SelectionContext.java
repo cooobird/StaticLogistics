@@ -24,10 +24,8 @@ public class SelectionContext {
     }
 
     public static void syncFromItem(ItemStack stack) {
-        if (selectedGroupId.isEmpty()) {
-            selectedGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
-            selectedMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
-        }
+        selectedGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+        selectedMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
     }
 
     public static void clear() {

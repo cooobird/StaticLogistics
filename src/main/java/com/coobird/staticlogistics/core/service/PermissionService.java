@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.core.service;
 
-import com.coobird.staticlogistics.compat.ftb.FTBTeamService;
+import com.coobird.staticlogistics.intergration.ftb.FTBTeamService;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.UUID;

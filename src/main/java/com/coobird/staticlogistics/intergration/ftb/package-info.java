@@ -1,3 +1,3 @@
 @javax.annotation.ParametersAreNonnullByDefault
 @net.minecraft.MethodsReturnNonnullByDefault
-package com.coobird.staticlogistics.compat.ftb;
+package com.coobird.staticlogistics.intergration.ftb;

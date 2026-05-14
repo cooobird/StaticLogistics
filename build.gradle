@@ -122,6 +122,9 @@ dependencies {
     compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
 
+    compileOnly "curse.maven:jade-324717:6011258"
+    runtimeOnly "curse.maven:jade-324717:6011258"
+
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
     compileOnly "mekanism:Mekanism:${mekanism_version}"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}"
@@ -132,18 +135,21 @@ dependencies {
     compileOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
     runtimeOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
 
+    compileOnly "curse.maven:ars-additions-974408:7646325"
+    runtimeOnly "curse.maven:ars-additions-974408:7646325"
+
     compileOnly "dev.architectury:architectury-neoforge:${architectury_version}"
     compileOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
     runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
-
-    compileOnly "curse.maven:jade-324717:6011258"
-    runtimeOnly "curse.maven:jade-324717:6011258"
 
     runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
     runtimeOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
     runtimeOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
     runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
     runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+
+    compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
+    runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
 }
 
 tasks.named('processResources', ProcessResources) {

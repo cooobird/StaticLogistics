@@ -43,21 +43,19 @@ public class SlLanguageProvider extends LanguageProvider {
 
         addCreativeTab(SLCreativeTabs.TAB_STATIC_LOGISTICS, "Static Logistics", "静态物流");
 
-        add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置工具");
+        add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置器");
         add("gui.staticlogistics.search_hint", "Search groups...", "搜索分组...");
+        add("gui.staticlogistics.search_types", "Search Types", "搜索类型");
+        add("gui.staticlogistics.search_for_values_by_type", "Search for values by type", "按类型搜索值");
         add("gui.staticlogistics.tooltip.toggle_type", "Click to enable/disable types", "点击以启用/禁用类型");
-
         add("gui.staticlogistics.tooltip.group_id", "Group #%s", "分组 #%s");
         add("gui.staticlogistics.tooltip.shift_export", "Shift + Click to export coordinates", "Shift + 点击导出坐标");
         add("gui.staticlogistics.tooltip.rename_hint", "Double-click to rename group", "双击以重命名分组");
         add("gui.staticlogistics.tooltip.select_hint", "Click to select this group", "点击以选择该分组");
 
-        add("msg.staticlogistics.export.header", "--- Coordinates for Group #%s ---", "--- 分组 #%s 的坐标列表 ---");
-        add("msg.staticlogistics.export.tp_hover", "Click to suggest teleport command", "点击以补全传送指令");
-
         add("gui.staticlogistics.label.status", "--- Current Status ---", "--- 当前状态 ---");
-        add("gui.mode.staticlogistics.input", "Input", "输入");
-        add("gui.mode.staticlogistics.output", "Output", "输出");
+        add("gui.mode.staticlogistics.input", "Insert", "存入");
+        add("gui.mode.staticlogistics.output", "Extract", "提取");
         add("gui.staticlogistics.label.priority", "Priority", "优先级");
         add("gui.staticlogistics.strategy", "Distribution Strategy", "分发策略");
         add("gui.staticlogistics.hint.speed", "Speed Upgrade", "速度升级");
@@ -71,7 +69,14 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.stat.speed", "Speed:", "速度:");
         add("gui.staticlogistics.stat.stack", "Stack:", "堆叠:");
         add("gui.staticlogistics.stat.interval", "Interval:", "间隔:");
+        add("gui.staticlogistics.unit.kelvin", "K", "开尔文");
         add("gui.staticlogistics.stat.dimension", "Cross-Dim:", "跨维度:");
+        add("gui.staticlogistics.infinite", "infinite", "无限");
+        add("gui.staticlogistics.unit.meters", "m", "米");
+        add("gui.staticlogistics.unit.ticks", "t", "t");
+        add("gui.staticlogistics.unit.multiplier", "x", "x");
+        add("gui.staticlogistics.true", "true", "是");
+        add("gui.staticlogistics.false", "false", "否");
 
         add("gui.staticlogistics.filter.title", "Filter Configuration", "详细过滤配置");
         add("gui.staticlogistics.hand_filter", "Hand Filter", "手持过滤器");
@@ -90,13 +95,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tag_type.staticlogistics.block", "Block Tag:", "方块标签:");
         add("tag_type.staticlogistics.fluid", "Fluid Tag:", "流体标签:");
 
-        add("gui.staticlogistics.infinite", "infinite", "无限");
-        add("gui.staticlogistics.unit.meters", "m", "米");
-        add("gui.staticlogistics.unit.ticks", "t", "t");
-        add("gui.staticlogistics.unit.multiplier", "x", "x");
-        add("gui.staticlogistics.true", "true", "是");
-        add("gui.staticlogistics.false", "false", "否");
-
+        add("msg.staticlogistics.export.header", "--- Coordinates for Group #%s ---", "--- 分组 #%s 的坐标列表 ---");
+        add("msg.staticlogistics.export.tp_hover", "Click to suggest teleport command", "点击以补全传送指令");
         add("msg.staticlogistics.group_display", "Group Id: %s", "分组 ID：%s");
         add("msg.staticlogistics.target_count", "Targets: %s", "目的地：%s");
         add("msg.staticlogistics.owner_display", "Owner: %s", "所有者：%s");
@@ -128,14 +128,14 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.unknown_owner", "Unknown", "未知");
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
 
-        add("mode.staticlogistics.link_as_input", "Select point as Input", "选取点为输入端");
+        add("mode.staticlogistics.link_as_input", "Select point as Insert", "选取点为存入端");
         add("mode.staticlogistics.link_as_input.desc",
-            "Shift + Right-click nodes to store them as targets. These nodes will receive resources.",
-            "潜行+右键点击节点面，将其加入待连接列表（作为接收端）。");
-        add("mode.staticlogistics.link_as_output", "Select point as Output", "选取点为输出端");
+            "Shift + Right-click a node to store it as an insert target. Resources will be inserted into this node.",
+            "潜行+右键点击节点，将其标记为存入目标（资源将传入此节点）。");
+        add("mode.staticlogistics.link_as_output", "Select point as Extract", "选取点为提取端");
         add("mode.staticlogistics.link_as_output.desc",
-            "Shift + Right-click a node to link all stored 'Input' points to this source.",
-            "潜行+右键点击节点面，将所有存储的“输入点”批量连接至此（作为发送端）。");
+            "Shift + Right-click a node to store it as an extract source. Resources will be extracted from this node.",
+            "潜行+右键点击节点，将其标记为提取源（从此节点向外传输资源）。");
         add("mode.staticlogistics.remove", "Remove Links", "移除现有链路");
         add("mode.staticlogistics.remove.desc",
             "Shift + Right-click a node face to delete all links connected to it.",
@@ -154,13 +154,13 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.group", "Group Id: %s", "分组 ID：%s");
         add("tooltip.staticlogistics.none", "None", "无");
         add("tooltip.staticlogistics.stored_nodes", "Stored Nodes: %s (As %s)", "待连接节点：%s（设为 %s）");
+        add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
         add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级：%s");
         add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "效果倍率：%s");
         add("tooltip.staticlogistics.upgrade.dimension_feature", "Enables interdimensional logistics.", "解锁跨维度物流传输。");
         add("tooltip.staticlogistics.upgrade.install_hint", "Install into nodes to enhance capabilities.", "安装至节点以增强其传输属性。");
         add("tooltip.staticlogistics.upgrade.tag_filter_feature", "Enables filtering of resources based on tags.", "支持基于标签过滤资源。");
         add("tooltip.staticlogistics.upgrade.nbt_filter_feature", "Enables filtering of resources based on NBT data.", "支持基于NBT数据过滤资源。");
-
         add("tooltip.staticlogistics.nbt_mode.partial", "Match only present components", "部分匹配：仅匹配物品上已有的组件");
         add("tooltip.staticlogistics.nbt_mode.full", "All NBT data must be identical", "完全匹配：所有 NBT 数据必须相同");
 
@@ -177,15 +177,9 @@ public class SlLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.info.owner", "Owner: %s", "所有者：%s");
         add("commands.staticlogistics.info.speed", "Speed: x%s", "速度：x%s");
         add("commands.staticlogistics.info.not_found", "No logistics data found at this position.", "此位置未找到物流数据。");
-        add("commands.staticlogistics.strategies.header",
-            "--- Data Component Strategies (Page %s/%s) ---",
-            "--- 数据组件匹配策略 (第%s/%s页) ---");
-        add("commands.staticlogistics.strategies.line",
-            "%s -> %s",
-            "%s -> %s");
-        add("commands.staticlogistics.strategies.next_page",
-            "Use /sl strategies %s for next page.",
-            "输入 /sl strategies %s 查看下一页。");
+        add("commands.staticlogistics.strategies.header", "--- Data Component Strategies (Page %s/%s) ---", "--- 数据组件匹配策略 (第%s/%s页) ---");
+        add("commands.staticlogistics.strategies.line", "%s -> %s", "%s -> %s");
+        add("commands.staticlogistics.strategies.next_page", "Use /sl strategies %s for next page.", "输入 /sl strategies %s 查看下一页。");
 
         add("match_strategy.staticlogistics.exact", "EXACT", "精确");
         add("match_strategy.staticlogistics.contains", "CONTAINS", "包含");
@@ -193,62 +187,58 @@ public class SlLanguageProvider extends LanguageProvider {
         add("match_strategy.staticlogistics.ignore", "IGNORE", "忽略");
 
         add("staticlogistics.configuration.general", "General Settings", "基础设置");
+        add("staticlogistics.configuration.core", "Core Settings", "核心设置");
+        add("staticlogistics.configuration.intergration", "Integration Settings", "集成设置");
         add("staticlogistics.configuration.upgrades", "Upgrade Settings", "插件参数");
         add("staticlogistics.configuration.filter", "Filter Settings", "过滤插件参数");
 
         add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
         add("config.staticlogistics.default_tick_interval", "Base Tick Interval (Ticks)", "基础传输间隔(Tick)");
+        add("config.staticlogistics.max_transfer_limit", "Max Transfer per Tick", "单次传输最大数量");
+
         add("config.staticlogistics.item_stack_size", "Base Item Stack Size", "基础物品堆叠量");
         add("config.staticlogistics.fluid_stack_size", "Base Fluid Amount (mB)", "基础流体传输量(mB)");
         add("config.staticlogistics.energy_stack_size", "Base Energy Amount (FE)", "基础能量传输量(FE)");
+
         add("config.staticlogistics.mek_chemical_stack_size", "Base Mek-Chemical Amount", "基础 Mek 化学品传输量");
+        add("config.staticlogistics.mek_heat_stack_size", "Base Mek Heat Amount", "基础热量传输量");
+        add("config.staticlogistics.mek_strict_energy_stack_size", "Base Mek Strict Energy Amount", "基础精准能量传输量");
         add("config.staticlogistics.ars_source_stack_size", "Base Ars Source Amount", "基础魔源传输量");
+        add("config.staticlogistics.pneumatic_pressure_stack_size", "Base Pneumatic Pressure Amount", "基础气压传输量");
+        add("config.staticlogistics.pneumatic_heat_stack_size", "Base Pneumatic Heat Amount", "基础气动热量传输量");
 
         add("config.staticlogistics.iron_multiplier", "Iron Tier Multiplier", "铁等级倍率");
         add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金等级倍率");
         add("config.staticlogistics.diamond_multiplier", "Diamond Tier Multiplier", "钻石等级倍率");
         add("config.staticlogistics.netherite_multiplier", "Netherite Tier Multiplier", "下界合金等级倍率");
         add("config.staticlogistics.nether_star_multiplier", "Nether Star Tier Multiplier", "下界之星等级倍率");
-        add("config.staticlogistics.upgrade_stack_limit",
-            "Maximum upgrade items per configurator slot.",
-            "每个配置器槽位可容纳的升级插件最大堆叠数量。");
+        add("config.staticlogistics.upgrade_stack_limit", "Maximum upgrade items per configurator slot.", "每个配置器槽位可容纳的升级插件最大堆叠数量。");
 
-        add("config.staticlogistics.filter.component_strategy_overrides",
-            "Component Strategy Overrides",
-            "数据组件匹配策略覆写");
+        add("config.staticlogistics.filter.component_strategy_overrides", "Component Strategy Overrides", "数据组件匹配策略覆写");
         add("config.staticlogistics.filter.component_strategy_overrides.tooltip",
             """
                 Overrides the partial match strategy for specific data components.
                 Default: Empty (Uses built-in strategies)
-                
                 Format: "namespace:component_id=STRATEGY"
                 Valid Strategies:
                   · EXACT - Values must be identical
                   · CONTAINS - Map/Collection types must contain all elements
                   · SMART_CONTAINS - Smart recursive containment check
                   · IGNORE - Skip this component (e.g., 'minecraft:damage' is IGNORE by default)
-                
                 Example: "minecraft:damage=IGNORE" means ignore durability.
                 These entries override the built-in defaults.""",
             """
                 覆盖特定数据组件的部分匹配策略。
                 默认：空（使用内置策略）
                 格式："命名空间:组件ID=策略"
-                
                 可用的策略：
                   · EXACT - 要求完全相等
                   · CONTAINS - 集合/映射类型要求包含所有元素
                   · SMART_CONTAINS - 智能递归包含判断
                   · IGNORE - 跳过该组件（例如：minecraft:damage 默认跳过）
-                
                 例如："minecraft:damage=IGNORE" 表示忽略耐久。
                 这些条目会覆盖内置默认值。"""
         );
-
-        add("staticlogistics.configuration.ae2_integration", "AE2 Integration", "AE2 集成");
-        add("config.staticlogistics.ae2.require_channel", "AE2 Require Channel", "是否需要 AE2 频道");
-        add("config.staticlogistics.ae2.check_radius", "AE2 Check Radius", "AE2 检查半径");
-
 
         for (UpgradeType type : UpgradeType.values()) {
             String key = "tooltip.staticlogistics.upgrade." + type.getName() + "_desc";
@@ -306,8 +296,16 @@ public class SlLanguageProvider extends LanguageProvider {
 
         add("transfer_type.staticlogistics.mek_chemicals", "Mek Chemicals", "化学品");
         add("transfer_type.staticlogistics.mek_chemicals.desc", "Transport Mek Chemicals", "传输化学品。");
+        add("transfer_type.staticlogistics.mek_heat", "Mek Heat", "热量");
+        add("transfer_type.staticlogistics.mek_heat.desc", "Transport Mekanism Heat", "传输热量。");
+        add("transfer_type.staticlogistics.mek_strict_energy", "Mek Strict Energy", "精准能量");
+        add("transfer_type.staticlogistics.mek_strict_energy.desc", "Transport Mekanism Strict Energy", "传输精准能量。");
         add("transfer_type.staticlogistics.ars_source", "Ars Source", "魔源");
         add("transfer_type.staticlogistics.ars_source.desc", "Transport Ars Source", "传输魔源。");
+        add("transfer_type.staticlogistics.pnc_pressure", "Pneumatic Pressure", "气压");
+        add("transfer_type.staticlogistics.pnc_pressure.desc", "Transport PneumaticCraft pressure", "传输气压。");
+        add("transfer_type.staticlogistics.pnc_heat", "Pneumatic Heat", "气动热量");
+        add("transfer_type.staticlogistics.pnc_heat.desc", "Transport PneumaticCraft heat", "传输气动热量。");
 
         for (DistributionStrategy strategy : DistributionStrategy.values()) {
             String zh = switch (strategy) {

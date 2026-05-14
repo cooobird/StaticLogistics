@@ -5,8 +5,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
 
 public enum ToolMode implements StringRepresentable {
-    LINK_AS_INPUT("link_as_input", ChatFormatting.AQUA, 0),
-    LINK_AS_OUTPUT("link_as_output", ChatFormatting.GOLD, 1),
+    LINK_AS_INSERT("link_as_input", ChatFormatting.AQUA, 0),
+    LINK_AS_EXTRACT("link_as_output", ChatFormatting.GOLD, 1),
     REMOVE("remove", ChatFormatting.RED, 2),
     FACE_CONFIG("face_config", ChatFormatting.LIGHT_PURPLE, 3),
     CONTAINER_CONFIG("container_config", ChatFormatting.GREEN, 4);
@@ -33,7 +33,7 @@ public enum ToolMode implements StringRepresentable {
         for (ToolMode mode : values()) {
             if (mode.id == id) return mode;
         }
-        return LINK_AS_INPUT;
+        return LINK_AS_INSERT;
     }
 
     @Override
@@ -50,6 +50,6 @@ public enum ToolMode implements StringRepresentable {
     }
 
     public boolean isLinkMode() {
-        return this == LINK_AS_INPUT || this == LINK_AS_OUTPUT;
+        return this == LINK_AS_INSERT || this == LINK_AS_EXTRACT;
     }
 }

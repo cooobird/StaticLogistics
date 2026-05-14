@@ -86,7 +86,7 @@ public class LinkWorldRenderer {
                     BlockPos p = node.gPos().pos();
                     if (p.distToCenterSqr(cam.x, cam.y, cam.z) <= MAX_RENDER_DIST_SQ && frustum.isVisible(new AABB(p))) {
                         drawFrame(builder, mat, p, 0.8f, 0.8f, 0.8f, 0.4f);
-                        boolean isIn = settings.storedMode() == ToolMode.LINK_AS_INPUT;
+                        boolean isIn = settings.storedMode() == ToolMode.LINK_AS_INSERT;
                         float r = isIn ? 0.2f : 1.0f, g = isIn ? 0.5f : 0.6f, b = isIn ? 1.0f : 0.0f;
                         double px = p.getX() + 0.5 + node.face().getStepX() * 0.51;
                         double py = p.getY() + 0.5 + node.face().getStepY() * 0.51;
@@ -193,7 +193,8 @@ public class LinkWorldRenderer {
     private static void drawDirectedLine(VertexConsumer b, Matrix4f mat, Vec3 start, Vec3 end, Direction face, int colorIdx, float offset) {
         Vec3 diff = end.subtract(start);
         double dist = diff.length();
-        if (dist < 0.1) return;
+        if (dist < 0.1 || Double.isNaN(dist) || Double.isInfinite(dist)) return;
+        int particleCount = (int) Math.min(100, Math.max(3, dist * 3.5));
 
         Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
         Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
@@ -208,7 +209,6 @@ public class LinkWorldRenderer {
 
         double time = System.currentTimeMillis() / 1000.0;
         float speed = 1.2f;
-        int particleCount = (int) Math.max(3, dist * 3.5);
 
         for (int i = 0; i < particleCount; i++) {
             double spacing = (double) i / particleCount;

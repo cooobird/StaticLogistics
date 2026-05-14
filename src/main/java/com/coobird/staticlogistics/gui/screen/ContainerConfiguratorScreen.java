@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.ContainerConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -21,6 +22,123 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
 
     public ContainerConfiguratorScreen(ContainerConfiguratorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
+    }
+
+    @Override
+    protected void init() {
+        this.imageWidth = SLGuiTextures.Background.WIDTH + SLGuiTextures.Background.BY_GROUP_WIDTH + 2;
+        this.leftPos = (this.width - this.imageWidth) / 2;
+        this.topPos = (this.height - this.imageHeight) / 2;
+        super.init();
+        this.titleLabelX = this.imageWidth - this.font.width(this.title) - 8;
+        this.titleLabelY = 6;
+        this.inventoryLabelY = 1000;
+    }
+
+    @Override
+    protected int getItemHeight() {
+        return 12;
+    }
+
+    @Override
+    protected boolean shouldShowTypePanel() {
+        return true;
+    }
+
+    @Override
+    protected String getSearchHintKey() {
+        return "gui.staticlogistics.search_for_values_by_type";
+    }
+
+    @Override
+    protected List<TransferType> getTypeList() {
+        return new ArrayList<>(TransferRegistries.getAllActive());
+    }
+
+    @Override
+    protected int getSelectedTypesMask() {
+        return 0;
+    }
+
+    @Override
+    protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
+        Component typeName = Component.translatable(type.translationKey());
+        String nameStr = typeName.getString();
+        long stackMult = getStackMultiplier();
+        int baseStackSize = type.baseStackSize();
+        boolean infinite = false;
+        long finalStackSize = 0;
+        try {
+            finalStackSize = Math.multiplyExact(baseStackSize, stackMult);
+            if (finalStackSize >= Integer.MAX_VALUE) {
+                infinite = true;
+            }
+        } catch (ArithmeticException e) {
+            infinite = true;
+        }
+        String valueText;
+        int valueColor;
+        if (infinite) {
+            valueText = Component.translatable("gui.staticlogistics.infinite").getString();
+            valueColor = 0x55FF55;
+        } else {
+            valueText = String.valueOf(finalStackSize);
+            valueColor = finalStackSize > baseStackSize ? 0x55FF55 : 0xCCCCCC;
+        }
+        String displayName = font.plainSubstrByWidth(nameStr, 60);
+        String combined = displayName + ": " + valueText;
+        g.drawString(this.font, combined, x + 4, y + 2, valueColor, false);
+    }
+
+    private long getStackMultiplier() {
+        long stackMult = 1L;
+        for (int i = 0; i < 3; i++) {
+            ItemStack stack = menu.getSlot(i).getItem();
+            if (!stack.isEmpty() && stack.getItem() instanceof UpgradeItem upgrade) {
+                UpgradeTier tier = upgrade.getTier();
+                if (tier != null && i == 2) {
+                    int multiplier = tier.getMultiplier();
+                    long count = stack.getCount();
+                    stackMult += (long) multiplier * count;
+                    if (stackMult >= Integer.MAX_VALUE) {
+                        stackMult = Long.MAX_VALUE;
+                        break;
+                    }
+                }
+            }
+        }
+        return stackMult;
+    }
+
+    @Override
+    protected void renderHoveredTypeTooltip(GuiGraphics g, int mx, int my) {
+        if (hoveredType == null) return;
+        long stackMult = getStackMultiplier();
+        int baseStackSize = hoveredType.baseStackSize();
+        boolean infinite = false;
+        long finalStackSize = 0;
+        try {
+            finalStackSize = Math.multiplyExact(baseStackSize, stackMult);
+            if (finalStackSize >= Integer.MAX_VALUE) {
+                infinite = true;
+            }
+        } catch (ArithmeticException e) {
+            infinite = true;
+        }
+        if (stackMult >= Integer.MAX_VALUE) {
+            infinite = true;
+        }
+        List<Component> tooltip = new ArrayList<>();
+        tooltip.add(Component.translatable(hoveredType.translationKey()).withStyle(ChatFormatting.WHITE));
+        tooltip.add(Component.translatable("gui.staticlogistics.stat.stack")
+            .append(Component.translatable(infinite ? "gui.staticlogistics.infinite" : String.valueOf(stackMult)).withStyle(ChatFormatting.AQUA)));
+        tooltip.add(Component.translatable("gui.staticlogistics.stat.transfer")
+            .append(Component.translatable(infinite ? "gui.staticlogistics.infinite" : String.valueOf(finalStackSize)).withStyle(ChatFormatting.GREEN)));
+        g.renderComponentTooltip(this.font, tooltip, mx, my);
+    }
+
+    @Override
+    protected void onTypeClicked(TransferType type) {
     }
 
     @Override
@@ -40,24 +158,15 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
         for (int i = 0; i < 3; i++) {
             int x = leftPos + 18;
             int y = topPos + 21 + (i * 30);
-
-            g.blit(
-                GUI_TEXTURE,
-                x, y,
-                16, 16,
+            g.blit(GUI_TEXTURE, x, y, 16, 16,
                 SLGuiTextures.Upgrade.U, SLGuiTextures.Upgrade.V,
                 SLGuiTextures.Upgrade.WIDTH, SLGuiTextures.Upgrade.HEIGHT,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT
-            );
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
         }
     }
 
     private void renderSlotHints(GuiGraphics g) {
-        String[] hintKeys = {
-            "gui.staticlogistics.hint.speed",
-            "gui.staticlogistics.hint.range",
-            "gui.staticlogistics.hint.stack"
-        };
+        String[] hintKeys = {"gui.staticlogistics.hint.speed", "gui.staticlogistics.hint.range", "gui.staticlogistics.hint.stack"};
         for (int i = 0; i < 3; i++) {
             Component text = Component.translatable(hintKeys[i]);
             int x = leftPos + 18;
@@ -73,8 +182,8 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
         int baseRange = SLConfig.getDefaultRadius();
         int rangeBonus = 0;
         boolean hasDimension = false;
-        int speedMult = 1;
-        int stackMult = 1;
+        long speedMult = 1L;
+        long stackMult = 1L;
 
         for (int i = 0; i < 3; i++) {
             ItemStack stack = menu.getSlot(i).getItem();
@@ -84,9 +193,9 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
                 if (tier != null) {
                     int multiplier = tier.getMultiplier();
                     switch (i) {
-                        case 0 -> speedMult += multiplier * count;
+                        case 0 -> speedMult += (long) multiplier * count;
                         case 1 -> rangeBonus += multiplier * count;
-                        case 2 -> stackMult += multiplier * count;
+                        case 2 -> stackMult += (long) multiplier * count;
                     }
                 } else {
                     if (upgrade.getType() == UpgradeType.DIMENSION) {
@@ -111,50 +220,33 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
         int baseInterval = SLConfig.getDefaultTickInterval();
         int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
         String speedText = actualInterval + Component.translatable("gui.staticlogistics.unit.ticks").getString();
-        int speedColor = speedMult > 1 ? 0x55FF55 : 0x555555;
+        int speedColor = speedMult > 1 ? 0x55FF55 : 0xCCCCCC;
         drawStat(g, Component.translatable("gui.staticlogistics.stat.speed"), speedText, infoX + columnWidth, infoY, 0xFFFFFF, speedColor);
 
         String dimensionText = hasDimension
             ? Component.translatable("gui.staticlogistics.true").getString()
             : Component.translatable("gui.staticlogistics.false").getString();
-        int dimensionColor = hasDimension ? 0x55FF55 : 0x555555;
+        int dimensionColor = hasDimension ? 0x55FF55 : 0xCCCCCC;
         drawStat(g, Component.translatable("gui.staticlogistics.stat.dimension"), dimensionText, infoX, infoY + spacing, 0xFFFFFF, dimensionColor);
 
-        String stackText = stackMult + Component.translatable("gui.staticlogistics.unit.multiplier").getString();
-        int stackColor = stackMult > 1 ? 0x55FF55 : 0x555555;
-        drawStat(g, Component.translatable("gui.staticlogistics.stat.stack"), stackText, infoX + columnWidth, infoY + spacing, 0xFFFFFF, stackColor);
-
-        int transferTypeY = infoY + spacing * 2 + 5;
-        int typeSpacing = 14;
-        int typeOffsetX = 0;
-
-        List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
-        int midIndex = (types.size() + 1) / 2;
-
-        for (int i = 0; i < types.size(); i++) {
-            TransferType type = types.get(i);
-            int column = i < midIndex ? 0 : 1;
-            int row = i < midIndex ? i : i - midIndex;
-            int x = infoX + typeOffsetX + column * columnWidth;
-            int y = transferTypeY + row * typeSpacing;
-
-            int baseStackSize = type.baseStackSize();
-            int finalStackSize = (int) Math.min((long) baseStackSize * stackMult, Integer.MAX_VALUE);
-            String baseText = baseStackSize + "";
-            String finalText = finalStackSize + "";
-            int finalColor = finalStackSize > baseStackSize ? 0x55FF55 : 0x555555;
-            drawTransferTypeStat(g, Component.translatable(type.translationKey()), finalText, x, y, 0xFFFFFF, finalColor);
+        String stackText;
+        int stackColor;
+        if (stackMult > 1000000) {
+            stackText = Component.translatable("gui.staticlogistics.infinite").getString();
+            stackColor = 0x55FF55;
+        } else {
+            stackText = stackMult + Component.translatable("gui.staticlogistics.unit.multiplier").getString();
+            stackColor = stackMult > 1 ? 0x55FF55 : 0xCCCCCC;
         }
+        drawStat(g, Component.translatable("gui.staticlogistics.stat.stack"), stackText, infoX + columnWidth, infoY + spacing, 0xFFFFFF, stackColor);
     }
 
     private void renderTooltips(GuiGraphics g, int mouseX, int mouseY) {
         for (int i = 0; i < menu.slots.size(); i++) {
             Slot slot = menu.getSlot(i);
             if (slot == null) continue;
-
             int slotX = leftPos + slot.x;
             int slotY = topPos + slot.y;
-
             if (mouseX >= slotX && mouseX < slotX + 16 && mouseY >= slotY && mouseY < slotY + 16) {
                 ItemStack stack = slot.getItem();
                 if (!stack.isEmpty()) {
@@ -162,11 +254,5 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
                 }
             }
         }
-    }
-
-    private void drawTransferTypeStat(GuiGraphics g, Component label, String finalValue, int x, int y, int labelColor, int valueColor) {
-        g.drawString(this.font, label, x, y, labelColor, false);
-        int labelWidth = this.font.width(label);
-        g.drawString(this.font, finalValue, x + labelWidth + 4, y, valueColor, false);
     }
 }

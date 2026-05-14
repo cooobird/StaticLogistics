@@ -16,7 +16,7 @@ public class ContainerConfig {
     private int cachedStackMult = 1;
     private boolean cachedDimEffective = false;
     private boolean cacheDirty = true;
-    public static final int INFINITY_MARKER = 1000000;
+    public static final int INFINITY_MARKER = 10_000_000;
 
     private final ItemStackHandler upgrades = new ItemStackHandler(3) {
         @Override
@@ -80,7 +80,7 @@ public class ContainerConfig {
     private void updateCache() {
         if (!cacheDirty) return;
 
-        long speed = 1, range = 1, stack = 1;
+        long speed = 1L, range = 1L, stack = 1L;
         boolean dim = false;
 
         for (int i = 0; i < upgrades.getSlots(); i++) {
@@ -105,9 +105,9 @@ public class ContainerConfig {
             }
         }
 
-        this.cachedSpeedMult = (int) Math.min(speed, 2048);
+        this.cachedSpeedMult = (int) Math.min(speed, INFINITY_MARKER);
         this.cachedRangeMult = (int) Math.min(range, INFINITY_MARKER);
-        this.cachedStackMult = (int) Math.min(stack, Integer.MAX_VALUE);
+        this.cachedStackMult = (int) Math.min(stack, INFINITY_MARKER);
 
         this.cachedDimEffective = dim;
         this.cacheDirty = false;

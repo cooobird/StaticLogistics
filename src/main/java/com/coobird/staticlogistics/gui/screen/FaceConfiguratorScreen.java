@@ -3,13 +3,10 @@ package com.coobird.staticlogistics.gui.screen;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.client.util.RenderConstants;
-import com.coobird.staticlogistics.compat.ModIds;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
-import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
-import mekanism.common.registries.MekanismBlocks;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -17,8 +14,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
@@ -26,7 +21,6 @@ import java.util.List;
 
 public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfiguratorMenu> {
     private EditBox priorityBox;
-    private TransferType hoveredType = null;
 
     private static final int LEFT_X = 10;
     private static final int IN_BTN_X = LEFT_X, IN_BTN_Y = 20;
@@ -39,11 +33,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     private static final int OUT_BTN_X = RIGHT_X, OUT_BTN_Y = 20;
     private static final int OUT_COLOR_X = RIGHT_X + 20, OUT_COLOR_Y = 18;
     private static final int STRAT_X = RIGHT_X, STRAT_Y = 65;
-
-    private static final int TYPE_SECTION_X = 150;
-    private static final int TYPE_SECTION_Y = 20;
-    private static final int COLUMN_SPACING = 22;
-    private static final int ROW_SPACING = 22;
 
     private static final int INPUT_FILTER_X = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X;
     private static final int INPUT_FILTER_Y = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
@@ -60,6 +49,9 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     protected void init() {
+        this.imageWidth = SLGuiTextures.Background.WIDTH + SLGuiTextures.Background.BY_GROUP_WIDTH + 2;
+        this.leftPos = (this.width - this.imageWidth) / 2;
+        this.topPos = (this.height - this.imageHeight) / 2;
         super.init();
         this.titleLabelX = this.imageWidth - this.font.width(this.title) - 8;
         this.titleLabelY = 6;
@@ -84,10 +76,73 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         updateWidgetVisibility();
     }
 
-    private void updateWidgetVisibility() {
+    @Override
+    protected void updateWidgetVisibility() {
+        super.updateWidgetVisibility();
         if (this.priorityBox != null) {
             this.priorityBox.setVisible(menu.isInputEnabled());
         }
+    }
+
+    @Override
+    protected int getItemHeight() {
+        return 18;
+    }
+
+    @Override
+    protected boolean shouldShowTypePanel() {
+        return menu.isOutputEnabled();
+    }
+
+    @Override
+    protected String getSearchHintKey() {
+        return "gui.staticlogistics.search_types";
+    }
+
+    @Override
+    protected List<TransferType> getTypeList() {
+        return new ArrayList<>(TransferRegistries.getAllActive());
+    }
+
+    @Override
+    protected int getSelectedTypesMask() {
+        return menu.getSelectedTypesMask();
+    }
+
+    @Override
+    protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
+        ItemStack iconStack = type.getIcon();
+        g.pose().pushPose();
+        g.pose().translate(x + 4, y + 2, 0);
+        g.pose().scale(0.75f, 0.75f, 1.0f);
+        g.renderFakeItem(iconStack, 0, 0);
+        g.pose().popPose();
+
+        Component typeName = Component.translatable(type.translationKey());
+        String nameStr = typeName.getString();
+        String displayName = font.plainSubstrByWidth(nameStr, 55);
+        int color = isSelected ? 0x98FB98 : 0xCCCCCC;
+        g.drawString(this.font, displayName, x + 18, y + 5, color, false);
+    }
+
+    @Override
+    protected void renderHoveredTypeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (this.hoveredType == null) return;
+        TransferType type = this.hoveredType;
+        List<Component> tooltip = new ArrayList<>();
+        int safeColor = type.color() | 0xFF000000;
+        tooltip.add(Component.translatable(type.translationKey()).withStyle(style -> style.withColor(safeColor)));
+        tooltip.add(Component.translatable(type.translationKey() + ".desc").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.empty());
+        tooltip.add(Component.translatable("gui.staticlogistics.tooltip.toggle_type").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        graphics.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
+    }
+
+    @Override
+    protected void onTypeClicked(TransferType type) {
+        menu.toggleTypeSelection(type);
+        syncTypeSelection();
+        playClickSound();
     }
 
     @Override
@@ -104,13 +159,9 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        this.hoveredType = null;
         super.render(graphics, mouseX, mouseY, partialTick);
-        if (this.hoveredType != null) {
-            renderTypeTooltip(graphics, this.hoveredType, mouseX, mouseY);
-        }
-        this.renderTooltip(graphics, mouseX, mouseY);
         renderCustomTooltips(graphics, mouseX, mouseY);
+        this.renderTooltip(graphics, mouseX, mouseY);
     }
 
     @Override
@@ -131,7 +182,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         renderColorButton(graphics, OUT_COLOR_X, OUT_COLOR_Y, menu.getOutputChannel());
         if (menu.isOutputEnabled()) {
             renderStrategyButton(graphics, mouseX, mouseY);
-            renderTransferTypeSection(graphics, mouseX, mouseY);
         }
 
         if (menu.isInputEnabled() && !menu.getSlot(0).getItem().isEmpty()) {
@@ -172,65 +222,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         int iconY = btnY + (bh - iconH) / 2 - 1;
         g.blit(SLGuiTextures.GUI_ATLAS, iconX, iconY, iconU, iconV, iconW, iconH,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-    }
-
-    private void renderTransferTypeSection(GuiGraphics g, int mx, int my) {
-        List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
-        int selectedMask = menu.getSelectedTypesMask();
-
-        for (int i = 0; i < types.size(); i++) {
-            TransferType type = types.get(i);
-            boolean isSelected = (selectedMask & type.getFlag()) != 0;
-            int col = i % 2;
-            int row = i / 2;
-            int baseX = leftPos + TYPE_SECTION_X + (col * COLUMN_SPACING);
-            int baseY = topPos + TYPE_SECTION_Y + (row * ROW_SPACING);
-
-            int bw = isSelected ? SLGuiTextures.Button.Big.SELECTED_WIDTH : SLGuiTextures.Button.Big.DISABLED_WIDTH;
-            int bh = isSelected ? SLGuiTextures.Button.Big.SELECTED_HEIGHT : SLGuiTextures.Button.Big.DISABLED_HEIGHT;
-            int u = isSelected ? SLGuiTextures.Button.Big.SELECTED_U : SLGuiTextures.Button.Big.DISABLED_U;
-            int v = isSelected ? SLGuiTextures.Button.Big.SELECTED_V : SLGuiTextures.Button.Big.DISABLED_V;
-
-            int drawX = isSelected ? baseX - 1 : baseX;
-            int drawY = isSelected ? baseY - 1 : baseY;
-            g.blit(SLGuiTextures.GUI_ATLAS, drawX, drawY, u, v, bw, bh, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-
-            ItemStack iconStack = getIconForType(type);
-            float scale = 0.8f;
-            g.pose().pushPose();
-            g.pose().translate(baseX + 3.5f, baseY + 1.5f, 0);
-            g.pose().scale(scale, scale, 1.0f);
-            g.renderFakeItem(iconStack, 0, 0);
-            g.pose().popPose();
-
-            if (mx >= drawX && mx < drawX + bw && my >= drawY && my < drawY + bh) {
-                this.hoveredType = type;
-            }
-        }
-    }
-
-    private ItemStack getIconForType(TransferType type) {
-        String path = type.id().getPath();
-        return switch (path) {
-            case "item" -> new ItemStack(Items.IRON_INGOT);
-            case "fluid" -> new ItemStack(Items.WATER_BUCKET);
-            case "energy" -> new ItemStack(Items.REDSTONE);
-            case "mek_chemicals" -> ModList.get().isLoaded(ModIds.MEKANISM)
-                ? new ItemStack(MekanismBlocks.BASIC_CHEMICAL_TANK.get()) : new ItemStack(Items.BARRIER);
-            case "ars_source" -> ModList.get().isLoaded(ModIds.ARS_NOUVEAU)
-                ? new ItemStack(ItemsRegistry.SOURCE_GEM) : new ItemStack(Items.BARRIER);
-            default -> new ItemStack(Items.PAPER);
-        };
-    }
-
-    private void renderTypeTooltip(GuiGraphics g, TransferType type, int mx, int my) {
-        List<Component> tooltip = new ArrayList<>();
-        int safeColor = type.color() | 0xFF000000;
-        tooltip.add(Component.translatable(type.translationKey()).withStyle(style -> style.withColor(safeColor)));
-        tooltip.add(Component.translatable(type.translationKey() + ".desc").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.empty());
-        tooltip.add(Component.translatable("gui.staticlogistics.tooltip.toggle_type").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
-        g.renderComponentTooltip(this.font, tooltip, mx, my);
     }
 
     private void renderFilterSlots(GuiGraphics graphics) {
@@ -307,76 +298,77 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        boolean handled = false;
+
         if (menu.isInputEnabled() && !menu.getSlot(0).getItem().isEmpty() && isFilterBtnHover(mx, my, INPUT_FILTER_X, INPUT_FILTER_Y)) {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_filter", true);
             tag.putBoolean("is_input", true);
             PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
             playClickSound();
-            return true;
-        }
-        if (menu.isOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
+            handled = true;
+        } else if (menu.isOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_filter", true);
             tag.putBoolean("is_input", false);
             PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
             playClickSound();
-            return true;
-        }
-
-        if (isMouseOver(mx, my, IN_BTN_X, IN_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
+            handled = true;
+        } else if (isMouseOver(mx, my, IN_BTN_X, IN_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
             sendConfigUpdate("inputEnabled", !menu.isInputEnabled());
             playClickSound();
-            return true;
-        }
-        if (isMouseOver(mx, my, OUT_BTN_X, OUT_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
+            handled = true;
+        } else if (isMouseOver(mx, my, OUT_BTN_X, OUT_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
             sendConfigUpdate("outputEnabled", !menu.isOutputEnabled());
             playClickSound();
-            return true;
-        }
-        if (isMouseOver(mx, my, IN_COLOR_X, IN_COLOR_Y, 14, 14)) {
+            handled = true;
+        } else if (isMouseOver(mx, my, IN_COLOR_X, IN_COLOR_Y, 14, 14)) {
             int nextChannel = (menu.getInputChannel() + (button == 1 ? -1 : 1) + 16) % 16;
             sendConfigUpdate("inputChannel", nextChannel);
             playClickSound();
-            return true;
-        }
-        if (isMouseOver(mx, my, OUT_COLOR_X, OUT_COLOR_Y, 14, 14)) {
+            handled = true;
+        } else if (isMouseOver(mx, my, OUT_COLOR_X, OUT_COLOR_Y, 14, 14)) {
             int nextChannel = (menu.getOutputChannel() + (button == 1 ? -1 : 1) + 16) % 16;
             sendConfigUpdate("outputChannel", nextChannel);
             playClickSound();
-            return true;
-        }
-        if (menu.isOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
+            handled = true;
+        } else if (menu.isOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
             int nextOrd = (menu.getStrategy().ordinal() + 1) % DistributionStrategy.values().length;
             sendConfigUpdate("strategy", DistributionStrategy.values()[nextOrd].getSerializedName());
             playClickSound();
-            return true;
+            handled = true;
         }
-        List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
-        int selectedMask = menu.getSelectedTypesMask();
-        for (int i = 0; i < types.size(); i++) {
-            int col = i % 2;
-            int row = i / 2;
-            int baseX = leftPos + TYPE_SECTION_X + (col * COLUMN_SPACING);
-            int baseY = topPos + TYPE_SECTION_Y + (row * ROW_SPACING);
 
-            TransferType type = types.get(i);
-            boolean isSelected = (selectedMask & type.getFlag()) != 0;
-            int bw = isSelected ? SLGuiTextures.Button.Big.SELECTED_WIDTH : SLGuiTextures.Button.Big.DISABLED_WIDTH;
-            int bh = isSelected ? SLGuiTextures.Button.Big.SELECTED_HEIGHT : SLGuiTextures.Button.Big.DISABLED_HEIGHT;
-            int drawX = isSelected ? baseX - 1 : baseX;
-            int drawY = isSelected ? baseY - 1 : baseY;
+        if (!handled) {
+            handled = super.mouseClicked(mx, my, button);
+        }
 
-            if (mx >= drawX && mx < drawX + bw && my >= drawY && my < drawY + bh) {
-                TransferType clicked = types.get(i);
-                menu.toggleTypeSelection(clicked);
-                syncTypeSelection();
-                playClickSound();
-                return true;
+        if (this.priorityBox != null) {
+            boolean clickedOnPriorityBox = this.priorityBox.isMouseOver(mx, my);
+            if (!clickedOnPriorityBox && this.priorityBox.isFocused()) {
+                this.priorityBox.setFocused(false);
             }
         }
 
-        return super.mouseClicked(mx, my, button);
+        return handled;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mx, double my, double dx, double dy) {
+        if (menu.isOutputEnabled()) {
+            if (super.mouseScrolled(mx, my, dx, dy)) return true;
+        }
+        return super.mouseScrolled(mx, my, dx, dy);
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        return super.mouseReleased(mx, my, button);
     }
 
     private boolean isFilterBtnHover(double mx, double my, int slotX, int slotY) {

@@ -279,7 +279,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
     private void addPlayerInventorySlots(Inventory playerInventory) {
         int playerInvX = (SLGuiTextures.Background.WIDTH - SLGuiTextures.Inventory.WIDTH) / 2 + 8;
-        int playerInvY = SLGuiTextures.GUI_HEIGHT + 8;
+        int playerInvY = SLGuiTextures.Background.HEIGHT + 8;
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 9; ++col) {
                 this.addSlot(new Slot(playerInventory, col + row * 9 + 9, playerInvX + col * 18, playerInvY + row * 18));

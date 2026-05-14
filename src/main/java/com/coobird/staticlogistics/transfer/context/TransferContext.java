@@ -16,6 +16,25 @@ public record TransferContext(
     TransferType type,
     int limit,
     boolean isPullMode,
-    long currentTick
+    long currentTick,
+    int depth
 ) {
+    public static final int MAX_DEPTH = 3;
+
+    public TransferContext {
+        if (depth < 0) depth = 0;
+    }
+
+    public TransferContext(ServerLevel level, LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
+                           TransferType type, int limit, boolean isPullMode, long currentTick) {
+        this(level, sourceNode, sourceConfig, type, limit, isPullMode, currentTick, 0);
+    }
+
+    public TransferContext withIncrementedDepth() {
+        return new TransferContext(level, sourceNode, sourceConfig, type, limit, isPullMode, currentTick, depth + 1);
+    }
+
+    public boolean isDepthExceeded() {
+        return depth >= MAX_DEPTH;
+    }
 }

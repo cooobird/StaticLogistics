@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.compat.ftb;
+package com.coobird.staticlogistics.intergration.ftb;
 
 import com.coobird.staticlogistics.server.event.game.entity.PlayerEvents;
 import com.coobird.staticlogistics.util.CapabilityCache;

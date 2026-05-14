@@ -4,25 +4,41 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.util.CapabilityCache;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
+import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 public class TransferUtils {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
-        int limit, TransferProtocol<C, T> protocol, boolean isPullMode
+        int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
+        TransferContext context
     ) {
+        if (context != null && context.isDepthExceeded()) {
+            LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
+            return false;
+        }
         if (destinations.isEmpty() || limit <= 0) return false;
+
+        int maxAllowed = SLConfig.getMaxTransferLimit();
+        int safeLimit = Math.min(limit, maxAllowed);
+        if (safeLimit < limit) {
+            LOGGER.debug("Transfer limit clamped from {} to {}", limit, safeLimit);
+        }
+        int remaining = safeLimit;
 
         LinkManager localMgr = LinkManager.get(localLevel);
         var localContainer = localMgr.getContainerConfig(localPos);
@@ -38,7 +54,6 @@ public class TransferUtils {
         if (localCap == null) return false;
 
         boolean movedAny = false;
-        int remaining = limit;
 
         for (LogisticsNode remoteNode : destinations) {
             boolean isSameDim = remoteNode.gPos().dimension().equals(localLevel.dimension());
@@ -115,6 +130,16 @@ public class TransferUtils {
         @Override
         public boolean isEmpty(T stack) {
             return emptyChecker.test(stack);
+        }
+    }
+
+    public static class TransferResult {
+        public final int transferred;
+        public final long remaining;
+
+        public TransferResult(int transferred, long remaining) {
+            this.transferred = transferred;
+            this.remaining = remaining;
         }
     }
 

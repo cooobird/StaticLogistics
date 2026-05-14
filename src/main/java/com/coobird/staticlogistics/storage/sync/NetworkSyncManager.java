@@ -17,13 +17,12 @@ import java.util.Map;
 
 public class NetworkSyncManager {
     private final ServerLevel level;
-    private static final int MAX_BULK_ENTRIES = 100;  // 每个批量包最多包含的条目数
+    private static final int MAX_BULK_ENTRIES = 100;
 
     public NetworkSyncManager(ServerLevel level) {
         this.level = level;
     }
 
-    // 单个配置同步（实时更新用）
     public void syncToDimension(BlockPos pos, Direction face, FaceConfigComposite config) {
         ChunkPos chunkPos = new ChunkPos(pos);
         PacketDistributor.sendToPlayersTrackingChunk(
@@ -37,7 +36,6 @@ public class NetworkSyncManager {
             new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, config));
     }
 
-    // 批量同步（用于登录/维度切换，自动分片）
     public void syncBulkToPlayer(ServerPlayer player, List<Map.Entry<Long, FaceConfigComposite>> configs) {
         List<S2CSyncBulkFaceConfigPacket.Entry> entries = new ArrayList<>();
         for (var entry : configs) {
@@ -59,7 +57,6 @@ public class NetworkSyncManager {
         }
     }
 
-    // 删除同步
     public void syncRemovalToDimension(BlockPos pos, Direction face) {
         ChunkPos chunkPos = new ChunkPos(pos);
         FaceConfigComposite emptyConfig = new FaceConfigComposite();

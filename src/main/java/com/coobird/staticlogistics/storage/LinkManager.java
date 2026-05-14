@@ -43,7 +43,7 @@ public class LinkManager extends SavedData {
 
     private final FaceConfigService faceConfigService;
     private final ContainerConfigService containerConfigService;
-    private final LinkChangeHandler changeHandler;   // 统一业务处理器
+    private final LinkChangeHandler changeHandler;
 
     private final ServerLevel level;
     private final Set<Long> pendingRemovals = ConcurrentHashMap.newKeySet();

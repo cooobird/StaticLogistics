@@ -1,10 +1,9 @@
-package com.coobird.staticlogistics.compat.ftb;
+package com.coobird.staticlogistics.intergration.ftb;
 
-import com.coobird.staticlogistics.compat.ModIds;
+import com.coobird.staticlogistics.intergration.ModCompat;
 import com.mojang.logging.LogUtils;
 import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import dev.ftb.mods.ftbteams.api.TeamRank;
-import net.neoforged.fml.ModList;
 import org.slf4j.Logger;
 
 import java.util.UUID;
@@ -13,7 +12,7 @@ public class FTBTeamService {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public boolean isFtbLoaded() {
-        return ModList.get().isLoaded(ModIds.FTB_TEAMS);
+        return ModCompat.isFtbTeamsLoaded();
     }
 
     public boolean checkFTBTeamAlliance(UUID owner, UUID actor) {

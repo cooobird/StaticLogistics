@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.network.c2s.*;
+import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -44,6 +45,7 @@ public class SLEvents {
         final PayloadRegistrar registrar = event.registrar("1");
 
         registrar.playToClient(S2CSyncFaceConfigPacket.TYPE, S2CSyncFaceConfigPacket.STREAM_CODEC, S2CSyncFaceConfigPacket::handle);
+        registrar.playToClient(S2CSyncBulkFaceConfigPacket.TYPE, S2CSyncBulkFaceConfigPacket.STREAM_CODEC, S2CSyncBulkFaceConfigPacket::handle);
 
         registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
@@ -70,6 +72,7 @@ public class SLEvents {
             GlobalLogisticsManager.get(event.getServer()).handleNodeEvent(event, serverLevel);
         }
     }
+
     @SubscribeEvent
     public static void onNodeRemovedCleanup(LogisticsNodeEvent event) {
         if (event.getType() != LogisticsNodeEvent.ChangeType.REMOVED) return;

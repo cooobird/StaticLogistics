@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.storage.config;
 
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.config.serializer.ConfigSerializer;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -48,10 +49,15 @@ public class FaceConfigComposite {
 
     public int getTransferLimit(TransferType type) {
         if (sharedContainerConfig == null) {
-            return type.baseStackSize();
+            return Math.min(type.baseStackSize(), SLConfig.getMaxTransferLimit());
         }
         int stackMult = sharedContainerConfig.getStackMultiplier();
-        return (int) Math.min((long) type.baseStackSize() * stackMult, Integer.MAX_VALUE);
+        long limit = (long) type.baseStackSize() * stackMult;
+        int maxAllowed = SLConfig.getMaxTransferLimit();
+        if (limit > maxAllowed) {
+            return maxAllowed;
+        }
+        return (int) limit;
     }
 
     public int getVersion() {

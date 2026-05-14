@@ -25,13 +25,13 @@ public class ComponentMatchStrategyRegistry {
          * ==========================
          */
 
-        // --- 动态变化 & 铁砧惩罚 ---
+        // 动态变化 & 铁砧惩罚
         // 当前耐久损耗
         setStrategy(DataComponents.DAMAGE, MatchStrategy.IGNORE);
         // 铁砧累计惩罚
         setStrategy(DataComponents.REPAIR_COST, MatchStrategy.IGNORE);
 
-        // --- 物品固有元数据（由物品类型决定，同物品必然一致）---
+        // 物品固有元数据（由物品类型决定，同物品必然一致）
         // 最大耐久
         setStrategy(DataComponents.MAX_DAMAGE, MatchStrategy.IGNORE);
         // 最大堆叠数
@@ -55,7 +55,7 @@ public class ComponentMatchStrategyRegistry {
         // 可破坏...
         setStrategy(DataComponents.CAN_BREAK, MatchStrategy.IGNORE);
 
-        // --- 内部数据/调试/容器战利品 ---
+        // 内部数据/调试/容器战利品
         // 自定义 NBT 数据（存储任意数据，难以语义匹配）
         setStrategy(DataComponents.CUSTOM_DATA, MatchStrategy.IGNORE);
         // 实体数据
@@ -77,7 +77,7 @@ public class ComponentMatchStrategyRegistry {
         // 容器战利品表引用（未生成内容时）
         setStrategy(DataComponents.CONTAINER_LOOT, MatchStrategy.IGNORE);
 
-        // --- 视觉/客户端渲染 ---
+        // 视觉/客户端渲染
         // 附魔光效覆盖
         setStrategy(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, MatchStrategy.IGNORE);
         // 自定义模型数据
@@ -99,7 +99,7 @@ public class ComponentMatchStrategyRegistry {
         // 容器锁
         setStrategy(DataComponents.LOCK, MatchStrategy.IGNORE);
 
-        // --- 精确匹配（名称、颜色、档案等）---
+        // 精确匹配（名称、颜色、档案等）
         // 自定义名称
         setStrategy(DataComponents.CUSTOM_NAME, MatchStrategy.EXACT);
         // 物品名称（覆盖）
@@ -119,7 +119,7 @@ public class ComponentMatchStrategyRegistry {
         // 不祥之瓶效果等级
         setStrategy(DataComponents.OMINOUS_BOTTLE_AMPLIFIER, MatchStrategy.EXACT);
 
-        // --- 包含匹配（集合/映射语义）---
+        // 包含匹配（集合/映射语义）
         // 魔咒
         setStrategy(DataComponents.ENCHANTMENTS, MatchStrategy.CONTAINS);
         // 存储魔咒（附魔书）

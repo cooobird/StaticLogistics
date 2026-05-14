@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.api.type.NbtMatchMode;
+import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.api.type.UpgradeType;
 import com.coobird.staticlogistics.gui.menu.AbstractFilterMenu;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
@@ -65,6 +66,34 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
             selectedTagIndices[i] = -1;
             tagOptionsCache[i] = List.of();
         }
+    }
+
+    @Override
+    protected boolean shouldShowTypePanel() {
+        return false;
+    }
+
+    @Override
+    protected String getSearchHintKey() {
+        return "";
+    }
+
+    @Override
+    protected List<TransferType> getTypeList() {
+        return List.of();
+    }
+
+    @Override
+    protected int getSelectedTypesMask() {
+        return 0;
+    }
+
+    @Override
+    protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
+    }
+
+    @Override
+    protected void onTypeClicked(TransferType type) {
     }
 
     private int getSlotIndex(int row, int col) {

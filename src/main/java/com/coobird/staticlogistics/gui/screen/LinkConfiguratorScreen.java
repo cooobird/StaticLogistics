@@ -8,8 +8,6 @@ import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
-import mekanism.common.registries.MekanismBlocks;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -26,8 +24,6 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
@@ -42,7 +38,6 @@ public class LinkConfiguratorScreen extends Screen {
     private static final int LIST_OFFSET_X = 10, LIST_OFFSET_Y = 32;
     private static final int SCROLLBAR_X = 88, SCROLLBAR_Y = 25;
     private static final int SELECTION_WIDTH = 75;
-    private static final int TYPE_BTN_SPACING = 23;
 
     private final ItemStack stack;
     private int leftPos, topPos, modeIdx;
@@ -128,12 +123,20 @@ public class LinkConfiguratorScreen extends Screen {
     private void renderTransferTypeSection(GuiGraphics g, int mx, int my) {
         int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
+        int perRow = 8;
+        int btnWidth = 19;
+        int spacing = 4;
+        int rowSpacing = 22;
+        int startX = leftPos + 15;
+        int startY = topPos + 18;
 
         for (int i = 0; i < types.size(); i++) {
             TransferType type = types.get(i);
             boolean isSelected = (mask & type.getFlag()) != 0;
-            int baseX = leftPos + 10 + (i * TYPE_BTN_SPACING);
-            int baseY = topPos + 18;
+            int row = i / perRow;
+            int col = i % perRow;
+            int baseX = startX + col * (btnWidth + spacing);
+            int baseY = startY + row * rowSpacing;
             int bw = isSelected ? SLGuiTextures.Button.Big.SELECTED_WIDTH : SLGuiTextures.Button.Big.DISABLED_WIDTH;
             int bh = isSelected ? SLGuiTextures.Button.Big.SELECTED_HEIGHT : SLGuiTextures.Button.Big.DISABLED_HEIGHT;
             int u = isSelected ? SLGuiTextures.Button.Big.SELECTED_U : SLGuiTextures.Button.Big.DISABLED_U;
@@ -143,7 +146,7 @@ public class LinkConfiguratorScreen extends Screen {
 
             g.blit(SLGuiTextures.GUI_ATLAS, drawX, drawY, u, v, bw, bh, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
-            ItemStack iconStack = getIconForType(type);
+            ItemStack iconStack = type.getIcon();
             float scale = 0.8f;
             g.pose().pushPose();
             float iconX = (baseX + 3.5f) / scale;
@@ -156,20 +159,6 @@ public class LinkConfiguratorScreen extends Screen {
                 this.hoveredType = type;
             }
         }
-    }
-
-    private ItemStack getIconForType(TransferType type) {
-        String path = type.id().getPath();
-        return switch (path) {
-            case "item" -> new ItemStack(Items.IRON_INGOT);
-            case "fluid" -> new ItemStack(Items.WATER_BUCKET);
-            case "energy" -> new ItemStack(Items.REDSTONE);
-            case "mek_chemicals" ->
-                ModList.get().isLoaded("mekanism") ? new ItemStack(MekanismBlocks.BASIC_CHEMICAL_TANK) : new ItemStack(Items.BARRIER);
-            case "ars_source" ->
-                ModList.get().isLoaded("ars_nouveau") ? new ItemStack(ItemsRegistry.SOURCE_GEM) : new ItemStack(Items.BARRIER);
-            default -> new ItemStack(Items.PAPER);
-        };
     }
 
     private void renderTypeTooltip(GuiGraphics g, TransferType type, int mx, int my) {
@@ -263,15 +252,24 @@ public class LinkConfiguratorScreen extends Screen {
         return super.mouseClicked(mx, my, b);
     }
 
+
     private boolean handleTransferTypeClick(double mx, double my) {
         int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
+        int perRow = 8;
+        int btnWidth = 19;
+        int spacing = 4;
+        int rowSpacing = 22;
+        int startX = leftPos + 15;
+        int startY = topPos + 18;
 
         for (int i = 0; i < types.size(); i++) {
             TransferType type = types.get(i);
             boolean isSelected = (mask & type.getFlag()) != 0;
-            int baseX = leftPos + 10 + (i * TYPE_BTN_SPACING);
-            int baseY = topPos + 18;
+            int row = i / perRow;
+            int col = i % perRow;
+            int baseX = startX + col * (btnWidth + spacing);
+            int baseY = startY + row * rowSpacing;
             int bw = isSelected ? SLGuiTextures.Button.Big.SELECTED_WIDTH : SLGuiTextures.Button.Big.DISABLED_WIDTH;
             int bh = isSelected ? SLGuiTextures.Button.Big.SELECTED_HEIGHT : SLGuiTextures.Button.Big.DISABLED_HEIGHT;
             int drawX = isSelected ? baseX - 1 : baseX;

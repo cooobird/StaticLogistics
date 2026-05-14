@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics;
 
-import com.coobird.staticlogistics.compat.CompatHandler;
-import com.coobird.staticlogistics.compat.ModIds;
-import com.coobird.staticlogistics.compat.ftb.FTBEventHandlers;
+import com.coobird.staticlogistics.intergration.ExtendedTypeRegisterHandler;
+import com.coobird.staticlogistics.intergration.ModCompat;
+import com.coobird.staticlogistics.intergration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.datagen.SlLanguageProvider;
@@ -16,7 +16,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
@@ -43,7 +42,7 @@ public class Staticlogistics {
         SLDataComponents.DATA_COMPONENT_TYPES.register(modEventBus);
         SLCreativeTabs.CREATIVE_TABS.register(modEventBus);
         modEventBus.addListener(this::commonSetup);
-        if (ModList.get().isLoaded(ModIds.FTB_TEAMS)) {
+        if (ModCompat.isFtbTeamsLoaded()) {
             FTBEventHandlers.init();
             LOGGER.info("Static Logistics: FTB Teams integration movement detected and initialized.");
         }
@@ -53,7 +52,7 @@ public class Staticlogistics {
         LOGGER.info("Static Logistics: Starting common setup...");
         event.enqueueWork(() -> {
             TransferRegistries.init();
-            CompatHandler.init();
+            ExtendedTypeRegisterHandler.init();
             LOGGER.info("Static Logistics: Logistics system successfully initialized with {} active transfer types.", TransferRegistries.getAllActive().size());
         });
     }
