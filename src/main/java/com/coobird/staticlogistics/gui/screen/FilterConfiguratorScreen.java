@@ -5,7 +5,7 @@ import com.coobird.staticlogistics.filter.data.FilterData;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateFilterOnHandPayload;
+import com.coobird.staticlogistics.network.c2s.C2SUpdateFilterOnItemPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -109,16 +109,24 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
     protected void setBlacklistMode(boolean blacklist) {
         menu.setBlacklistMode(blacklist);
         menu.broadcastChanges();
+        sendFilterUpdate();
     }
 
     @Override
     protected void sendFilterUpdate() {
+        FilterData filter = menu.getFilterData();
+        PacketDistributor.sendToServer(new C2SUpdateFilterOnItemPayload(
+            menu.getPos(),
+            menu.getFace(),
+            menu.getTransferType().id(),
+            menu.isInput(),
+            filter
+        ));
     }
 
     @Override
     public void onClose() {
-        FilterData filter = menu.getFilterData();
-        PacketDistributor.sendToServer(new C2SUpdateFilterOnHandPayload(filter));
+        sendFilterUpdate();
         super.onClose();
     }
 
