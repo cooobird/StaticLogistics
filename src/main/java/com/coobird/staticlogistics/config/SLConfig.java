@@ -22,7 +22,6 @@ public final class SLConfig {
 
     public static ModConfigSpec.IntValue DEFAULT_RADIUS;
     public static ModConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
-
     public static ModConfigSpec.IntValue MAX_TRANSFER_LIMIT;
 
     public static ModConfigSpec.IntValue DEFAULT_ITEM_STACK;
@@ -32,9 +31,7 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue MEK_CHEMICAL_STACK;
     public static ModConfigSpec.IntValue MEK_HEAT_STACK;
     public static ModConfigSpec.IntValue MEK_STRICT_ENERGY_STACK;
-
     public static ModConfigSpec.IntValue ARS_SOURCE_STACK;
-
     public static ModConfigSpec.IntValue PNEUMATIC_PRESSURE_STACK;
     public static ModConfigSpec.IntValue PNEUMATIC_HEAT_STACK;
 
@@ -43,7 +40,6 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue DIAMOND_MULTIPLIER;
     public static ModConfigSpec.IntValue NETHERITE_MULTIPLIER;
     public static ModConfigSpec.IntValue NETHER_STAR_MULTIPLIER;
-    public static ModConfigSpec.IntValue UPGRADE_STACK_LIMIT;
 
     public static ModConfigSpec.ConfigValue<List<? extends String>> COMPONENT_STRATEGY_OVERRIDES;
 
@@ -65,8 +61,7 @@ public final class SLConfig {
     private static volatile int goldMultCache = 3;
     private static volatile int diamondMultCache = 5;
     private static volatile int netheriteMultCache = 8;
-    private static volatile int netherStarMultCache = Integer.MAX_VALUE;
-    private static volatile int upgradeStackLimitCache = 4;
+    private static volatile int netherStarMultCache = 10_000;
 
     public static void register(ModContainer container) {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -132,11 +127,7 @@ public final class SLConfig {
             .defineInRange("netherite_multiplier", netheriteMultCache, 1, 8192);
         NETHER_STAR_MULTIPLIER = builder
             .translation("config.staticlogistics.nether_star_multiplier")
-            .defineInRange("nether_star_multiplier", netherStarMultCache, 1, Integer.MAX_VALUE);
-        UPGRADE_STACK_LIMIT = builder
-            .comment("Maximum stack size for upgrade items in configurator slots.")
-            .translation("config.staticlogistics.upgrade_stack_limit")
-            .defineInRange("upgrade_stack_limit", upgradeStackLimitCache, 1, 64);
+            .defineInRange("nether_star_multiplier", netherStarMultCache, 1, 100_000);
         builder.pop();
 
         builder.push("filter");
@@ -202,7 +193,6 @@ public final class SLConfig {
             diamondMultCache = DIAMOND_MULTIPLIER.get();
             netheriteMultCache = NETHERITE_MULTIPLIER.get();
             netherStarMultCache = NETHER_STAR_MULTIPLIER.get();
-            upgradeStackLimitCache = UPGRADE_STACK_LIMIT.get();
 
             loadComponentStrategyOverrides();
         }
@@ -268,10 +258,6 @@ public final class SLConfig {
 
     public static int getPneumaticHeatStack() {
         return PneumaticHeatStack;
-    }
-
-    public static int getUpgradeStackLimit() {
-        return upgradeStackLimitCache;
     }
 
     public static int getMultiplierForTier(String tier) {

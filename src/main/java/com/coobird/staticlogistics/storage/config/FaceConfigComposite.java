@@ -1,13 +1,17 @@
 package com.coobird.staticlogistics.storage.config;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.config.serializer.ConfigSerializer;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 public class FaceConfigComposite {
@@ -16,10 +20,14 @@ public class FaceConfigComposite {
     public final FilterConfig filterConfig;
     public ContainerConfig sharedContainerConfig;
 
+    private final Set<LogisticsNode> linkedNodes = ConcurrentHashMap.newKeySet();
     private int selectedTypesMask = 0;
     private int version = 0;
     private Consumer<FaceConfigComposite> onDirty = (c) -> {
     };
+
+    private boolean globalInputEnabled = false;
+    private boolean globalOutputEnabled = false;
 
     public FaceConfigComposite() {
         this.faceConfig = new FaceConfig();
@@ -43,8 +51,52 @@ public class FaceConfigComposite {
         this.onDirty = onDirty;
     }
 
+    public Set<LogisticsNode> getLinkedNodes() {
+        return linkedNodes;
+    }
+
+    public void addLinkedNode(LogisticsNode node) {
+        if (linkedNodes.add(node)) markDirty();
+    }
+
+    public void removeLinkedNode(LogisticsNode node) {
+        if (linkedNodes.remove(node)) markDirty();
+    }
+
+    // 全局输入开关
+    public boolean isGlobalInputEnabled() {
+        return globalInputEnabled;
+    }
+
+    public void setGlobalInputEnabled(boolean enabled) {
+        if (this.globalInputEnabled != enabled) {
+            this.globalInputEnabled = enabled;
+            markDirty();
+        }
+    }
+
+    // 全局输出开关
+    public boolean isGlobalOutputEnabled() {
+        return globalOutputEnabled;
+    }
+
+    public void setGlobalOutputEnabled(boolean enabled) {
+        if (this.globalOutputEnabled != enabled) {
+            this.globalOutputEnabled = enabled;
+            markDirty();
+        }
+    }
+
+    /**
+     * 根据全局开关判断节点的角色
+     */
     public NodeRole determineRole() {
-        return linkConfig.determineRole();
+        boolean canSend = globalOutputEnabled;
+        boolean canReceive = globalInputEnabled;
+        if (canSend && canReceive) return NodeRole.BOTH;
+        if (canSend) return NodeRole.SENDER;
+        if (canReceive) return NodeRole.RECEIVER;
+        return NodeRole.NONE;
     }
 
     public int getTransferLimit(TransferType type) {
@@ -71,6 +123,16 @@ public class FaceConfigComposite {
     public CompoundTag serializeNBT(HolderLookup.Provider p) {
         CompoundTag tag = ConfigSerializer.serializeNBT(this, p);
         tag.putInt("version", version);
+        tag.putBoolean("globalInput", globalInputEnabled);
+        tag.putBoolean("globalOutput", globalOutputEnabled);
+        if (!linkedNodes.isEmpty()) {
+            CompoundTag nodesTag = new CompoundTag();
+            int i = 0;
+            for (LogisticsNode node : linkedNodes) {
+                nodesTag.put(String.valueOf(i++), LogisticsNode.CODEC.encodeStart(NbtOps.INSTANCE, node).getOrThrow());
+            }
+            tag.put("linkedNodes", nodesTag);
+        }
         return tag;
     }
 
@@ -79,11 +141,22 @@ public class FaceConfigComposite {
         if (nbt.contains("version")) {
             version = nbt.getInt("version");
         }
+        globalInputEnabled = nbt.getBoolean("globalInput");
+        globalOutputEnabled = nbt.getBoolean("globalOutput");
+        linkedNodes.clear();
+        if (nbt.contains("linkedNodes")) {
+            CompoundTag nodesTag = nbt.getCompound("linkedNodes");
+            for (String key : nodesTag.getAllKeys()) {
+                LogisticsNode.CODEC.parse(NbtOps.INSTANCE, nodesTag.get(key)).resultOrPartial(err -> {
+                }).ifPresent(linkedNodes::add);
+            }
+        }
     }
 
     public boolean isDefault() {
         return faceConfig.isDefault() && linkConfig.isDefault() && filterConfig.isDefault() &&
-            (sharedContainerConfig == null || sharedContainerConfig.isDefault());
+            (sharedContainerConfig == null || sharedContainerConfig.isDefault()) &&
+            linkedNodes.isEmpty() && !globalInputEnabled && !globalOutputEnabled;
     }
 
     public int getSelectedTypesMask() {

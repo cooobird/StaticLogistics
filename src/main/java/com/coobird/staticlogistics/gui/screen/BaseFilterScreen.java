@@ -9,6 +9,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -17,6 +18,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -45,8 +47,6 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
     private static final int TAG_BAR_WIDTH = 130;
     private static final int TAG_BAR_HEIGHT = 18;
 
-    private NbtMatchMode hoveredNbtMode = null;
-
     private int hoveredTagBarRow = -1;
     private final int[] selectedTagIndices = new int[4];
     @SuppressWarnings("unchecked")
@@ -60,6 +60,9 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         }
     }
 
+    private Component toastMessage;
+    private long toastExpiry;
+
     public BaseFilterScreen(T menu, Inventory inv, Component title) {
         super(menu, inv, title);
         for (int i = 0; i < 4; i++) {
@@ -70,7 +73,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
 
     @Override
     protected boolean shouldShowTypePanel() {
-        return false;
+        return super.shouldShowTypePanel();
     }
 
     @Override
@@ -106,14 +109,18 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
 
     @Override
     public void render(GuiGraphics graphics, int mx, int my, float pt) {
-        this.hoveredNbtMode = null;
         super.render(graphics, mx, my, pt);
         renderGridTooltips(graphics, mx, my);
-        if (this.hoveredNbtMode != null) {
-            graphics.renderTooltip(this.font,
-                Component.translatable("tooltip.staticlogistics.nbt_mode." + this.hoveredNbtMode.name().toLowerCase()), mx, my);
-        }
         this.renderTooltip(graphics, mx, my);
+        if (toastMessage != null && System.currentTimeMillis() < toastExpiry) {
+            int width = this.font.width(toastMessage);
+            int x = (this.width - width) / 2;
+            int y = this.topPos - 20;
+            graphics.fill(x - 4, y - 2, x + width + 4, y + 12, 0xCC000000);
+            graphics.drawString(this.font, toastMessage, x, y, 0xFFFF55);
+        } else {
+            toastMessage = null;
+        }
     }
 
     private void renderGridTooltips(GuiGraphics g, int mx, int my) {
@@ -250,80 +257,82 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
             color, false);
     }
 
-    protected void renderNbtModeButtons(GuiGraphics g, int mx, int my) {
-        NbtMatchMode current = menu.getNbtMatchMode();
-        int btnX = leftPos + 23;
-        int btnY = topPos + 98;
+    protected void renderNbtModeControls(GuiGraphics g, int mx, int my) {
+        if (menu.getActiveUpgradeType() != UpgradeType.NBT_FILTER) return;
 
-        int iconW = SLGuiTextures.NbtIcon.WIDTH;
-        int iconH = SLGuiTextures.NbtIcon.HEIGHT;
-        int bgDisabledW = SLGuiTextures.Button.Middle.DISABLED_WIDTH;
-        int bgDisabledH = SLGuiTextures.Button.Middle.DISABLED_HEIGHT;
-        int bgChosenW = SLGuiTextures.Button.Middle.SELECTED_WIDTH;
-        int bgChosenH = SLGuiTextures.Button.Middle.SELECTED_HEIGHT;
+        int startX = leftPos + 23;
+        int startY = topPos + 98;
 
-        for (int i = 0; i < 2; i++) {
-            NbtMatchMode mode = NbtMatchMode.values()[i];
-            boolean selected = current == mode;
-            boolean hover = mx >= btnX && mx < btnX + bgDisabledW && my >= btnY && my < btnY + bgDisabledH;
-            if (hover) this.hoveredNbtMode = mode;
+        NbtMatchMode currentMode = menu.getNbtMatchMode();
+        boolean isPartial = currentMode == NbtMatchMode.PARTIAL;
 
-            int bgU = selected ? SLGuiTextures.Button.Middle.SELECTED_U : SLGuiTextures.Button.Middle.DISABLED_U;
-            int bgV = selected ? SLGuiTextures.Button.Middle.SELECTED_V : SLGuiTextures.Button.Middle.DISABLED_V;
-            int bgW = selected ? bgChosenW : bgDisabledW;
-            int bgH = selected ? bgChosenH : bgDisabledH;
+        int btnWidth = SLGuiTextures.Button.Middle.WIDTH;
+        int btnHeight = SLGuiTextures.Button.Middle.HEIGHT;
+        int u = SLGuiTextures.Button.Middle.DISABLED_U;
+        int v = SLGuiTextures.Button.Middle.DISABLED_V;
 
-            int drawX = selected ? btnX - (bgChosenW - bgDisabledW) / 2 : btnX;
-            int drawY = selected ? btnY - (bgChosenH - bgDisabledH) / 2 : btnY;
-            g.blit(SLGuiTextures.GUI_ATLAS, drawX, drawY, bgU, bgV, bgW, bgH,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.blit(GUI_TEXTURE, startX, startY, u, v, 2, btnHeight, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.blit(GUI_TEXTURE, startX + btnWidth - 2, startY, u + SLGuiTextures.Button.Middle.WIDTH - 2, v, 2, btnHeight, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.blit(GUI_TEXTURE, startX + 2, startY, btnWidth - 4, btnHeight, u + 2, v, 1, btnHeight, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
-            int iconU, iconV;
-            if (selected) {
-                if (i == 0) {
-                    iconU = SLGuiTextures.NbtIcon.PART_MATCH_ENABLED_U;
-                    iconV = SLGuiTextures.NbtIcon.PART_MATCH_ENABLED_V;
-                } else {
-                    iconU = SLGuiTextures.NbtIcon.FULL_MATCH_ENABLED_U;
-                    iconV = SLGuiTextures.NbtIcon.FULL_MATCH_ENABLED_V;
-                }
-            } else {
-                if (i == 0) {
-                    iconU = SLGuiTextures.NbtIcon.PART_MATCH_DISABLED_U;
-                    iconV = SLGuiTextures.NbtIcon.PART_MATCH_DISABLED_V;
-                } else {
-                    iconU = SLGuiTextures.NbtIcon.FULL_MATCH_DISABLED_U;
-                    iconV = SLGuiTextures.NbtIcon.FULL_MATCH_DISABLED_V;
-                }
-            }
-
-            int iconDrawX = drawX + (bgW - iconW) / 2;
-            int iconDrawY = drawY + (bgH - iconH) / 3;
-            g.blit(SLGuiTextures.GUI_ATLAS, iconDrawX, iconDrawY, iconU, iconV, iconW, iconH,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-            btnX += bgDisabledW + 3;
+        int iconWidth = SLGuiTextures.NbtIcon.WIDTH;
+        int iconHeight = SLGuiTextures.NbtIcon.HEIGHT;
+        int iconU, iconV;
+        if (isPartial) {
+            iconU = SLGuiTextures.NbtIcon.PART_MATCH_ENABLED_U;
+            iconV = SLGuiTextures.NbtIcon.PART_MATCH_ENABLED_V;
+        } else {
+            iconU = SLGuiTextures.NbtIcon.FULL_MATCH_ENABLED_U;
+            iconV = SLGuiTextures.NbtIcon.FULL_MATCH_ENABLED_V;
         }
+        g.blit(SLGuiTextures.GUI_ATLAS, startX, startY, iconU, iconV, iconWidth, iconHeight, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+
+        if (mx >= startX && mx < startX + btnWidth && my >= startY && my < startY + btnHeight) {
+            Component tooltip = Component.translatable(isPartial ? "gui.staticlogistics.part_match_button" : "gui.staticlogistics.full_match_button");
+            g.renderTooltip(font, tooltip, mx, my);
+        }
+
+        boolean ignoreDamage = menu.isIgnoreDamage();
+        int checkX = startX + btnWidth + 2;
+        int checkW = SLGuiTextures.Button.Push.WIDTH;
+        int checkH = SLGuiTextures.Button.Push.HEIGHT;
+        int uCheck = ignoreDamage ? SLGuiTextures.Button.Push.U : SLGuiTextures.Button.Push.DISABLED_U;
+        int vCheck = ignoreDamage ? SLGuiTextures.Button.Push.V : SLGuiTextures.Button.Push.DISABLED_V;
+        g.blit(GUI_TEXTURE, checkX, startY, uCheck, vCheck, checkW, checkH, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        String ignoreText = Component.translatable("gui.staticlogistics.ignore_durability").getString();
+        g.drawString(font, ignoreText, checkX, startY + 11, 0xCCCCCC, false);
     }
 
-    protected boolean handleNbtModeClick(double mx, double my) {
+    private int getNbtModeButtonWidth() {
+        if (menu.getActiveUpgradeType() != UpgradeType.NBT_FILTER) return 0;
+        return SLGuiTextures.Button.Middle.WIDTH;
+    }
+
+    protected boolean handleNbtModeAndIgnoreClick(double mx, double my) {
         if (menu.getActiveUpgradeType() != UpgradeType.NBT_FILTER) return false;
 
-        int btnX = leftPos + 23;
-        int btnY = topPos + 98;
-        int btnW = SLGuiTextures.Button.Middle.DISABLED_WIDTH;
-        int btnH = SLGuiTextures.Button.Middle.DISABLED_HEIGHT;
+        int startX = leftPos + 23;
+        int startY = topPos + 98;
+        int btnWidth = getNbtModeButtonWidth();
+        int btnHeight = SLGuiTextures.Button.Middle.HEIGHT;
 
-        for (int i = 0; i < 2; i++) {
-            if (mx >= btnX && mx < btnX + btnW && my >= btnY && my < btnY + btnH) {
-                NbtMatchMode newMode = NbtMatchMode.values()[i];
-                if (menu.getNbtMatchMode() != newMode) {
-                    menu.setNbtMatchMode(newMode);
-                    sendFilterUpdate();
-                }
-                return true;
-            }
-            btnX += btnW + 3;
+        if (mx >= startX && mx < startX + btnWidth && my >= startY && my < startY + btnHeight) {
+            boolean isPartial = menu.getNbtMatchMode() == NbtMatchMode.PARTIAL;
+            NbtMatchMode newMode = isPartial ? NbtMatchMode.FULL : NbtMatchMode.PARTIAL;
+            menu.setNbtMatchMode(newMode);
+            sendFilterUpdate();
+            return true;
         }
+
+        int checkX = startX + btnWidth + 2;
+        int checkW = SLGuiTextures.Button.Push.WIDTH;
+        int checkH = SLGuiTextures.Button.Push.HEIGHT;
+        if (mx >= checkX && mx < checkX + checkW && my >= startY && my < startY + checkH) {
+            menu.setIgnoreDamage(!menu.isIgnoreDamage());
+            sendFilterUpdate();
+            return true;
+        }
+
         return false;
     }
 
@@ -466,19 +475,53 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         int titleHeight = 15;
         int hintHeight = 38;
 
-        List<String> displayLines = buildTagDisplayLines(options);
+        Set<TagKey<Item>> activeTags = menu.getSlotTags(row);
+        Set<TagKey<Item>> excludedTags = menu.getExcludedTags(row);
+
+        int scrollOffset;
+        if (selectedTagIndices[row] >= 0) {
+            int idealOffset = selectedTagIndices[row] - maxVisible / 2;
+            scrollOffset = Math.max(0, Math.min(idealOffset, options.size() - maxVisible));
+        } else {
+            scrollOffset = 0;
+        }
+
+        List<String> visibleLines = new ArrayList<>();
+        List<EnhancedTagOption> visibleOpts = new ArrayList<>();
         int maxLineWidth = 0;
         int maxAllowedWidth = 240;
-        for (int i = 0; i < displayLines.size(); i++) {
-            String line = displayLines.get(i);
+        for (int i = 0; i < maxVisible; i++) {
+            int optIdx = scrollOffset + i;
+            if (optIdx >= options.size()) break;
+            EnhancedTagOption opt = options.get(optIdx);
+            String typeStr = switch (opt.type) {
+                case ITEM -> Component.translatable("tag_type.staticlogistics.item").getString();
+                case BLOCK -> Component.translatable("tag_type.staticlogistics.block").getString();
+                case FLUID -> Component.translatable("tag_type.staticlogistics.fluid").getString();
+            };
+            String tagName = getTagDisplayName(opt.rawTag, opt.type);
+            TagKey<Item> itemTag = opt.toItemTag();
+            boolean isActive = activeTags.contains(itemTag);
+            boolean isExcluded = excludedTags.contains(itemTag);
+            String prefix;
+            if (isActive) {
+                prefix = Component.translatable("gui.staticlogistics.tag.active").getString() + " ";
+            } else if (isExcluded) {
+                prefix = Component.translatable("gui.staticlogistics.tag.excluded").getString() + " ";
+            } else {
+                prefix = "  ";
+            }
+            String line = prefix + typeStr + " " + tagName;
             int width = font.width(line);
             if (width > maxAllowedWidth) {
-                line = font.plainSubstrByWidth(line, maxAllowedWidth - 12);
-                displayLines.set(i, line);
+                line = font.plainSubstrByWidth(line, maxAllowedWidth - 4);
                 width = font.width(line);
             }
             if (width > maxLineWidth) maxLineWidth = width;
+            visibleLines.add(line);
+            visibleOpts.add(opt);
         }
+
         int listWidth = Math.max(100, maxLineWidth + 28);
         int listHeight = titleHeight + Math.min(options.size(), maxVisible) * lineHeight + hintHeight;
 
@@ -496,17 +539,12 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         g.drawString(font, itemName, startX + 4, startY + 2, 0xFFD700, false);
 
         int yOffset = startY + titleHeight;
-        int scrollOffset = Math.max(0, Math.min(selectedTagIndices[row] - maxVisible + 1, options.size() - maxVisible));
-        if (selectedTagIndices[row] < 0) scrollOffset = 0;
-
-        Set<TagKey<Item>> activeTags = menu.getSlotTags(row);
-        Set<TagKey<Item>> excludedTags = menu.getExcludedTags(row);
-        for (int i = 0; i < maxVisible; i++) {
+        for (int i = 0; i < visibleLines.size(); i++) {
+            String line = visibleLines.get(i);
             int optIdx = scrollOffset + i;
-            if (optIdx >= options.size()) break;
-            String line = displayLines.get(optIdx);
             boolean highlighted = optIdx == selectedTagIndices[row];
-            TagKey<Item> itemTag = options.get(optIdx).toItemTag();
+            EnhancedTagOption opt = visibleOpts.get(i);
+            TagKey<Item> itemTag = opt.toItemTag();
             boolean isActive = activeTags.contains(itemTag);
             boolean isExcluded = excludedTags.contains(itemTag);
 
@@ -644,8 +682,8 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                 int prev = selectedTagIndices[hoveredTagBarRow];
                 int delta = (int) Math.signum(scrollY);
                 int newIdx = prev - delta;
-                if (newIdx < -1) newIdx = size - 1;
-                if (newIdx >= size) newIdx = -1;
+                if (newIdx < 0) newIdx = -1;
+                if (newIdx >= size) newIdx = size - 1;
                 selectedTagIndices[hoveredTagBarRow] = newIdx;
                 return true;
             }
@@ -655,6 +693,21 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        if (button == 1 && Screen.hasShiftDown()) {
+            Slot hoveredSlot = getSlotUnderMouse();
+            if (hoveredSlot != null && !hoveredSlot.getItem().isEmpty()) {
+                int cols = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER ? 1 : GRID_COLS;
+                int rows = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER ? 4 : GRID_ROWS;
+                int filterStartX = leftPos + GRID_START_X;
+                int filterEndX = filterStartX + cols * SLOT_SIZE;
+                int filterStartY = topPos + GRID_START_Y;
+                int filterEndY = filterStartY + rows * SLOT_SIZE;
+                if (!(mx >= filterStartX && mx < filterEndX && my >= filterStartY && my < filterEndY)) {
+                    addItemToFilterSlot(hoveredSlot.getItem());
+                    return true;
+                }
+            }
+        }
         int btnX = getBlacklistButtonX();
         int btnY = getBlacklistButtonY();
         if (mx >= btnX && mx < btnX + BLACKLIST_BTN_WIDTH && my >= btnY && my < btnY + BLACKLIST_BTN_HEIGHT) {
@@ -666,6 +719,8 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         if (menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER) {
             if (handleTagBarClick(mx, my, button)) return true;
         }
+
+        if (handleNbtModeAndIgnoreClick(mx, my)) return true;
 
         int startX = leftPos + GRID_START_X;
         int startY = topPos + GRID_START_Y;
@@ -722,6 +777,46 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
             }
         }
         return super.mouseClicked(mx, my, button);
+    }
+
+    private void addItemToFilterSlot(ItemStack stack) {
+        if (stack.isEmpty()) return;
+        if (menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER && collectEnhancedTags(stack).isEmpty()) {
+            showToast(Component.translatable("gui.staticlogistics.filter.no_tags"));
+            return;
+        }
+        int emptySlot = findFirstEmptyFilterSlot();
+        if (emptySlot == -1) {
+            showToast(Component.translatable("gui.staticlogistics.filter.full"));
+            return;
+        }
+        ItemStack toAdd = stack.copyWithCount(1);
+        setFilterItem(emptySlot, toAdd);
+        sendFilterUpdate();
+        playClickSound();
+        if (menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER) {
+            resetRowCache(emptySlot);
+        }
+    }
+
+    private void showToast(Component message) {
+        this.toastMessage = message;
+        this.toastExpiry = System.currentTimeMillis() + 2000;
+    }
+
+    private int findFirstEmptyFilterSlot() {
+        int cols = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER ? 1 : GRID_COLS;
+        int rows = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER ? 4 : GRID_ROWS;
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                int index = getSlotIndex(row, col);
+                ItemStack stack = getFilterItem(index);
+                if (stack.isEmpty()) {
+                    return index;
+                }
+            }
+        }
+        return -1;
     }
 
     protected abstract ItemStack getFilterItem(int index);

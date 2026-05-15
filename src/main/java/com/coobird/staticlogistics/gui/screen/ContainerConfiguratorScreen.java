@@ -1,13 +1,11 @@
 package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.api.type.UpgradeTier;
-import com.coobird.staticlogistics.api.type.UpgradeType;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.ContainerConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
-import com.coobird.staticlogistics.item.UpgradeItem;
+import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -64,7 +62,7 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
     protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
         Component typeName = Component.translatable(type.translationKey());
         String nameStr = typeName.getString();
-        long stackMult = getStackMultiplier();
+        long stackMult = menu.getStackMultiplier();
         int baseStackSize = type.baseStackSize();
         boolean infinite = false;
         long finalStackSize = 0;
@@ -90,30 +88,10 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
         g.drawString(this.font, combined, x + 4, y + 2, valueColor, false);
     }
 
-    private long getStackMultiplier() {
-        long stackMult = 1L;
-        for (int i = 0; i < 3; i++) {
-            ItemStack stack = menu.getSlot(i).getItem();
-            if (!stack.isEmpty() && stack.getItem() instanceof UpgradeItem upgrade) {
-                UpgradeTier tier = upgrade.getTier();
-                if (tier != null && i == 2) {
-                    int multiplier = tier.getMultiplier();
-                    long count = stack.getCount();
-                    stackMult += (long) multiplier * count;
-                    if (stackMult >= Integer.MAX_VALUE) {
-                        stackMult = Long.MAX_VALUE;
-                        break;
-                    }
-                }
-            }
-        }
-        return stackMult;
-    }
-
     @Override
     protected void renderHoveredTypeTooltip(GuiGraphics g, int mx, int my) {
         if (hoveredType == null) return;
-        long stackMult = getStackMultiplier();
+        long stackMult = menu.getStackMultiplier();
         int baseStackSize = hoveredType.baseStackSize();
         boolean infinite = false;
         long finalStackSize = 0;
@@ -123,9 +101,6 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
                 infinite = true;
             }
         } catch (ArithmeticException e) {
-            infinite = true;
-        }
-        if (stackMult >= Integer.MAX_VALUE) {
             infinite = true;
         }
         List<Component> tooltip = new ArrayList<>();
@@ -179,42 +154,23 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
     }
 
     private void renderStats(GuiGraphics g) {
-        int baseRange = SLConfig.getDefaultRadius();
-        int rangeBonus = 0;
-        boolean hasDimension = false;
-        long speedMult = 1L;
-        long stackMult = 1L;
+        long speedMult = menu.getSpeedMultiplier();
+        long rangeMult = menu.getRangeMultiplier();
+        long stackMult = menu.getStackMultiplier();
+        boolean hasDimension = menu.isDimensionEffective();
 
-        for (int i = 0; i < 3; i++) {
-            ItemStack stack = menu.getSlot(i).getItem();
-            if (!stack.isEmpty() && stack.getItem() instanceof UpgradeItem upgrade) {
-                UpgradeTier tier = upgrade.getTier();
-                int count = stack.getCount();
-                if (tier != null) {
-                    int multiplier = tier.getMultiplier();
-                    switch (i) {
-                        case 0 -> speedMult += (long) multiplier * count;
-                        case 1 -> rangeBonus += multiplier * count;
-                        case 2 -> stackMult += (long) multiplier * count;
-                    }
-                } else {
-                    if (upgrade.getType() == UpgradeType.DIMENSION) {
-                        hasDimension = true;
-                    }
-                }
-            }
-        }
+        int baseRange = SLConfig.getDefaultRadius();
+        boolean isRangeInfinite = hasDimension || rangeMult >= ContainerConfig.INFINITY_MARKER;
+        String rangeText = isRangeInfinite
+            ? Component.translatable("gui.staticlogistics.infinite").getString()
+            : (baseRange * rangeMult) + Component.translatable("gui.staticlogistics.unit.meters").getString();
+        int rangeColor = isRangeInfinite ? 0xFF55FF : 0x55FFFF;
 
         int infoX = leftPos + 75;
         int infoY = topPos + 16;
         int spacing = 15;
         int columnWidth = 66;
 
-        boolean isRangeInfinite = hasDimension || (baseRange + rangeBonus) < 0 || rangeBonus < 0;
-        String rangeText = isRangeInfinite
-            ? Component.translatable("gui.staticlogistics.infinite").getString()
-            : (baseRange + rangeBonus) + Component.translatable("gui.staticlogistics.unit.meters").getString();
-        int rangeColor = isRangeInfinite ? 0xFF55FF : 0x55FFFF;
         drawStat(g, Component.translatable("gui.staticlogistics.stat.range"), rangeText, infoX, infoY, 0xFFFFFF, rangeColor);
 
         int baseInterval = SLConfig.getDefaultTickInterval();
@@ -231,7 +187,7 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
 
         String stackText;
         int stackColor;
-        if (stackMult > 1000000) {
+        if (stackMult >= ContainerConfig.INFINITY_MARKER) {
             stackText = Component.translatable("gui.staticlogistics.infinite").getString();
             stackColor = 0x55FF55;
         } else {

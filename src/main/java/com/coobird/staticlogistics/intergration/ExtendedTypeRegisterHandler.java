@@ -21,7 +21,6 @@ public class ExtendedTypeRegisterHandler {
 
     private static final ThreadLocal<Boolean> isInMekChemicalTransfer = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> isInMekHeatTransfer = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<Boolean> isInMekStrictEnergyTransfer = ThreadLocal.withInitial(() -> false);
 
     private static final ThreadLocal<Boolean> isInArsSourceTransfer = ThreadLocal.withInitial(() -> false);
 
@@ -32,7 +31,6 @@ public class ExtendedTypeRegisterHandler {
         if (ModCompat.isMekanismLoaded()) {
             registerMekanismChemicals();
             registerMekanismHeat();
-            registerMekanismStrictEnergy();
         }
 
         if (ModCompat.isArsNouveauLoaded()) {
@@ -205,76 +203,6 @@ public class ExtendedTypeRegisterHandler {
 
         TransferRegistries.registerExternal(mekHeat, handler);
         LOGGER.info("Registered Mekanism heat transfer support");
-    }
-
-    /**
-     * 注册 Mekanism 精准能量传输
-     */
-    private static void registerMekanismStrictEnergy() {
-        TransferType mekStrictEnergy = new TransferType(
-            Staticlogistics.asResource("mek_strict_energy"),
-            0xFFAA00FF,
-            6,
-            "transfer_type.staticlogistics.mek_strict_energy",
-            mekanism.common.capabilities.Capabilities.STRICT_ENERGY.block(),
-            SLConfig.getMekStrictEnergyStack(),
-            () -> ModCompat.isMekanismLoaded()
-                ? new ItemStack(mekanism.common.registries.MekanismBlocks.BASIC_ENERGY_CUBE.get())
-                : new ItemStack(Items.BARRIER)
-        );
-
-        ITransferHandler handler = (context, targets) -> {
-            if (isInMekStrictEnergyTransfer.get()) {
-                LOGGER.debug("Skipped reentrant mekanism strict energy transfer for {}", context.sourceNode());
-                return false;
-            }
-
-            try {
-                isInMekStrictEnergyTransfer.set(true);
-                TransferContext newContext = context.withIncrementedDepth();
-                return TransferUtils.doTransferNodes(
-                    newContext.level(),
-                    newContext.sourceNode().gPos().pos(),
-                    newContext.sourceNode().face(),
-                    targets,
-                    mekanism.common.capabilities.Capabilities.STRICT_ENERGY.block(),
-                    newContext.limit(),
-                    new TransferUtils.SimpleProtocol<>(
-                        (src, max) -> {
-                            try {
-                                return src.extractEnergy(max, Action.SIMULATE);
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to simulate extract strict energy: {}", e.getMessage());
-                                return 0L;
-                            }
-                        },
-                        (dst, val) -> {
-                            try {
-                                return (int) dst.insertEnergy(val, Action.EXECUTE);
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to insert strict energy: {}", e.getMessage());
-                                return 0;
-                            }
-                        },
-                        (src, val, act) -> {
-                            try {
-                                src.extractEnergy(act, Action.EXECUTE);
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to commit extract strict energy: {}", e.getMessage());
-                            }
-                        },
-                        val -> val <= 0
-                    ),
-                    newContext.isPullMode(),
-                    newContext
-                );
-            } finally {
-                isInMekStrictEnergyTransfer.set(false);
-            }
-        };
-
-        TransferRegistries.registerExternal(mekStrictEnergy, handler);
-        LOGGER.info("Registered Mekanism strict energy transfer support");
     }
 
     /**

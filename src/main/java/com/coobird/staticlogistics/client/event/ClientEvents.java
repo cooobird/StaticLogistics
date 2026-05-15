@@ -57,7 +57,7 @@ public class ClientEvents {
 
         String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
         int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
-        int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
+        int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
 
         ToolMode mode = ToolMode.fromId(currentMode);
         ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();

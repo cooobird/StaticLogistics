@@ -38,7 +38,9 @@ import java.util.Set;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
-    private static final double MAX_RENDER_DIST_SQ = 64.0 * 64.0;
+    private static final double MAX_RENDER_DIST_SQ = 128.0 * 128.0;
+    private static final double NEAR_DIST_SQ = 32.0 * 32.0;
+    private static final double MID_DIST_SQ = 64.0 * 64.0;
     private static final float BOX_EXPAND = 0.005f;
     private static final float TUBE_RADIUS = 0.015f;
 
@@ -100,101 +102,74 @@ public class LinkWorldRenderer {
         if (!currentGroupId.isEmpty()) {
             Set<BlockPos> renderedFrames = new HashSet<>();
             var activeNodes = ClientLinkData.INSTANCE.getActiveNodesWithConfig(currentDim);
-
-            activeNodes.forEach((node, cfg) -> {
-                if (cfg.isDefault() || !currentGroupId.equals(cfg.faceConfig.getGroupId())) return;
+            for (var entry : activeNodes.entrySet()) {
+                LogisticsNode node = entry.getKey();
+                FaceConfigComposite cfg = entry.getValue();
+                if (cfg.isDefault() || !currentGroupId.equals(cfg.faceConfig.getGroupId())) continue;
 
                 BlockPos p = node.gPos().pos();
-                if (p.distToCenterSqr(cam.x, cam.y, cam.z) > MAX_RENDER_DIST_SQ || !frustum.isVisible(new AABB(p)))
-                    return;
+                double distSq = p.distToCenterSqr(cam.x, cam.y, cam.z);
+                if (distSq > MAX_RENDER_DIST_SQ) continue;
+                if (!frustum.isVisible(new AABB(p))) continue;
 
                 if (renderedFrames.add(p)) {
                     drawFrame(builder, mat, p, 1.0f, 1.0f, 1.0f, 0.25f);
                 }
-
                 renderNodeFaceStatus(node, cfg, builder, mat, pulse);
-
-                renderFlows(node, cfg, currentDim, builder, mat);
-            });
+                renderFlows(node, cfg, currentDim, builder, mat, cam, distSq);
+            }
         }
 
         poseStack.popPose();
         bufferSource.endBatch(PIPE_XRAY);
     }
 
-    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg, ResourceKey<Level> currentDim, VertexConsumer builder, Matrix4f mat) {
+    private static int getParticleFactor(double distSq) {
+        if (distSq <= NEAR_DIST_SQ) return 4;
+        if (distSq <= MID_DIST_SQ) return 2;
+        return 1;
+    }
+
+    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg, ResourceKey<Level> currentDim,
+                                    VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq) {
+        int particleFactor = getParticleFactor(srcDistSq);
+        if (!srcCfg.isGlobalOutputEnabled()) return;
+
         for (TransferType type : TransferRegistries.getAllActive()) {
             LinkConfig.SideData srcData = srcCfg.linkConfig.getSettings(type);
 
-            if (srcData.outputEnabled && !srcData.linkedInputs.isEmpty()) {
-                Vec3 sPos = Vec3.atCenterOf(src.gPos().pos()).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
+            for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
+                if (!dst.gPos().dimension().equals(currentDim)) continue;
+                var dstCfg = ClientLinkData.INSTANCE.getFaceConfig(dst);
+                if (dstCfg == null) continue;
 
-                for (LogisticsNode dst : srcData.linkedInputs) {
-                    if (dst.gPos().dimension().equals(currentDim)) {
-                        var dstCfg = ClientLinkData.INSTANCE.getFaceConfig(dst);
-                        if (dstCfg != null) {
-                            LinkConfig.SideData dstData = dstCfg.linkConfig.getSettings(type);
+                if (!dstCfg.isGlobalInputEnabled()) continue;
 
-                            boolean bothUnset = (srcData.outputChannel == 0 && dstData.inputChannel == 0);
-                            boolean bothSetAndEqual = (srcData.outputChannel != 0 && dstData.inputChannel != 0 && dstData.inputChannel == srcData.outputChannel);
-                            boolean channelMatch = bothUnset || bothSetAndEqual;
+                LinkConfig.SideData dstData = dstCfg.linkConfig.getSettings(type);
 
-                            if (channelMatch && dstData.inputEnabled) {
-                                Vec3 dPos = Vec3.atCenterOf(dst.gPos().pos()).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
+                boolean bothUnset = (srcData.outputChannel == 0 && dstData.inputChannel == 0);
+                boolean bothSetAndEqual = (srcData.outputChannel != 0 && dstData.inputChannel != 0 && dstData.inputChannel == srcData.outputChannel);
+                boolean channelMatch = bothUnset || bothSetAndEqual;
 
-                                float offset = (srcData.inputEnabled && dstData.outputEnabled) ? 0.15f : 0.0f;
-
-                                drawDirectedLine(builder, mat, sPos, dPos, src.face(), srcData.outputChannel, offset);
-                            }
-                        }
-                    }
+                if (channelMatch) {
+                    Vec3 sPos = Vec3.atCenterOf(src.gPos().pos()).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
+                    Vec3 dPos = Vec3.atCenterOf(dst.gPos().pos()).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
+                    float offset = (srcCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled()) ? 0.15f : 0.0f;
+                    drawDirectedLineOptimized(builder, mat, sPos, dPos, src.face(), srcData.outputChannel, offset, particleFactor);
                 }
             }
         }
     }
 
-    private static void renderNodeFaceStatus(LogisticsNode node, FaceConfigComposite cfg, VertexConsumer b, Matrix4f m, float pulse) {
-        BlockPos p = node.gPos().pos();
-        Direction f = node.face();
-        double px = p.getX() + 0.5 + f.getStepX() * 0.508;
-        double py = p.getY() + 0.5 + f.getStepY() * 0.508;
-        double pz = p.getZ() + 0.5 + f.getStepZ() * 0.508;
-
-        boolean hasIn = false;
-        boolean hasOut = false;
-        int inChannel = -1;
-        int outChannel = -1;
-
-        for (TransferType type : TransferRegistries.getAllActive()) {
-            LinkConfig.SideData data = cfg.linkConfig.getSettings(type);
-            if (data.inputEnabled) {
-                hasIn = true;
-                inChannel = data.inputChannel;
-            }
-            if (data.outputEnabled) {
-                hasOut = true;
-                outChannel = data.outputChannel;
-            }
-            if (hasIn && hasOut) break;
-        }
-
-        float size = 0.4f + pulse;
-
-        if (hasIn && hasOut) {
-            drawFaceByChannel(b, m, px, py, pz, f, inChannel, 0.85f, size, -0.5f, 0.45f);
-            drawFaceByChannel(b, m, px, py, pz, f, outChannel, 0.85f, size, 0.5f, 0.45f);
-        } else if (hasIn) {
-            drawFaceByChannel(b, m, px, py, pz, f, inChannel, 0.85f, size, 0, 1.0f);
-        } else if (hasOut) {
-            drawFaceByChannel(b, m, px, py, pz, f, outChannel, 0.85f, size, 0, 1.0f);
-        }
-    }
-
-    private static void drawDirectedLine(VertexConsumer b, Matrix4f mat, Vec3 start, Vec3 end, Direction face, int colorIdx, float offset) {
+    private static void drawDirectedLineOptimized(VertexConsumer b, Matrix4f mat, Vec3 start, Vec3 end, Direction face,
+                                                  int colorIdx, float offset, int particleFactor) {
         Vec3 diff = end.subtract(start);
         double dist = diff.length();
         if (dist < 0.1 || Double.isNaN(dist) || Double.isInfinite(dist)) return;
-        int particleCount = (int) Math.min(100, Math.max(3, dist * 3.5));
+
+        int baseCount = (int) Math.min(60, Math.max(3, dist * 3.5));
+        int particleCount = Math.min(40, baseCount * particleFactor);
+        if (particleCount <= 0) return;
 
         Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
         Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
@@ -215,7 +190,38 @@ public class LinkWorldRenderer {
             float progress = (float) ((time * speed + spacing * dist) % dist) / (float) dist;
             Vec3 pos = offsetStart.add(offsetDiff.scale(progress));
             float size = 0.025f;
-            renderBox(b, mat, (float) pos.x - size, (float) pos.y - size, (float) pos.z - size, (float) pos.x + size, (float) pos.y + size, (float) pos.z + size, r, g, bl, 0.9f);
+            renderBox(b, mat, (float) pos.x - size, (float) pos.y - size, (float) pos.z - size,
+                (float) pos.x + size, (float) pos.y + size, (float) pos.z + size, r, g, bl, 0.9f);
+        }
+    }
+
+    private static void renderNodeFaceStatus(LogisticsNode node, FaceConfigComposite cfg, VertexConsumer b, Matrix4f m, float pulse) {
+        BlockPos p = node.gPos().pos();
+        Direction f = node.face();
+        double px = p.getX() + 0.5 + f.getStepX() * 0.508;
+        double py = p.getY() + 0.5 + f.getStepY() * 0.508;
+        double pz = p.getZ() + 0.5 + f.getStepZ() * 0.508;
+
+        boolean hasIn = cfg.isGlobalInputEnabled();
+        boolean hasOut = cfg.isGlobalOutputEnabled();
+
+        int inChannel = 0, outChannel = 0;
+        for (TransferType type : TransferRegistries.getAllActive()) {
+            LinkConfig.SideData data = cfg.linkConfig.getSettings(type);
+            if (hasIn && inChannel == 0) inChannel = data.inputChannel;
+            if (hasOut && outChannel == 0) outChannel = data.outputChannel;
+            if ((inChannel != 0 || !hasIn) && (outChannel != 0 || !hasOut)) break;
+        }
+
+        float size = 0.4f + pulse;
+
+        if (hasIn && hasOut) {
+            drawFaceByChannel(b, m, px, py, pz, f, inChannel, 0.85f, size, -0.5f, 0.45f);
+            drawFaceByChannel(b, m, px, py, pz, f, outChannel, 0.85f, size, 0.5f, 0.45f);
+        } else if (hasIn) {
+            drawFaceByChannel(b, m, px, py, pz, f, inChannel, 0.85f, size, 0, 1.0f);
+        } else if (hasOut) {
+            drawFaceByChannel(b, m, px, py, pz, f, outChannel, 0.85f, size, 0, 1.0f);
         }
     }
 

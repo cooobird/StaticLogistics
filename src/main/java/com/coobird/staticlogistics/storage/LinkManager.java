@@ -6,7 +6,6 @@ import com.coobird.staticlogistics.server.ticker.LogisticsTicker;
 import com.coobird.staticlogistics.storage.cache.CacheManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import com.coobird.staticlogistics.storage.persistence.DropHandler;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
 import com.coobird.staticlogistics.storage.repository.ContainerRepository;
@@ -95,6 +94,46 @@ public class LinkManager extends SavedData {
         return faceConfigService.get(key);
     }
 
+    public void removeLink(LogisticsNode source, LogisticsNode target) {
+        if (source == null || target == null) return;
+
+        FaceConfigComposite sourceCfg = getFaceConfig(source.toKey());
+        FaceConfigComposite targetCfg = getFaceConfig(target.toKey());
+        if (sourceCfg == null || targetCfg == null) return;
+
+        boolean sourceRemoved = sourceCfg.getLinkedNodes().remove(target);
+        boolean targetRemoved = targetCfg.getLinkedNodes().remove(source);
+
+        if (!sourceRemoved && !targetRemoved) return;
+
+        if (sourceCfg.getLinkedNodes().isEmpty()) {
+            sourceCfg.setGlobalOutputEnabled(false);
+            sourceCfg.setGlobalInputEnabled(false);
+        }
+        if (targetCfg.getLinkedNodes().isEmpty()) {
+            targetCfg.setGlobalOutputEnabled(false);
+            targetCfg.setGlobalInputEnabled(false);
+        }
+
+        sourceCfg.markDirty();
+        targetCfg.markDirty();
+
+        GlobalLogisticsManager global = GlobalLogisticsManager.get(level.getServer());
+        global.removeIncomingLink(source, target);
+
+        networkSyncManager.syncToDimension(source.gPos().pos(), source.face(), sourceCfg);
+        networkSyncManager.syncToDimension(target.gPos().pos(), target.face(), targetCfg);
+
+        cleanUpFaceIfNeeded(source, sourceCfg);
+        cleanUpFaceIfNeeded(target, targetCfg);
+    }
+
+    private void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
+        if (cfg.getLinkedNodes().isEmpty() && !cfg.isGlobalInputEnabled() && !cfg.isGlobalOutputEnabled()) {
+            removeFaceConfigInternal(node.toKey(), false);
+        }
+    }
+
     public void removeFaceConfig(long key) {
         removeFaceConfigInternal(key, true);
     }
@@ -120,7 +159,7 @@ public class LinkManager extends SavedData {
     }
 
     public void refreshLocalCache(long key, BlockPos pos, Direction face, FaceConfigComposite config) {
-        if (config.faceConfig.hasGroup() && config.linkConfig.determineRole().canSend()) {
+        if (config.faceConfig.hasGroup() && config.determineRole().canSend()) {
             cacheManager.add(key);
         } else {
             cacheManager.remove(key);
@@ -171,16 +210,14 @@ public class LinkManager extends SavedData {
             if (cfg == null) continue;
             boolean faceChanged = false;
             LogisticsNode sourceNode = LogisticsNode.fromKey(key, level.dimension());
-            for (LinkConfig.SideData data : cfg.linkConfig.getAllSettings().values()) {
-                Iterator<LogisticsNode> it = data.linkedInputs.iterator();
-                while (it.hasNext()) {
-                    LogisticsNode target = it.next();
-                    ServerLevel targetLevel = level.getServer().getLevel(target.gPos().dimension());
-                    if (targetLevel != null && !TransferUtils.hasLogisticsCapability(targetLevel, target.gPos().pos(), target.face())) {
-                        GlobalLogisticsManager.get(level.getServer()).removeIncomingLink(sourceNode, target);
-                        it.remove();
-                        faceChanged = true;
-                    }
+            Iterator<LogisticsNode> it = cfg.getLinkedNodes().iterator();
+            while (it.hasNext()) {
+                LogisticsNode target = it.next();
+                ServerLevel targetLevel = level.getServer().getLevel(target.gPos().dimension());
+                if (targetLevel != null && !TransferUtils.hasLogisticsCapability(targetLevel, target.gPos().pos(), target.face())) {
+                    GlobalLogisticsManager.get(level.getServer()).removeIncomingLink(sourceNode, target);
+                    it.remove();
+                    faceChanged = true;
                 }
             }
             if (faceChanged) {
@@ -235,6 +272,11 @@ public class LinkManager extends SavedData {
             }
         });
         tag.put("container_configs", cConfigs);
+
+        CompoundTag globalTag = new CompoundTag();
+        GlobalLogisticsManager.get(level.getServer()).save(globalTag);
+        tag.put("global_logistics", globalTag);
+
         return tag;
     }
 
@@ -253,10 +295,8 @@ public class LinkManager extends SavedData {
                     cfg.sharedContainerConfig = cc;
                     cc.linkFace(key);
                     mgr.configRepository.put(key, cfg);
-                    for (LinkConfig.SideData data : cfg.linkConfig.getAllSettings().values()) {
-                        for (LogisticsNode target : data.linkedInputs) {
-                            GlobalLogisticsManager.get(level.getServer()).addIncomingLink(node, target);
-                        }
+                    for (LogisticsNode target : cfg.getLinkedNodes()) {
+                        GlobalLogisticsManager.get(level.getServer()).addIncomingLink(node, target);
                     }
                     mgr.syncManager.syncNode(node.gPos().pos(), node.face(), cfg);
                     mgr.refreshLocalCache(key, node.gPos().pos(), node.face(), cfg);
@@ -271,6 +311,8 @@ public class LinkManager extends SavedData {
                 try {
                     long key = Long.parseLong(keyStr);
                     ContainerConfig cfg = new ContainerConfig();
+                    BlockPos pos = BlockPos.of(key);
+                    cfg.setPos(pos);
                     CompoundTag nbt = cTag.getCompound(keyStr);
                     if (nbt.contains("upgrades")) {
                         cfg.getUpgrades().deserializeNBT(provider, nbt.getCompound("upgrades"));
@@ -280,6 +322,9 @@ public class LinkManager extends SavedData {
                     LOGGER.error("Failed to load container config for key: {}", keyStr, e);
                 }
             }
+        }
+        if (tag.contains("global_logistics")) {
+            GlobalLogisticsManager.get(level.getServer()).load(tag.getCompound("global_logistics"));
         }
         mgr.validateAllLinks();
         return mgr;

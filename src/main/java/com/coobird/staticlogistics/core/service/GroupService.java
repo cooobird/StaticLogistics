@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.core.service;
 
-import com.coobird.staticlogistics.intergration.ftb.FTBTeamService;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.intergration.ftb.FTBTeamService;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -43,6 +43,11 @@ public class GroupService {
             next = currentId + "_" + counter++;
         }
         return next;
+    }
+
+    public static String getNextGroupIdForPlayer(Player player) {
+        GlobalLogisticsManager manager = GlobalLogisticsManager.get(player.getServer());
+        return manager.getNextGroupIdForPlayer(player.getUUID());
     }
 
     public static void renameGroup(Level level, Player player, String oldId, String newId, GlobalLogisticsManager globalManager) {

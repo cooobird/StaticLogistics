@@ -11,13 +11,20 @@ import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -107,5 +114,36 @@ public class SLEvents {
                 storedNodes.size() - updatedNodes.size()).withStyle(ChatFormatting.GRAY),
             true
         );
+    }
+
+    @SubscribeEvent
+    public static void onGenericBlockPlaced(BlockEvent.EntityPlaceEvent event) {
+        if (event.getLevel().isClientSide()) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+        if (!(event.getLevel() instanceof Level level)) return;
+
+        ItemStack stack = player.getMainHandItem();
+        if (!stack.has(SLDataComponents.STORED_BE_NBT.get())) {
+            stack = player.getOffhandItem();
+        }
+
+        if (!stack.has(SLDataComponents.STORED_BE_NBT.get())) return;
+
+        CustomData customData = stack.get(SLDataComponents.STORED_BE_NBT.get());
+        if (customData == null) return;
+
+        CompoundTag savedBeTag = customData.copyTag();
+        BlockPos pos = event.getPos();
+        BlockEntity newBe = level.getBlockEntity(pos);
+
+        if (newBe != null) {
+            newBe.loadWithComponents(savedBeTag, level.registryAccess());
+            newBe.setChanged();
+            level.sendBlockUpdated(pos, event.getState(), event.getState(), 3);
+
+            if (!player.getAbilities().instabuild) {
+                stack.remove(SLDataComponents.STORED_BE_NBT.get());
+            }
+        }
     }
 }

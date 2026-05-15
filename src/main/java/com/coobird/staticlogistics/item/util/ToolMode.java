@@ -5,11 +5,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
 
 public enum ToolMode implements StringRepresentable {
-    LINK_AS_INSERT("link_as_input", ChatFormatting.AQUA, 0),
-    LINK_AS_EXTRACT("link_as_output", ChatFormatting.GOLD, 1),
-    REMOVE("remove", ChatFormatting.RED, 2),
-    FACE_CONFIG("face_config", ChatFormatting.LIGHT_PURPLE, 3),
-    CONTAINER_CONFIG("container_config", ChatFormatting.GREEN, 4);
+    WRENCH("wrench", ChatFormatting.YELLOW, 0),
+    LINK_AS_INSERT("link_as_input", ChatFormatting.AQUA, 1),
+    LINK_AS_EXTRACT("link_as_output", ChatFormatting.GOLD, 2),
+    REMOVE("remove", ChatFormatting.RED, 3),
+    FACE_CONFIG("face_config", ChatFormatting.LIGHT_PURPLE, 4),
+    CONTAINER_CONFIG("container_config", ChatFormatting.GREEN, 5);
 
     private final String name;
     private final ChatFormatting color;

@@ -25,6 +25,7 @@ public class ContainerConfigService {
         ContainerConfig config = repository.get(key);
         if (config == null) {
             config = new ContainerConfig();
+            config.setPos(pos);
             repository.put(key, config);
         }
         return config;

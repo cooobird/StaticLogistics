@@ -27,5 +27,6 @@ public class SLDataGenerator {
 
         boolean server = event.includeServer();
         generator.addProvider(server, new VanillaRecipeProvider(output, lookup));
+        generator.addProvider(server, new SLItemTagsProvider(output, lookup, helper));
     }
 }

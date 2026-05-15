@@ -1,11 +1,11 @@
 package com.coobird.staticlogistics.gui.menu;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.api.type.UpgradeTier;
 import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
+import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
@@ -45,9 +45,10 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     private final Direction face;
     private TransferType type;
     private FaceConfigComposite serverConfig;
+    private final Player player;
 
-    private final DataSlot inputEnabledSlot = DataSlot.standalone();
-    private final DataSlot outputEnabledSlot = DataSlot.standalone();
+    private final DataSlot globalInputSlot = DataSlot.standalone();
+    private final DataSlot globalOutputSlot = DataSlot.standalone();
     private final DataSlot inputChannelSlot = DataSlot.standalone();
     private final DataSlot outputChannelSlot = DataSlot.standalone();
     private final DataSlot strategySlot = DataSlot.standalone();
@@ -67,9 +68,10 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         this.pos = pos;
         this.face = face;
         this.type = type;
+        this.player = playerInventory.player;
 
-        this.addDataSlot(inputEnabledSlot);
-        this.addDataSlot(outputEnabledSlot);
+        this.addDataSlot(globalInputSlot);
+        this.addDataSlot(globalOutputSlot);
         this.addDataSlot(inputChannelSlot);
         this.addDataSlot(outputChannelSlot);
         this.addDataSlot(strategySlot);
@@ -77,7 +79,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         this.addDataSlot(selectedTypesMaskSlot);
 
         IItemHandler upgradeHandler = null;
-        if (playerInventory.player.level() instanceof ServerLevel serverLevel && pos != null && face != null) {
+        if (player.level() instanceof ServerLevel serverLevel && pos != null && face != null) {
             LinkManager mgr = LinkManager.get(serverLevel);
             if (mgr != null) {
                 this.serverConfig = mgr.getOrCreateFaceConfig(pos, face);
@@ -100,7 +102,49 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         addPlayerInventorySlots(playerInventory);
     }
 
-    public void updateSettings(Consumer<LinkConfig.SideData> updater) {
+    public boolean isGlobalInputEnabled() {
+        return globalInputSlot.get() == 1;
+    }
+
+    public boolean isGlobalOutputEnabled() {
+        return globalOutputSlot.get() == 1;
+    }
+
+    public void setGlobalInputEnabled(boolean enabled) {
+        if (serverConfig != null && serverConfig.isGlobalInputEnabled() != enabled) {
+            serverConfig.setGlobalInputEnabled(enabled);
+            syncGlobalInputToLinkedNodes(enabled);
+            syncToSlots();
+        }
+    }
+
+    public void setGlobalOutputEnabled(boolean enabled) {
+        if (serverConfig != null && serverConfig.isGlobalOutputEnabled() != enabled) {
+            serverConfig.setGlobalOutputEnabled(enabled);
+            syncGlobalOutputToLinkedNodes(enabled);
+            syncToSlots();
+        }
+    }
+
+    public int getInputChannel() {
+        return inputChannelSlot.get();
+    }
+
+    public int getOutputChannel() {
+        return outputChannelSlot.get();
+    }
+
+    public DistributionStrategy getStrategy() {
+        int idx = strategySlot.get();
+        if (idx < 0 || idx >= DistributionStrategy.values().length) return DistributionStrategy.SEQUENTIAL;
+        return DistributionStrategy.values()[idx];
+    }
+
+    public int getPriority() {
+        return prioritySlot.get();
+    }
+
+    public void updateTypeSettings(Consumer<LinkConfig.SideData> updater) {
         if (serverConfig != null && type != null) {
             LinkConfig.SideData data = serverConfig.linkConfig.getSettings(type);
             updater.accept(data);
@@ -109,51 +153,90 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         }
     }
 
-    public void switchTransferType(TransferType newType) {
-        if (!newType.equals(type)) {
-            boolean currentInputEnabled = isInputEnabled();
-            boolean currentOutputEnabled = isOutputEnabled();
-            int currentInputChannel = getInputChannel();
-            int currentOutputChannel = getOutputChannel();
-            DistributionStrategy currentStrategy = getStrategy();
-            int currentPriority = getPriority();
-
-            this.type = newType;
-
-            if (serverConfig != null) {
-                LinkConfig.SideData data = serverConfig.linkConfig.getSettings(newType);
-                data.inputEnabled = currentInputEnabled;
-                data.outputEnabled = currentOutputEnabled;
-                data.inputChannel = currentInputChannel;
-                data.outputChannel = currentOutputChannel;
-                data.strategy = currentStrategy;
-                data.priority = currentPriority;
-                serverConfig.markDirty();
-            }
-            syncToSlots();
-        }
+    public void setStrategy(DistributionStrategy strategy) {
+        updateTypeSettings(data -> data.strategy = strategy);
     }
 
     public int getSelectedTypesMask() {
-        return this.selectedTypesMaskSlot.get();
+        return selectedTypesMaskSlot.get();
+    }
+
+    public void setSelectedTypesMask(int mask) {
+        selectedTypesMaskSlot.set(mask);
+        if (serverConfig != null) {
+            serverConfig.setSelectedTypesMask(mask);
+            serverConfig.markDirty();
+            broadcastChanges();
+        }
     }
 
     public void toggleTypeSelection(TransferType type) {
-        int currentMask = getSelectedTypesMask();
-        int newMask = currentMask ^ type.getFlag();
+        int current = getSelectedTypesMask();
+        int newMask = current ^ type.getFlag();
         if (newMask == 0) newMask = type.getFlag();
-        selectedTypesMaskSlot.set(newMask);
+        setSelectedTypesMask(newMask);
     }
 
-    public void cycleStrategy() {
-        updateSettings(data -> {
-            int nextOrdinal = (data.strategy.ordinal() + 1) % DistributionStrategy.values().length;
-            data.strategy = DistributionStrategy.values()[nextOrdinal];
-        });
+    private void syncGlobalInputToLinkedNodes(boolean newInputValue) {
+        for (LogisticsNode linked : serverConfig.getLinkedNodes()) {
+            ServerLevel targetLevel = ((ServerLevel) player.level()).getServer().getLevel(linked.gPos().dimension());
+            if (targetLevel == null) continue;
+            LinkManager targetMgr = LinkManager.get(targetLevel);
+            FaceConfigComposite targetCfg = targetMgr.getFaceConfig(linked.toKey());
+            if (targetCfg == null) continue;
+            if (!GroupService.canModify(targetCfg.faceConfig.getOwner(), player)) continue;
+
+            targetCfg.setGlobalOutputEnabled(newInputValue);
+            targetMgr.syncConfigToClients(linked.gPos().pos());
+        }
     }
 
-    public void changePriority(int delta) {
-        updateSettings(data -> data.priority += delta);
+    private void syncGlobalOutputToLinkedNodes(boolean newOutputValue) {
+        for (LogisticsNode linked : serverConfig.getLinkedNodes()) {
+            ServerLevel targetLevel = ((ServerLevel) player.level()).getServer().getLevel(linked.gPos().dimension());
+            if (targetLevel == null) continue;
+            LinkManager targetMgr = LinkManager.get(targetLevel);
+            FaceConfigComposite targetCfg = targetMgr.getFaceConfig(linked.toKey());
+            if (targetCfg == null) continue;
+            if (!GroupService.canModify(targetCfg.faceConfig.getOwner(), player)) continue;
+
+            targetCfg.setGlobalInputEnabled(newOutputValue);
+            targetMgr.syncConfigToClients(linked.gPos().pos());
+        }
+    }
+
+    public void switchTransferType(TransferType newType, Player player) {
+        if (newType.equals(type)) return;
+
+        int currentInputChannel = getInputChannel();
+        int currentOutputChannel = getOutputChannel();
+        DistributionStrategy currentStrategy = getStrategy();
+        int currentPriority = getPriority();
+
+        if (serverConfig != null) {
+            LinkConfig.SideData newData = serverConfig.linkConfig.getSettings(newType);
+            newData.inputChannel = currentInputChannel;
+            newData.outputChannel = currentOutputChannel;
+            newData.strategy = currentStrategy;
+            newData.priority = currentPriority;
+            serverConfig.markDirty();
+        }
+
+        this.type = newType;
+        syncToSlots();
+    }
+
+    public void syncToSlots() {
+        if (serverConfig != null) {
+            globalInputSlot.set(serverConfig.isGlobalInputEnabled() ? 1 : 0);
+            globalOutputSlot.set(serverConfig.isGlobalOutputEnabled() ? 1 : 0);
+            LinkConfig.SideData data = serverConfig.linkConfig.getSettings(type);
+            inputChannelSlot.set(data.inputChannel);
+            outputChannelSlot.set(data.outputChannel);
+            strategySlot.set(data.strategy.ordinal());
+            prioritySlot.set(data.priority);
+            selectedTypesMaskSlot.set(serverConfig.getSelectedTypesMask());
+        }
     }
 
     private class SLUpgradeSlot extends SlotItemHandler {
@@ -168,7 +251,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean isActive() {
-            return isInputSlot ? isInputEnabled() : isOutputEnabled();
+            return isInputSlot ? isGlobalInputEnabled() : isGlobalOutputEnabled();
         }
 
         @Override
@@ -183,54 +266,23 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public int getMaxStackSize(ItemStack stack) {
-            if (!(stack.getItem() instanceof UpgradeItem upgrade)) return 64;
-            if (upgrade.getTier() == UpgradeTier.NETHER_STAR) return 1;
-            return switch (upgrade.getType()) {
-                case DIMENSION, BASIC_FILTER, TAG_FILTER, NBT_FILTER -> 1;
-                default -> SLConfig.getUpgradeStackLimit();
-            };
+            return 1;
         }
     }
 
-    public void syncToSlots() {
-        if (serverConfig != null) {
-            LinkConfig.SideData data = serverConfig.linkConfig.getSettings(type);
-            inputEnabledSlot.set(data.inputEnabled ? 1 : 0);
-            outputEnabledSlot.set(data.outputEnabled ? 1 : 0);
-            inputChannelSlot.set(data.inputChannel);
-            outputChannelSlot.set(data.outputChannel);
-            strategySlot.set(data.strategy.ordinal());
-            prioritySlot.set(data.priority);
-            selectedTypesMaskSlot.set(serverConfig.getSelectedTypesMask());
+    private void addPlayerInventorySlots(Inventory playerInventory) {
+        int playerInvX = (SLGuiTextures.Background.WIDTH - SLGuiTextures.Inventory.WIDTH) / 2 + 8;
+        int playerInvY = SLGuiTextures.Background.HEIGHT + 8;
+        for (int row = 0; row < 3; ++row) {
+            for (int col = 0; col < 9; ++col) {
+                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, playerInvX + col * 18, playerInvY + row * 18));
+            }
+        }
+        int hotbarY = playerInvY + 60;
+        for (int col = 0; col < 9; ++col) {
+            this.addSlot(new Slot(playerInventory, col, playerInvX + col * 18, hotbarY));
         }
     }
-
-    public boolean isInputEnabled() {
-        return this.inputEnabledSlot.get() == 1;
-    }
-
-    public boolean isOutputEnabled() {
-        return this.outputEnabledSlot.get() == 1;
-    }
-
-    public int getInputChannel() {
-        return this.inputChannelSlot.get();
-    }
-
-    public int getOutputChannel() {
-        return this.outputChannelSlot.get();
-    }
-
-    public DistributionStrategy getStrategy() {
-        int index = this.strategySlot.get();
-        if (index < 0 || index >= DistributionStrategy.values().length) return DistributionStrategy.SEQUENTIAL;
-        return DistributionStrategy.values()[index];
-    }
-
-    public int getPriority() {
-        return this.prioritySlot.get();
-    }
-
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
@@ -275,20 +327,6 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
         slot.onTake(player, slotStack);
         return result;
-    }
-
-    private void addPlayerInventorySlots(Inventory playerInventory) {
-        int playerInvX = (SLGuiTextures.Background.WIDTH - SLGuiTextures.Inventory.WIDTH) / 2 + 8;
-        int playerInvY = SLGuiTextures.Background.HEIGHT + 8;
-        for (int row = 0; row < 3; ++row) {
-            for (int col = 0; col < 9; ++col) {
-                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, playerInvX + col * 18, playerInvY + row * 18));
-            }
-        }
-        int hotbarY = playerInvY + 60;
-        for (int col = 0; col < 9; ++col) {
-            this.addSlot(new Slot(playerInventory, col, playerInvX + col * 18, hotbarY));
-        }
     }
 
     @Override

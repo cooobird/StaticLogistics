@@ -63,10 +63,8 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, ResourceLoca
                     TransferType currentType = faceMenu.getTransferType();
                     FaceConfigComposite config = faceMenu.getFaceConfig();
                     boolean isInput = tag.getBoolean("is_input");
-
                     int slotIndex = isInput ? 0 : 1;
                     ItemStack upgradeStack = faceMenu.getSlot(slotIndex).getItem();
-
                     player.openMenu(
                         new SimpleMenuProvider((id, inv, p) ->
                             new FilterConfiguratorMenu(id, inv, pos, face, currentType, config, isInput, upgradeStack),
@@ -90,7 +88,6 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, ResourceLoca
                     BlockPos pos = filterMenu.getPos();
                     Direction face = filterMenu.getFace();
                     TransferType currentType = filterMenu.getTransferType();
-
                     player.openMenu(
                         new SimpleMenuProvider((id, inv, p) ->
                             new FaceConfiguratorMenu(id, inv, pos, face, currentType),
@@ -107,7 +104,6 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, ResourceLoca
 
             LinkManager manager = LinkManager.get(serverLevel);
             FaceConfigComposite config = manager.getFaceConfig(LinkManager.posToKey(payload.pos(), payload.face()));
-
             if (config == null) return;
             if (!GroupService.canModify(config.faceConfig.getOwner(), player)) return;
 
@@ -117,30 +113,42 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, ResourceLoca
             LinkConfig.SideData sideData = config.linkConfig.getSettings(type);
             boolean[] changed = {false};
 
-            update(tag, "inputEnabled", t -> t.getBoolean("inputEnabled"), sideData.inputEnabled, (v, d) -> d.inputEnabled = v, sideData, changed);
-            update(tag, "outputEnabled", t -> t.getBoolean("outputEnabled"), sideData.outputEnabled, (v, d) -> d.outputEnabled = v, sideData, changed);
-            update(tag, "inputChannel", t -> t.getInt("inputChannel"), sideData.inputChannel, (v, d) -> d.inputChannel = v, sideData, changed);
-            update(tag, "outputChannel", t -> t.getInt("outputChannel"), sideData.outputChannel, (v, d) -> d.outputChannel = v, sideData, changed);
-            update(tag, "priority", t -> t.getInt("priority"), sideData.priority, (v, d) -> d.priority = v, sideData, changed);
-            update(tag, "strategy", t -> DistributionStrategy.byName(t.getString("strategy"), DistributionStrategy.SEQUENTIAL),
-                sideData.strategy, (v, d) -> d.strategy = v, sideData, changed);
-
             if (player.containerMenu instanceof FaceConfiguratorMenu menu) {
+                if (tag.contains("globalInput")) {
+                    boolean newGlobalInput = tag.getBoolean("globalInput");
+                    if (newGlobalInput != menu.isGlobalInputEnabled()) {
+                        menu.setGlobalInputEnabled(newGlobalInput);
+                        changed[0] = true;
+                    }
+                }
+                if (tag.contains("globalOutput")) {
+                    boolean newGlobalOutput = tag.getBoolean("globalOutput");
+                    if (newGlobalOutput != menu.isGlobalOutputEnabled()) {
+                        menu.setGlobalOutputEnabled(newGlobalOutput);
+                        changed[0] = true;
+                    }
+                }
+                update(tag, "inputChannel", t -> t.getInt("inputChannel"), sideData.inputChannel, (v, d) -> d.inputChannel = v, sideData, changed);
+                update(tag, "outputChannel", t -> t.getInt("outputChannel"), sideData.outputChannel, (v, d) -> d.outputChannel = v, sideData, changed);
+                update(tag, "priority", t -> t.getInt("priority"), sideData.priority, (v, d) -> d.priority = v, sideData, changed);
+                update(tag, "strategy", t -> DistributionStrategy.byName(t.getString("strategy"), DistributionStrategy.SEQUENTIAL),
+                    sideData.strategy, (v, d) -> d.strategy = v, sideData, changed);
+
                 menu.syncToSlots();
                 menu.broadcastChanges();
+
                 if (tag.contains("switch_type")) {
                     String typeStr = tag.getString("switch_type");
                     ResourceLocation res = ResourceLocation.tryParse(typeStr);
                     if (res != null) {
                         TransferType newType = TransferRegistries.get(res);
-                        if (newType != null) menu.switchTransferType(newType);
+                        if (newType != null) menu.switchTransferType(newType, player);
                     }
                 }
                 if (tag.contains("selected_types_mask")) {
                     int mask = tag.getInt("selected_types_mask");
                     if (menu.getSelectedTypesMask() != mask) {
-                        menu.selectedTypesMaskSlot.set(mask);
-                        config.setSelectedTypesMask(mask);
+                        menu.setSelectedTypesMask(mask);
                         changed[0] = true;
                     }
                 }
@@ -151,7 +159,6 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, ResourceLoca
                 config.markDirty();
                 LogisticsNode selfNode = new LogisticsNode(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face());
                 GlobalLogisticsManager.get(serverLevel.getServer()).syncGroupLinks(serverLevel, config.faceConfig.getGroupId(), selfNode);
-
                 long key = LinkManager.posToKey(payload.pos(), payload.face());
                 manager.activateNode(key, payload.pos(), payload.face(), config);
             }

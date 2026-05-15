@@ -5,7 +5,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.util.StringRepresentable;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -15,7 +14,8 @@ public enum DistributionStrategy implements StringRepresentable {
     ROUND_ROBIN("round_robin"),
     NEAREST("nearest"),
     FURTHEST("furthest"),
-    RANDOM("random");
+    RANDOM("random"),
+    SLOT_ROUND_ROBIN("slot_round_robin");
 
     private static final Map<String, DistributionStrategy> NAME_CACHE = new HashMap<>();
 
@@ -32,7 +32,6 @@ public enum DistributionStrategy implements StringRepresentable {
     }
 
     @Override
-    @NotNull
     public String getSerializedName() {
         return name;
     }

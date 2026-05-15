@@ -4,8 +4,10 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.util.CapabilityCache;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -41,15 +43,10 @@ public class TransferUtils {
         int remaining = safeLimit;
 
         LinkManager localMgr = LinkManager.get(localLevel);
-        var localContainer = localMgr.getContainerConfig(localPos);
+        ContainerConfig localContainer = localMgr.getContainerConfig(localPos);
         if (localContainer == null) return false;
 
-        double baseRadius = SLConfig.getDefaultRadius();
-        int rangeMult = localContainer.getRangeMultiplier();
-        boolean isInfiniteRange = rangeMult >= 1000000;
-        double maxDistSq = Math.pow(baseRadius * rangeMult, 2);
-        boolean canCrossDim = localContainer.isDimensionEffective();
-
+        boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
         C localCap = CapabilityCache.getOrCreateCache(localLevel, localPos, localFace, cap).getCapability();
         if (localCap == null) return false;
 
@@ -60,9 +57,10 @@ public class TransferUtils {
 
             if (!isSameDim && !canCrossDim) continue;
 
-            if (isSameDim && !isInfiniteRange) {
-                if (remoteNode.gPos().pos().distSqr(localPos) > maxDistSq) continue;
+            if (isSameDim && !LogisticsCalculator.isWithinRange(localPos, remoteNode.gPos().pos(), localContainer)) {
+                continue;
             }
+
             ServerLevel remoteLevel = isSameDim ? localLevel :
                 localLevel.getServer().getLevel(remoteNode.gPos().dimension());
 
@@ -130,16 +128,6 @@ public class TransferUtils {
         @Override
         public boolean isEmpty(T stack) {
             return emptyChecker.test(stack);
-        }
-    }
-
-    public static class TransferResult {
-        public final int transferred;
-        public final long remaining;
-
-        public TransferResult(int transferred, long remaining) {
-            this.transferred = transferred;
-            this.remaining = remaining;
         }
     }
 

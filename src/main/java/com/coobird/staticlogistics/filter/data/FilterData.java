@@ -21,14 +21,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public record FilterData(
-    Map<String, ItemStack> items,
-    Map<String, Fluid> fluids,
-    boolean isBlacklist,
-    NbtMatchMode nbtMatchMode,
-    Map<String, Set<TagKey<Item>>> tagSlots,          // 白名单标签
-    Map<String, Set<TagKey<Item>>> excludedTagSlots,  // 黑名单标签
-    Set<TagKey<Fluid>> fluidFilterTags,               // 流体白名单标签
-    Set<TagKey<Fluid>> excludedFluidTags              // 流体黑名单标签
+    Map<String, ItemStack> items, // 物品过滤映射，键为槽位字符串，值为物品堆栈
+    Map<String, Fluid> fluids, // 流体过滤映射，键为槽位字符串，值为流体类型
+    boolean isBlacklist, // 是否为黑名单模式，true表示黑名单（拒绝列表中的内容），false表示白名单（仅允许列表中的内容）
+    NbtMatchMode nbtMatchMode, // NBT匹配模式，决定如何比较物品的NBT数据
+    Map<String, Set<TagKey<Item>>> tagSlots, // 物品标签槽位映射，键为槽位字符串，值为该槽位允许的物品标签集合
+    Map<String, Set<TagKey<Item>>> excludedTagSlots, // 排除的物品标签槽位映射，键为槽位字符串，值为该槽位排除的物品标签集合
+    Set<TagKey<Fluid>> fluidFilterTags, // 流体过滤标签集合，用于匹配流体类型
+    Set<TagKey<Fluid>> excludedFluidTags, // 排除的流体标签集合，用于排除特定流体类型
+    boolean ignoreDamage // 是否忽略物品耐久度差异，true表示忽略耐久度，false表示考虑耐久度
 ) {
     private static final Codec<Set<TagKey<Item>>> TAG_SET_CODEC =
         Codec.list(ResourceLocation.CODEC).xmap(
@@ -56,7 +57,8 @@ public record FilterData(
         TAG_SLOTS_CODEC.optionalFieldOf("tag_slots", new HashMap<>()).forGetter(FilterData::tagSlots),
         TAG_SLOTS_CODEC.optionalFieldOf("excluded_tag_slots", new HashMap<>()).forGetter(FilterData::excludedTagSlots),
         FLUID_TAG_SET_CODEC.optionalFieldOf("fluid_filter_tags", Set.of()).forGetter(FilterData::fluidFilterTags),
-        FLUID_TAG_SET_CODEC.optionalFieldOf("excluded_fluid_tags", Set.of()).forGetter(FilterData::excludedFluidTags)
+        FLUID_TAG_SET_CODEC.optionalFieldOf("excluded_fluid_tags", Set.of()).forGetter(FilterData::excludedFluidTags),
+        Codec.BOOL.optionalFieldOf("ignore_damage", true).forGetter(FilterData::ignoreDamage)
     ).apply(inst, FilterData::new));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, FilterData> STREAM_CODEC = new StreamCodec<>() {
@@ -122,8 +124,10 @@ public record FilterData(
                 excludedFluidTags.add(TagKey.create(Registries.FLUID, rl));
             }
 
+            boolean ignoreDamage = buf.readBoolean();
+
             return new FilterData(items, fluids, isBlacklist, nbtMatchMode,
-                tagSlots, excludedTagSlots, fluidFilterTags, excludedFluidTags);
+                tagSlots, excludedTagSlots, fluidFilterTags, excludedFluidTags, ignoreDamage);
         }
 
         @Override
@@ -163,11 +167,13 @@ public record FilterData(
 
             buf.writeVarInt(data.excludedFluidTags().size());
             data.excludedFluidTags().forEach(tag -> buf.writeResourceLocation(tag.location()));
+
+            buf.writeBoolean(data.ignoreDamage());
         }
     };
 
     public static final FilterData EMPTY = new FilterData(
         new HashMap<>(), new HashMap<>(), false, NbtMatchMode.PARTIAL,
-        new HashMap<>(), new HashMap<>(), Set.of(), Set.of()
+        new HashMap<>(), new HashMap<>(), Set.of(), Set.of(), true
     );
 }

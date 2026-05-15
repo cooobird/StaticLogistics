@@ -30,23 +30,17 @@ public class TransferExecutor {
         }
 
         FaceConfigComposite config = context.sourceConfig();
-        LogisticsNode sourceNode = context.sourceNode();
         TransferType type = context.type();
-        int limit = context.limit();
 
-        // 获取该传输类型的侧配置
+        if (!config.isGlobalOutputEnabled()) return false;
         LinkConfig.SideData settings = config.linkConfig.getSettings(type);
-        if (!settings.outputEnabled) return false;
 
-        // 使用 TargetSelector 获取排序后的目标节点列表
         List<LogisticsNode> targets = targetSelector.selectTargets(context, settings);
         if (targets.isEmpty()) return false;
 
-        // 获取对应的传输处理器
         ITransferHandler handler = TransferRegistries.getHandler(type);
         if (handler == null) return false;
 
-        // 调用处理器，传入完整的上下文和目标列表
         return handler.performTransfer(context, targets);
     }
 }

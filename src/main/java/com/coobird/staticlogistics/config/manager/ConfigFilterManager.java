@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.config.manager;
 
 import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.filter.core.BasicLogisticsFilter;
 import com.coobird.staticlogistics.filter.core.NbtLogisticsFilter;
 import com.coobird.staticlogistics.filter.core.TagLogisticsFilter;
@@ -9,7 +8,6 @@ import com.coobird.staticlogistics.filter.data.FilterData;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
@@ -34,32 +32,28 @@ public class ConfigFilterManager {
     }
 
     public static boolean isItemOutputAllowed(ItemStack stack, FaceConfigComposite config) {
-        LinkConfig.SideData data = config.linkConfig.getSettings(TransferRegistries.ITEM);
-        if (!data.outputEnabled) return false;
+        if (!config.isGlobalOutputEnabled()) return false;
         FilterDataWithType fwt = getFilterDataFromSlot(config, false);
         if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
         return testItemFilters(stack, fwt.filter, fwt.type);
     }
 
     public static boolean isItemInputAllowed(ItemStack stack, FaceConfigComposite config) {
-        LinkConfig.SideData data = config.linkConfig.getSettings(TransferRegistries.ITEM);
-        if (!data.inputEnabled) return false;
+        if (!config.isGlobalInputEnabled()) return false;
         FilterDataWithType fwt = getFilterDataFromSlot(config, true);
         if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
         return testItemFilters(stack, fwt.filter, fwt.type);
     }
 
     public static boolean isFluidOutputAllowed(FluidStack stack, FaceConfigComposite config) {
-        LinkConfig.SideData data = config.linkConfig.getSettings(TransferRegistries.FLUID);
-        if (!data.outputEnabled) return false;
+        if (!config.isGlobalOutputEnabled()) return false;
         FilterDataWithType fwt = getFilterDataFromSlot(config, false);
         if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
         return testFluidFilters(stack, fwt.filter, fwt.type);
     }
 
     public static boolean isFluidInputAllowed(FluidStack stack, FaceConfigComposite config) {
-        LinkConfig.SideData data = config.linkConfig.getSettings(TransferRegistries.FLUID);
-        if (!data.inputEnabled) return false;
+        if (!config.isGlobalInputEnabled()) return false;
         FilterDataWithType fwt = getFilterDataFromSlot(config, true);
         if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
         return testFluidFilters(stack, fwt.filter, fwt.type);
@@ -112,7 +106,7 @@ public class ConfigFilterManager {
 
         boolean basicPass = !hasBasicFilter || new BasicLogisticsFilter(basicItems, Collections.emptySet(), true).test(stack, isBlacklist);
         boolean tagPass = !hasTagFilter || new TagLogisticsFilter(allWhitelistTags, allBlacklistTags, Collections.emptySet(), Collections.emptySet(), true).test(stack, isBlacklist);
-        boolean nbtPass = !hasNbtFilter || new NbtLogisticsFilter(nbtTemplate, filter.nbtMatchMode(), true).test(stack, isBlacklist);
+        boolean nbtPass = !hasNbtFilter || new NbtLogisticsFilter(nbtTemplate, filter.nbtMatchMode(), true, filter.ignoreDamage()).test(stack, isBlacklist);
 
         return basicPass && tagPass && nbtPass;
     }

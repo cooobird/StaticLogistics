@@ -3,6 +3,8 @@ package com.coobird.staticlogistics.filter.core;
 import com.coobird.staticlogistics.api.type.NbtMatchMode;
 import com.coobird.staticlogistics.filter.registry.ComponentMatcherRegistry;
 import com.coobird.staticlogistics.filter.util.ComponentValueMatcher;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.component.*;
@@ -16,33 +18,51 @@ import java.util.List;
 public class NbtLogisticsFilter extends AbstractLogisticsFilter {
     private final ItemStack template;
     private final NbtMatchMode mode;
+    private final boolean ignoreDamage;
 
-    public NbtLogisticsFilter(ItemStack template, NbtMatchMode mode, boolean hasUpgrade) {
+    public NbtLogisticsFilter(ItemStack template, NbtMatchMode mode, boolean hasUpgrade, boolean ignoreDamage) {
         super(hasUpgrade);
         this.template = template;
         this.mode = mode;
+        this.ignoreDamage = ignoreDamage;
     }
+
 
     @Override
     protected boolean testItem(ItemStack stack) {
         if (template.isEmpty()) return false;
         if (!ItemStack.isSameItem(stack, template)) return false;
         return switch (mode) {
-            case PARTIAL -> matchesPartialMode(stack, template);
-            case FULL -> matchesFullMode(stack, template);
+            case PARTIAL -> matchesPartialMode(stack, template, ignoreDamage);
+            case FULL -> matchesFullMode(stack, template, ignoreDamage);
         };
     }
 
-    private static boolean matchesFullMode(ItemStack target, ItemStack source) {
-        return ComponentValueMatcher.componentsFullMatch(
-            target.getComponents(), source.getComponents(), NbtMatchMode.FULL
-        );
+    private static DataComponentMap withoutDamage(DataComponentMap original) {
+        if (!original.has(DataComponents.DAMAGE)) {
+            return original;
+        }
+        return original.filter(type -> type != DataComponents.DAMAGE);
     }
 
-    private static boolean matchesPartialMode(ItemStack target, ItemStack source) {
-        return ComponentValueMatcher.componentsPartialMatch(
-            target.getComponents(), source.getComponents()
-        );
+    private static boolean matchesFullMode(ItemStack target, ItemStack source, boolean ignoreDamage) {
+        var targetComponents = target.getComponents();
+        var sourceComponents = source.getComponents();
+        if (ignoreDamage) {
+            targetComponents = withoutDamage(targetComponents);
+            sourceComponents = withoutDamage(sourceComponents);
+        }
+        return ComponentValueMatcher.componentsFullMatch(targetComponents, sourceComponents, NbtMatchMode.FULL);
+    }
+
+    private static boolean matchesPartialMode(ItemStack target, ItemStack source, boolean ignoreDamage) {
+        var targetComponents = target.getComponents();
+        var sourceComponents = source.getComponents();
+        if (ignoreDamage) {
+            targetComponents = withoutDamage(targetComponents);
+            sourceComponents = withoutDamage(sourceComponents);
+        }
+        return ComponentValueMatcher.componentsPartialMatch(targetComponents, sourceComponents);
     }
 
     @Override

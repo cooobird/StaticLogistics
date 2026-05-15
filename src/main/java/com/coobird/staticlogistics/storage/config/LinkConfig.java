@@ -1,13 +1,10 @@
 package com.coobird.staticlogistics.storage.config;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.TransferType;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -20,20 +17,7 @@ public class LinkConfig {
     }
 
     public SideData getSettings(TransferType type) {
-        return typeSettings.computeIfAbsent(type.id(), id -> new SideData());
-    }
-
-    public NodeRole determineRole() {
-        boolean canSend = false;
-        boolean canReceive = false;
-        for (SideData data : typeSettings.values()) {
-            if (data.outputEnabled) canSend = true;
-            if (data.inputEnabled) canReceive = true;
-        }
-        if (canSend && canReceive) return NodeRole.BOTH;
-        if (canSend) return NodeRole.SENDER;
-        if (canReceive) return NodeRole.RECEIVER;
-        return NodeRole.NONE;
+        return typeSettings.computeIfAbsent(type.id(), id -> new SideData(type));
     }
 
     public boolean isDefault() {
@@ -42,7 +26,6 @@ public class LinkConfig {
         }
         return true;
     }
-
 
     public Map<ResourceLocation, SideData> getAllSettings() {
         return typeSettings;
@@ -53,16 +36,18 @@ public class LinkConfig {
     }
 
     public static class SideData {
-        public boolean inputEnabled = false;
-        public boolean outputEnabled = false;
+        public final TransferType type;
         public int inputChannel = 0;
         public int outputChannel = 0;
         public DistributionStrategy strategy = DistributionStrategy.SEQUENTIAL;
         public int priority = 0;
-        public final Set<LogisticsNode> linkedInputs = ConcurrentHashMap.newKeySet();
+
+        public SideData(TransferType type) {
+            this.type = type;
+        }
 
         public boolean isDefault() {
-            return linkedInputs.isEmpty() && !inputEnabled && !outputEnabled && inputChannel == 0 && outputChannel == 0;
+            return inputChannel == 0 && outputChannel == 0;
         }
     }
 }

@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.transfer.context;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import net.minecraft.server.level.ServerLevel;
 
@@ -36,5 +37,9 @@ public record TransferContext(
 
     public boolean isDepthExceeded() {
         return depth >= MAX_DEPTH;
+    }
+
+    public int[] getSlotCursor() {
+        return GlobalLogisticsManager.get(level.getServer()).getCursor(sourceNode.toKey(), type);
     }
 }

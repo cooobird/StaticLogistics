@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.transfer.handler;
 
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.config.manager.ConfigFilterManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -30,6 +31,8 @@ public class StandardTransferHandlers {
         try {
             isInItemTransfer.set(true);
             TransferContext newContext = context.withIncrementedDepth();
+            DistributionStrategy strategy = context.sourceConfig().linkConfig.getSettings(context.type()).strategy;
+
             return TransferUtils.doTransferNodes(
                 newContext.level(),
                 newContext.sourceNode().gPos().pos(),
@@ -39,13 +42,28 @@ public class StandardTransferHandlers {
                 newContext.limit(),
                 new TransferUtils.SimpleProtocol<>(
                     (handler, max) -> {
-                        for (int i = 0; i < handler.getSlots(); i++) {
-                            ItemStack stack = handler.extractItem(i, max, true);
-                            if (!stack.isEmpty() && isItemAllowed(newContext.sourceNode(), stack, newContext.isPullMode(), newContext.level())) {
-                                return stack;
+                        if (strategy == DistributionStrategy.SLOT_ROUND_ROBIN) {
+                            int[] cursor = newContext.getSlotCursor();
+                            int start = cursor[0];
+                            int slots = handler.getSlots();
+                            for (int i = 0; i < slots; i++) {
+                                int slot = (start + i) % slots;
+                                ItemStack stack = handler.extractItem(slot, max, true);
+                                if (!stack.isEmpty() && isItemAllowed(newContext.sourceNode(), stack, newContext.isPullMode(), newContext.level())) {
+                                    cursor[0] = (slot + 1) % slots;
+                                    return stack;
+                                }
                             }
+                            return ItemStack.EMPTY;
+                        } else {
+                            for (int i = 0; i < handler.getSlots(); i++) {
+                                ItemStack stack = handler.extractItem(i, max, true);
+                                if (!stack.isEmpty() && isItemAllowed(newContext.sourceNode(), stack, newContext.isPullMode(), newContext.level())) {
+                                    return stack;
+                                }
+                            }
+                            return ItemStack.EMPTY;
                         }
-                        return ItemStack.EMPTY;
                     },
                     (handler, stack) -> {
                         ItemStack remain = stack;

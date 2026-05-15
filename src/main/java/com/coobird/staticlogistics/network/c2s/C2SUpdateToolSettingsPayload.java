@@ -48,7 +48,6 @@ public record C2SUpdateToolSettingsPayload(String groupId, int mode,
             stack.set(SLDataComponents.SELECTED_GROUP.get(), finalId);
 
             int finalMask = payload.typeMask();
-            if (finalMask == 0) finalMask = TransferRegistries.ITEM.getFlag();
             stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), finalMask);
 
             int vMode = Mth.clamp(payload.mode(), 0, ToolMode.values().length - 1);

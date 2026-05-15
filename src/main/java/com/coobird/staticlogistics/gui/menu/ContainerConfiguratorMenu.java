@@ -1,25 +1,27 @@
 package com.coobird.staticlogistics.gui.menu;
 
-import com.coobird.staticlogistics.api.type.UpgradeTier;
 import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Arrays;
 
 public class ContainerConfiguratorMenu extends AbstractContainerMenu {
     private static final int TOTAL_CONFIG_SLOTS = 3;
@@ -31,6 +33,13 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
     private final BlockPos pos;
     private ContainerConfig serverConfig;
 
+    private final DataSlot speedMultSlot = DataSlot.standalone();
+    private final DataSlot rangeMultSlot = DataSlot.standalone();
+    private final DataSlot stackMultSlot = DataSlot.standalone();
+    private final DataSlot dimensionSlot = DataSlot.standalone();
+
+    private final ItemStack[] lastUpgradeStacks = new ItemStack[TOTAL_CONFIG_SLOTS];
+
     public ContainerConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
         this(containerId, playerInventory, buf.readBlockPos());
     }
@@ -39,12 +48,21 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
         super(SLMenuTypes.CONTAINER_CONFIGURATOR_MENU.get(), containerId);
         this.pos = pos;
 
+        addDataSlot(speedMultSlot);
+        addDataSlot(rangeMultSlot);
+        addDataSlot(stackMultSlot);
+        addDataSlot(dimensionSlot);
+
+        Arrays.fill(lastUpgradeStacks, ItemStack.EMPTY);
+
         IItemHandler upgradeHandler = null;
         if (playerInventory.player.level() instanceof ServerLevel serverLevel && pos != null) {
             LinkManager mgr = LinkManager.get(serverLevel);
             if (mgr != null) {
                 this.serverConfig = mgr.getOrCreateContainerConfig(pos);
                 upgradeHandler = serverConfig.getUpgrades();
+                updateDataSlots();
+                cacheUpgradeStacks();
             }
         }
 
@@ -59,6 +77,58 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
         this.addSlot(new ContainerUpgradeSlot(finalHandler, 2, 18, 81, UpgradeType.STACK));
 
         addPlayerInventorySlots(playerInventory);
+    }
+
+    private void cacheUpgradeStacks() {
+        if (serverConfig == null) return;
+        for (int i = 0; i < TOTAL_CONFIG_SLOTS; i++) {
+            lastUpgradeStacks[i] = serverConfig.getUpgrades().getStackInSlot(i).copy();
+        }
+    }
+
+    private boolean hasUpgradeStacksChanged() {
+        if (serverConfig == null) return false;
+        for (int i = 0; i < TOTAL_CONFIG_SLOTS; i++) {
+            ItemStack current = serverConfig.getUpgrades().getStackInSlot(i);
+            if (!ItemStack.matches(current, lastUpgradeStacks[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void updateDataSlots() {
+        if (serverConfig != null) {
+            speedMultSlot.set(LogisticsCalculator.getSpeedMultiplier(serverConfig));
+            rangeMultSlot.set(LogisticsCalculator.getRangeMultiplier(serverConfig));
+            stackMultSlot.set(LogisticsCalculator.getStackMultiplier(serverConfig));
+            dimensionSlot.set(LogisticsCalculator.isDimensionEffective(serverConfig) ? 1 : 0);
+        }
+    }
+
+    public int getSpeedMultiplier() {
+        return speedMultSlot.get();
+    }
+
+    public int getRangeMultiplier() {
+        return rangeMultSlot.get();
+    }
+
+    public int getStackMultiplier() {
+        return stackMultSlot.get();
+    }
+
+    public boolean isDimensionEffective() {
+        return dimensionSlot.get() == 1;
+    }
+
+    @Override
+    public void broadcastChanges() {
+        if (hasUpgradeStacksChanged()) {
+            updateDataSlots();
+            cacheUpgradeStacks();
+        }
+        super.broadcastChanges();
     }
 
     private static class ContainerUpgradeSlot extends SlotItemHandler {
@@ -81,12 +151,7 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public int getMaxStackSize(ItemStack stack) {
-            if (!(stack.getItem() instanceof UpgradeItem upgrade)) return 64;
-            if (upgrade.getTier() == UpgradeTier.NETHER_STAR) return 1;
-            return switch (upgrade.getType()) {
-                case DIMENSION -> 1;
-                default -> SLConfig.getUpgradeStackLimit();
-            };
+            return 1;
         }
     }
 
@@ -165,5 +230,4 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
     public BlockPos getPos() {
         return pos;
     }
-
 }

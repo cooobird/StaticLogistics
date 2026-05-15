@@ -38,6 +38,7 @@ public class LinkConfiguratorScreen extends Screen {
     private static final int LIST_OFFSET_X = 10, LIST_OFFSET_Y = 32;
     private static final int SCROLLBAR_X = 88, SCROLLBAR_Y = 25;
     private static final int SELECTION_WIDTH = 75;
+    private static final int MODE_COUNT = 6;
 
     private final ItemStack stack;
     private int leftPos, topPos, modeIdx;
@@ -121,7 +122,7 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     private void renderTransferTypeSection(GuiGraphics g, int mx, int my) {
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
+        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(),0);
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
         int perRow = 8;
         int btnWidth = 19;
@@ -193,7 +194,7 @@ public class LinkConfiguratorScreen extends Screen {
         this.setFocused(null);
 
         if (mx >= leftPos - 25 && mx < leftPos) {
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < MODE_COUNT; i++) {
                 int ry = topPos + 12 + (i * 20);
                 boolean isSel = (i == modeIdx);
                 int bh = isSel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
@@ -252,9 +253,8 @@ public class LinkConfiguratorScreen extends Screen {
         return super.mouseClicked(mx, my, b);
     }
 
-
     private boolean handleTransferTypeClick(double mx, double my) {
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
+        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
         int perRow = 8;
         int btnWidth = 19;
@@ -278,7 +278,6 @@ public class LinkConfiguratorScreen extends Screen {
             if (mx >= drawX && mx < drawX + bw && my >= drawY && my < drawY + bh) {
                 int bit = type.getFlag();
                 int newMask = mask ^ bit;
-                if (newMask == 0) newMask = bit;
                 stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), newMask);
                 syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true);
                 return true;
@@ -289,7 +288,7 @@ public class LinkConfiguratorScreen extends Screen {
 
     private void renderModeTooltips(GuiGraphics g, int mx, int my) {
         if (mx >= leftPos - 25 && mx < leftPos) {
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < MODE_COUNT; i++) {
                 int ry = topPos + 12 + (i * 20);
                 boolean isSel = (i == modeIdx);
                 int bh = isSel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
@@ -297,10 +296,11 @@ public class LinkConfiguratorScreen extends Screen {
                 if (my >= actualY && my < actualY + bh) {
                     List<Component> tooltip = new ArrayList<>();
                     String key = switch (i) {
-                        case 0 -> "mode.staticlogistics.link_as_input";
-                        case 1 -> "mode.staticlogistics.link_as_output";
-                        case 2 -> "mode.staticlogistics.remove";
-                        case 3 -> "mode.staticlogistics.face_config";
+                        case 0 -> "mode.staticlogistics.wrench";
+                        case 1 -> "mode.staticlogistics.link_as_input";
+                        case 2 -> "mode.staticlogistics.link_as_output";
+                        case 3 -> "mode.staticlogistics.remove";
+                        case 4 -> "mode.staticlogistics.face_config";
                         default -> "mode.staticlogistics.container_config";
                     };
                     tooltip.add(Component.translatable(key).withStyle(ChatFormatting.YELLOW));
@@ -390,7 +390,7 @@ public class LinkConfiguratorScreen extends Screen {
         SelectionContext.setSelection(groupId, modeIdx);
         stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
         stack.set(SLDataComponents.TOOL_MODE.get(), modeIdx);
-        int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferRegistries.ITEM.getFlag());
+        int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, typeMask));
         if (playSound) playClickSound();
     }
@@ -471,20 +471,28 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     private void renderSideTabs(GuiGraphics g) {
-        for (int i = 0; i < 5; i++) {
-            int ry = topPos + 12 + (i * 20);
+        for (int i = 0; i < MODE_COUNT; i++) {
+            int ry = topPos + 7 + (i * 19);
             boolean sel = (i == modeIdx);
             int bw = sel ? SLGuiTextures.Button.Middle.SELECTED_WIDTH : SLGuiTextures.Button.Middle.WIDTH;
             int bh = sel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
             int bx = leftPos - bw, by = sel ? ry - 1 : ry;
             g.blit(SLGuiTextures.GUI_ATLAS, bx, by, sel ? SLGuiTextures.Button.Middle.SELECTED_U : SLGuiTextures.Button.Middle.DISABLED_U, sel ? SLGuiTextures.Button.Middle.SELECTED_V : SLGuiTextures.Button.Middle.DISABLED_V, bw, bh, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-            int iv = switch (i) {
-                case 0 -> SLGuiTextures.Icon.INPUT_V;
-                case 1 -> SLGuiTextures.Icon.OUTPUT_V;
-                case 2 -> SLGuiTextures.Icon.DISCONNECT_V;
-                default -> SLGuiTextures.Icon.CONFIG_V;
-            };
-            g.blit(SLGuiTextures.GUI_ATLAS, bx + (bw - 19) / 2, by + (bh - 15) / 2 - 1, sel ? SLGuiTextures.Icon.SELECTED_U : SLGuiTextures.Icon.NORMAL_U, iv, 19, 15, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+            int iconU;
+            int iconV;
+            if (i == 0) {
+                iconU = SLGuiTextures.Icon.WRANCH_U;
+                iconV = SLGuiTextures.Icon.WRANCH_V;
+            } else {
+                iconU = sel ? SLGuiTextures.Icon.SELECTED_U : SLGuiTextures.Icon.NORMAL_U;
+                iconV = switch (i) {
+                    case 1 -> SLGuiTextures.Icon.INPUT_V;
+                    case 2 -> SLGuiTextures.Icon.OUTPUT_V;
+                    case 3 -> SLGuiTextures.Icon.DISCONNECT_V;
+                    default -> SLGuiTextures.Icon.CONFIG_V;
+                };
+            }
+            g.blit(SLGuiTextures.GUI_ATLAS, bx + (bw - 19) / 2, by + (bh - 15) / 2 - 1, iconU, iconV, 19, 15, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
         }
     }
 

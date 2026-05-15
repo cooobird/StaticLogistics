@@ -22,24 +22,25 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         LogisticsNode sourceNode = context.sourceNode();
         TransferType type = context.type();
 
+        FaceConfigComposite sourceConfig = context.sourceConfig();
         Set<LogisticsNode> targetSet = new HashSet<>();
 
-        for (LogisticsNode target : settings.linkedInputs) {
+        for (LogisticsNode target : sourceConfig.getLinkedNodes()) {
             ServerLevel targetLevel = globalManager.getLevel(target.gPos().dimension());
             if (targetLevel == null) continue;
 
             FaceConfigComposite targetCfg = LinkManager.get(targetLevel).getFaceConfig(target.toKey());
-            if (targetCfg != null) {
-                LinkConfig.SideData targetData = targetCfg.linkConfig.getSettings(type);
+            if (targetCfg == null) continue;
 
-                boolean bothUnset = (settings.outputChannel == 0 && targetData.inputChannel == 0);
-                boolean bothSetAndEqual = (settings.outputChannel != 0 && targetData.inputChannel != 0 && targetData.inputChannel == settings.outputChannel);
-                boolean channelMatch = bothUnset || bothSetAndEqual;
+            if (!targetCfg.isGlobalInputEnabled()) continue;
 
-                if (channelMatch) {
-                    targetSet.add(target);
-                }
-            }
+            LinkConfig.SideData targetData = targetCfg.linkConfig.getSettings(type);
+
+            boolean bothUnset = (settings.outputChannel == 0 && targetData.inputChannel == 0);
+            boolean bothSetAndEqual = (settings.outputChannel != 0 && targetData.inputChannel != 0 && targetData.inputChannel == settings.outputChannel);
+            if (!(bothUnset || bothSetAndEqual)) continue;
+
+            targetSet.add(target);
         }
 
         if (settings.outputChannel != 0) {
@@ -79,7 +80,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
                 yield allTargets;
             }
 
-            case ROUND_ROBIN -> {
+            case ROUND_ROBIN, SLOT_ROUND_ROBIN -> {
                 if (allTargets.size() <= 1) yield allTargets;
                 int index = globalManager.getNextRoundRobinIndex(sourceNode.toKey(), allTargets.size());
                 List<LogisticsNode> result = new ArrayList<>();

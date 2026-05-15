@@ -21,6 +21,8 @@ import java.util.List;
 
 public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfiguratorMenu> {
     private EditBox priorityBox;
+    private int plusX, plusY, minusX, minusY;
+    private static final int BTN_SIZE = 12;
 
     private static final int LEFT_X = 10;
     private static final int IN_BTN_X = LEFT_X, IN_BTN_Y = 20;
@@ -28,6 +30,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     private static final int PRIORITY_Y = 65;
     private static final int PRIORITY_TEXT_Y = 80;
     private static final int PRIORITY_BOX_X = 10;
+    private static final int PRIORITY_BOX_WIDTH = 36;
 
     private static final int RIGHT_X = 90;
     private static final int OUT_BTN_X = RIGHT_X, OUT_BTN_Y = 20;
@@ -57,9 +60,11 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         this.titleLabelY = 6;
         this.inventoryLabelY = 1000;
 
+        int priorityBoxX = leftPos + PRIORITY_BOX_X;
+        int priorityBoxY = topPos + PRIORITY_Y;
         this.priorityBox = new EditBox(this.font,
-            leftPos + PRIORITY_BOX_X, topPos + PRIORITY_Y,
-            36, 12, Component.translatable("gui.staticlogistics.label.priority"));
+            priorityBoxX, priorityBoxY,
+            PRIORITY_BOX_WIDTH, BTN_SIZE, Component.translatable("gui.staticlogistics.label.priority"));
         this.priorityBox.setBordered(true);
         this.priorityBox.setMaxLength(5);
         this.priorityBox.setValue(String.valueOf(menu.getPriority()));
@@ -73,6 +78,12 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             }
         });
         this.addRenderableWidget(this.priorityBox);
+
+        this.plusX = priorityBoxX + PRIORITY_BOX_WIDTH + 2;
+        this.plusY = priorityBoxY;
+        this.minusX = plusX + BTN_SIZE + 2;
+        this.minusY = plusY;
+
         updateWidgetVisibility();
     }
 
@@ -80,7 +91,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     protected void updateWidgetVisibility() {
         super.updateWidgetVisibility();
         if (this.priorityBox != null) {
-            this.priorityBox.setVisible(menu.isInputEnabled());
+            this.priorityBox.setVisible(menu.isGlobalInputEnabled());
         }
     }
 
@@ -91,7 +102,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     protected boolean shouldShowTypePanel() {
-        return menu.isOutputEnabled();
+        return menu.isGlobalOutputEnabled();
     }
 
     @Override
@@ -169,27 +180,58 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         renderFilterSlots(graphics);
         renderFilterHints(graphics);
 
-        renderToggleButton(graphics, IN_BTN_X, IN_BTN_Y, menu.isInputEnabled());
+        renderToggleButton(graphics, IN_BTN_X, IN_BTN_Y, menu.isGlobalInputEnabled());
         renderColorButton(graphics, IN_COLOR_X, IN_COLOR_Y, menu.getInputChannel());
-        if (menu.isInputEnabled()) {
+        if (menu.isGlobalInputEnabled()) {
             Component priorityLabel = Component.translatable("gui.staticlogistics.label.priority");
             graphics.drawString(this.font, priorityLabel,
                 leftPos + PRIORITY_BOX_X, topPos + PRIORITY_TEXT_Y,
                 0xFFFFFFFF, false);
+
+            drawOperatorButton(graphics, plusX, plusY, SLGuiTextures.Operator.ADD_U, SLGuiTextures.Operator.ADD_V, mouseX, mouseY);
+            drawOperatorButton(graphics, minusX, minusY, SLGuiTextures.Operator.REDUCE_U, SLGuiTextures.Operator.REDUCE_V, mouseX, mouseY);
+            if (mouseX >= plusX && mouseX < plusX + BTN_SIZE && mouseY >= plusY && mouseY < plusY + BTN_SIZE) {
+                graphics.renderTooltip(font, Component.translatable("gui.staticlogistics.priority.tooltip"), mouseX, mouseY);
+            } else if (mouseX >= minusX && mouseX < minusX + BTN_SIZE && mouseY >= minusY && mouseY < minusY + BTN_SIZE) {
+                graphics.renderTooltip(font, Component.translatable("gui.staticlogistics.priority.tooltip"), mouseX, mouseY);
+            }
         }
 
-        renderToggleButton(graphics, OUT_BTN_X, OUT_BTN_Y, menu.isOutputEnabled());
+        renderToggleButton(graphics, OUT_BTN_X, OUT_BTN_Y, menu.isGlobalOutputEnabled());
         renderColorButton(graphics, OUT_COLOR_X, OUT_COLOR_Y, menu.getOutputChannel());
-        if (menu.isOutputEnabled()) {
+        if (menu.isGlobalOutputEnabled()) {
             renderStrategyButton(graphics, mouseX, mouseY);
         }
 
-        if (menu.isInputEnabled() && !menu.getSlot(0).getItem().isEmpty()) {
+        if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty()) {
             renderFilterConfigButtonAt(graphics, mouseX, mouseY, INPUT_FILTER_X, INPUT_FILTER_Y, true);
         }
-        if (menu.isOutputEnabled() && !menu.getSlot(1).getItem().isEmpty()) {
+        if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty()) {
             renderFilterConfigButtonAt(graphics, mouseX, mouseY, OUTPUT_FILTER_X, OUTPUT_FILTER_Y, false);
         }
+    }
+
+    private void drawOperatorButton(GuiGraphics g, int x, int y, int iconU, int iconV, int mx, int my) {
+        boolean hover = mx >= x && mx < x + BTN_SIZE && my >= y && my < y + BTN_SIZE;
+        int bgU = SLGuiTextures.Button.Middle.DISABLED_U;
+        int bgV = SLGuiTextures.Button.Middle.DISABLED_V;
+        int bgW = SLGuiTextures.Button.Middle.WIDTH;
+        int bgH = SLGuiTextures.Button.Middle.HEIGHT;
+        g.blit(SLGuiTextures.GUI_ATLAS, x, y, BTN_SIZE, BTN_SIZE, bgU, bgV, bgW, bgH, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.blit(SLGuiTextures.GUI_ATLAS, x, y, iconU, iconV, BTN_SIZE, BTN_SIZE, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        if (hover) {
+            g.fill(x, y, x + BTN_SIZE, y + BTN_SIZE, 0x22FFFFFF);
+        }
+    }
+
+    private void adjustPriority(int delta) {
+        if (delta == 0) return;
+        if (hasShiftDown() && hasControlDown()) delta *= 64;
+        else if (hasShiftDown()) delta *= 10;
+        else if (hasControlDown()) delta *= 5;
+        int newPriority = menu.getPriority() + delta;
+        newPriority = Math.max(-9999, Math.min(9999, newPriority));
+        sendConfigUpdate("priority", newPriority);
     }
 
     private void renderFilterConfigButtonAt(GuiGraphics g, int mx, int my, int slotX, int slotY, boolean isInput) {
@@ -298,16 +340,29 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
+        if (menu.isGlobalInputEnabled()) {
+            if (mx >= plusX && mx < plusX + BTN_SIZE && my >= plusY && my < plusY + BTN_SIZE) {
+                adjustPriority(1);
+                playClickSound();
+                return true;
+            }
+            if (mx >= minusX && mx < minusX + BTN_SIZE && my >= minusY && my < minusY + BTN_SIZE) {
+                adjustPriority(-1);
+                playClickSound();
+                return true;
+            }
+        }
+
         boolean handled = false;
 
-        if (menu.isInputEnabled() && !menu.getSlot(0).getItem().isEmpty() && isFilterBtnHover(mx, my, INPUT_FILTER_X, INPUT_FILTER_Y)) {
+        if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty() && isFilterBtnHover(mx, my, INPUT_FILTER_X, INPUT_FILTER_Y)) {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_filter", true);
             tag.putBoolean("is_input", true);
             PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
             playClickSound();
             handled = true;
-        } else if (menu.isOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
+        } else if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_filter", true);
             tag.putBoolean("is_input", false);
@@ -315,11 +370,11 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             playClickSound();
             handled = true;
         } else if (isMouseOver(mx, my, IN_BTN_X, IN_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
-            sendConfigUpdate("inputEnabled", !menu.isInputEnabled());
+            sendConfigUpdate("globalInput", !menu.isGlobalInputEnabled());
             playClickSound();
             handled = true;
         } else if (isMouseOver(mx, my, OUT_BTN_X, OUT_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
-            sendConfigUpdate("outputEnabled", !menu.isOutputEnabled());
+            sendConfigUpdate("globalOutput", !menu.isGlobalOutputEnabled());
             playClickSound();
             handled = true;
         } else if (isMouseOver(mx, my, IN_COLOR_X, IN_COLOR_Y, 14, 14)) {
@@ -332,7 +387,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             sendConfigUpdate("outputChannel", nextChannel);
             playClickSound();
             handled = true;
-        } else if (menu.isOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
+        } else if (menu.isGlobalOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
             int nextOrd = (menu.getStrategy().ordinal() + 1) % DistributionStrategy.values().length;
             sendConfigUpdate("strategy", DistributionStrategy.values()[nextOrd].getSerializedName());
             playClickSound();
@@ -355,7 +410,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
-        if (menu.isOutputEnabled()) {
+        if (menu.isGlobalOutputEnabled()) {
             if (super.mouseScrolled(mx, my, dx, dy)) return true;
         }
         return super.mouseScrolled(mx, my, dx, dy);
@@ -385,7 +440,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         if (isMouseOver(mx, my, OUT_BTN_X, OUT_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
             g.renderTooltip(this.font, Component.translatable("gui.mode.staticlogistics.output"), mx, my);
         }
-        if (menu.isOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
+        if (menu.isGlobalOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
             g.renderComponentTooltip(this.font, List.of(
                 Component.translatable("gui.staticlogistics.strategy"),
                 menu.getStrategy().getDisplayName().copy().withStyle(ChatFormatting.AQUA)), mx, my);
@@ -393,21 +448,21 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
         int inputSlotX = leftPos + INPUT_FILTER_X;
         int inputSlotY = topPos + INPUT_FILTER_Y;
-        if (menu.isInputEnabled() && mx >= inputSlotX && mx < inputSlotX + 16 && my >= inputSlotY && my < inputSlotY + 16) {
+        if (menu.isGlobalInputEnabled() && mx >= inputSlotX && mx < inputSlotX + 16 && my >= inputSlotY && my < inputSlotY + 16) {
             ItemStack stack = menu.getSlot(0).getItem();
             if (!stack.isEmpty()) g.renderTooltip(font, stack, mx, my);
         }
         int outputSlotX = leftPos + OUTPUT_FILTER_X;
         int outputSlotY = topPos + OUTPUT_FILTER_Y;
-        if (menu.isOutputEnabled() && mx >= outputSlotX && mx < outputSlotX + 16 && my >= outputSlotY && my < outputSlotY + 16) {
+        if (menu.isGlobalOutputEnabled() && mx >= outputSlotX && mx < outputSlotX + 16 && my >= outputSlotY && my < outputSlotY + 16) {
             ItemStack stack = menu.getSlot(1).getItem();
             if (!stack.isEmpty()) g.renderTooltip(font, stack, mx, my);
         }
 
-        if (menu.isInputEnabled() && !menu.getSlot(0).getItem().isEmpty() && isFilterBtnHover(mx, my, INPUT_FILTER_X, INPUT_FILTER_Y)) {
+        if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty() && isFilterBtnHover(mx, my, INPUT_FILTER_X, INPUT_FILTER_Y)) {
             g.renderTooltip(this.font, Component.translatable("gui.staticlogistics.open_filter"), mx, my);
         }
-        if (menu.isOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
+        if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
             g.renderTooltip(this.font, Component.translatable("gui.staticlogistics.open_filter"), mx, my);
         }
     }

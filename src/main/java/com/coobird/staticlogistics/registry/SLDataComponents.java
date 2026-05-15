@@ -7,7 +7,7 @@ import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.util.ExtraCodecs;
+import net.minecraft.world.item.component.CustomData;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -24,9 +24,6 @@ public class SLDataComponents {
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> SELECTED_TYPES_MASK =
         register("selected_types_mask", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
-
-    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> PRIORITY =
-        register("priority", builder -> builder.persistent(ExtraCodecs.NON_NEGATIVE_INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> TOOL_MODE =
         register("tool_mode", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
@@ -47,4 +44,7 @@ public class SLDataComponents {
     private static <T> DeferredHolder<DataComponentType<?>, DataComponentType<T>> register(String name, UnaryOperator<DataComponentType.Builder<T>> builder) {
         return DATA_COMPONENT_TYPES.register(name, () -> builder.apply(DataComponentType.builder()).build());
     }
+
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<CustomData>> STORED_BE_NBT = DATA_COMPONENT_TYPES.register("stored_block_entity",
+        () -> DataComponentType.<CustomData>builder().persistent(CustomData.CODEC).build());
 }

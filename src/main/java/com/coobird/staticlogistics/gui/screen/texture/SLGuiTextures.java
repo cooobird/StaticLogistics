@@ -42,7 +42,7 @@ public class SLGuiTextures {
 
         public static final class Push {
             public static final int U = 436, V = 1, WIDTH = 18, HEIGHT = 10;
-            public static final int DISABLED_U = 436, DISABLED_V = 12, DISABLED_WIDTH = 18, DISABLED_HEIGHT = 10;
+            public static final int DISABLED_U = 436, DISABLED_V = 12;
         }
     }
 
@@ -59,7 +59,7 @@ public class SLGuiTextures {
 
     public static final class Icon {
         public static final int SELECTED_U = 394, NORMAL_U = 416;
-        public static final int INPUT_V = 74, OUTPUT_V = 90, DISCONNECT_V = 106, CONFIG_V = 122;
+        public static final int WRANCH_U = 416, WRANCH_V = 170, INPUT_V = 74, OUTPUT_V = 90, DISCONNECT_V = 106, CONFIG_V = 122;
     }
 
     public static final class List {
@@ -81,6 +81,11 @@ public class SLGuiTextures {
 
     public static final class DeleteTag {
         public static final int U = 394, V = 170, WIDTH = 19, HEIGHT = 15;
+    }
+
+    public static final class Operator {
+        public static final int ADD_U = 476, ADD_V = 50, WIDTH = 12, HEIGHT = 12;
+        public static final int REDUCE_U = 476, REDUCE_V = 76;
     }
 
     public static final int ZOOM_WIDTH = 12, ZOOM_HEIGHT = 12;

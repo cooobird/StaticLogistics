@@ -20,7 +20,7 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
 
     @Override
     protected int getBlacklistButtonXOffset() {
-        return menu.getActiveUpgradeType() == UpgradeType.NBT_FILTER ? 60 : 0;
+        return menu.getActiveUpgradeType() == UpgradeType.NBT_FILTER ? 50 : 0;
     }
 
     @Override
@@ -38,7 +38,21 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
         }
 
         if (type == UpgradeType.NBT_FILTER) {
-            renderNbtModeButtons(graphics, mouseX, mouseY);
+            renderNbtModeControls(graphics, mouseX, mouseY);
+        }
+    }
+
+    @Override
+    public void containerTick() {
+        super.containerTick();
+        if (minecraft != null && minecraft.player != null) {
+            ItemStack current = minecraft.player.getMainHandItem();
+            ItemStack original = menu.getFilterStack();
+            if (current.isEmpty() && !original.isEmpty()) {
+                this.onClose();
+            } else if (!current.isEmpty() && (current.getItem() != original.getItem() || current.getCount() != original.getCount())) {
+                this.onClose();
+            }
         }
     }
 
@@ -48,7 +62,7 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
             if (handleTagBarClick(mx, my, button)) return true;
         }
 
-        if (handleNbtModeClick(mx, my)) return true;
+        if (handleNbtModeAndIgnoreClick(mx, my)) return true;
 
         return super.mouseClicked(mx, my, button);
     }
@@ -105,7 +119,7 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
     }
 
     private void renderTitle(GuiGraphics g) {
-        String titleKey = "gui_hand_filter";
+        String titleKey = "gui.staticlogistics.hand_filter";
         String titleText = Component.translatable(titleKey).getString();
         int tw = 110, tx = leftPos + (SLGuiTextures.Background.WIDTH - tw) / 2, ty = topPos - 8;
         g.blit(SLGuiTextures.GUI_ATLAS, tx + tw - 2, ty,

@@ -57,6 +57,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.mode.staticlogistics.input", "Insert", "存入");
         add("gui.mode.staticlogistics.output", "Extract", "提取");
         add("gui.staticlogistics.label.priority", "Priority", "优先级");
+        add("gui.staticlogistics.priority.tooltip", "Hold Shift: ×10, Hold Ctrl: ×5, Hold Shift+Ctrl: ×64", "按住shift点击: ×10, 按住ctrl点击: ×5, 同时按住shift+ctrl点击: ×64");
         add("gui.staticlogistics.strategy", "Distribution Strategy", "分发策略");
         add("gui.staticlogistics.hint.speed", "Speed Upgrade", "速度升级");
         add("gui.staticlogistics.hint.range", "Range/Dim Upgrade", "范围/维度升级");
@@ -90,10 +91,17 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.tag_dropdown.help", "Scroll to select tags", "滚动选择标签");
         add("gui.staticlogistics.tag_dropdown.help2", "Click the tab to select it, and then tap the selected tab again to uncheck it.", "点击标签选中，再次点击已选中的标签即可取消选中。");
         add("gui.staticlogistics.tag_dropdown.help3", "Right-click to toggle tag condition", "右键对标签条件取反");
+        add("gui.staticlogistics.part_match_button", "Part Match", "部分匹配");
+        add("gui.staticlogistics.full_match_button", "Full Match", "完全匹配");
+        add("gui.staticlogistics.ignore_durability", "Ignore Durability", "忽略耐久");
+        add("gui.staticlogistics.filter.full", "Filter is full", "过滤器已满");
+        add("gui.staticlogistics.filter.no_tags", "This item has no tags, cannot be added to the filter.", "此物品无标签，无法添加到过滤器");
 
         add("tag_type.staticlogistics.item", "Item Tag:", "物品标签:");
         add("tag_type.staticlogistics.block", "Block Tag:", "方块标签:");
         add("tag_type.staticlogistics.fluid", "Fluid Tag:", "流体标签:");
+        add("gui.staticlogistics.tag.active", "Whitelist", "白名单");
+        add("gui.staticlogistics.tag.excluded", "Blacklist", "黑名单");
 
         add("msg.staticlogistics.export.header", "--- Coordinates for Group #%s ---", "--- 分组 #%s 的坐标列表 ---");
         add("msg.staticlogistics.export.tp_hover", "Click to suggest teleport command", "点击以补全传送指令");
@@ -109,8 +117,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.link_failed", "Failed to create links. Check connection rules.", "建立连接失败。请检查连接规则。");
         add("msg.staticlogistics.links_created", "Created %s new link(s)", "建立了 %s 条新链路");
         add("msg.staticlogistics.links_merged", "Merged %s link(s) with %s", "合并了 %s 条链路的 %s 传输");
-        add("msg.staticlogistics.no_valid_links", "No valid connections possible.", "无法建立有效的连接。");
-        add("msg.staticlogistics.out_of_range", "Target out of range!", "目标超出范围！");
+        add("msg.staticlogistics.out_of_range", "Out of Range", "超出范围");
         add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
         add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
         add("msg.staticlogistics.links_removed", "Successfully removed %s logistics links", "已成功移除 %s 条物流链接");
@@ -122,12 +129,22 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.links_removed_partial", "Cleaned %s links; %s others were skipped (Protected).", "清理了 %s 条链路；另有 %s 条受保护无法移除。");
         add("msg.staticlogistics.no_face_config", "No face configuration found at this location.", "该位置未找到面配置。");
         add("msg.staticlogistics.no_capability", "This block does not have logistics capability.", "该方块不具备物流能力。");
+        add("msg.staticlogistics.no_types_selected", "No transfer type selected. Cannot create link.", "§c未选择任何传输类型，无法建立链接");
         add("msg.staticlogistics.self_link_error", "Cannot link a node to itself.", "无法将节点连接到自身。");
         add("msg.staticlogistics.links_removed_smart", "Links removed successfully.", "链接已成功移除。");
         add("msg.staticlogistics.no_dimension_upgrade", "No dimension upgrade installed!", "未安装跨维度升级！");
         add("msg.staticlogistics.unknown_owner", "Unknown", "未知");
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
+        add("msg.staticlogistics.wrench.sneak_required", "Sneak required to use the wrench.", "使用扳手需要潜行。");
+        add("msg.staticlogistics.wrench.not_container", "This block is not a container.", "该方块不是容器。");
+        add("msg.staticlogistics.wrench.no_permission", "No permission to remove this machine.", "没有权限移除此机器。");
+        add("msg.staticlogistics.wrench.removed", "Successfully removed %s.", "已拆卸 %s。");
+        add("msg.staticlogistics.wrench.failed", "Failed to remove block.", "拆卸方块失败。");
 
+        add("mode.staticlogistics.wrench", "Wrench", "扳手");
+        add("mode.staticlogistics.wrench.desc",
+            "Shift + Right-click a machine to remove it.",
+            "潜行+右键快速拆卸机器");
         add("mode.staticlogistics.link_as_input", "Select point as Insert", "选取点为存入端");
         add("mode.staticlogistics.link_as_input.desc",
             "Shift + Right-click a node to store it as an insert target. Resources will be inserted into this node.",
@@ -161,8 +178,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.upgrade.install_hint", "Install into nodes to enhance capabilities.", "安装至节点以增强其传输属性。");
         add("tooltip.staticlogistics.upgrade.tag_filter_feature", "Enables filtering of resources based on tags.", "支持基于标签过滤资源。");
         add("tooltip.staticlogistics.upgrade.nbt_filter_feature", "Enables filtering of resources based on NBT data.", "支持基于NBT数据过滤资源。");
-        add("tooltip.staticlogistics.nbt_mode.partial", "Match only present components", "部分匹配：仅匹配物品上已有的组件");
-        add("tooltip.staticlogistics.nbt_mode.full", "All NBT data must be identical", "完全匹配：所有 NBT 数据必须相同");
 
         add("commands.staticlogistics.info.header", "--- Logistics Info at %s ---", "--- 位置 %s 的物流信息 ---");
         add("commands.staticlogistics.info.no_links", "No active source links on this block face.", "该方块表面没有活动的源链路。");
@@ -175,7 +190,17 @@ public class SlLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.cleanup.success", "Deleted %s link(s) owned by %s", "已清理属于玩家 %2$s 的 %1$s 条链路");
         add("commands.staticlogistics.info.group", "Group: %s", "分组：%s");
         add("commands.staticlogistics.info.owner", "Owner: %s", "所有者：%s");
-        add("commands.staticlogistics.info.speed", "Speed: x%s", "速度：x%s");
+        add("commands.staticlogistics.info.container", "=== Container Upgrade Info ===", "=== 容器升级信息 ===");
+        add("commands.staticlogistics.info.speed", "Speed Multiplier: x%s", "速度倍率：x%s");
+        add("commands.staticlogistics.info.range", "Range Multiplier: %s", "范围倍率：%s");
+        add("commands.staticlogistics.info.stack", "Stack Multiplier: %s", "堆叠倍率：%s");
+        add("commands.staticlogistics.info.dimension", "Cross-Dimension: %s", "跨维度：%s");
+        add("commands.staticlogistics.info.upgrades_title", "Upgrades:", "升级插件：");
+        add("commands.staticlogistics.info.slot_format", "  Slot %s: %s x%s", "  槽位 %s：%s x%s");
+        add("commands.staticlogistics.info.no_container_config", "No container config found.", "未找到容器配置。");
+        add("commands.staticlogistics.info.face_configs_title", "=== Face Configs ===", "=== 面配置 ===");
+        add("commands.staticlogistics.info.face_direction", "[%s]", "[%s]");
+        add("commands.staticlogistics.info.types_mask", "Types mask: %s", "类型掩码：%s");
         add("commands.staticlogistics.info.not_found", "No logistics data found at this position.", "此位置未找到物流数据。");
         add("commands.staticlogistics.strategies.header", "--- Data Component Strategies (Page %s/%s) ---", "--- 数据组件匹配策略 (第%s/%s页) ---");
         add("commands.staticlogistics.strategies.line", "%s -> %s", "%s -> %s");
@@ -212,7 +237,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.diamond_multiplier", "Diamond Tier Multiplier", "钻石等级倍率");
         add("config.staticlogistics.netherite_multiplier", "Netherite Tier Multiplier", "下界合金等级倍率");
         add("config.staticlogistics.nether_star_multiplier", "Nether Star Tier Multiplier", "下界之星等级倍率");
-        add("config.staticlogistics.upgrade_stack_limit", "Maximum upgrade items per configurator slot.", "每个配置器槽位可容纳的升级插件最大堆叠数量。");
 
         add("config.staticlogistics.filter.component_strategy_overrides", "Component Strategy Overrides", "数据组件匹配策略覆写");
         add("config.staticlogistics.filter.component_strategy_overrides.tooltip",
@@ -298,8 +322,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("transfer_type.staticlogistics.mek_chemicals.desc", "Transport Mek Chemicals", "传输化学品。");
         add("transfer_type.staticlogistics.mek_heat", "Mek Heat", "热量");
         add("transfer_type.staticlogistics.mek_heat.desc", "Transport Mekanism Heat", "传输热量。");
-        add("transfer_type.staticlogistics.mek_strict_energy", "Mek Strict Energy", "精准能量");
-        add("transfer_type.staticlogistics.mek_strict_energy.desc", "Transport Mekanism Strict Energy", "传输精准能量。");
         add("transfer_type.staticlogistics.ars_source", "Ars Source", "魔源");
         add("transfer_type.staticlogistics.ars_source.desc", "Transport Ars Source", "传输魔源。");
         add("transfer_type.staticlogistics.pnc_pressure", "Pneumatic Pressure", "气压");
@@ -314,6 +336,7 @@ public class SlLanguageProvider extends LanguageProvider {
                 case NEAREST -> "最近优先";
                 case FURTHEST -> "最远优先";
                 case RANDOM -> "随机分发";
+                case SLOT_ROUND_ROBIN -> "插槽轮询";
             };
             add(strategy.getDescriptionId(), toTitleCase(strategy.getSerializedName()), zh);
         }

@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistry;
 import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
@@ -28,6 +29,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
@@ -85,39 +87,55 @@ public class SLCommands {
         manager.setDirty();
     }
 
+    /**
+     * 显示指定位置的信息：容器配置（升级倍率、跨维度、升级物品）和每个面的分组/所有者
+     */
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
         ServerLevel level = source.getLevel();
         LinkManager manager = LinkManager.get(level);
 
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.header", pos.toShortString()).withStyle(ChatFormatting.GOLD), false);
+        ContainerConfig container = manager.getContainerConfig(pos);
+        if (container != null) {
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.container").withStyle(ChatFormatting.GOLD), false);
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.speed", container.getSpeedMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.range", container.getRangeMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.stack", container.getStackMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.dimension", container.isDimensionEffective()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.upgrades_title").withStyle(ChatFormatting.YELLOW), false);
+            for (int i = 0; i < container.getUpgrades().getSlots(); i++) {
+                ItemStack stack = container.getUpgrades().getStackInSlot(i);
+                if (!stack.isEmpty()) {
+                    int finalI = i;
+                    source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.slot_format",
+                        finalI, stack.getHoverName().getString(), stack.getCount()).withStyle(ChatFormatting.GRAY), false);
+                }
+            }
+        } else {
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.no_container_config").withStyle(ChatFormatting.RED), false);
+        }
 
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_configs_title").withStyle(ChatFormatting.GOLD), false);
         boolean found = false;
         for (Direction dir : Direction.values()) {
             long key = LinkManager.posToKey(pos, dir);
             FaceConfigComposite config = manager.getFaceConfig(key);
-
             if (config != null && !config.isDefault()) {
                 found = true;
-                source.sendSuccess(() -> Component.literal("[" + dir.getName() + "]").withStyle(ChatFormatting.AQUA), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_direction", dir.getName()).withStyle(ChatFormatting.AQUA), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.group",
                     Component.literal(config.faceConfig.getGroupId()).withStyle(ChatFormatting.WHITE)), false);
-
                 UUID ownerUuid = config.faceConfig.getOwner();
-                Component ownerText;
-                if (ownerUuid == null) {
-                    ownerText = Component.translatable("msg.staticlogistics.unknown_owner");
-                } else {
-                    ownerText = Component.literal(config.faceConfig.getOwnerName());
-                }
+                Component ownerText = (ownerUuid == null)
+                    ? Component.translatable("msg.staticlogistics.unknown_owner")
+                    : Component.literal(config.faceConfig.getOwnerName());
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.owner",
                     ownerText.copy().withStyle(ChatFormatting.YELLOW)), false);
-
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.speed",
-                    config.sharedContainerConfig.getSpeedMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.types_mask", config.getSelectedTypesMask()), false);
             }
         }
-
-        if (!found) source.sendFailure(Component.translatable("commands.staticlogistics.info.not_found"));
+        if (!found) {
+            source.sendFailure(Component.translatable("commands.staticlogistics.info.no_links"));
+        }
         return 1;
     }
 

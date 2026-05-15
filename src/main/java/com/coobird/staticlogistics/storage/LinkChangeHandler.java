@@ -1,25 +1,21 @@
 package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.core.service.LinkRemovalService;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
-/**
- * 处理 FaceConfig 和 ContainerConfig 变更后的业务逻辑，
- */
 public class LinkChangeHandler {
     private final ServerLevel level;
     private final SyncManager syncManager;
@@ -42,43 +38,29 @@ public class LinkChangeHandler {
         this.globalManager = globalManager;
     }
 
-    /**
-     * 当 FaceConfig 脏数据被标记时调用（配置发生变更）
-     */
     public void onFaceConfigChanged(long key, BlockPos pos, Direction face, FaceConfigComposite cfg) {
         markDirty.run();
-
         if (cfg.isDefault()) {
             linkManager.removeFaceConfig(key);
             return;
         }
 
         LogisticsNode currentNode = LogisticsNode.fromKey(key, level.dimension());
-        // 建立正向索引（用于级联删除）
-        for (LinkConfig.SideData data : cfg.linkConfig.getAllSettings().values()) {
-            for (LogisticsNode target : data.linkedInputs) {
-                globalManager.addIncomingLink(currentNode, target);
-            }
+        for (LogisticsNode target : cfg.getLinkedNodes()) {
+            globalManager.addIncomingLink(currentNode, target);
         }
 
-        // 自动对称链接
         autoSymmetrizeLinks(currentNode, cfg);
-
-        // 更新本地缓存（是否作为发送者）
         linkManager.refreshLocalCache(key, pos, face, cfg);
-        // 同步到 GlobalLogisticsManager（节点角色）
         syncManager.syncNode(pos, face, cfg);
-        // 同步到客户端
         networkSyncManager.syncToDimension(pos, face, cfg);
-        // 唤醒节点，立即尝试传输
         linkManager.activateNode(key, pos, face, cfg);
     }
 
-    /**
-     * 当 ContainerConfig 脏数据被标记时调用（升级槽变化）
-     */
     public void onContainerConfigChanged(ContainerConfig config) {
         markDirty.run();
+
+        validateAndCleanLinksForContainer(config);
 
         for (long faceKey : config.getLinkedFaceKeys()) {
             FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
@@ -94,37 +76,73 @@ public class LinkChangeHandler {
         }
     }
 
-    /**
-     * 级联删除：根据节点角色删除相关链路。
-     */
+    private void validateAndCleanLinksForContainer(ContainerConfig containerConfig) {
+        BlockPos containerPos = containerConfig.getPos();
+        if (containerPos == null) {
+            for (long faceKey : containerConfig.getLinkedFaceKeys()) {
+                processFace(faceKey, containerConfig);
+            }
+            return;
+        }
+        for (Direction face : Direction.values()) {
+            long faceKey = LinkManager.posToKey(containerPos, face);
+            processFace(faceKey, containerConfig);
+        }
+    }
+
+    private void processFace(long faceKey, ContainerConfig containerConfig) {
+        FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
+        if (faceCfg == null) return;
+
+        LogisticsNode selfNode = LogisticsNode.fromKey(faceKey, level.dimension());
+        BlockPos selfPos = selfNode.gPos().pos();
+
+        boolean changed = false;
+        Iterator<LogisticsNode> it = faceCfg.getLinkedNodes().iterator();
+        while (it.hasNext()) {
+            LogisticsNode target = it.next();
+            boolean sameDim = target.gPos().dimension().equals(level.dimension());
+            if ((!sameDim && !LogisticsCalculator.isDimensionEffective(containerConfig)) ||
+                (sameDim && !LogisticsCalculator.isWithinRange(selfPos, target.gPos().pos(), containerConfig))) {
+                removeLink(selfNode, target, faceCfg, it);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            if (faceCfg.getLinkedNodes().isEmpty() && !faceCfg.isGlobalInputEnabled() && !faceCfg.isGlobalOutputEnabled()) {
+                linkManager.removeFaceConfig(faceKey);
+            } else {
+                networkSyncManager.syncToDimension(selfPos, selfNode.face(), faceCfg);
+                linkManager.refreshLocalCache(faceKey, selfPos, selfNode.face(), faceCfg);
+                linkManager.setDirty();
+            }
+        }
+    }
+
+    private void removeLink(LogisticsNode source, LogisticsNode target, FaceConfigComposite sourceCfg, Iterator<LogisticsNode> iterator) {
+        iterator.remove();
+        linkManager.removeLink(source, target);
+    }
+
     public void cascadeRemove(LogisticsNode selfNode, FaceConfigComposite selfConfig) {
         linkRemovalService.cascadeRemove(selfNode, selfConfig);
     }
 
-    /**
-     * 自动对称链接：确保每个 linkedInputs 中的远程节点也包含指向当前节点的反向链接。
-     */
     private void autoSymmetrizeLinks(LogisticsNode currentNode, FaceConfigComposite currentCfg) {
-        for (TransferType type : TransferRegistries.getAllActive()) {
-            LinkConfig.SideData currentData = currentCfg.linkConfig.getSettings(type);
-            List<LogisticsNode> remotes = new ArrayList<>(currentData.linkedInputs);
-
-            for (LogisticsNode remoteNode : remotes) {
-                ServerLevel remoteLevel = level.getServer().getLevel(remoteNode.gPos().dimension());
-                if (remoteLevel == null) continue;
-
-                LinkManager remoteMgr = LinkManager.get(remoteLevel);
-                FaceConfigComposite remoteCfg = remoteMgr.getFaceConfig(remoteNode.toKey());
-                if (remoteCfg == null) continue;
-
-                LinkConfig.SideData remoteData = remoteCfg.linkConfig.getSettings(type);
-                if (!remoteData.linkedInputs.contains(currentNode)) {
-                    remoteData.linkedInputs.add(currentNode);
-                    globalManager.addIncomingLink(remoteNode, currentNode);
-                    remoteCfg.markDirty();
-                    remoteMgr.setDirty();
-                    remoteMgr.getNetworkSyncManager().syncToDimension(remoteNode.gPos().pos(), remoteNode.face(), remoteCfg);
-                }
+        List<LogisticsNode> remotes = new ArrayList<>(currentCfg.getLinkedNodes());
+        for (LogisticsNode remoteNode : remotes) {
+            ServerLevel remoteLevel = level.getServer().getLevel(remoteNode.gPos().dimension());
+            if (remoteLevel == null) continue;
+            LinkManager remoteMgr = LinkManager.get(remoteLevel);
+            FaceConfigComposite remoteCfg = remoteMgr.getFaceConfig(remoteNode.toKey());
+            if (remoteCfg == null) continue;
+            if (!remoteCfg.getLinkedNodes().contains(currentNode)) {
+                remoteCfg.getLinkedNodes().add(currentNode);
+                globalManager.addIncomingLink(remoteNode, currentNode);
+                remoteCfg.markDirty();
+                remoteMgr.setDirty();
+                remoteMgr.getNetworkSyncManager().syncToDimension(remoteNode.gPos().pos(), remoteNode.face(), remoteCfg);
             }
         }
     }

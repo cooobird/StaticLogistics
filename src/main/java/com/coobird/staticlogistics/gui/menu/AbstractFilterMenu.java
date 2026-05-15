@@ -23,11 +23,13 @@ import java.util.function.UnaryOperator;
 
 public abstract class AbstractFilterMenu extends AbstractContainerMenu {
     protected final DataSlot blacklistSlot = DataSlot.standalone();
+    protected final DataSlot ignoreDamageSlot = DataSlot.standalone();
 
     protected AbstractFilterMenu(MenuType<?> type, int containerId, ItemStack upgradeStack) {
         super(type, containerId);
         syncFromStack(upgradeStack);
         this.addDataSlot(blacklistSlot);
+        this.addDataSlot(ignoreDamageSlot);
     }
 
     public void bulkUpdate(UnaryOperator<FilterData> operator) {
@@ -41,6 +43,7 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
     private void syncFromStack(ItemStack stack) {
         FilterData data = stack.getOrDefault(SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
         blacklistSlot.set(data.isBlacklist() ? 1 : 0);
+        ignoreDamageSlot.set(data.ignoreDamage() ? 1 : 0);
     }
 
     private void updateFilterData(UnaryOperator<FilterData> operator) {
@@ -60,7 +63,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 newItems, newFluids,
                 current.isBlacklist(), current.nbtMatchMode(),
-                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
     }
@@ -74,7 +78,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 newItems, newFluids,
                 current.isBlacklist(), current.nbtMatchMode(),
-                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
     }
@@ -86,7 +91,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 newItems, current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
-                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
     }
@@ -98,7 +104,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 current.items(), newFluids,
                 current.isBlacklist(), current.nbtMatchMode(),
-                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+                current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
     }
@@ -119,7 +126,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         updateFilterData(current -> new FilterData(
             current.items(), current.fluids(),
             blacklist, current.nbtMatchMode(),
-            current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+            current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+            current.ignoreDamage()
         ));
         this.blacklistSlot.set(blacklist ? 1 : 0);
     }
@@ -132,8 +140,23 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         updateFilterData(current -> new FilterData(
             current.items(), current.fluids(),
             current.isBlacklist(), mode,
-            current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+            current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+            current.ignoreDamage()
         ));
+    }
+
+    public boolean isIgnoreDamage() {
+        return this.ignoreDamageSlot.get() == 1;
+    }
+
+    public void setIgnoreDamage(boolean ignore) {
+        updateFilterData(current -> new FilterData(
+            current.items(), current.fluids(),
+            current.isBlacklist(), current.nbtMatchMode(),
+            current.tagSlots(), current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+            ignore
+        ));
+        this.ignoreDamageSlot.set(ignore ? 1 : 0);
     }
 
     public Set<TagKey<Item>> getSlotTags(int slot) {
@@ -154,7 +177,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
-                newSlots, current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+                newSlots, current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
     }
@@ -171,7 +195,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
-                current.tagSlots(), newExcluded, current.fluidFilterTags(), current.excludedFluidTags()
+                current.tagSlots(), newExcluded, current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
         return changed[0];
@@ -196,7 +221,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
-                newSlots, current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags()
+                newSlots, current.excludedTagSlots(), current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
         return changed[0];
@@ -215,7 +241,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
-                current.tagSlots(), newExcluded, current.fluidFilterTags(), current.excludedFluidTags()
+                current.tagSlots(), newExcluded, current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
         return changed[0];
@@ -230,7 +257,8 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
-                newSlots, newExcluded, current.fluidFilterTags(), current.excludedFluidTags()
+                newSlots, newExcluded, current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
             );
         });
     }

@@ -1,11 +1,11 @@
 package com.coobird.staticlogistics;
 
-import com.coobird.staticlogistics.intergration.ExtendedTypeRegisterHandler;
-import com.coobird.staticlogistics.intergration.ModCompat;
-import com.coobird.staticlogistics.intergration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.datagen.SlLanguageProvider;
+import com.coobird.staticlogistics.intergration.ExtendedTypeRegisterHandler;
+import com.coobird.staticlogistics.intergration.ModCompat;
+import com.coobird.staticlogistics.intergration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.registry.SLItems;

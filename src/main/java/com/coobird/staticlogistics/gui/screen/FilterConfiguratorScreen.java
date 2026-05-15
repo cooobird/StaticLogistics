@@ -22,7 +22,7 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
 
     @Override
     protected int getBlacklistButtonXOffset() {
-        return menu.getActiveUpgradeType() == UpgradeType.NBT_FILTER ? 60 : 0;
+        return menu.getActiveUpgradeType() == UpgradeType.NBT_FILTER ? 50 : 0;
     }
 
     @Override
@@ -42,7 +42,7 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
         }
 
         if (type == UpgradeType.NBT_FILTER) {
-            renderNbtModeButtons(graphics, mouseX, mouseY);
+            renderNbtModeControls(graphics, mouseX, mouseY);
         }
     }
 
@@ -65,7 +65,7 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
             if (handleTagBarClick(mx, my, button)) return true;
         }
 
-        if (handleNbtModeClick(mx, my)) return true;
+        if (handleNbtModeAndIgnoreClick(mx, my)) return true;
 
         return super.mouseClicked(mx, my, button);
     }

@@ -11,16 +11,22 @@ import net.minecraft.world.item.ItemStack;
 
 public class HandFilterMenu extends AbstractFilterMenu {
     private final ItemStack filterStack;
+    private final Player player;
 
     public HandFilterMenu(int containerId, Inventory inv, ItemStack stack) {
         super(SLMenuTypes.HAND_FILTER.get(), containerId, stack);
         this.filterStack = stack;
+        this.player = inv.player;
         addPlayerInventorySlots(inv);
     }
 
     @Override
-    protected ItemStack getFilterStack() {
+    public ItemStack getFilterStack() {
         return filterStack;
+    }
+
+    public Player getPlayer() {
+        return player;
     }
 
     @Override
