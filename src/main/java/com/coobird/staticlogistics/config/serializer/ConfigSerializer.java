@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.config.serializer;
 
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.config.LinkConfig;
 import com.mojang.logging.LogUtils;
@@ -78,7 +79,12 @@ public class ConfigSerializer {
                 if (rl == null) continue;
 
                 CompoundTag d = typesNbt.getCompound(key);
-                TransferType type = new TransferType(rl, 0, 0, "", null, 0);
+                TransferType type = TransferRegistries.get(rl);
+                if (type == null) {
+                    LOGGER.warn("Unknown transfer type '{}' in saved config, skipping", rl);
+                    continue;
+                }
+
                 LinkConfig.SideData data = config.linkConfig.getSettings(type);
 
                 data.inputChannel = d.getInt("in_ch");

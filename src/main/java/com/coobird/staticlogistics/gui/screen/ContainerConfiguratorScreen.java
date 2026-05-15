@@ -63,7 +63,7 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
         Component typeName = Component.translatable(type.translationKey());
         String nameStr = typeName.getString();
         long stackMult = menu.getStackMultiplier();
-        int baseStackSize = type.baseStackSize();
+        int baseStackSize = type.getBaseStackSize();
         boolean infinite = false;
         long finalStackSize = 0;
         try {
@@ -92,7 +92,7 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
     protected void renderHoveredTypeTooltip(GuiGraphics g, int mx, int my) {
         if (hoveredType == null) return;
         long stackMult = menu.getStackMultiplier();
-        int baseStackSize = hoveredType.baseStackSize();
+        int baseStackSize = hoveredType.getBaseStackSize();
         boolean infinite = false;
         long finalStackSize = 0;
         try {

@@ -16,6 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 public class TransferRegistries {
@@ -28,13 +29,13 @@ public class TransferRegistries {
 
     public static void init() {
         ITEM = registerInternal("item", 0xFFFFFFFF, 0, Capabilities.ItemHandler.BLOCK,
-            SLConfig.getItemStack(), () -> new ItemStack(Items.IRON_INGOT));
+            SLConfig::getItemStack, () -> new ItemStack(Items.IRON_INGOT));
 
         FLUID = registerInternal("fluid", 0xFF3366FF, 1, Capabilities.FluidHandler.BLOCK,
-            SLConfig.getFluidStack(), () -> new ItemStack(Items.WATER_BUCKET));
+            SLConfig::getFluidStack, () -> new ItemStack(Items.WATER_BUCKET));
 
         ENERGY = registerInternal("energy", 0xFFFFFF00, 2, Capabilities.EnergyStorage.BLOCK,
-            SLConfig.getEnergyStack(), () -> new ItemStack(Items.REDSTONE));
+            SLConfig::getEnergyStack, () -> new ItemStack(Items.REDSTONE));
 
         registerHandler(ITEM, StandardTransferHandlers.ITEM);
         registerHandler(FLUID, StandardTransferHandlers.FLUID);
@@ -43,9 +44,9 @@ public class TransferRegistries {
 
     private static TransferType registerInternal(String name, int color, int offset,
                                                  BlockCapability<?, Direction> cap,
-                                                 int size, Supplier<ItemStack> icon) {
+                                                 IntSupplier sizeSupplier, Supplier<ItemStack> icon) {
         ResourceLocation id = Staticlogistics.asResource(name);
-        TransferType type = new TransferType(id, color, offset, "transfer_type.staticlogistics." + name, cap, size, icon);
+        TransferType type = new TransferType(id, color, offset, "transfer_type.staticlogistics." + name, cap, sizeSupplier, icon);
         TYPES.put(id, type);
         return type;
     }

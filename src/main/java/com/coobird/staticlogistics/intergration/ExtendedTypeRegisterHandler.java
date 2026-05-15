@@ -43,9 +43,6 @@ public class ExtendedTypeRegisterHandler {
         }
     }
 
-    /**
-     * Mekanism 化学品（气体、灌注、浆液、颜料）
-     */
     private static void registerMekanismChemicals() {
         TransferType mekChemicals = new TransferType(
             Staticlogistics.asResource("mek_chemicals"),
@@ -53,7 +50,7 @@ public class ExtendedTypeRegisterHandler {
             3,
             "transfer_type.staticlogistics.mek_chemicals",
             mekanism.common.capabilities.Capabilities.CHEMICAL.block(),
-            SLConfig.getMekChemicalStack(),
+            SLConfig::getMekChemicalStack,
             () -> ModCompat.isMekanismLoaded()
                 ? new ItemStack(mekanism.common.registries.MekanismBlocks.BASIC_CHEMICAL_TANK.get())
                 : new ItemStack(Items.BARRIER)
@@ -113,9 +110,6 @@ public class ExtendedTypeRegisterHandler {
         LOGGER.info("Registered Mekanism chemical transfer support");
     }
 
-    /**
-     * 注册 Mekanism 热量传输
-     */
     private static void registerMekanismHeat() {
         TransferType mekHeat = new TransferType(
             Staticlogistics.asResource("mek_heat"),
@@ -123,7 +117,7 @@ public class ExtendedTypeRegisterHandler {
             5,
             "transfer_type.staticlogistics.mek_heat",
             mekanism.common.capabilities.Capabilities.HEAT,
-            SLConfig.getMekHeatStack(),
+            SLConfig::getMekHeatStack,
             () -> ModCompat.isMekanismLoaded()
                 ? new ItemStack(MekanismBlocks.RESISTIVE_HEATER.get())
                 : new ItemStack(Items.BARRIER)
@@ -148,19 +142,14 @@ public class ExtendedTypeRegisterHandler {
                     new TransferUtils.SimpleProtocol<>(
                         (src, max) -> {
                             try {
-                                // 计算可提取的热量
-                                // 热量公式：可用热量 = 当前温度 * 热容，但需要保持温度不低于 0
                                 double totalHeat = 0;
                                 int capacitorCount = src.getHeatCapacitorCount();
                                 for (int i = 0; i < capacitorCount; i++) {
                                     double temp = src.getTemperature(i);
                                     double capacity = src.getHeatCapacity(i);
-                                    double inverseCond = src.getInverseConduction(i);
-                                    // 可提取的热量受温度和传导系数影响
                                     double extractable = temp * capacity;
                                     totalHeat += extractable;
                                 }
-                                // 限制传输量不超过 max 和可用热量，返回热量单位
                                 return (int) Math.min(max, totalHeat);
                             } catch (Exception e) {
                                 LOGGER.error("Failed to simulate extract heat: {}", e.getMessage());
@@ -169,7 +158,6 @@ public class ExtendedTypeRegisterHandler {
                         },
                         (dst, val) -> {
                             try {
-                                // 插入热量
                                 dst.handleHeat(val);
                                 return val;
                             } catch (Exception e) {
@@ -179,7 +167,6 @@ public class ExtendedTypeRegisterHandler {
                         },
                         (src, val, act) -> {
                             try {
-                                // 从源端提取热量，需要按比例从各电容器提取
                                 int capacitorCount = src.getHeatCapacitorCount();
                                 double totalCapacity = src.getTotalHeatCapacity();
                                 for (int i = 0; i < capacitorCount; i++) {
@@ -205,9 +192,6 @@ public class ExtendedTypeRegisterHandler {
         LOGGER.info("Registered Mekanism heat transfer support");
     }
 
-    /**
-     * 注册 Ars Nouveau 魔源传输
-     */
     private static void registerArsNouveauSource() {
         TransferType arsType = new TransferType(
             Staticlogistics.asResource("ars_source"),
@@ -215,7 +199,7 @@ public class ExtendedTypeRegisterHandler {
             4,
             "transfer_type.staticlogistics.ars_source",
             com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry.SOURCE_CAPABILITY,
-            SLConfig.getArsSourceStack(),
+            SLConfig::getArsSourceStack,
             () -> ModCompat.isArsNouveauLoaded()
                 ? new ItemStack(com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry.SOURCE_GEM)
                 : new ItemStack(Items.BARRIER)
@@ -282,7 +266,7 @@ public class ExtendedTypeRegisterHandler {
             7,
             "transfer_type.staticlogistics.pnc_pressure",
             me.desht.pneumaticcraft.api.PNCCapabilities.AIR_HANDLER_MACHINE,
-            SLConfig.getPneumaticPressureStack(),
+            SLConfig::getPneumaticPressureStack,
             () -> ModCompat.isPneumaticcraftLoaded()
                 ? new ItemStack(me.desht.pneumaticcraft.common.registry.ModBlocks.PRESSURE_TUBE.get())
                 : new ItemStack(Items.BARRIER)
@@ -315,7 +299,6 @@ public class ExtendedTypeRegisterHandler {
                         },
                         (dst, val) -> {
                             try {
-                                int remaining = dst.getAir() + val;
                                 int maxAir = dst.getVolume();
                                 int accepted = Math.min(val, maxAir - dst.getAir());
                                 dst.addAir(accepted);
@@ -353,7 +336,7 @@ public class ExtendedTypeRegisterHandler {
             8,
             "transfer_type.staticlogistics.pnc_heat",
             me.desht.pneumaticcraft.api.PNCCapabilities.HEAT_EXCHANGER_BLOCK,
-            SLConfig.getPneumaticHeatStack(),
+            SLConfig::getPneumaticHeatStack,
             () -> ModCompat.isPneumaticcraftLoaded()
                 ? new ItemStack(ModBlocks.HEAT_SINK)
                 : new ItemStack(Items.BARRIER)

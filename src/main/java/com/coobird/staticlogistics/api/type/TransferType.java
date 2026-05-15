@@ -7,6 +7,7 @@ import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 public record TransferType(
@@ -15,24 +16,24 @@ public record TransferType(
     int bitOffset,
     String translationKey,
     @Nullable BlockCapability<?, Direction> capability,
-    int baseStackSize,
+    IntSupplier baseStackSizeSupplier,
     Supplier<ItemStack> iconSupplier
 ) {
     public TransferType(ResourceLocation id, int color, int bitOffset, String translationKey,
-                        @Nullable BlockCapability<?, Direction> capability, int baseStackSize) {
-        this(id, color, bitOffset, translationKey, capability, baseStackSize,
+                        @Nullable BlockCapability<?, Direction> capability, IntSupplier baseStackSizeSupplier) {
+        this(id, color, bitOffset, translationKey, capability, baseStackSizeSupplier,
             () -> new ItemStack(Items.PAPER));
     }
 
     public TransferType(ResourceLocation id, int color, int bitOffset, String translationKey,
-                        @Nullable BlockCapability<?, Direction> capability, int baseStackSize,
+                        @Nullable BlockCapability<?, Direction> capability, IntSupplier baseStackSizeSupplier,
                         Supplier<ItemStack> iconSupplier) {
         this.id = id;
         this.color = color;
         this.bitOffset = bitOffset;
         this.translationKey = translationKey;
         this.capability = capability;
-        this.baseStackSize = baseStackSize;
+        this.baseStackSizeSupplier = baseStackSizeSupplier;
         this.iconSupplier = iconSupplier;
     }
 
@@ -42,5 +43,9 @@ public record TransferType(
 
     public ItemStack getIcon() {
         return iconSupplier.get();
+    }
+
+    public int getBaseStackSize() {
+        return baseStackSizeSupplier.getAsInt();
     }
 }

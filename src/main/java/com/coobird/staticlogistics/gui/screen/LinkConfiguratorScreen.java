@@ -122,7 +122,7 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     private void renderTransferTypeSection(GuiGraphics g, int mx, int my) {
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(),0);
+        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
         int perRow = 8;
         int btnWidth = 19;

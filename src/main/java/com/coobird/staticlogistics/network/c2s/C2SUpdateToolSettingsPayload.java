@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.registry.SLDataComponents;

@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.client.event;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.screen.ContainerConfiguratorScreen;
 import com.coobird.staticlogistics.gui.screen.FaceConfiguratorScreen;
 import com.coobird.staticlogistics.gui.screen.FilterConfiguratorScreen;

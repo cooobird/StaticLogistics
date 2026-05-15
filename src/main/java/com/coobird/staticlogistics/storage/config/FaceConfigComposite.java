@@ -101,10 +101,10 @@ public class FaceConfigComposite {
 
     public int getTransferLimit(TransferType type) {
         if (sharedContainerConfig == null) {
-            return Math.min(type.baseStackSize(), SLConfig.getMaxTransferLimit());
+            return Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
         }
         int stackMult = sharedContainerConfig.getStackMultiplier();
-        long limit = (long) type.baseStackSize() * stackMult;
+        long limit = (long) type.getBaseStackSize() * stackMult;
         int maxAllowed = SLConfig.getMaxTransferLimit();
         if (limit > maxAllowed) {
             return maxAllowed;
