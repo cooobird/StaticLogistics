@@ -1,7 +1,4 @@
 # StaticLogistics
-<<<<<<< HEAD
-A Minecraft mod designed to prevent pipeline congestion and logistics bottlenecks.
-=======
 
 **[English](README.md)** | **[中文](README_ZH.md)**
 
@@ -185,4 +182,3 @@ For issues, suggestions, or questions, please visit the project's issue tracker.
 ## Changelog
 
 See [changelog.md](changelog.md) for detailed version history.
->>>>>>> origin/neoforge-dev/1.21.1
