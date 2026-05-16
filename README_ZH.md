@@ -1,4 +1,3 @@
-D:\SoftWareSpace\GameProject\MinecraftModWorkSpace\StaticLogistics-neoforge-1.21.1\README_ZH.md
 # StaticLogistics
 
 **[English](README.md)** | **[中文](README_ZH.md)**
