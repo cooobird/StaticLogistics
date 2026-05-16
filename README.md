@@ -56,6 +56,7 @@ A modern logistics mod for Minecraft featuring flexible item/fluid/energy transf
 5. **Create Links**: Link nodes together to start transferring resources
 
 ### Link Configurator Modes
+- **Wrench**: Remove logistics blocks while preserving their NBT data (requires Shift + Right-click)
 - **Link as Insert**: Mark a node as a destination (resources will be inserted here)
 - **Link as Extract**: Mark a node as a source (resources will be extracted from here)
 - **Remove Links**: Remove all links connected to a node face
