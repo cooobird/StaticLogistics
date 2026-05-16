@@ -11,6 +11,7 @@ import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.transfer.cooldown.CooldownManager;
 import com.coobird.staticlogistics.transfer.handler.TransferExecutor;
 import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -30,8 +31,8 @@ public class LogisticsTicker {
     private static final CooldownManager cooldownManager = new CooldownManager();
     private static final TransferExecutor transferExecutor = new TransferExecutor(new StrategyBasedTargetSelector());
 
-    private static final int CLEAN_INTERVAL = 200;
     private static final Map<ResourceKey<Level>, Integer> dimensionCleanCounters = new ConcurrentHashMap<>();
+    private static final Map<ResourceKey<Level>, Integer> dimensionBatchOffsets = new ConcurrentHashMap<>();
 
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
@@ -51,7 +52,7 @@ public class LogisticsTicker {
         long currentTick = level.getGameTime();
 
         int counter = dimensionCleanCounters.compute(dim, (k, v) -> (v == null) ? 1 : v + 1);
-        if (counter >= CLEAN_INTERVAL) {
+        if (counter >= LogisticsConstants.Performance.getCleanIntervalTicks()) {
             cooldownManager.tick(dim, currentTick);
             dimensionCleanCounters.put(dim, 0);
         }
@@ -60,10 +61,18 @@ public class LogisticsTicker {
         LongSet activeKeys = manager.getActiveProviderKeys();
         if (activeKeys.isEmpty()) return;
 
-        for (long sourceKey : activeKeys.toLongArray()) {
+        long[] keys = activeKeys.toLongArray();
+        int totalBatches = (keys.length + LogisticsConstants.Performance.getTickerBatchSize() - 1) / LogisticsConstants.Performance.getTickerBatchSize();
+        int batchOffset = dimensionBatchOffsets.compute(dim, (k, v) -> (v == null) ? 0 : v);
+
+        int startIdx = (batchOffset % totalBatches) * LogisticsConstants.Performance.getTickerBatchSize();
+        int endIdx = Math.min(startIdx + LogisticsConstants.Performance.getTickerBatchSize(), keys.length);
+
+        for (int i = startIdx; i < endIdx; i++) {
+            long sourceKey = keys[i];
             if (cooldownManager.hasCooldown(dim, sourceKey, currentTick)) continue;
 
-            LogisticsNode sourceNode = LogisticsNode.fromKey(sourceKey, level.dimension());
+            LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
             FaceConfigComposite config = manager.getFaceConfig(sourceKey);
             if (config == null || config.isDefault()) continue;
 
@@ -92,9 +101,11 @@ public class LogisticsTicker {
             if (movedSomething) {
                 cooldownManager.setCooldown(dim, sourceKey, actualInterval, currentTick);
             } else {
-                cooldownManager.setCooldown(dim, sourceKey, 10, currentTick);
+                cooldownManager.setCooldown(dim, sourceKey, LogisticsConstants.Performance.getDefaultCooldownTicks(), currentTick);
             }
         }
+
+        dimensionBatchOffsets.put(dim, (batchOffset + 1) % totalBatches);
     }
 
     public static void wakeup(ServerLevel level, long sourceKey) {

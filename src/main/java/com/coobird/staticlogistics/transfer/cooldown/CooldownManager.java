@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.transfer.cooldown;
 
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import it.unimi.dsi.fastutil.longs.Long2LongMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import net.minecraft.resources.ResourceKey;
@@ -11,10 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class CooldownManager {
     private final Map<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new ConcurrentHashMap<>();
-
-    private static final int FULL_CLEAN_INTERVAL_TICKS = 200;
-    private static final int BATCH_CLEAN_THRESHOLD = 500;
-    private static final int BATCH_SIZE = 200;
 
     private int tickCounter = 0;
 
@@ -46,14 +43,14 @@ public class CooldownManager {
      */
     public void tick(ResourceKey<Level> dimension, long currentTick) {
         tickCounter++;
-        if (tickCounter >= FULL_CLEAN_INTERVAL_TICKS) {
+        if (tickCounter >= LogisticsConstants.Performance.getFullCleanIntervalTicks()) {
             tickCounter = 0;
             for (ResourceKey<Level> dim : dimensionCooldowns.keySet()) {
                 cleanExpiredAll(dim, currentTick);
             }
         } else {
             Long2LongMap map = dimensionCooldowns.get(dimension);
-            if (map != null && map.size() > BATCH_CLEAN_THRESHOLD) {
+            if (map != null && map.size() > LogisticsConstants.Performance.getBatchCleanThreshold()) {
                 cleanExpiredBatched(dimension, currentTick);
             }
         }
@@ -73,7 +70,7 @@ public class CooldownManager {
         if (map == null) return;
         Iterator<Long2LongMap.Entry> it = map.long2LongEntrySet().iterator();
         int processed = 0;
-        while (it.hasNext() && processed < BATCH_SIZE) {
+        while (it.hasNext() && processed < LogisticsConstants.Performance.getBatchCleanSize()) {
             Long2LongMap.Entry entry = it.next();
             if (entry.getLongValue() <= currentTick) {
                 it.remove();

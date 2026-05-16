@@ -5,6 +5,10 @@ import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import java.util.function.Consumer;
 
 public class LinkConfig {
+    public static final int MIN_CHANNEL = 1;
+    public static final int MAX_CHANNEL = 16;
+    public static final int DISABLED_CHANNEL = 0;
+
     private Consumer<LinkConfig> onDirty = (c) -> {
     };
 
@@ -18,7 +22,7 @@ public class LinkConfig {
     }
 
     public void setInputChannel(int ch) {
-        this.inputChannel = ch;
+        this.inputChannel = clampChannel(ch);
         markDirty();
     }
 
@@ -27,7 +31,7 @@ public class LinkConfig {
     }
 
     public void setOutputChannel(int ch) {
-        this.outputChannel = ch;
+        this.outputChannel = clampChannel(ch);
         markDirty();
     }
 
@@ -59,5 +63,26 @@ public class LinkConfig {
 
     public boolean isDefault() {
         return inputChannel == 0 && outputChannel == 0 && strategy == DistributionStrategy.SEQUENTIAL && priority == 0;
+    }
+
+    public static int clampChannel(int value) {
+        if (value == DISABLED_CHANNEL) return DISABLED_CHANNEL;
+        return Math.max(MIN_CHANNEL, Math.min(MAX_CHANNEL, value));
+    }
+
+    public boolean isInputEnabled() {
+        return inputChannel != DISABLED_CHANNEL;
+    }
+
+    public boolean isOutputEnabled() {
+        return outputChannel != DISABLED_CHANNEL;
+    }
+
+    public void disableInputChannel() {
+        setInputChannel(DISABLED_CHANNEL);
+    }
+
+    public void disableOutputChannel() {
+        setOutputChannel(DISABLED_CHANNEL);
     }
 }

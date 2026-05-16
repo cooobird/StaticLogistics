@@ -33,7 +33,7 @@ public class LinkModeHandler implements ModeHandler {
 
             LinkManager mgr = LinkManager.get(serverLevel);
             FaceConfigComposite config = mgr.getFaceConfig(LinkManager.posToKey(pos, face));
-            if (config == null || GroupService.canAccess(config.faceConfig.getOwner(), player)) {
+            if (config == null || config.canPlayerAccess(player)) {
                 LinkOperationHelper.addNode(stack, GlobalPos.of(level.dimension(), pos), face, settings.mode(), player, level);
             } else {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission"), true);

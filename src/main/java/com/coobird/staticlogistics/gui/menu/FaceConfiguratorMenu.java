@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.config.LinkConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
@@ -98,8 +99,8 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public void setGlobalInputEnabled(boolean enabled) {
         if (serverConfig != null && serverConfig.isGlobalInputEnabled() != enabled) {
             serverConfig.setGlobalInputEnabled(enabled);
-            if (enabled && serverConfig.linkConfig.getInputChannel() == 0) {
-                serverConfig.linkConfig.setInputChannel(1);
+            if (enabled && serverConfig.linkConfig.getInputChannel() == LinkConfig.DISABLED_CHANNEL) {
+                serverConfig.linkConfig.setInputChannel(LinkConfig.MIN_CHANNEL);
             }
             syncToSlots();
         }
@@ -108,8 +109,8 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public void setGlobalOutputEnabled(boolean enabled) {
         if (serverConfig != null && serverConfig.isGlobalOutputEnabled() != enabled) {
             serverConfig.setGlobalOutputEnabled(enabled);
-            if (enabled && serverConfig.linkConfig.getOutputChannel() == 0) {
-                serverConfig.linkConfig.setOutputChannel(1);
+            if (enabled && serverConfig.linkConfig.getOutputChannel() == LinkConfig.DISABLED_CHANNEL) {
+                serverConfig.linkConfig.setOutputChannel(LinkConfig.MIN_CHANNEL);
             }
             syncToSlots();
         }

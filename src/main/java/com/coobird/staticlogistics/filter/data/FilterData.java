@@ -14,7 +14,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -22,15 +25,15 @@ import java.util.stream.Collectors;
  * 该类包含物品过滤、流体过滤、标签过滤等多种过滤方式，支持黑白名单模式，
  * 并可以配置NBT匹配模式和耐久度忽略设置。
  *
- * @param items 物品过滤映射，键为槽位字符串，值为物品堆栈
- * @param fluids 流体过滤映射，键为槽位字符串，值为流体对象
- * @param isBlacklist 是否为黑名单模式，true表示黑名单，false表示白名单
- * @param nbtMatchMode NBT匹配模式，决定物品NBT数据的匹配方式
- * @param tagSlots 物品标签过滤映射，键为槽位字符串，值为物品标签集合
- * @param excludedTagSlots 排除的物品标签过滤映射，键为槽位字符串，值为要排除的物品标签集合
- * @param fluidFilterTags 流体标签过滤映射，键为槽位字符串，值为流体标签集合
+ * @param items             物品过滤映射，键为槽位字符串，值为物品堆栈
+ * @param fluids            流体过滤映射，键为槽位字符串，值为流体对象
+ * @param isBlacklist       是否为黑名单模式，true表示黑名单，false表示白名单
+ * @param nbtMatchMode      NBT匹配模式，决定物品NBT数据的匹配方式
+ * @param tagSlots          物品标签过滤映射，键为槽位字符串，值为物品标签集合
+ * @param excludedTagSlots  排除的物品标签过滤映射，键为槽位字符串，值为要排除的物品标签集合
+ * @param fluidFilterTags   流体标签过滤映射，键为槽位字符串，值为流体标签集合
  * @param excludedFluidTags 排除的流体标签过滤映射，键为槽位字符串，值为要排除的流体标签集合
- * @param ignoreDamage 是否忽略物品耐久度，true表示忽略耐久度差异
+ * @param ignoreDamage      是否忽略物品耐久度，true表示忽略耐久度差异
  */
 public record FilterData(
     Map<String, ItemStack> items,

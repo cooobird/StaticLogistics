@@ -53,7 +53,7 @@ public class TransferUtils {
         boolean movedAny = false;
 
         for (LogisticsNode remoteNode : destinations) {
-            boolean isSameDim = remoteNode.gPos().dimension().equals(localLevel.dimension());
+            boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
 
             if (!isSameDim && !canCrossDim) continue;
 

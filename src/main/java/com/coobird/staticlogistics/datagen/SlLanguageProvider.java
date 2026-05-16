@@ -238,6 +238,116 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.max_transfer_limit", "Max Transfer per Tick", "单次传输最大数量");
         add("config.staticlogistics.auto_clean_stored_nodes", "Auto Clean Stored Nodes", "自动清理存储节点");
 
+        add("staticlogistics.configuration.cache", "Cache Settings", "缓存设置");
+        add("config.staticlogistics.cache.provider_size", "Provider Cache Size", "提供者缓存大小");
+        add("config.staticlogistics.cache.provider_size.tooltip",
+            """
+                Controls how many logistics nodes are cached.
+                Higher values = better performance but more memory usage.
+                Default: 1000, Range: 100-10000.""",
+            """
+                控制缓存的物流节点数量。
+                值越大性能越好，但占用更多内存。
+                默认：1000，范围：100-10000。""");
+
+        add("config.staticlogistics.cache.load_factor", "Cache Load Factor", "缓存加载因子");
+        add("config.staticlogistics.cache.load_factor.tooltip",
+            """
+                Affects cache performance. 0.75 is recommended.
+                Don't change unless you know what you're doing.
+                Default: 0.75, Range: 0.1-1.0.""",
+            """
+                影响缓存性能。推荐使用 0.75。
+                除非你知道自己在做什么，否则不要修改。
+                默认：0.75，范围：0.1-1.0。""");
+
+        add("config.staticlogistics.cache.target_size", "Target Cache Size", "目标缓存大小");
+        add("config.staticlogistics.cache.target_size.tooltip",
+            """
+                How many target nodes are cached per face.
+                Default: 50, Range: 10-200.""",
+            """
+                每个面缓存的目标节点数量。
+                默认：50，范围：10-200。""");
+
+        add("config.staticlogistics.cache.global_target_size", "Global Target Cache Size", "全局目标缓存大小");
+        add("config.staticlogistics.cache.global_target_size.tooltip",
+            """
+                Total cache size for all faces.
+                Default: 500, Range: 100-5000.""",
+            """
+                所有面的总缓存大小。
+                默认：500，范围：100-5000。""");
+
+        add("staticlogistics.configuration.network", "Network Settings", "网络设置");
+        add("config.staticlogistics.network.max_bulk_entries", "Max Bulk Entries", "最大批量条目数");
+        add("config.staticlogistics.network.max_bulk_entries.tooltip",
+            """
+                Max config entries sent per packet.
+                Lower if you have network issues.
+                Default: 100, Range: 10-1000.""",
+            """
+                每个网络包发送的最大配置数。
+                如果有网络问题可以调低。
+                默认：100，范围：10-1000。""");
+
+        add("staticlogistics.configuration.performance", "Performance Settings", "性能设置");
+        add("config.staticlogistics.performance.ticker_batch_size", "Ticker Batch Size", "定时器批处理大小");
+        add("config.staticlogistics.performance.ticker_batch_size.tooltip",
+            """
+                Nodes processed per tick. Lower = less lag, Higher = faster.
+                Default: 50, Range: 10-200.""",
+            """
+                每刻处理的节点数。越小越流畅，越大越快。
+                默认：50，范围：10-200。""");
+
+        add("config.staticlogistics.performance.clean_interval", "Clean Interval (Ticks)", "清理间隔(Tick)");
+        add("config.staticlogistics.performance.clean_interval.tooltip",
+            """
+                How often cooldowns are cleaned (in ticks).
+                20 ticks = 1 second.
+                Default: 200 (10 seconds), Range: 20-1200.""",
+            """
+                冷却清理间隔（游戏刻）。
+                20 tick = 1 秒。
+                默认：200（10秒），范围：20-1200。""");
+
+        add("config.staticlogistics.performance.default_cooldown", "Default Cooldown (Ticks)", "默认冷却时间(Tick)");
+        add("config.staticlogistics.performance.default_cooldown.tooltip",
+            """
+                Wait time after failed transfer (in ticks).
+                Default: 10 (0.5 seconds), Range: 1-100.""",
+            """
+                传输失败后的等待时间（游戏刻）。
+                默认：10（0.5秒），范围：1-100。""");
+
+        add("config.staticlogistics.performance.batch_clean_threshold", "Batch Clean Threshold", "批量清理阈值");
+        add("config.staticlogistics.performance.batch_clean_threshold.tooltip",
+            """
+                When to start batch cleanup.
+                Default: 500, Range: 100-2000.""",
+            """
+                何时开始批量清理。
+                默认：500，范围：100-2000。""");
+
+        add("config.staticlogistics.performance.batch_clean_size", "Batch Clean Size", "批量清理大小");
+        add("config.staticlogistics.performance.batch_clean_size.tooltip",
+            """
+                Entries cleaned per batch.
+                Default: 200, Range: 50-1000.""",
+            """
+                每次清理的条目数。
+                默认：200，范围：50-1000。""");
+
+        add("config.staticlogistics.performance.context_pool_size", "Context Pool Size", "上下文池大小");
+        add("config.staticlogistics.performance.context_pool_size.tooltip",
+            """
+                Object pool size for better performance.
+                Default: 100, Range: 20-500.""",
+            """
+                对象池大小，用于提升性能。
+                默认：100，范围：20-500。""");
+
         add("config.staticlogistics.item_stack_size", "Base Item Stack Size", "基础物品堆叠量");
         add("config.staticlogistics.fluid_stack_size", "Base Fluid Amount (mB)", "基础流体传输量(mB)");
         add("config.staticlogistics.energy_stack_size", "Base Energy Amount (FE)", "基础能量传输量(FE)");

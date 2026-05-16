@@ -13,8 +13,8 @@ import com.coobird.staticlogistics.storage.service.ContainerConfigService;
 import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
-import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.coobird.staticlogistics.util.CapabilityCache;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
@@ -32,8 +32,12 @@ public class LinkManager {
     private static final ScheduledExecutorService SAVER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "LinkManager-Saver");
         t.setDaemon(true);
+        t.setUncaughtExceptionHandler((thread, throwable) -> {
+            LogUtils.getLogger().error("Uncaught exception in LinkManager-Saver thread", throwable);
+        });
         return t;
     });
+    private static volatile boolean isShutdown = false;
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final ConfigRepository configRepository;
@@ -47,7 +51,8 @@ public class LinkManager {
     private final ContainerConfigService containerConfigService;
     private final LinkChangeHandler changeHandler;
     private final ServerLevel level;
-    private final Set<Long> pendingRemovals = ConcurrentHashMap.newKeySet();
+    private final Map<Long, Boolean> pendingRemovals = new ConcurrentHashMap<>();
+    private final Object removalLock = new Object();
 
     private LinkManagerStorage storage;
     private ScheduledFuture<?> pendingSave;
@@ -93,17 +98,31 @@ public class LinkManager {
         this.storage = storage;
     }
 
-    public void markDirty() {
-        if (storage == null) return;
-        if (pendingSave != null && !pendingSave.isDone()) {
-            pendingSave.cancel(false);
-        }
-        pendingSave = SAVER.schedule(() -> {
-            if (storage != null) {
-                storage.setDirty();
+    public void markDirtyBatch(Runnable operation) {
+        operation.run();
+        markDirty();
+    }
+
+    private void markDirty() {
+        if (storage == null || isShutdown) return;
+        try {
+            if (pendingSave != null && !pendingSave.isDone()) {
+                pendingSave.cancel(false);
             }
-            pendingSave = null;
-        }, 1, TimeUnit.SECONDS);
+            pendingSave = SAVER.schedule(() -> {
+                try {
+                    if (storage != null && !isShutdown) {
+                        storage.setDirty();
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Error during save operation", e);
+                } finally {
+                    pendingSave = null;
+                }
+            }, 1, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            LOGGER.warn("Save task rejected, executor may be shutdown", e);
+        }
     }
 
     public void flush() {
@@ -124,7 +143,27 @@ public class LinkManager {
     }
 
     public static void shutdownSaver() {
-        SAVER.shutdownNow();
+        if (isShutdown) return;
+        isShutdown = true;
+
+        try {
+            SAVER.shutdown();
+            if (!SAVER.awaitTermination(LogisticsConstants.Thread.SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                LOGGER.warn("Saver did not terminate in time, forcing shutdown");
+                SAVER.shutdownNow();
+                if (!SAVER.awaitTermination(LogisticsConstants.Thread.FORCE_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    LOGGER.error("Saver did not terminate after forced shutdown");
+                }
+            }
+        } catch (InterruptedException e) {
+            LOGGER.error("Interrupted during saver shutdown", e);
+            SAVER.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    public static boolean isSaverShutdown() {
+        return isShutdown;
     }
 
     public static long posToKey(BlockPos pos) {
@@ -132,7 +171,11 @@ public class LinkManager {
     }
 
     public static long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << 3) | (face.get3DDataValue() & 0x7);
+        return (pos.asLong() << LogisticsConstants.Storage.FACE_BITS) | (face.get3DDataValue() & LogisticsConstants.Storage.FACE_MASK);
+    }
+
+    public LogisticsNode createNodeFromKey(long key) {
+        return LogisticsNode.fromKey(key, level.dimension());
     }
 
     public FaceConfigComposite getOrCreateFaceConfig(BlockPos pos, Direction face) {
@@ -185,8 +228,8 @@ public class LinkManager {
         sourceCfg.markDirty();
         targetCfg.markDirty();
 
-        networkSyncManager.syncToDimension(source.gPos().pos(), source.face(), sourceCfg);
-        networkSyncManager.syncToDimension(target.gPos().pos(), target.face(), targetCfg);
+        syncNodeToDimension(source);
+        syncNodeToDimension(target);
 
         cleanUpFaceIfNeeded(source, sourceCfg);
         cleanUpFaceIfNeeded(target, targetCfg);
@@ -207,11 +250,14 @@ public class LinkManager {
     }
 
     private void removeFaceConfigInternal(long key, boolean doCascade, boolean sendPacket) {
-        if (!pendingRemovals.add(key)) return;
+        synchronized (removalLock) {
+            if (pendingRemovals.containsKey(key)) return;
+            pendingRemovals.put(key, true);
+        }
         try {
             FaceConfigComposite config = faceConfigService.get(key);
             if (config == null) return;
-            LogisticsNode selfNode = LogisticsNode.fromKey(key, level.dimension());
+            LogisticsNode selfNode = createNodeFromKey(key);
             if (doCascade) {
                 changeHandler.cascadeRemove(selfNode, config);
             }
@@ -260,10 +306,25 @@ public class LinkManager {
         for (Direction face : Direction.values()) {
             FaceConfigComposite cfg = faceConfigService.get(posToKey(pos, face));
             if (cfg != null) {
-                networkSyncManager.syncToDimension(pos, face, cfg);
+                syncNodeToDimension(createNodeFromKey(posToKey(pos, face)));
             }
         }
     }
+
+    public void syncNodeToDimension(LogisticsNode node) {
+        FaceConfigComposite cfg = getFaceConfig(node.toKey());
+        if (cfg != null) {
+            syncNodeToDimension(node);
+        }
+    }
+
+    public void syncNodeToPlayer(ServerPlayer player, LogisticsNode node) {
+        FaceConfigComposite cfg = getFaceConfig(node.toKey());
+        if (cfg != null) {
+            networkSyncManager.syncToPlayer(player, node.gPos().pos(), node.face(), cfg);
+        }
+    }
+
 
     public LongSet getActiveProviderKeys() {
         return cacheManager.getActiveProviderKeys();
@@ -273,33 +334,6 @@ public class LinkManager {
         return configRepository.keySet();
     }
 
-    public void validateAllLinks() {
-        boolean changed = false;
-        for (long key : configRepository.keySet()) {
-            FaceConfigComposite cfg = faceConfigService.get(key);
-            if (cfg == null) continue;
-            boolean faceChanged = false;
-            LogisticsNode sourceNode = LogisticsNode.fromKey(key, level.dimension());
-            Iterator<LogisticsNode> it = cfg.getLinkedNodes().iterator();
-            while (it.hasNext()) {
-                LogisticsNode target = it.next();
-                ServerLevel targetLevel = level.getServer().getLevel(target.gPos().dimension());
-                if (targetLevel != null && !TransferUtils.hasLogisticsCapability(targetLevel, target.gPos().pos(), target.face())) {
-                    it.remove();
-                    faceChanged = true;
-                }
-            }
-            if (faceChanged) {
-                changed = true;
-                networkSyncManager.syncToDimension(sourceNode.gPos().pos(), sourceNode.face(), cfg);
-                if (cfg.isDefault()) {
-                    removeFaceConfig(key);
-                }
-            }
-        }
-        if (changed) markDirty();
-    }
-
     public void onBlockRemoved(BlockPos pos) {
         onBlocksRemovedBulk(List.of(pos));
     }
@@ -307,17 +341,22 @@ public class LinkManager {
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
         if (positions.isEmpty()) return;
         List<BlockPos> list = new ArrayList<>(positions);
+        List<BlockPos> failedDrops = new ArrayList<>();
+        List<BlockPos> failedConfigs = new ArrayList<>();
+        List<BlockPos> failedSync = new ArrayList<>();
 
         try {
             dropHandler.handleBulkDrops(list);
         } catch (Exception e) {
             LOGGER.error("Failed to handle bulk drops at positions {}: {}", list, e.getMessage(), e);
+            failedDrops.addAll(list);
         }
 
         List<GlobalPos> removedPositions = new ArrayList<>();
         List<Direction> removedFaces = new ArrayList<>();
 
         for (BlockPos pos : list) {
+            boolean posFailed = false;
             for (Direction face : Direction.values()) {
                 long key = posToKey(pos, face);
                 if (faceConfigService.get(key) != null) {
@@ -325,16 +364,21 @@ public class LinkManager {
                         removeFaceConfigInternal(key, true, false);
                     } catch (Exception e) {
                         LOGGER.error("Failed to remove face config at {} {}: {}", pos, face, e.getMessage(), e);
+                        posFailed = true;
                         continue;
                     }
                     removedPositions.add(GlobalPos.of(level.dimension(), pos));
                     removedFaces.add(face);
                 }
             }
+            if (posFailed) {
+                failedConfigs.add(pos);
+            }
             try {
                 containerConfigService.removeIfUnused(pos);
             } catch (Exception e) {
                 LOGGER.error("Failed to clean container config at {}: {}", pos, e.getMessage(), e);
+                failedConfigs.add(pos);
             }
         }
 
@@ -343,6 +387,7 @@ public class LinkManager {
                 networkSyncManager.syncRemovalBulkToDimension(removedPositions, removedFaces);
             } catch (Exception e) {
                 LOGGER.error("Failed to sync bulk removal: {}", e.getMessage(), e);
+                failedSync.addAll(removedPositions.stream().map(GlobalPos::pos).toList());
             }
         }
 
@@ -351,7 +396,24 @@ public class LinkManager {
         } catch (Exception e) {
             LOGGER.error("Failed to clear capability cache: {}", e.getMessage(), e);
         }
+
         markDirty();
+
+        if (!failedDrops.isEmpty() || !failedConfigs.isEmpty() || !failedSync.isEmpty()) {
+            logFailureSummary(failedDrops, failedConfigs, failedSync);
+        }
+    }
+
+    private void logFailureSummary(List<BlockPos> failedDrops, List<BlockPos> failedConfigs, List<BlockPos> failedSync) {
+        if (!failedDrops.isEmpty()) {
+            LOGGER.warn("Failed to drop items at {} positions", failedDrops.size());
+        }
+        if (!failedConfigs.isEmpty()) {
+            LOGGER.warn("Failed to clean configs at {} positions", failedConfigs.size());
+        }
+        if (!failedSync.isEmpty()) {
+            LOGGER.warn("Failed to sync removal for {} positions", failedSync.size());
+        }
     }
 
     public static LinkManager get(ServerLevel level) {

@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -19,7 +20,6 @@ import java.util.Map;
 
 public class NetworkSyncManager {
     private final ServerLevel level;
-    private static final int MAX_BULK_ENTRIES = 100;
 
     public NetworkSyncManager(ServerLevel level) {
         this.level = level;
@@ -49,7 +49,7 @@ public class NetworkSyncManager {
             entries.add(new S2CSyncBulkFaceConfigPacket.Entry(
                 GlobalPos.of(level.dimension(), pos), face, config, config.getVersion()
             ));
-            if (entries.size() >= MAX_BULK_ENTRIES) {
+            if (entries.size() >= LogisticsConstants.Network.getMaxBulkEntries()) {
                 PacketDistributor.sendToPlayer(player, new S2CSyncBulkFaceConfigPacket(new ArrayList<>(entries)));
                 entries.clear();
             }

@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayDeque;
@@ -20,8 +21,6 @@ public final class TransferContext {
 
     // 对象池，使用双端队列存储可复用的TransferContext实例
     private static final Deque<TransferContext> POOL = new ArrayDeque<>();
-    // 对象池最大容量限制
-    private static final int MAX_POOL_SIZE = 100;
 
     private ServerLevel level;                // 服务器世界实例
     private LogisticsNode sourceNode;         // 源物流节点
@@ -72,7 +71,7 @@ public final class TransferContext {
      * 如果对象池已满则丢弃该实例
      */
     public void recycle() {
-        if (POOL.size() < MAX_POOL_SIZE) {
+        if (POOL.size() < LogisticsConstants.Performance.getTransferContextPoolSize()) {
             this.level = null;
             this.sourceNode = null;
             this.sourceConfig = null;

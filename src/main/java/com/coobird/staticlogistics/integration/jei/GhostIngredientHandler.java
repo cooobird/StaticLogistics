@@ -32,6 +32,7 @@ public class GhostIngredientHandler implements IGhostIngredientHandler<BaseFilte
         }
         return targets;
     }
+
     private <I> Target<I> createItemTarget(BaseFilterScreen screen, Rect2i area) {
         return new Target<>() {
             @Override

@@ -466,7 +466,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         String translationKey = tag.location().toLanguageKey(prefix);
         Component translated = Component.translatable(translationKey);
         String text = translated.getString();
-        if (text.equals(translationKey)) {
+        if (Objects.equals(translationKey, text)) {
             return tag.location().toString();
         }
         return text;

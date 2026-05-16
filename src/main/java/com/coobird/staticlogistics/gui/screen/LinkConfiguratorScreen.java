@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -26,10 +27,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class LinkConfiguratorScreen extends Screen {
@@ -232,7 +230,8 @@ public class LinkConfiguratorScreen extends Screen {
                         return true;
                     }
                     long now = Util.getMillis();
-                    if (gn.equals(lastClickedGroup) && now - lastClickTime < 250L) startRename(gn);
+                    if (Objects.equals(lastClickedGroup, gn) && now - lastClickTime < LogisticsConstants.UI.DOUBLE_CLICK_THRESHOLD_MS)
+                        startRename(gn);
                     else syncSettings(gn, true);
                     lastClickedGroup = gn;
                     lastClickTime = now;
@@ -367,7 +366,7 @@ public class LinkConfiguratorScreen extends Screen {
             String gn = groups.get(i);
             int itemY = listY + (i * SLGuiTextures.List.ITEM_H) - (int) scrollOffset;
             if (itemY + SLGuiTextures.List.ITEM_H < listY || itemY > listY + SLGuiTextures.List.HEIGHT) continue;
-            boolean isSelected = gn.equals(currentGroupId);
+            boolean isSelected = Objects.equals(currentGroupId, gn);
             boolean isHovered = mx >= sx + 10 && mx <= sx + 10 + SELECTION_WIDTH && my >= itemY && my < itemY + SLGuiTextures.List.ITEM_H;
             if (isHovered) this.hoveredGroupId = gn;
             if (isSelected)
@@ -375,7 +374,7 @@ public class LinkConfiguratorScreen extends Screen {
             else if (isHovered)
                 g.fill(sx + 10, itemY, sx + 10 + SELECTION_WIDTH, itemY + SLGuiTextures.List.ITEM_H, 0x22FFFFFF);
 
-            if (gn.equals(editingGroupId)) {
+            if (Objects.equals(editingGroupId, gn)) {
                 renameBox.setX(sx + 12);
                 renameBox.setY(itemY + 1);
                 renameBox.setVisible(true);
@@ -415,7 +414,7 @@ public class LinkConfiguratorScreen extends Screen {
 
     private void confirmRename() {
         String newId = renameBox.getValue().trim();
-        if (!newId.isEmpty() && !newId.equals(editingGroupId)) {
+        if (!newId.isEmpty() && !Objects.equals(editingGroupId, newId)) {
             PacketDistributor.sendToServer(new C2SGroupRenamePayload(editingGroupId, newId));
             if (stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "").equals(editingGroupId))
                 syncSettings(newId, false);

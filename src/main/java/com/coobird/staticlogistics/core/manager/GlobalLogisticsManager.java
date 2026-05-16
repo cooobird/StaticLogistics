@@ -115,7 +115,7 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             for (long key : mgr.getAllConfigKeys()) {
                 FaceConfigComposite cfg = mgr.getFaceConfig(key);
                 if (cfg != null && cfg.getLinkedNodes().contains(target)) {
-                    sources.add(LogisticsNode.fromKey(key, level.dimension()));
+                    sources.add(mgr.createNodeFromKey(key));
                 }
             }
         }
@@ -175,7 +175,8 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             if (anyChanged) {
                 sMgr.refreshLocalCache(source.toKey(), source.gPos().pos(), source.face(), sCfg);
                 sMgr.syncConfigToClients(source.gPos().pos());
-                sMgr.markDirty();
+                sMgr.markDirtyBatch(() -> {
+                });
             }
         }
     }

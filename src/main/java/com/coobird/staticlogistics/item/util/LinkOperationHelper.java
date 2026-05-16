@@ -93,14 +93,14 @@ public class LinkOperationHelper {
 
             LinkManager srcMgr = LinkManager.get(srcLevel);
             FaceConfigComposite srcCfg = srcMgr.getFaceConfig(LinkManager.posToKey(srcNode.gPos().pos(), srcNode.face()));
-            if (srcCfg != null && !GroupService.canAccess(srcCfg.faceConfig.getOwner(), player)) continue;
+            if (srcCfg != null && !srcCfg.canPlayerAccess(player)) continue;
 
             ContainerConfig senderContainer = srcMgr.getContainerConfig(srcNode.gPos().pos());
             if (senderContainer == null) {
                 senderContainer = srcMgr.getOrCreateContainerConfig(srcNode.gPos().pos());
             }
 
-            boolean sameDim = srcNode.gPos().dimension().equals(currentNode.gPos().dimension());
+            boolean sameDim = srcNode.isInSameDimension(currentNode);
             if (!sameDim && !LogisticsCalculator.isDimensionEffective(senderContainer)) {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_dimension_upgrade").withStyle(ChatFormatting.RED), true);
                 continue;

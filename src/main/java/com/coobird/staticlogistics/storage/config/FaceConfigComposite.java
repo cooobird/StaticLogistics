@@ -5,12 +5,17 @@ import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.config.serializer.ConfigSerializer;
+import com.coobird.staticlogistics.core.service.GroupService;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -32,6 +37,7 @@ public class FaceConfigComposite {
 
     private List<LogisticsNode> cachedTargets = null;
     private int targetsCacheVersion = -1;
+    private static final Map<Integer, List<LogisticsNode>> globalTargetCache = new ConcurrentHashMap<>();
 
     public FaceConfigComposite() {
         this.faceConfig = new FaceConfig();
@@ -50,6 +56,14 @@ public class FaceConfigComposite {
         version++;
         targetsCacheVersion = -1;
         if (onDirty != null) onDirty.accept(this);
+    }
+
+    public boolean canPlayerAccess(Player player) {
+        return GroupService.canAccess(faceConfig.getOwner(), player);
+    }
+
+    public boolean canPlayerModify(Player player) {
+        return GroupService.canModify(faceConfig.getOwner(), player);
     }
 
     public void setOnDirty(@Nullable Consumer<FaceConfigComposite> onDirty) {
@@ -75,8 +89,8 @@ public class FaceConfigComposite {
     public void setGlobalInputEnabled(boolean enabled) {
         if (this.globalInputEnabled != enabled) {
             this.globalInputEnabled = enabled;
-            if (enabled && linkConfig.getInputChannel() == 0) {
-                linkConfig.setInputChannel(1);
+            if (enabled && linkConfig.getInputChannel() == LinkConfig.DISABLED_CHANNEL) {
+                linkConfig.setInputChannel(LinkConfig.MIN_CHANNEL);
             }
             markDirty();
         }
@@ -89,8 +103,8 @@ public class FaceConfigComposite {
     public void setGlobalOutputEnabled(boolean enabled) {
         if (this.globalOutputEnabled != enabled) {
             this.globalOutputEnabled = enabled;
-            if (enabled && linkConfig.getOutputChannel() == 0) {
-                linkConfig.setOutputChannel(1);
+            if (enabled && linkConfig.getOutputChannel() == LinkConfig.DISABLED_CHANNEL) {
+                linkConfig.setOutputChannel(LinkConfig.MIN_CHANNEL);
             }
             markDirty();
         }
@@ -126,13 +140,55 @@ public class FaceConfigComposite {
 
     @Nullable
     public List<LogisticsNode> getCachedTargets(int currentVersion) {
-        if (cachedTargets != null && targetsCacheVersion == currentVersion) return cachedTargets;
+        if (cachedTargets != null && targetsCacheVersion == currentVersion) {
+            return new ArrayList<>(cachedTargets);
+        }
         return null;
     }
 
     public void setCachedTargets(List<LogisticsNode> targets, int currentVersion) {
-        this.cachedTargets = targets;
-        this.targetsCacheVersion = currentVersion;
+        if (targets != null && !targets.isEmpty()) {
+            int cacheSize = Math.min(targets.size(), LogisticsConstants.Cache.getTargetCacheSize());
+            this.cachedTargets = new ArrayList<>(targets.subList(0, cacheSize));
+            this.targetsCacheVersion = currentVersion;
+
+            addToGlobalCache(currentVersion, this.cachedTargets);
+        } else {
+            clearCache();
+        }
+    }
+
+    private void addToGlobalCache(int version, List<LogisticsNode> targets) {
+        if (globalTargetCache.size() >= LogisticsConstants.Cache.getGlobalTargetCacheSize()) {
+            evictOldestGlobalCacheConcurrent();
+        }
+        globalTargetCache.put(version, new ArrayList<>(targets));
+    }
+
+    private void evictOldestGlobalCache() {
+        if (!globalTargetCache.isEmpty()) {
+            Integer oldestKey = globalTargetCache.keySet().iterator().next();
+            globalTargetCache.remove(oldestKey);
+        }
+    }
+
+    private void evictOldestGlobalCacheConcurrent() {
+        globalTargetCache.keySet().stream()
+            .min(Integer::compareTo)
+            .ifPresent(globalTargetCache::remove);
+    }
+
+    private void clearCache() {
+        this.cachedTargets = null;
+        this.targetsCacheVersion = -1;
+    }
+
+    public static void clearGlobalCache() {
+        globalTargetCache.clear();
+    }
+
+    public static int getGlobalCacheSize() {
+        return globalTargetCache.size();
     }
 
     public CompoundTag serializeNBT(HolderLookup.Provider p) {

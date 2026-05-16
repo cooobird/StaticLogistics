@@ -73,7 +73,7 @@ public class LinkManagerStorage extends SavedData {
             for (String keyStr : fTag.getAllKeys()) {
                 try {
                     long key = Long.parseLong(keyStr);
-                    LogisticsNode node = LogisticsNode.fromKey(key, level.dimension());
+                    LogisticsNode node = linkManager.createNodeFromKey(key);
                     FaceConfigComposite cfg = new FaceConfigComposite();
                     cfg.deserializeNBT(provider, fTag.getCompound(keyStr));
                     cfg.faceConfig.setPos(node.gPos().pos());

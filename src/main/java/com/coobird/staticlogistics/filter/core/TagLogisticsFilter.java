@@ -27,10 +27,8 @@ public class TagLogisticsFilter extends AbstractLogisticsFilter {
                               Set<TagKey<Fluid>> fluidTags, Set<TagKey<Fluid>> excludedFluidTags,
                               boolean hasUpgrade) {
         super(hasUpgrade);
-        // 初始化物品相关的允许与排除标签集合
         this.itemTags = itemTags;
         this.excludedItemTags = excludedItemTags;
-        // 初始化流体相关的允许与排除标签集合
         this.fluidTags = fluidTags;
         this.excludedFluidTags = excludedFluidTags;
     }

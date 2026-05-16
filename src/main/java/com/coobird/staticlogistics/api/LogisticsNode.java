@@ -29,6 +29,14 @@ public record LogisticsNode(GlobalPos gPos, Direction face) {
             this.face == face;
     }
 
+    public boolean isInSameDimension(LogisticsNode other) {
+        return this.gPos.dimension().equals(other.gPos.dimension());
+    }
+
+    public boolean isInSameDimension(ResourceKey<Level> dimension) {
+        return this.gPos.dimension().equals(dimension);
+    }
+
     public long toKey() {
         return (gPos.pos().asLong() << 3) | (long) face.get3DDataValue();
     }

@@ -7,6 +7,7 @@ import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistr
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -40,8 +41,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 public class SLCommands {
-    private static final int STRATEGIES_PER_PAGE = 8;
-
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("sl")
             .requires(source -> source.hasPermission(2))
@@ -84,7 +83,8 @@ public class SLCommands {
         Direction face = Direction.from3DDataValue((int) (key & 0x7));
         manager.refreshLocalCache(key, pos, face, config);
         manager.syncConfigToClients(pos);
-        manager.markDirty();
+        manager.markDirtyBatch(() -> {
+        });
     }
 
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
@@ -258,7 +258,7 @@ public class SLCommands {
 
     private static int listStrategies(CommandContext<CommandSourceStack> ctx, int page) {
         Map<ResourceLocation, MatchStrategy> all = ComponentMatchStrategyRegistry.getAllStrategies();
-        int totalPages = (all.size() + STRATEGIES_PER_PAGE - 1) / STRATEGIES_PER_PAGE;
+        int totalPages = (all.size() + LogisticsConstants.UI.STRATEGIES_PER_PAGE - 1) / LogisticsConstants.UI.STRATEGIES_PER_PAGE;
 
         if (page < 1) page = 1;
         if (page > totalPages) page = totalPages;
@@ -269,8 +269,8 @@ public class SLCommands {
             "commands.staticlogistics.strategies.header", currentPage, totalPages
         ).withStyle(ChatFormatting.GOLD), false);
 
-        int start = (currentPage - 1) * STRATEGIES_PER_PAGE;
-        int end = Math.min(start + STRATEGIES_PER_PAGE, all.size());
+        int start = (currentPage - 1) * LogisticsConstants.UI.STRATEGIES_PER_PAGE;
+        int end = Math.min(start + LogisticsConstants.UI.STRATEGIES_PER_PAGE, all.size());
         int i = 0;
         for (var entry : all.entrySet()) {
             if (i >= start && i < end) {

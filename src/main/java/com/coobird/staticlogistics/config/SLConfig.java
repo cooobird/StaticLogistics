@@ -44,6 +44,20 @@ public final class SLConfig {
 
     public static ModConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
 
+    public static ModConfigSpec.IntValue CACHE_PROVIDER_SIZE;
+    public static ModConfigSpec.DoubleValue CACHE_LOAD_FACTOR;
+    public static ModConfigSpec.IntValue CACHE_TARGET_SIZE;
+    public static ModConfigSpec.IntValue CACHE_GLOBAL_TARGET_SIZE;
+
+    public static ModConfigSpec.IntValue NETWORK_MAX_BULK_ENTRIES;
+
+    public static ModConfigSpec.IntValue PERF_TICKER_BATCH_SIZE;
+    public static ModConfigSpec.IntValue PERF_CLEAN_INTERVAL;
+    public static ModConfigSpec.IntValue PERF_DEFAULT_COOLDOWN;
+    public static ModConfigSpec.IntValue PERF_BATCH_CLEAN_THRESHOLD;
+    public static ModConfigSpec.IntValue PERF_BATCH_CLEAN_SIZE;
+    public static ModConfigSpec.IntValue PERF_CONTEXT_POOL_SIZE;
+
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
     private static volatile int MaxTransferLimit = 10_000_000;
@@ -65,9 +79,19 @@ public final class SLConfig {
 
     private static volatile boolean autoCleanStoredNodes = false;
 
-    private static final double feToEuRatio = 4.0;
-    private static final double feToMjRatio = 15.0;
-    private static final double feToJRatio = 2.5;
+    private static volatile int cacheProviderSize = 1000;
+    private static volatile double cacheLoadFactor = 0.75;
+    private static volatile int cacheTargetSize = 50;
+    private static volatile int cacheGlobalTargetSize = 500;
+
+    private static volatile int networkMaxBulkEntries = 100;
+
+    private static volatile int perfTickerBatchSize = 50;
+    private static volatile int perfCleanInterval = 200;
+    private static volatile int perfDefaultCooldown = 10;
+    private static volatile int perfBatchCleanThreshold = 500;
+    private static volatile int perfBatchCleanSize = 200;
+    private static volatile int perfContextPoolSize = 100;
 
     public static void register(ModContainer container) {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -89,6 +113,59 @@ public final class SLConfig {
             .define("auto_clean_stored_nodes", false);
         builder.pop();
 
+        builder.push("cache");
+        CACHE_PROVIDER_SIZE = builder
+            .translation("config.staticlogistics.cache.provider_size")
+            .comment("Maximum number of provider cache entries. Larger values use more memory but improve cache hit rate.")
+            .defineInRange("provider_size", 1000, 100, 10000);
+        CACHE_LOAD_FACTOR = builder
+            .translation("config.staticlogistics.cache.load_factor")
+            .comment("Cache load factor. Controls when hash tables resize. 0.75 is standard.")
+            .defineInRange("load_factor", 0.75, 0.1, 1.0);
+        CACHE_TARGET_SIZE = builder
+            .translation("config.staticlogistics.cache.target_size")
+            .comment("Maximum number of targets cached per face.")
+            .defineInRange("target_size", 50, 10, 200);
+        CACHE_GLOBAL_TARGET_SIZE = builder
+            .translation("config.staticlogistics.cache.global_target_size")
+            .comment("Maximum number of global target cache entries.")
+            .defineInRange("global_target_size", 500, 100, 5000);
+        builder.pop();
+
+        builder.push("network");
+        NETWORK_MAX_BULK_ENTRIES = builder
+            .translation("config.staticlogistics.network.max_bulk_entries")
+            .comment("Maximum entries per bulk sync packet. Larger values may cause network issues.")
+            .defineInRange("max_bulk_entries", 100, 10, 1000);
+        builder.pop();
+
+        builder.push("performance");
+        PERF_TICKER_BATCH_SIZE = builder
+            .translation("config.staticlogistics.performance.ticker_batch_size")
+            .comment("Number of nodes processed per tick. Smaller values reduce lag but increase delay.")
+            .defineInRange("ticker_batch_size", 50, 10, 200);
+        PERF_CLEAN_INTERVAL = builder
+            .translation("config.staticlogistics.performance.clean_interval")
+            .comment("Cooldown cleanup interval in ticks.")
+            .defineInRange("clean_interval", 200, 20, 1200);
+        PERF_DEFAULT_COOLDOWN = builder
+            .translation("config.staticlogistics.performance.default_cooldown")
+            .comment("Default cooldown ticks after failed transfer.")
+            .defineInRange("default_cooldown", 10, 1, 100);
+        PERF_BATCH_CLEAN_THRESHOLD = builder
+            .translation("config.staticlogistics.performance.batch_clean_threshold")
+            .comment("Cooldown entries threshold for batch cleanup.")
+            .defineInRange("batch_clean_threshold", 500, 100, 2000);
+        PERF_BATCH_CLEAN_SIZE = builder
+            .translation("config.staticlogistics.performance.batch_clean_size")
+            .comment("Number of entries to clean per batch.")
+            .defineInRange("batch_clean_size", 200, 50, 1000);
+        PERF_CONTEXT_POOL_SIZE = builder
+            .translation("config.staticlogistics.performance.context_pool_size")
+            .comment("Transfer context object pool size.")
+            .defineInRange("context_pool_size", 100, 20, 500);
+        builder.pop();
+
         builder.push("core");
         DEFAULT_ITEM_STACK = builder
             .translation("config.staticlogistics.item_stack_size")
@@ -101,7 +178,7 @@ public final class SLConfig {
             .defineInRange("energy_stack_size", DefaultEnergyStack, 1, Integer.MAX_VALUE);
         builder.pop();
 
-        builder.push("intergration");
+        builder.push("integration");
         MEK_CHEMICAL_STACK = builder
             .translation("config.staticlogistics.mek_chemical_stack_size")
             .defineInRange("mek_chemical_stack_size", MekChemicalStack, 1, Integer.MAX_VALUE);
@@ -203,6 +280,7 @@ public final class SLConfig {
             autoCleanStoredNodes = AUTO_CLEAN_STORED_NODES.get();
 
             loadComponentStrategyOverrides();
+            loadPerformanceConfig();
         }
     }
 
@@ -218,6 +296,22 @@ public final class SLConfig {
             }
         }
         ComponentMatchStrategyRegistry.loadConfigOverrides(map);
+    }
+
+    private static void loadPerformanceConfig() {
+        cacheProviderSize = CACHE_PROVIDER_SIZE.get();
+        cacheLoadFactor = CACHE_LOAD_FACTOR.get();
+        cacheTargetSize = CACHE_TARGET_SIZE.get();
+        cacheGlobalTargetSize = CACHE_GLOBAL_TARGET_SIZE.get();
+
+        networkMaxBulkEntries = NETWORK_MAX_BULK_ENTRIES.get();
+
+        perfTickerBatchSize = PERF_TICKER_BATCH_SIZE.get();
+        perfCleanInterval = PERF_CLEAN_INTERVAL.get();
+        perfDefaultCooldown = PERF_DEFAULT_COOLDOWN.get();
+        perfBatchCleanThreshold = PERF_BATCH_CLEAN_THRESHOLD.get();
+        perfBatchCleanSize = PERF_BATCH_CLEAN_SIZE.get();
+        perfContextPoolSize = PERF_CONTEXT_POOL_SIZE.get();
     }
 
     public static int getDefaultRadius() {
@@ -277,5 +371,49 @@ public final class SLConfig {
 
     public static boolean shouldAutoCleanStoredNodes() {
         return autoCleanStoredNodes;
+    }
+
+    public static int getCacheProviderSize() {
+        return cacheProviderSize;
+    }
+
+    public static float getCacheLoadFactor() {
+        return (float) cacheLoadFactor;
+    }
+
+    public static int getCacheTargetSize() {
+        return cacheTargetSize;
+    }
+
+    public static int getCacheGlobalTargetSize() {
+        return cacheGlobalTargetSize;
+    }
+
+    public static int getNetworkMaxBulkEntries() {
+        return networkMaxBulkEntries;
+    }
+
+    public static int getPerfTickerBatchSize() {
+        return perfTickerBatchSize;
+    }
+
+    public static int getPerfCleanInterval() {
+        return perfCleanInterval;
+    }
+
+    public static int getPerfDefaultCooldown() {
+        return perfDefaultCooldown;
+    }
+
+    public static int getPerfBatchCleanThreshold() {
+        return perfBatchCleanThreshold;
+    }
+
+    public static int getPerfBatchCleanSize() {
+        return perfBatchCleanSize;
+    }
+
+    public static int getPerfContextPoolSize() {
+        return perfContextPoolSize;
     }
 }

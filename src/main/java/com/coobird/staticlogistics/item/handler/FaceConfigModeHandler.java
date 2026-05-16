@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.storage.LinkManager;
@@ -30,7 +29,7 @@ public class FaceConfigModeHandler implements ModeHandler {
             LinkManager mgr = LinkManager.get(serverLevel);
             FaceConfigComposite config = mgr.getFaceConfig(LinkManager.posToKey(pos, face));
             if (config != null) {
-                if (GroupService.canAccess(config.faceConfig.getOwner(), player)) {
+                if (config.canPlayerAccess(player)) {
                     var firstType = settings.getSelectedTypes().isEmpty() ? TransferRegistries.ITEM : settings.getSelectedTypes().getFirst();
                     BlockState state = level.getBlockState(pos);
                     var title = state.getBlock().getName().copy()

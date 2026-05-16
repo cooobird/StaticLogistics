@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
+import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -43,11 +44,11 @@ public class LinkChangeHandler {
             return;
         }
 
-        LogisticsNode currentNode = LogisticsNode.fromKey(key, level.dimension());
+        LogisticsNode currentNode = linkManager.createNodeFromKey(key);
         autoSymmetrizeLinks(currentNode, cfg);
         linkManager.refreshLocalCache(key, pos, face, cfg);
         syncManager.syncNode(pos, face, cfg);
-        networkSyncManager.syncToDimension(pos, face, cfg);
+        linkManager.syncNodeToDimension(currentNode);
         linkManager.activateNode(key, pos, face, cfg);
     }
 
@@ -58,12 +59,12 @@ public class LinkChangeHandler {
             FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
             if (faceCfg != null) {
                 BlockPos pos = faceCfg.faceConfig.getPos();
-                Direction face = Direction.from3DDataValue((int) (faceKey & 0x7));
+                Direction face = Direction.from3DDataValue((int) (faceKey & LogisticsConstants.Storage.FACE_MASK));
                 linkManager.refreshLocalCache(faceKey, pos, face, faceCfg);
                 if (faceCfg.determineRole().canSend()) {
                     linkManager.activateNode(faceKey, pos, face, faceCfg);
                 }
-                networkSyncManager.syncToDimension(pos, face, faceCfg);
+                linkManager.syncNodeToDimension(linkManager.createNodeFromKey(faceKey));
             }
         }
     }
@@ -85,13 +86,13 @@ public class LinkChangeHandler {
     private void processFace(long faceKey, ContainerConfig containerConfig) {
         FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
         if (faceCfg == null) return;
-        LogisticsNode selfNode = LogisticsNode.fromKey(faceKey, level.dimension());
+        LogisticsNode selfNode = linkManager.createNodeFromKey(faceKey);
         BlockPos selfPos = selfNode.gPos().pos();
         boolean changed = false;
         Iterator<LogisticsNode> it = faceCfg.getLinkedNodes().iterator();
         while (it.hasNext()) {
             LogisticsNode target = it.next();
-            boolean sameDim = target.gPos().dimension().equals(level.dimension());
+            boolean sameDim = target.isInSameDimension(level.dimension());
             if ((!sameDim && !LogisticsCalculator.isDimensionEffective(containerConfig)) ||
                 (sameDim && !LogisticsCalculator.isWithinRange(selfPos, target.gPos().pos(), containerConfig))) {
                 removeLink(selfNode, target, faceCfg, it);
@@ -102,9 +103,10 @@ public class LinkChangeHandler {
             if (faceCfg.getLinkedNodes().isEmpty() && !faceCfg.isGlobalInputEnabled() && !faceCfg.isGlobalOutputEnabled()) {
                 linkManager.removeFaceConfig(faceKey);
             } else {
-                networkSyncManager.syncToDimension(selfPos, selfNode.face(), faceCfg);
+                linkManager.syncNodeToDimension(selfNode);
                 linkManager.refreshLocalCache(faceKey, selfPos, selfNode.face(), faceCfg);
-                linkManager.markDirty();
+                linkManager.markDirtyBatch(() -> {
+                });
             }
         }
     }
@@ -129,8 +131,9 @@ public class LinkChangeHandler {
             if (!remoteCfg.getLinkedNodes().contains(currentNode)) {
                 remoteCfg.getLinkedNodes().add(currentNode);
                 remoteCfg.markDirty();
-                remoteMgr.markDirty();
-                remoteMgr.getNetworkSyncManager().syncToDimension(remoteNode.gPos().pos(), remoteNode.face(), remoteCfg);
+                remoteMgr.markDirtyBatch(() -> {
+                });
+                remoteMgr.syncNodeToDimension(remoteNode);
             }
         }
     }

@@ -10,7 +10,7 @@ import net.minecraft.world.level.Level;
 import java.util.UUID;
 
 public class GroupService {
-    private static final PermissionService permissionService = new PermissionService();
+    private static final PermissionService permissionService = PermissionService.getInstance();
     private static final TeamSyncService teamSyncService = new TeamSyncService(new FTBTeamService());
 
     public static boolean canAccess(UUID owner, Player actor) {

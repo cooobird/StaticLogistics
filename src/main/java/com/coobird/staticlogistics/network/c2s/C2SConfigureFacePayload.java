@@ -48,7 +48,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
             long key = LinkManager.posToKey(payload.pos(), payload.face());
             FaceConfigComposite config = manager.getFaceConfig(key);
             if (config == null) return;
-            if (!GroupService.canModify(config.faceConfig.getOwner(), player)) return;
+            if (!config.canPlayerModify(player)) return;
 
             CompoundTag tag = payload.data();
 

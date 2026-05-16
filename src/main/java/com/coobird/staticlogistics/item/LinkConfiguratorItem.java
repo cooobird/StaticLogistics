@@ -61,7 +61,7 @@ public class LinkConfiguratorItem extends Item {
     public record ToolSettings(ToolMode mode, int typeMask, String group, List<LogisticsNode> storedNodes,
                                @Nullable ToolMode storedMode) {
         public List<TransferType> getSelectedTypes() {
-            return TransferRegistries.getAllActive().stream().filter(type -> (typeMask & type.getFlag()) != 0).collect(Collectors.toList());
+            return TransferRegistries.getAllActive().stream().filter(type -> (typeMask & type.getFlag()) != 0).toList();
         }
     }
 

@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -38,7 +37,7 @@ public record C2SRemoveLinkPayload(LogisticsNode node) implements CustomPacketPa
 
             FaceConfigComposite config = manager.getFaceConfig(key);
             if (config != null) {
-                if (!GroupService.canModify(config.faceConfig.getOwner(), player)) return;
+                if (!config.canPlayerModify(player)) return;
                 manager.removeFaceConfig(key);
             }
         });

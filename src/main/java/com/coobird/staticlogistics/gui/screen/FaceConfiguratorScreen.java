@@ -18,6 +18,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfiguratorMenu> {
     private EditBox priorityBox;
@@ -157,7 +158,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         updateWidgetVisibility();
         if (this.priorityBox != null && this.priorityBox.isVisible() && !this.priorityBox.isFocused()) {
             String currentVal = String.valueOf(menu.getPriority());
-            if (!this.priorityBox.getValue().equals(currentVal)) {
+            if (!Objects.equals(this.priorityBox.getValue(), currentVal)) {
                 this.priorityBox.setValue(currentVal);
             }
         }
