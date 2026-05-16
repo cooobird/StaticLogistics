@@ -135,7 +135,6 @@ public class LinkOperationHelper {
 
         LinkManager currentMgr = LinkManager.get(level);
         FaceConfigComposite currentCfg = currentMgr.getOrCreateFaceConfig(current.gPos().pos(), current.face());
-        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
         currentCfg.faceConfig.setGroupId(groupId);
         currentCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
         currentCfg.setSelectedTypesMask(settings.typeMask());
@@ -149,10 +148,17 @@ public class LinkOperationHelper {
         storedCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
         storedCfg.setSelectedTypesMask(settings.typeMask());
 
+        int defaultChannel = 1;
+        if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
+            currentCfg.linkConfig.setInputChannel(defaultChannel);
+            storedCfg.linkConfig.setOutputChannel(defaultChannel);
+        } else {
+            currentCfg.linkConfig.setOutputChannel(defaultChannel);
+            storedCfg.linkConfig.setInputChannel(defaultChannel);
+        }
+
         currentCfg.addLinkedNode(stored);
         storedCfg.addLinkedNode(current);
-        globalManager.addIncomingLink(current, stored);
-        globalManager.addIncomingLink(stored, current);
 
         if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
             currentCfg.setGlobalOutputEnabled(true);
@@ -180,8 +186,6 @@ public class LinkOperationHelper {
             S2CSyncFaceConfigPacket storedPacket = new S2CSyncFaceConfigPacket(stored.gPos(), stored.face(), storedCfg);
             GroupService.syncToTeamMembers(serverPlayer, storedPacket);
         }
-
-
 
         return true;
     }

@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -47,6 +48,9 @@ public class WrenchModeHandler implements ModeHandler {
                 return InteractionResult.SUCCESS;
             }
 
+            LinkManager mgr = LinkManager.get(serverLevel);
+            mgr.onBlockRemoved(pos);
+
             BlockEntity be = level.getBlockEntity(pos);
             ItemStack dropStack = new ItemStack(state.getBlock().asItem());
 
@@ -69,8 +73,10 @@ public class WrenchModeHandler implements ModeHandler {
                 }
             }
 
+            // 移除方块
             level.removeBlock(pos, false);
 
+            // 掉落物品
             if (!player.addItem(dropStack)) {
                 player.drop(dropStack, false);
             }

@@ -101,11 +101,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     }
 
     @Override
-    protected boolean shouldShowTypePanel() {
-        return menu.isGlobalOutputEnabled();
-    }
-
-    @Override
     protected String getSearchHintKey() {
         return "gui.staticlogistics.search_types";
     }
@@ -181,7 +176,9 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         renderFilterHints(graphics);
 
         renderToggleButton(graphics, IN_BTN_X, IN_BTN_Y, menu.isGlobalInputEnabled());
-        renderColorButton(graphics, IN_COLOR_X, IN_COLOR_Y, menu.getInputChannel());
+        int inChannel = menu.getInputChannel();
+        int inColorIdx = (inChannel >= 1 && inChannel <= 16) ? inChannel - 1 : 0;
+        renderColorButton(graphics, IN_COLOR_X, IN_COLOR_Y, inColorIdx);
         if (menu.isGlobalInputEnabled()) {
             Component priorityLabel = Component.translatable("gui.staticlogistics.label.priority");
             graphics.drawString(this.font, priorityLabel,
@@ -198,7 +195,9 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         }
 
         renderToggleButton(graphics, OUT_BTN_X, OUT_BTN_Y, menu.isGlobalOutputEnabled());
-        renderColorButton(graphics, OUT_COLOR_X, OUT_COLOR_Y, menu.getOutputChannel());
+        int outChannel = menu.getOutputChannel();
+        int outColorIdx = (outChannel >= 1 && outChannel <= 16) ? outChannel - 1 : 0;
+        renderColorButton(graphics, OUT_COLOR_X, OUT_COLOR_Y, outColorIdx);
         if (menu.isGlobalOutputEnabled()) {
             renderStrategyButton(graphics, mouseX, mouseY);
         }
@@ -359,14 +358,14 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_filter", true);
             tag.putBoolean("is_input", true);
-            PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
+            PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
             playClickSound();
             handled = true;
         } else if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && isFilterBtnHover(mx, my, OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_filter", true);
             tag.putBoolean("is_input", false);
-            PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
+            PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
             playClickSound();
             handled = true;
         } else if (isMouseOver(mx, my, IN_BTN_X, IN_BTN_Y, SLGuiTextures.Button.Push.WIDTH, SLGuiTextures.Button.Push.HEIGHT)) {
@@ -378,12 +377,28 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             playClickSound();
             handled = true;
         } else if (isMouseOver(mx, my, IN_COLOR_X, IN_COLOR_Y, 14, 14)) {
-            int nextChannel = (menu.getInputChannel() + (button == 1 ? -1 : 1) + 16) % 16;
+            int current = menu.getInputChannel();
+            int nextChannel;
+            if (button == 1) {
+                nextChannel = current - 1;
+                if (nextChannel < 1) nextChannel = 16;
+            } else {
+                nextChannel = current + 1;
+                if (nextChannel > 16) nextChannel = 1;
+            }
             sendConfigUpdate("inputChannel", nextChannel);
             playClickSound();
             handled = true;
         } else if (isMouseOver(mx, my, OUT_COLOR_X, OUT_COLOR_Y, 14, 14)) {
-            int nextChannel = (menu.getOutputChannel() + (button == 1 ? -1 : 1) + 16) % 16;
+            int current = menu.getOutputChannel();
+            int nextChannel;
+            if (button == 1) {
+                nextChannel = current - 1;
+                if (nextChannel < 1) nextChannel = 16;
+            } else {
+                nextChannel = current + 1;
+                if (nextChannel > 16) nextChannel = 1;
+            }
             sendConfigUpdate("outputChannel", nextChannel);
             playClickSound();
             handled = true;
@@ -476,13 +491,13 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             default -> {
             }
         }
-        PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
+        PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
     }
 
     private void syncTypeSelection() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("selected_types_mask", menu.getSelectedTypesMask());
-        PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
+        PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
     }
 
     @Override

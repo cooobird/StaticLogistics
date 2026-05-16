@@ -35,7 +35,7 @@ public class FaceConfigModeHandler implements ModeHandler {
                     BlockState state = level.getBlockState(pos);
                     var title = state.getBlock().getName().copy()
                         .append(Component.literal(String.format(" [%d, %d, %d]", pos.getX(), pos.getY(), pos.getZ())).withStyle(ChatFormatting.GRAY));
-                    serverPlayer.openMenu(new SimpleMenuProvider((id, inv, p) -> new FaceConfiguratorMenu(id, inv, pos, face, firstType), title),
+                    serverPlayer.openMenu(new SimpleMenuProvider((id, inv, p) -> new FaceConfiguratorMenu(id, inv, pos, face), title),
                         buf -> {
                             buf.writeBlockPos(pos);
                             buf.writeEnum(face);

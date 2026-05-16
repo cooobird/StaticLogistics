@@ -7,7 +7,6 @@ import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -81,10 +80,6 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
 
     public FaceConfigComposite getFaceConfig() {
         return config;
-    }
-
-    public LinkConfig.SideData getSideData() {
-        return config.linkConfig.getSettings(transferType);
     }
 
     public UpgradeType getActiveUpgradeType() {

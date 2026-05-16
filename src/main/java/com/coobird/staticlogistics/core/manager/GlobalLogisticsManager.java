@@ -14,8 +14,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,7 +26,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     private final NodeGroupService nodeGroupService;
     private final GroupMemberService groupMemberService;
     private final TransferCursorService cursorService;
-    private final IncomingLinkIndex incomingLinkIndex;
     private final GroupSyncScheduler syncScheduler;
     private final Map<UUID, Integer> playerNextGroupCounter = new ConcurrentHashMap<>();
 
@@ -35,7 +34,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         this.groupMemberService = new GroupMemberService();
         this.nodeGroupService = new NodeGroupService(groupMemberService);
         this.cursorService = new TransferCursorService();
-        this.incomingLinkIndex = new IncomingLinkIndex();
         this.syncScheduler = new GroupSyncScheduler();
     }
 
@@ -59,10 +57,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         return cursorService;
     }
 
-    public IncomingLinkIndex getIncomingLinkIndex() {
-        return incomingLinkIndex;
-    }
-
     public GroupSyncScheduler getSyncScheduler() {
         return syncScheduler;
     }
@@ -76,8 +70,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     public void unregisterNode(LogisticsNode node) {
         nodeGroupService.unregister(node);
         cursorService.removeCursor(node.toKey());
-        incomingLinkIndex.removeAllForTarget(node);
-        incomingLinkIndex.removeAllFromSource(node);
         groupMemberService.unregisterNodeFromAllChannels(node);
     }
 
@@ -116,16 +108,18 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         if (groupId != null) markGroupDirty(groupId);
     }
 
-    public void addIncomingLink(LogisticsNode source, LogisticsNode target) {
-        incomingLinkIndex.add(source, target);
-    }
-
-    public void removeIncomingLink(LogisticsNode source, LogisticsNode target) {
-        incomingLinkIndex.remove(source, target);
-    }
-
     public Set<LogisticsNode> getSourcesLinkedTo(LogisticsNode target) {
-        return incomingLinkIndex.getSourcesFor(target);
+        Set<LogisticsNode> sources = ConcurrentHashMap.newKeySet();
+        for (ServerLevel level : server.getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            for (long key : mgr.getAllConfigKeys()) {
+                FaceConfigComposite cfg = mgr.getFaceConfig(key);
+                if (cfg != null && cfg.getLinkedNodes().contains(target)) {
+                    sources.add(LogisticsNode.fromKey(key, level.dimension()));
+                }
+            }
+        }
+        return sources;
     }
 
     public int getNextRoundRobinIndex(long nodeKey, int poolSize) {
@@ -161,33 +155,27 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     private void performSyncGroupLinks(String groupId) {
         Map<LogisticsNode, NodeRole> groupNodeMap = getNodesInGroup(groupId);
         if (groupNodeMap.isEmpty()) return;
-
         Set<LogisticsNode> aliveNodes = groupNodeMap.keySet();
         Map<ResourceKey<Level>, LinkManager> mgrCache = new HashMap<>();
-
         for (LogisticsNode source : aliveNodes) {
             ServerLevel sLevel = server.getLevel(source.gPos().dimension());
             if (sLevel == null) continue;
-
             LinkManager sMgr = mgrCache.computeIfAbsent(source.gPos().dimension(), k -> LinkManager.get(sLevel));
             FaceConfigComposite sCfg = sMgr.getFaceConfig(source.toKey());
             if (sCfg == null) continue;
-
             boolean anyChanged = false;
             Iterator<LogisticsNode> it = sCfg.getLinkedNodes().iterator();
             while (it.hasNext()) {
                 LogisticsNode linkedNode = it.next();
                 if (!aliveNodes.contains(linkedNode)) {
-                    removeIncomingLink(source, linkedNode);
                     it.remove();
                     anyChanged = true;
                 }
             }
-
             if (anyChanged) {
                 sMgr.refreshLocalCache(source.toKey(), source.gPos().pos(), source.face(), sCfg);
                 sMgr.syncConfigToClients(source.gPos().pos());
-                sMgr.setDirty();
+                sMgr.markDirty();
             }
         }
     }
@@ -217,20 +205,17 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         unregisterNodeFromAllChannels(node);
         FaceConfigComposite config = LinkManager.get(level).getFaceConfig(node.toKey());
         if (config != null) {
-            config.linkConfig.getAllSettings().forEach((id, data) -> {
-                if (data.inputChannel != 0) {
-                    TransferType type = TransferRegistries.get(id);
-                    if (type != null) registerNodeToChannel(type, data.inputChannel, node);
+            int inputChannel = config.linkConfig.getInputChannel();
+            if (inputChannel != 0) {
+                for (TransferType type : TransferRegistries.getAllActive()) {
+                    registerNodeToChannel(type, inputChannel, node);
                 }
-            });
+            }
         }
     }
 
     public void notifyNodeRemoved(ServerLevel level, LogisticsNode removedNode) {
         String groupId = getGroupId(removedNode);
-        incomingLinkIndex.removeAllForTarget(removedNode);
-        incomingLinkIndex.removeAllFromSource(removedNode);
-        unregisterNodeFromAllChannels(removedNode);
         unregisterNode(removedNode);
         if (groupId != null && !groupId.isEmpty()) {
             markGroupDirty(groupId);
@@ -285,37 +270,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             for (String key : counterTag.getAllKeys()) {
                 playerNextGroupCounter.put(UUID.fromString(key), counterTag.getInt(key));
             }
-        }
-    }
-
-    private static class IncomingLinkIndex {
-        private final Map<LogisticsNode, Set<LogisticsNode>> index = new ConcurrentHashMap<>();
-
-        public void add(LogisticsNode source, LogisticsNode target) {
-            index.computeIfAbsent(target, k -> ConcurrentHashMap.newKeySet()).add(source);
-        }
-
-        public void remove(LogisticsNode source, LogisticsNode target) {
-            Set<LogisticsNode> sources = index.get(target);
-            if (sources != null) {
-                sources.remove(source);
-                if (sources.isEmpty()) index.remove(target);
-            }
-        }
-
-        public Set<LogisticsNode> getSourcesFor(LogisticsNode target) {
-            return index.getOrDefault(target, Collections.emptySet());
-        }
-
-        public void removeAllForTarget(LogisticsNode target) {
-            index.remove(target);
-        }
-
-        public void removeAllFromSource(LogisticsNode source) {
-            for (Set<LogisticsNode> sources : index.values()) {
-                sources.remove(source);
-            }
-            index.values().removeIf(Set::isEmpty);
         }
     }
 }

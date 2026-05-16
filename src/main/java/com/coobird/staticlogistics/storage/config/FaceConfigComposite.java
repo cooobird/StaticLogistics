@@ -10,6 +10,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -29,6 +30,9 @@ public class FaceConfigComposite {
     private boolean globalInputEnabled = false;
     private boolean globalOutputEnabled = false;
 
+    private List<LogisticsNode> cachedTargets = null;
+    private int targetsCacheVersion = -1;
+
     public FaceConfigComposite() {
         this.faceConfig = new FaceConfig();
         this.linkConfig = new LinkConfig();
@@ -44,6 +48,7 @@ public class FaceConfigComposite {
 
     public void markDirty() {
         version++;
+        targetsCacheVersion = -1;
         if (onDirty != null) onDirty.accept(this);
     }
 
@@ -63,7 +68,6 @@ public class FaceConfigComposite {
         if (linkedNodes.remove(node)) markDirty();
     }
 
-    // 全局输入开关
     public boolean isGlobalInputEnabled() {
         return globalInputEnabled;
     }
@@ -71,11 +75,13 @@ public class FaceConfigComposite {
     public void setGlobalInputEnabled(boolean enabled) {
         if (this.globalInputEnabled != enabled) {
             this.globalInputEnabled = enabled;
+            if (enabled && linkConfig.getInputChannel() == 0) {
+                linkConfig.setInputChannel(1);
+            }
             markDirty();
         }
     }
 
-    // 全局输出开关
     public boolean isGlobalOutputEnabled() {
         return globalOutputEnabled;
     }
@@ -83,13 +89,13 @@ public class FaceConfigComposite {
     public void setGlobalOutputEnabled(boolean enabled) {
         if (this.globalOutputEnabled != enabled) {
             this.globalOutputEnabled = enabled;
+            if (enabled && linkConfig.getOutputChannel() == 0) {
+                linkConfig.setOutputChannel(1);
+            }
             markDirty();
         }
     }
 
-    /**
-     * 根据全局开关判断节点的角色
-     */
     public NodeRole determineRole() {
         boolean canSend = globalOutputEnabled;
         boolean canReceive = globalInputEnabled;
@@ -106,9 +112,7 @@ public class FaceConfigComposite {
         int stackMult = sharedContainerConfig.getStackMultiplier();
         long limit = (long) type.getBaseStackSize() * stackMult;
         int maxAllowed = SLConfig.getMaxTransferLimit();
-        if (limit > maxAllowed) {
-            return maxAllowed;
-        }
+        if (limit > maxAllowed) return maxAllowed;
         return (int) limit;
     }
 
@@ -118,6 +122,17 @@ public class FaceConfigComposite {
 
     void setVersion(int version) {
         this.version = version;
+    }
+
+    @Nullable
+    public List<LogisticsNode> getCachedTargets(int currentVersion) {
+        if (cachedTargets != null && targetsCacheVersion == currentVersion) return cachedTargets;
+        return null;
+    }
+
+    public void setCachedTargets(List<LogisticsNode> targets, int currentVersion) {
+        this.cachedTargets = targets;
+        this.targetsCacheVersion = currentVersion;
     }
 
     public CompoundTag serializeNBT(HolderLookup.Provider p) {
@@ -138,9 +153,7 @@ public class FaceConfigComposite {
 
     public void deserializeNBT(HolderLookup.Provider p, CompoundTag nbt) {
         ConfigSerializer.deserializeNBT(this, p, nbt);
-        if (nbt.contains("version")) {
-            version = nbt.getInt("version");
-        }
+        if (nbt.contains("version")) version = nbt.getInt("version");
         globalInputEnabled = nbt.getBoolean("globalInput");
         globalOutputEnabled = nbt.getBoolean("globalOutput");
         linkedNodes.clear();
@@ -151,6 +164,8 @@ public class FaceConfigComposite {
                 }).ifPresent(linkedNodes::add);
             }
         }
+        targetsCacheVersion = -1;
+        cachedTargets = null;
     }
 
     public boolean isDefault() {

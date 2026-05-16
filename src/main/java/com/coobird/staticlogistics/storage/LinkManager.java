@@ -14,38 +14,43 @@ import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
+import com.coobird.staticlogistics.util.CapabilityCache;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
-public class LinkManager extends SavedData {
+public class LinkManager {
+    private static final ScheduledExecutorService SAVER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "LinkManager-Saver");
+        t.setDaemon(true);
+        return t;
+    });
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final ConfigRepository configRepository;
     private final ContainerRepository containerRepository;
-
     private final CacheManager cacheManager;
     private final SyncManager syncManager;
     private final NetworkSyncManager networkSyncManager;
     private final DropHandler dropHandler;
-
+    private final CapabilityCache capabilityCache;
     private final FaceConfigService faceConfigService;
     private final ContainerConfigService containerConfigService;
     private final LinkChangeHandler changeHandler;
-
     private final ServerLevel level;
     private final Set<Long> pendingRemovals = ConcurrentHashMap.newKeySet();
+
+    private LinkManagerStorage storage;
+    private ScheduledFuture<?> pendingSave;
 
     public LinkManager(ServerLevel level) {
         this.level = level;
@@ -55,12 +60,71 @@ public class LinkManager extends SavedData {
         this.syncManager = new SyncManager(level.dimension(), GlobalLogisticsManager.get(level.getServer()));
         this.networkSyncManager = new NetworkSyncManager(level);
         this.dropHandler = new DropHandler(level);
+        this.capabilityCache = new CapabilityCache();
 
         this.containerConfigService = new ContainerConfigService(level, containerRepository);
         this.faceConfigService = new FaceConfigService(level, configRepository, dropHandler, containerConfigService);
         this.containerConfigService.setFaceConfigService(this.faceConfigService);
 
-        this.changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this, this::setDirty, GlobalLogisticsManager.get(level.getServer()));
+        this.changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this, this::markDirty, GlobalLogisticsManager.get(level.getServer()));
+    }
+
+    ConfigRepository getConfigRepository() {
+        return configRepository;
+    }
+
+    ContainerRepository getContainerRepository() {
+        return containerRepository;
+    }
+
+    FaceConfigService getFaceConfigService() {
+        return faceConfigService;
+    }
+
+    ContainerConfigService getContainerConfigService() {
+        return containerConfigService;
+    }
+
+    SyncManager getSyncManager() {
+        return syncManager;
+    }
+
+    void setStorage(LinkManagerStorage storage) {
+        this.storage = storage;
+    }
+
+    public void markDirty() {
+        if (storage == null) return;
+        if (pendingSave != null && !pendingSave.isDone()) {
+            pendingSave.cancel(false);
+        }
+        pendingSave = SAVER.schedule(() -> {
+            if (storage != null) {
+                storage.setDirty();
+            }
+            pendingSave = null;
+        }, 1, TimeUnit.SECONDS);
+    }
+
+    public void flush() {
+        if (pendingSave != null && !pendingSave.isDone()) {
+            pendingSave.cancel(false);
+        }
+        if (storage != null) {
+            storage.setDirty();
+        }
+        pendingSave = null;
+    }
+
+    public void shutdown() {
+        if (pendingSave != null) {
+            pendingSave.cancel(false);
+            pendingSave = null;
+        }
+    }
+
+    public static void shutdownSaver() {
+        SAVER.shutdownNow();
     }
 
     public static long posToKey(BlockPos pos) {
@@ -94,6 +158,10 @@ public class LinkManager extends SavedData {
         return faceConfigService.get(key);
     }
 
+    public CapabilityCache getCapabilityCache() {
+        return capabilityCache;
+    }
+
     public void removeLink(LogisticsNode source, LogisticsNode target) {
         if (source == null || target == null) return;
 
@@ -103,7 +171,6 @@ public class LinkManager extends SavedData {
 
         boolean sourceRemoved = sourceCfg.getLinkedNodes().remove(target);
         boolean targetRemoved = targetCfg.getLinkedNodes().remove(source);
-
         if (!sourceRemoved && !targetRemoved) return;
 
         if (sourceCfg.getLinkedNodes().isEmpty()) {
@@ -118,9 +185,6 @@ public class LinkManager extends SavedData {
         sourceCfg.markDirty();
         targetCfg.markDirty();
 
-        GlobalLogisticsManager global = GlobalLogisticsManager.get(level.getServer());
-        global.removeIncomingLink(source, target);
-
         networkSyncManager.syncToDimension(source.gPos().pos(), source.face(), sourceCfg);
         networkSyncManager.syncToDimension(target.gPos().pos(), target.face(), targetCfg);
 
@@ -130,15 +194,19 @@ public class LinkManager extends SavedData {
 
     private void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
         if (cfg.getLinkedNodes().isEmpty() && !cfg.isGlobalInputEnabled() && !cfg.isGlobalOutputEnabled()) {
-            removeFaceConfigInternal(node.toKey(), false);
+            removeFaceConfigInternal(node.toKey(), false, true);
         }
     }
 
     public void removeFaceConfig(long key) {
-        removeFaceConfigInternal(key, true);
+        removeFaceConfigInternal(key, true, true);
     }
 
-    public void removeFaceConfigInternal(long key, boolean doCascade) {
+    public void removeFaceConfigDataOnly(long key) {
+        removeFaceConfigInternal(key, false, false);
+    }
+
+    private void removeFaceConfigInternal(long key, boolean doCascade, boolean sendPacket) {
         if (!pendingRemovals.add(key)) return;
         try {
             FaceConfigComposite config = faceConfigService.get(key);
@@ -151,8 +219,10 @@ public class LinkManager extends SavedData {
             cacheManager.remove(key);
             GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
             LogisticsTicker.wakeup(level, key);
-            networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
-            setDirty();
+            if (sendPacket) {
+                networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
+            }
+            markDirty();
         } finally {
             pendingRemovals.remove(key);
         }
@@ -215,7 +285,6 @@ public class LinkManager extends SavedData {
                 LogisticsNode target = it.next();
                 ServerLevel targetLevel = level.getServer().getLevel(target.gPos().dimension());
                 if (targetLevel != null && !TransferUtils.hasLogisticsCapability(targetLevel, target.gPos().pos(), target.face())) {
-                    GlobalLogisticsManager.get(level.getServer()).removeIncomingLink(sourceNode, target);
                     it.remove();
                     faceChanged = true;
                 }
@@ -228,7 +297,7 @@ public class LinkManager extends SavedData {
                 }
             }
         }
-        if (changed) setDirty();
+        if (changed) markDirty();
     }
 
     public void onBlockRemoved(BlockPos pos) {
@@ -238,102 +307,70 @@ public class LinkManager extends SavedData {
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
         if (positions.isEmpty()) return;
         List<BlockPos> list = new ArrayList<>(positions);
-        dropHandler.handleBulkDrops(list);
+
+        try {
+            dropHandler.handleBulkDrops(list);
+        } catch (Exception e) {
+            LOGGER.error("Failed to handle bulk drops at positions {}: {}", list, e.getMessage(), e);
+        }
+
+        List<GlobalPos> removedPositions = new ArrayList<>();
+        List<Direction> removedFaces = new ArrayList<>();
+
         for (BlockPos pos : list) {
             for (Direction face : Direction.values()) {
                 long key = posToKey(pos, face);
                 if (faceConfigService.get(key) != null) {
-                    removeFaceConfigInternal(key, true);
-                }
-            }
-            containerConfigService.removeIfUnused(pos);
-            networkSyncManager.syncRemovalToDimension(pos);
-        }
-        setDirty();
-    }
-
-    @Override
-    public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
-        CompoundTag fConfigs = new CompoundTag();
-        configRepository.keySet().forEach(k -> {
-            FaceConfigComposite v = configRepository.get(k);
-            if (v != null && !v.isDefault()) {
-                fConfigs.put(Long.toString(k), v.serializeNBT(provider));
-            }
-        });
-        tag.put("face_configs", fConfigs);
-        CompoundTag cConfigs = new CompoundTag();
-        containerRepository.keySet().forEach(k -> {
-            ContainerConfig v = containerRepository.get(k);
-            if (v != null && !v.isDefault()) {
-                CompoundTag nbt = new CompoundTag();
-                nbt.put("upgrades", v.getUpgrades().serializeNBT(provider));
-                cConfigs.put(Long.toString(k), nbt);
-            }
-        });
-        tag.put("container_configs", cConfigs);
-
-        CompoundTag globalTag = new CompoundTag();
-        GlobalLogisticsManager.get(level.getServer()).save(globalTag);
-        tag.put("global_logistics", globalTag);
-
-        return tag;
-    }
-
-    public static LinkManager load(CompoundTag tag, HolderLookup.Provider provider, ServerLevel level) {
-        LinkManager mgr = new LinkManager(level);
-        if (tag.contains("face_configs")) {
-            CompoundTag fTag = tag.getCompound("face_configs");
-            for (String keyStr : fTag.getAllKeys()) {
-                try {
-                    long key = Long.parseLong(keyStr);
-                    LogisticsNode node = LogisticsNode.fromKey(key, level.dimension());
-                    FaceConfigComposite cfg = new FaceConfigComposite();
-                    cfg.deserializeNBT(provider, fTag.getCompound(keyStr));
-                    cfg.faceConfig.setPos(node.gPos().pos());
-                    ContainerConfig cc = mgr.containerConfigService.getOrCreate(node.gPos().pos());
-                    cfg.sharedContainerConfig = cc;
-                    cc.linkFace(key);
-                    mgr.configRepository.put(key, cfg);
-                    for (LogisticsNode target : cfg.getLinkedNodes()) {
-                        GlobalLogisticsManager.get(level.getServer()).addIncomingLink(node, target);
+                    try {
+                        removeFaceConfigInternal(key, true, false);
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to remove face config at {} {}: {}", pos, face, e.getMessage(), e);
+                        continue;
                     }
-                    mgr.syncManager.syncNode(node.gPos().pos(), node.face(), cfg);
-                    mgr.refreshLocalCache(key, node.gPos().pos(), node.face(), cfg);
-                } catch (Exception e) {
-                    LOGGER.error("Failed to load face config for key: {}", keyStr, e);
+                    removedPositions.add(GlobalPos.of(level.dimension(), pos));
+                    removedFaces.add(face);
                 }
             }
-        }
-        if (tag.contains("container_configs")) {
-            CompoundTag cTag = tag.getCompound("container_configs");
-            for (String keyStr : cTag.getAllKeys()) {
-                try {
-                    long key = Long.parseLong(keyStr);
-                    ContainerConfig cfg = new ContainerConfig();
-                    BlockPos pos = BlockPos.of(key);
-                    cfg.setPos(pos);
-                    CompoundTag nbt = cTag.getCompound(keyStr);
-                    if (nbt.contains("upgrades")) {
-                        cfg.getUpgrades().deserializeNBT(provider, nbt.getCompound("upgrades"));
-                    }
-                    mgr.containerRepository.put(key, cfg);
-                } catch (Exception e) {
-                    LOGGER.error("Failed to load container config for key: {}", keyStr, e);
-                }
+            try {
+                containerConfigService.removeIfUnused(pos);
+            } catch (Exception e) {
+                LOGGER.error("Failed to clean container config at {}: {}", pos, e.getMessage(), e);
             }
         }
-        if (tag.contains("global_logistics")) {
-            GlobalLogisticsManager.get(level.getServer()).load(tag.getCompound("global_logistics"));
+
+        if (!removedPositions.isEmpty()) {
+            try {
+                networkSyncManager.syncRemovalBulkToDimension(removedPositions, removedFaces);
+            } catch (Exception e) {
+                LOGGER.error("Failed to sync bulk removal: {}", e.getMessage(), e);
+            }
         }
-        mgr.validateAllLinks();
-        return mgr;
+
+        try {
+            capabilityCache.clearForLevel(level.dimension());
+        } catch (Exception e) {
+            LOGGER.error("Failed to clear capability cache: {}", e.getMessage(), e);
+        }
+        markDirty();
     }
 
     public static LinkManager get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(
-            new SavedData.Factory<>(() -> new LinkManager(level), (t, p) -> load(t, p, level)),
+            new net.minecraft.world.level.saveddata.SavedData.Factory<>(
+                () -> {
+                    LinkManager mgr = new LinkManager(level);
+                    LinkManagerStorage stor = new LinkManagerStorage(level, mgr);
+                    mgr.setStorage(stor);
+                    return stor;
+                },
+                (tag, provider) -> {
+                    LinkManager mgr = new LinkManager(level);
+                    LinkManagerStorage stor = LinkManagerStorage.load(tag, provider, level, mgr);
+                    mgr.setStorage(stor);
+                    return stor;
+                }
+            ),
             "static_logistics_configs"
-        );
+        ).linkManager;
     }
 }

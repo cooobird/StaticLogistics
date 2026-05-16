@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.core.service;
 
-import com.coobird.staticlogistics.intergration.ftb.FTBTeamService;
+import com.coobird.staticlogistics.integration.ftb.FTBTeamService;
 import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;

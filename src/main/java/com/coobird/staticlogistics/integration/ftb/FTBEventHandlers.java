@@ -1,7 +1,6 @@
-package com.coobird.staticlogistics.intergration.ftb;
+package com.coobird.staticlogistics.integration.ftb;
 
 import com.coobird.staticlogistics.server.event.game.entity.PlayerEvents;
-import com.coobird.staticlogistics.util.CapabilityCache;
 import dev.ftb.mods.ftbteams.api.event.TeamEvent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,7 +23,6 @@ public class FTBEventHandlers {
     private static void refreshPlayers(Collection<UUID> memberIds) {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null || memberIds.isEmpty()) return;
-        CapabilityCache.clearCache();
         for (UUID memberId : memberIds) {
             ServerPlayer player = server.getPlayerList().getPlayer(memberId);
             if (player != null) {

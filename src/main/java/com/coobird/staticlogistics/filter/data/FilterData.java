@@ -14,22 +14,34 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 过滤器数据记录类，用于存储和管理物品与流体的过滤配置信息。
+ * 该类包含物品过滤、流体过滤、标签过滤等多种过滤方式，支持黑白名单模式，
+ * 并可以配置NBT匹配模式和耐久度忽略设置。
+ *
+ * @param items 物品过滤映射，键为槽位字符串，值为物品堆栈
+ * @param fluids 流体过滤映射，键为槽位字符串，值为流体对象
+ * @param isBlacklist 是否为黑名单模式，true表示黑名单，false表示白名单
+ * @param nbtMatchMode NBT匹配模式，决定物品NBT数据的匹配方式
+ * @param tagSlots 物品标签过滤映射，键为槽位字符串，值为物品标签集合
+ * @param excludedTagSlots 排除的物品标签过滤映射，键为槽位字符串，值为要排除的物品标签集合
+ * @param fluidFilterTags 流体标签过滤映射，键为槽位字符串，值为流体标签集合
+ * @param excludedFluidTags 排除的流体标签过滤映射，键为槽位字符串，值为要排除的流体标签集合
+ * @param ignoreDamage 是否忽略物品耐久度，true表示忽略耐久度差异
+ */
 public record FilterData(
-    Map<String, ItemStack> items, // 物品过滤映射，键为槽位字符串，值为物品堆栈
-    Map<String, Fluid> fluids, // 流体过滤映射，键为槽位字符串，值为流体类型
-    boolean isBlacklist, // 是否为黑名单模式，true表示黑名单（拒绝列表中的内容），false表示白名单（仅允许列表中的内容）
-    NbtMatchMode nbtMatchMode, // NBT匹配模式，决定如何比较物品的NBT数据
-    Map<String, Set<TagKey<Item>>> tagSlots, // 物品标签槽位映射，键为槽位字符串，值为该槽位允许的物品标签集合
-    Map<String, Set<TagKey<Item>>> excludedTagSlots, // 排除的物品标签槽位映射，键为槽位字符串，值为该槽位排除的物品标签集合
-    Set<TagKey<Fluid>> fluidFilterTags, // 流体过滤标签集合，用于匹配流体类型
-    Set<TagKey<Fluid>> excludedFluidTags, // 排除的流体标签集合，用于排除特定流体类型
-    boolean ignoreDamage // 是否忽略物品耐久度差异，true表示忽略耐久度，false表示考虑耐久度
+    Map<String, ItemStack> items,
+    Map<String, Fluid> fluids,
+    boolean isBlacklist,
+    NbtMatchMode nbtMatchMode,
+    Map<String, Set<TagKey<Item>>> tagSlots,
+    Map<String, Set<TagKey<Item>>> excludedTagSlots,
+    Map<String, Set<TagKey<Fluid>>> fluidFilterTags,
+    Map<String, Set<TagKey<Fluid>>> excludedFluidTags,
+    boolean ignoreDamage
 ) {
     private static final Codec<Set<TagKey<Item>>> TAG_SET_CODEC =
         Codec.list(ResourceLocation.CODEC).xmap(
@@ -46,6 +58,9 @@ public record FilterData(
             set -> set.stream().map(TagKey::location).toList()
         );
 
+    private static final Codec<Map<String, Set<TagKey<Fluid>>>> FLUID_TAG_SLOTS_CODEC =
+        Codec.unboundedMap(Codec.STRING, FLUID_TAG_SET_CODEC);
+
     public static final Codec<FilterData> CODEC = RecordCodecBuilder.create(inst -> inst.group(
         Codec.unboundedMap(Codec.STRING, ItemStack.CODEC)
             .optionalFieldOf("items", new HashMap<>()).forGetter(FilterData::items),
@@ -56,8 +71,8 @@ public record FilterData(
             .optionalFieldOf("nbt_mode", NbtMatchMode.PARTIAL).forGetter(FilterData::nbtMatchMode),
         TAG_SLOTS_CODEC.optionalFieldOf("tag_slots", new HashMap<>()).forGetter(FilterData::tagSlots),
         TAG_SLOTS_CODEC.optionalFieldOf("excluded_tag_slots", new HashMap<>()).forGetter(FilterData::excludedTagSlots),
-        FLUID_TAG_SET_CODEC.optionalFieldOf("fluid_filter_tags", Set.of()).forGetter(FilterData::fluidFilterTags),
-        FLUID_TAG_SET_CODEC.optionalFieldOf("excluded_fluid_tags", Set.of()).forGetter(FilterData::excludedFluidTags),
+        FLUID_TAG_SLOTS_CODEC.optionalFieldOf("fluid_filter_tags", new HashMap<>()).forGetter(FilterData::fluidFilterTags),
+        FLUID_TAG_SLOTS_CODEC.optionalFieldOf("excluded_fluid_tags", new HashMap<>()).forGetter(FilterData::excludedFluidTags),
         Codec.BOOL.optionalFieldOf("ignore_damage", true).forGetter(FilterData::ignoreDamage)
     ).apply(inst, FilterData::new));
 
@@ -110,18 +125,30 @@ public record FilterData(
                 excludedTagSlots.put(key, tags);
             }
 
-            int fluidTagSize = buf.readVarInt();
-            Set<TagKey<Fluid>> fluidFilterTags = new HashSet<>();
-            for (int i = 0; i < fluidTagSize; i++) {
-                ResourceLocation rl = buf.readResourceLocation();
-                fluidFilterTags.add(TagKey.create(Registries.FLUID, rl));
+            int fluidTagSlotCount = buf.readVarInt();
+            Map<String, Set<TagKey<Fluid>>> fluidFilterTags = new HashMap<>();
+            for (int i = 0; i < fluidTagSlotCount; i++) {
+                String key = buf.readUtf();
+                int size = buf.readVarInt();
+                Set<TagKey<Fluid>> tags = new HashSet<>();
+                for (int j = 0; j < size; j++) {
+                    ResourceLocation rl = buf.readResourceLocation();
+                    tags.add(TagKey.create(Registries.FLUID, rl));
+                }
+                fluidFilterTags.put(key, tags);
             }
 
-            int excludedFluidTagSize = buf.readVarInt();
-            Set<TagKey<Fluid>> excludedFluidTags = new HashSet<>();
-            for (int i = 0; i < excludedFluidTagSize; i++) {
-                ResourceLocation rl = buf.readResourceLocation();
-                excludedFluidTags.add(TagKey.create(Registries.FLUID, rl));
+            int excludedFluidTagSlotCount = buf.readVarInt();
+            Map<String, Set<TagKey<Fluid>>> excludedFluidTags = new HashMap<>();
+            for (int i = 0; i < excludedFluidTagSlotCount; i++) {
+                String key = buf.readUtf();
+                int size = buf.readVarInt();
+                Set<TagKey<Fluid>> tags = new HashSet<>();
+                for (int j = 0; j < size; j++) {
+                    ResourceLocation rl = buf.readResourceLocation();
+                    tags.add(TagKey.create(Registries.FLUID, rl));
+                }
+                excludedFluidTags.put(key, tags);
             }
 
             boolean ignoreDamage = buf.readBoolean();
@@ -163,10 +190,18 @@ public record FilterData(
             });
 
             buf.writeVarInt(data.fluidFilterTags().size());
-            data.fluidFilterTags().forEach(tag -> buf.writeResourceLocation(tag.location()));
+            data.fluidFilterTags().forEach((key, tags) -> {
+                buf.writeUtf(key);
+                buf.writeVarInt(tags.size());
+                tags.forEach(tag -> buf.writeResourceLocation(tag.location()));
+            });
 
             buf.writeVarInt(data.excludedFluidTags().size());
-            data.excludedFluidTags().forEach(tag -> buf.writeResourceLocation(tag.location()));
+            data.excludedFluidTags().forEach((key, tags) -> {
+                buf.writeUtf(key);
+                buf.writeVarInt(tags.size());
+                tags.forEach(tag -> buf.writeResourceLocation(tag.location()));
+            });
 
             buf.writeBoolean(data.ignoreDamage());
         }
@@ -174,6 +209,6 @@ public record FilterData(
 
     public static final FilterData EMPTY = new FilterData(
         new HashMap<>(), new HashMap<>(), false, NbtMatchMode.PARTIAL,
-        new HashMap<>(), new HashMap<>(), Set.of(), Set.of(), true
+        new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>(), true
     );
 }

@@ -2,15 +2,12 @@ package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.util.RenderConstants;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -135,29 +132,23 @@ public class LinkWorldRenderer {
         int particleFactor = getParticleFactor(srcDistSq);
         if (!srcCfg.isGlobalOutputEnabled()) return;
 
-        for (TransferType type : TransferRegistries.getAllActive()) {
-            LinkConfig.SideData srcData = srcCfg.linkConfig.getSettings(type);
+        int srcOut = srcCfg.linkConfig.getOutputChannel();
+        if (srcOut < 1 || srcOut > 16) return;
+        int colorIndex = (srcOut - 1) % RenderConstants.DYE_COLORS.length;
 
-            for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
-                if (!dst.gPos().dimension().equals(currentDim)) continue;
-                var dstCfg = ClientLinkData.INSTANCE.getFaceConfig(dst);
-                if (dstCfg == null) continue;
+        for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
+            if (!dst.gPos().dimension().equals(currentDim)) continue;
+            FaceConfigComposite dstCfg = ClientLinkData.INSTANCE.getFaceConfig(dst);
+            if (dstCfg == null) continue;
+            if (!dstCfg.isGlobalInputEnabled()) continue;
 
-                if (!dstCfg.isGlobalInputEnabled()) continue;
+            int dstIn = dstCfg.linkConfig.getInputChannel();
+            if (dstIn < 1 || dstIn > 16 || dstIn != srcOut) continue;
 
-                LinkConfig.SideData dstData = dstCfg.linkConfig.getSettings(type);
-
-                boolean bothUnset = (srcData.outputChannel == 0 && dstData.inputChannel == 0);
-                boolean bothSetAndEqual = (srcData.outputChannel != 0 && dstData.inputChannel != 0 && dstData.inputChannel == srcData.outputChannel);
-                boolean channelMatch = bothUnset || bothSetAndEqual;
-
-                if (channelMatch) {
-                    Vec3 sPos = Vec3.atCenterOf(src.gPos().pos()).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
-                    Vec3 dPos = Vec3.atCenterOf(dst.gPos().pos()).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
-                    float offset = (srcCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled()) ? 0.15f : 0.0f;
-                    drawDirectedLineOptimized(builder, mat, sPos, dPos, src.face(), srcData.outputChannel, offset, particleFactor);
-                }
-            }
+            Vec3 sPos = Vec3.atCenterOf(src.gPos().pos()).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
+            Vec3 dPos = Vec3.atCenterOf(dst.gPos().pos()).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
+            float offset = (srcCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled()) ? 0.15f : 0.0f;
+            drawDirectedLineOptimized(builder, mat, sPos, dPos, src.face(), colorIndex, offset, particleFactor);
         }
     }
 
@@ -179,8 +170,11 @@ public class LinkWorldRenderer {
         Vec3 offsetEnd = end.add(lateralVec.scale(offset));
         Vec3 offsetDiff = offsetEnd.subtract(offsetStart);
 
-        int color = RenderConstants.DYE_COLORS[colorIdx % RenderConstants.DYE_COLORS.length];
-        float r = ((color >> 16) & 0xFF) / 255f, g = ((color >> 8) & 0xFF) / 255f, bl = (color & 0xFF) / 255f;
+        int idx = colorIdx % RenderConstants.DYE_COLORS.length;
+        int color = RenderConstants.DYE_COLORS[idx];
+        float r = ((color >> 16) & 0xFF) / 255f;
+        float g = ((color >> 8) & 0xFF) / 255f;
+        float bl = (color & 0xFF) / 255f;
 
         double time = System.currentTimeMillis() / 1000.0;
         float speed = 1.2f;
@@ -205,23 +199,21 @@ public class LinkWorldRenderer {
         boolean hasIn = cfg.isGlobalInputEnabled();
         boolean hasOut = cfg.isGlobalOutputEnabled();
 
-        int inChannel = 0, outChannel = 0;
-        for (TransferType type : TransferRegistries.getAllActive()) {
-            LinkConfig.SideData data = cfg.linkConfig.getSettings(type);
-            if (hasIn && inChannel == 0) inChannel = data.inputChannel;
-            if (hasOut && outChannel == 0) outChannel = data.outputChannel;
-            if ((inChannel != 0 || !hasIn) && (outChannel != 0 || !hasOut)) break;
-        }
+        int inChannel = hasIn ? cfg.linkConfig.getInputChannel() : 0;
+        int outChannel = hasOut ? cfg.linkConfig.getOutputChannel() : 0;
 
         float size = 0.4f + pulse;
 
+        int inColorIdx = (inChannel >= 1 && inChannel <= 16) ? (inChannel - 1) % RenderConstants.DYE_COLORS.length : 0;
+        int outColorIdx = (outChannel >= 1 && outChannel <= 16) ? (outChannel - 1) % RenderConstants.DYE_COLORS.length : 0;
+
         if (hasIn && hasOut) {
-            drawFaceByChannel(b, m, px, py, pz, f, inChannel, 0.85f, size, -0.5f, 0.45f);
-            drawFaceByChannel(b, m, px, py, pz, f, outChannel, 0.85f, size, 0.5f, 0.45f);
+            drawFaceByChannel(b, m, px, py, pz, f, inColorIdx, 0.85f, size, -0.5f, 0.45f);
+            drawFaceByChannel(b, m, px, py, pz, f, outColorIdx, 0.85f, size, 0.5f, 0.45f);
         } else if (hasIn) {
-            drawFaceByChannel(b, m, px, py, pz, f, inChannel, 0.85f, size, 0, 1.0f);
+            drawFaceByChannel(b, m, px, py, pz, f, inColorIdx, 0.85f, size, 0, 1.0f);
         } else if (hasOut) {
-            drawFaceByChannel(b, m, px, py, pz, f, outChannel, 0.85f, size, 0, 1.0f);
+            drawFaceByChannel(b, m, px, py, pz, f, outColorIdx, 0.85f, size, 0, 1.0f);
         }
     }
 

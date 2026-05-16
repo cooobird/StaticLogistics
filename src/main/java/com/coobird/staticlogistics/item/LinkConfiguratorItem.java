@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.item.handler.*;
@@ -87,6 +88,10 @@ public class LinkConfiguratorItem extends Item {
             tooltip.add(Component.translatable("tooltip.staticlogistics.stored_nodes", nodesInfo, settings.storedMode().getDisplayName()));
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint").withStyle(ChatFormatting.GRAY));
+        if (!SLConfig.shouldAutoCleanStoredNodes()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_disabled").withStyle(ChatFormatting.RED));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_enable_hint").withStyle(ChatFormatting.DARK_GRAY));
+        }
         super.appendHoverText(stack, context, tooltip, flag);
     }
 

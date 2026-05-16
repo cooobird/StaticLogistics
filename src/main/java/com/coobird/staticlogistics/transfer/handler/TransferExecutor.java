@@ -5,7 +5,6 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.transfer.strategy.TargetSelector;
 
@@ -25,22 +24,14 @@ public class TransferExecutor {
      * @return 是否发生了实际传输
      */
     public boolean executeTransfer(TransferContext context) {
-        if (context.isDepthExceeded()) {
-            return false;
-        }
-
+        if (context.isDepthExceeded()) return false;
         FaceConfigComposite config = context.sourceConfig();
         TransferType type = context.type();
-
         if (!config.isGlobalOutputEnabled()) return false;
-        LinkConfig.SideData settings = config.linkConfig.getSettings(type);
-
-        List<LogisticsNode> targets = targetSelector.selectTargets(context, settings);
+        List<LogisticsNode> targets = targetSelector.selectTargets(context);
         if (targets.isEmpty()) return false;
-
         ITransferHandler handler = TransferRegistries.getHandler(type);
         if (handler == null) return false;
-
         return handler.performTransfer(context, targets);
     }
 }

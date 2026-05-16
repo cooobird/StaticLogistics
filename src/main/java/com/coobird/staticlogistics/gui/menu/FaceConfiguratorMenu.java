@@ -1,17 +1,13 @@
 package com.coobird.staticlogistics.gui.menu;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
@@ -27,8 +23,6 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.function.Consumer;
-
 public class FaceConfiguratorMenu extends AbstractContainerMenu {
     private static final int TOTAL_CONFIG_SLOTS = 2;
     private static final int INV_SLOT_START = TOTAL_CONFIG_SLOTS;
@@ -43,7 +37,6 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
     private final BlockPos pos;
     private final Direction face;
-    private TransferType type;
     private FaceConfigComposite serverConfig;
     private final Player player;
 
@@ -56,18 +49,13 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public final DataSlot selectedTypesMaskSlot = DataSlot.standalone();
 
     public FaceConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
-        this(containerId, playerInventory,
-            buf.readBlockPos(),
-            buf.readEnum(Direction.class),
-            TransferRegistries.get(buf.readResourceLocation())
-        );
+        this(containerId, playerInventory, buf.readBlockPos(), buf.readEnum(Direction.class));
     }
 
-    public FaceConfiguratorMenu(int containerId, Inventory playerInventory, @Nullable BlockPos pos, @Nullable Direction face, @Nullable TransferType type) {
+    public FaceConfiguratorMenu(int containerId, Inventory playerInventory, @Nullable BlockPos pos, @Nullable Direction face) {
         super(SLMenuTypes.FACE_CONFIGURATOR_MENU.get(), containerId);
         this.pos = pos;
         this.face = face;
-        this.type = type;
         this.player = playerInventory.player;
 
         this.addDataSlot(globalInputSlot);
@@ -88,10 +76,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
             }
         }
 
-        if (upgradeHandler == null) {
-            upgradeHandler = new ItemStackHandler(TOTAL_CONFIG_SLOTS);
-        }
-
+        if (upgradeHandler == null) upgradeHandler = new ItemStackHandler(TOTAL_CONFIG_SLOTS);
         final IItemHandler finalHandler = upgradeHandler;
 
         this.addSlot(new SLUpgradeSlot(finalHandler, 0, INPUT_FILTER_SLOT_X, INPUT_FILTER_SLOT_Y, true,
@@ -113,7 +98,9 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public void setGlobalInputEnabled(boolean enabled) {
         if (serverConfig != null && serverConfig.isGlobalInputEnabled() != enabled) {
             serverConfig.setGlobalInputEnabled(enabled);
-            syncGlobalInputToLinkedNodes(enabled);
+            if (enabled && serverConfig.linkConfig.getInputChannel() == 0) {
+                serverConfig.linkConfig.setInputChannel(1);
+            }
             syncToSlots();
         }
     }
@@ -121,7 +108,9 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public void setGlobalOutputEnabled(boolean enabled) {
         if (serverConfig != null && serverConfig.isGlobalOutputEnabled() != enabled) {
             serverConfig.setGlobalOutputEnabled(enabled);
-            syncGlobalOutputToLinkedNodes(enabled);
+            if (enabled && serverConfig.linkConfig.getOutputChannel() == 0) {
+                serverConfig.linkConfig.setOutputChannel(1);
+            }
             syncToSlots();
         }
     }
@@ -144,17 +133,36 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         return prioritySlot.get();
     }
 
-    public void updateTypeSettings(Consumer<LinkConfig.SideData> updater) {
-        if (serverConfig != null && type != null) {
-            LinkConfig.SideData data = serverConfig.linkConfig.getSettings(type);
-            updater.accept(data);
+    public void setInputChannel(int channel) {
+        if (serverConfig != null && serverConfig.linkConfig.getInputChannel() != channel) {
+            serverConfig.linkConfig.setInputChannel(channel);
+            serverConfig.markDirty();
+            syncToSlots();
+        }
+    }
+
+    public void setOutputChannel(int channel) {
+        if (serverConfig != null && serverConfig.linkConfig.getOutputChannel() != channel) {
+            serverConfig.linkConfig.setOutputChannel(channel);
             serverConfig.markDirty();
             syncToSlots();
         }
     }
 
     public void setStrategy(DistributionStrategy strategy) {
-        updateTypeSettings(data -> data.strategy = strategy);
+        if (serverConfig != null && serverConfig.linkConfig.getStrategy() != strategy) {
+            serverConfig.linkConfig.setStrategy(strategy);
+            serverConfig.markDirty();
+            syncToSlots();
+        }
+    }
+
+    public void setPriority(int priority) {
+        if (serverConfig != null && serverConfig.linkConfig.getPriority() != priority) {
+            serverConfig.linkConfig.setPriority(priority);
+            serverConfig.markDirty();
+            syncToSlots();
+        }
     }
 
     public int getSelectedTypesMask() {
@@ -177,64 +185,14 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         setSelectedTypesMask(newMask);
     }
 
-    private void syncGlobalInputToLinkedNodes(boolean newInputValue) {
-        for (LogisticsNode linked : serverConfig.getLinkedNodes()) {
-            ServerLevel targetLevel = ((ServerLevel) player.level()).getServer().getLevel(linked.gPos().dimension());
-            if (targetLevel == null) continue;
-            LinkManager targetMgr = LinkManager.get(targetLevel);
-            FaceConfigComposite targetCfg = targetMgr.getFaceConfig(linked.toKey());
-            if (targetCfg == null) continue;
-            if (!GroupService.canModify(targetCfg.faceConfig.getOwner(), player)) continue;
-
-            targetCfg.setGlobalOutputEnabled(newInputValue);
-            targetMgr.syncConfigToClients(linked.gPos().pos());
-        }
-    }
-
-    private void syncGlobalOutputToLinkedNodes(boolean newOutputValue) {
-        for (LogisticsNode linked : serverConfig.getLinkedNodes()) {
-            ServerLevel targetLevel = ((ServerLevel) player.level()).getServer().getLevel(linked.gPos().dimension());
-            if (targetLevel == null) continue;
-            LinkManager targetMgr = LinkManager.get(targetLevel);
-            FaceConfigComposite targetCfg = targetMgr.getFaceConfig(linked.toKey());
-            if (targetCfg == null) continue;
-            if (!GroupService.canModify(targetCfg.faceConfig.getOwner(), player)) continue;
-
-            targetCfg.setGlobalInputEnabled(newOutputValue);
-            targetMgr.syncConfigToClients(linked.gPos().pos());
-        }
-    }
-
-    public void switchTransferType(TransferType newType, Player player) {
-        if (newType.equals(type)) return;
-
-        int currentInputChannel = getInputChannel();
-        int currentOutputChannel = getOutputChannel();
-        DistributionStrategy currentStrategy = getStrategy();
-        int currentPriority = getPriority();
-
-        if (serverConfig != null) {
-            LinkConfig.SideData newData = serverConfig.linkConfig.getSettings(newType);
-            newData.inputChannel = currentInputChannel;
-            newData.outputChannel = currentOutputChannel;
-            newData.strategy = currentStrategy;
-            newData.priority = currentPriority;
-            serverConfig.markDirty();
-        }
-
-        this.type = newType;
-        syncToSlots();
-    }
-
     public void syncToSlots() {
         if (serverConfig != null) {
             globalInputSlot.set(serverConfig.isGlobalInputEnabled() ? 1 : 0);
             globalOutputSlot.set(serverConfig.isGlobalOutputEnabled() ? 1 : 0);
-            LinkConfig.SideData data = serverConfig.linkConfig.getSettings(type);
-            inputChannelSlot.set(data.inputChannel);
-            outputChannelSlot.set(data.outputChannel);
-            strategySlot.set(data.strategy.ordinal());
-            prioritySlot.set(data.priority);
+            inputChannelSlot.set(serverConfig.linkConfig.getInputChannel());
+            outputChannelSlot.set(serverConfig.linkConfig.getOutputChannel());
+            strategySlot.set(serverConfig.linkConfig.getStrategy().ordinal());
+            prioritySlot.set(serverConfig.linkConfig.getPriority());
             selectedTypesMaskSlot.set(serverConfig.getSelectedTypesMask());
         }
     }
@@ -288,7 +246,6 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public ItemStack quickMoveStack(Player player, int index) {
         Slot slot = this.slots.get(index);
         if (slot == null || !slot.hasItem()) return ItemStack.EMPTY;
-
         ItemStack slotStack = slot.getItem();
         ItemStack result = slotStack.copy();
 
@@ -302,8 +259,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
                     if (cfgSlot.isActive() && cfgSlot.mayPlace(slotStack)) {
                         ItemStack existing = cfgSlot.getItem();
                         if (existing.isEmpty() || (ItemStack.isSameItemSameComponents(existing, slotStack) && existing.getCount() < cfgSlot.getMaxStackSize(slotStack))) {
-                            if (moveItemStackTo(slotStack, i, i + 1, false))
-                                break;
+                            if (moveItemStackTo(slotStack, i, i + 1, false)) break;
                         }
                     }
                 }
@@ -317,14 +273,10 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
             }
         }
 
-        if (slotStack.isEmpty())
-            slot.setByPlayer(ItemStack.EMPTY);
-        else
-            slot.setChanged();
+        if (slotStack.isEmpty()) slot.setByPlayer(ItemStack.EMPTY);
+        else slot.setChanged();
 
-        if (slotStack.getCount() == result.getCount())
-            return ItemStack.EMPTY;
-
+        if (slotStack.getCount() == result.getCount()) return ItemStack.EMPTY;
         slot.onTake(player, slotStack);
         return result;
     }
@@ -340,10 +292,6 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
     public Direction getFace() {
         return face;
-    }
-
-    public TransferType getTransferType() {
-        return type;
     }
 
     public FaceConfigComposite getFaceConfig() {

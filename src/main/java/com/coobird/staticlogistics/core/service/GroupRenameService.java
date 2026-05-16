@@ -46,7 +46,7 @@ public class GroupRenameService {
             }
 
             if (changedInLevel) {
-                mgr.setDirty();
+                mgr.markDirty();
             }
         }
 

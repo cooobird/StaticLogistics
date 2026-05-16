@@ -11,7 +11,6 @@ import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.transfer.cooldown.CooldownManager;
 import com.coobird.staticlogistics.transfer.handler.TransferExecutor;
 import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
-import com.coobird.staticlogistics.util.CapabilityCache;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -43,7 +42,6 @@ public class LogisticsTicker {
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel level) {
             cooldownManager.clearForDimension(level.dimension());
-            CapabilityCache.clearCacheForLevel(level.dimension());
             dimensionCleanCounters.remove(level.dimension());
         }
     }
@@ -54,7 +52,7 @@ public class LogisticsTicker {
 
         int counter = dimensionCleanCounters.compute(dim, (k, v) -> (v == null) ? 1 : v + 1);
         if (counter >= CLEAN_INTERVAL) {
-            cooldownManager.cleanExpiredBatched(dim, currentTick);
+            cooldownManager.tick(dim, currentTick);
             dimensionCleanCounters.put(dim, 0);
         }
 
@@ -75,12 +73,16 @@ public class LogisticsTicker {
                 if (!config.isTypeSelected(type)) continue;
 
                 int limit = config.getTransferLimit(type);
-                TransferContext context = new TransferContext(
-                    level, sourceNode, config, type, limit, false, currentTick
+                TransferContext context = TransferContext.obtain(
+                    level, sourceNode, config, type, limit, false, currentTick, manager
                 );
 
-                if (transferExecutor.executeTransfer(context)) {
-                    movedSomething = true;
+                try {
+                    if (transferExecutor.executeTransfer(context)) {
+                        movedSomething = true;
+                    }
+                } finally {
+                    context.recycle();
                 }
             }
 
@@ -99,9 +101,6 @@ public class LogisticsTicker {
         cooldownManager.removeCooldown(level.dimension(), sourceKey);
     }
 
-    /**
-     * 唤醒指定组内的所有发送节点（需要提供服务器实例以获取 GlobalLogisticsManager）
-     */
     public static void wakeupGroup(MinecraftServer server, String groupId) {
         GlobalLogisticsManager manager = GlobalLogisticsManager.get(server);
         List<LogisticsNode> senders = manager.getSenders(groupId);

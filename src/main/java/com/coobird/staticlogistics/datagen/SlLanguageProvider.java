@@ -172,6 +172,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.none", "None", "无");
         add("tooltip.staticlogistics.stored_nodes", "Stored Nodes: %s (As %s)", "待连接节点：%s（设为 %s）");
         add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
+        add("tooltip.staticlogistics.auto_clean_disabled", "Auto clean disabled", "自动清理已禁用");
+        add("tooltip.staticlogistics.auto_clean_enable_hint", "Enable via config/staticlogistics-server.toml", "可在配置文件中启用");
         add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级：%s");
         add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "效果倍率：%s");
         add("tooltip.staticlogistics.upgrade.dimension_feature", "Enables interdimensional logistics.", "解锁跨维度物流传输。");
@@ -201,6 +203,20 @@ public class SlLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.info.face_configs_title", "=== Face Configs ===", "=== 面配置 ===");
         add("commands.staticlogistics.info.face_direction", "[%s]", "[%s]");
         add("commands.staticlogistics.info.types_mask", "Types mask: %s", "类型掩码：%s");
+        add("commands.staticlogistics.info.global_input", "Global Input: %s", "全局输入：%s");
+        add("commands.staticlogistics.info.global_output", "Global Output: %s", "全局输出：%s");
+        add("commands.staticlogistics.info.input_channel", "Input Channel: %d", "输入频道：%d");
+        add("commands.staticlogistics.info.output_channel", "Output Channel: %d", "输出频道：%d");
+        add("commands.staticlogistics.info.strategy", "Strategy: %s", "分发策略：%s");
+        add("commands.staticlogistics.info.priority", "Priority: %d", "优先级：%d");
+        add("commands.staticlogistics.info.linked_nodes", "Linked Nodes: %d", "已连接节点数：%d");
+        add("commands.staticlogistics.info.enabled", "Enabled", "启用");
+        add("commands.staticlogistics.info.disabled", "Disabled", "禁用");
+
+        add("commands.staticlogistics.list.header", "=== Active Logistics Nodes ===", "=== 当前活跃物流节点 ===");
+        add("commands.staticlogistics.list.no_groups", "No active logistics groups found.", "未找到活跃的物流分组。");
+        add("commands.staticlogistics.list.group_entry", "Group: %s (%d nodes)", "分组：%s（共 %d 个节点）");
+        add("commands.staticlogistics.list.node_entry", "  - %s %s (%s)", "  - %s %s（角色：%s）");
         add("commands.staticlogistics.info.not_found", "No logistics data found at this position.", "此位置未找到物流数据。");
         add("commands.staticlogistics.strategies.header", "--- Data Component Strategies (Page %s/%s) ---", "--- 数据组件匹配策略 (第%s/%s页) ---");
         add("commands.staticlogistics.strategies.line", "%s -> %s", "%s -> %s");
@@ -213,13 +229,14 @@ public class SlLanguageProvider extends LanguageProvider {
 
         add("staticlogistics.configuration.general", "General Settings", "基础设置");
         add("staticlogistics.configuration.core", "Core Settings", "核心设置");
-        add("staticlogistics.configuration.intergration", "Integration Settings", "集成设置");
+        add("staticlogistics.configuration.integration", "Integration Settings", "集成设置");
         add("staticlogistics.configuration.upgrades", "Upgrade Settings", "插件参数");
         add("staticlogistics.configuration.filter", "Filter Settings", "过滤插件参数");
 
         add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
         add("config.staticlogistics.default_tick_interval", "Base Tick Interval (Ticks)", "基础传输间隔(Tick)");
         add("config.staticlogistics.max_transfer_limit", "Max Transfer per Tick", "单次传输最大数量");
+        add("config.staticlogistics.auto_clean_stored_nodes", "Auto Clean Stored Nodes", "自动清理存储节点");
 
         add("config.staticlogistics.item_stack_size", "Base Item Stack Size", "基础物品堆叠量");
         add("config.staticlogistics.fluid_stack_size", "Base Fluid Amount (mB)", "基础流体传输量(mB)");
@@ -227,7 +244,6 @@ public class SlLanguageProvider extends LanguageProvider {
 
         add("config.staticlogistics.mek_chemical_stack_size", "Base Mek-Chemical Amount", "基础 Mek 化学品传输量");
         add("config.staticlogistics.mek_heat_stack_size", "Base Mek Heat Amount", "基础热量传输量");
-        add("config.staticlogistics.mek_strict_energy_stack_size", "Base Mek Strict Energy Amount", "基础精准能量传输量");
         add("config.staticlogistics.ars_source_stack_size", "Base Ars Source Amount", "基础魔源传输量");
         add("config.staticlogistics.pneumatic_pressure_stack_size", "Base Pneumatic Pressure Amount", "基础气压传输量");
         add("config.staticlogistics.pneumatic_heat_stack_size", "Base Pneumatic Heat Amount", "基础气动热量传输量");

@@ -1,6 +1,6 @@
-package com.coobird.staticlogistics.intergration.ftb;
+package com.coobird.staticlogistics.integration.ftb;
 
-import com.coobird.staticlogistics.intergration.ModCompat;
+import com.coobird.staticlogistics.integration.ModCompat;
 import com.mojang.logging.LogUtils;
 import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import dev.ftb.mods.ftbteams.api.TeamRank;

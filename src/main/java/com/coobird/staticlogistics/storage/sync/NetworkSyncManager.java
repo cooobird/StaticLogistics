@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.storage.sync;
 
+import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -12,6 +13,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -69,6 +71,22 @@ public class NetworkSyncManager {
     public void syncRemovalToDimension(BlockPos pos) {
         for (Direction face : Direction.values()) {
             syncRemovalToDimension(pos, face);
+        }
+    }
+
+    public void syncRemovalBulkToDimension(List<GlobalPos> positions, List<Direction> faces) {
+        if (positions.isEmpty() || positions.size() != faces.size()) return;
+        Map<ChunkPos, List<S2CRemoveBulkFaceConfigPacket.Entry>> grouped = new HashMap<>();
+        for (int i = 0; i < positions.size(); i++) {
+            GlobalPos pos = positions.get(i);
+            Direction face = faces.get(i);
+            ChunkPos chunkPos = new ChunkPos(pos.pos());
+            grouped.computeIfAbsent(chunkPos, k -> new ArrayList<>()).add(new S2CRemoveBulkFaceConfigPacket.Entry(pos, face));
+        }
+        for (var entry : grouped.entrySet()) {
+            ChunkPos chunkPos = entry.getKey();
+            List<S2CRemoveBulkFaceConfigPacket.Entry> entries = entry.getValue();
+            PacketDistributor.sendToPlayersTrackingChunk(level, chunkPos, new S2CRemoveBulkFaceConfigPacket(entries));
         }
     }
 }

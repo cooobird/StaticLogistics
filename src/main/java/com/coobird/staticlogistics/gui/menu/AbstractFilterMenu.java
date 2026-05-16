@@ -159,6 +159,7 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         this.ignoreDamageSlot.set(ignore ? 1 : 0);
     }
 
+    // ==================== 物品标签相关 ====================
     public Set<TagKey<Item>> getSlotTags(int slot) {
         return getFilterData().tagSlots().getOrDefault(String.valueOf(slot), Set.of());
     }
@@ -183,15 +184,13 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         });
     }
 
-    public boolean addExcludedTag(int slot, TagKey<Item> tag) {
-        boolean[] changed = {false};
+    public void addExcludedTag(int slot, TagKey<Item> tag) {
         updateFilterData(current -> {
             Map<String, Set<TagKey<Item>>> newExcluded = new HashMap<>(current.excludedTagSlots());
             String key = String.valueOf(slot);
             Set<TagKey<Item>> tags = new HashSet<>(newExcluded.getOrDefault(key, Set.of()));
             if (!tags.add(tag)) return current;
             newExcluded.put(key, tags);
-            changed[0] = true;
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
@@ -199,7 +198,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
                 current.ignoreDamage()
             );
         });
-        return changed[0];
     }
 
     public boolean removeSlotTag(int slot, String tagString) {
@@ -228,8 +226,7 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         return changed[0];
     }
 
-    public boolean removeExcludedTag(int slot, TagKey<Item> tag) {
-        boolean[] changed = {false};
+    public void removeExcludedTag(int slot, TagKey<Item> tag) {
         updateFilterData(current -> {
             Map<String, Set<TagKey<Item>>> newExcluded = new HashMap<>(current.excludedTagSlots());
             String key = String.valueOf(slot);
@@ -237,7 +234,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
             if (!tags.remove(tag)) return current;
             if (tags.isEmpty()) newExcluded.remove(key);
             else newExcluded.put(key, tags);
-            changed[0] = true;
             return new FilterData(
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
@@ -245,7 +241,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
                 current.ignoreDamage()
             );
         });
-        return changed[0];
     }
 
     public void clearSlotTags(int slot) {
@@ -258,6 +253,101 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
                 current.items(), current.fluids(),
                 current.isBlacklist(), current.nbtMatchMode(),
                 newSlots, newExcluded, current.fluidFilterTags(), current.excludedFluidTags(),
+                current.ignoreDamage()
+            );
+        });
+    }
+
+    // ==================== 流体标签相关 ====================
+    public Set<TagKey<Fluid>> getSlotFluidTags(int slot) {
+        return getFilterData().fluidFilterTags().getOrDefault(String.valueOf(slot), Set.of());
+    }
+
+    public Set<TagKey<Fluid>> getExcludedFluidTags(int slot) {
+        return getFilterData().excludedFluidTags().getOrDefault(String.valueOf(slot), Set.of());
+    }
+
+    public void addSlotFluidTag(int slot, TagKey<Fluid> tag) {
+        updateFilterData(current -> {
+            Map<String, Set<TagKey<Fluid>>> newSlots = new HashMap<>(current.fluidFilterTags());
+            String key = String.valueOf(slot);
+            Set<TagKey<Fluid>> tags = new HashSet<>(newSlots.getOrDefault(key, Set.of()));
+            if (!tags.add(tag)) return current;
+            newSlots.put(key, tags);
+            return new FilterData(
+                current.items(), current.fluids(),
+                current.isBlacklist(), current.nbtMatchMode(),
+                current.tagSlots(), current.excludedTagSlots(),
+                newSlots, current.excludedFluidTags(),
+                current.ignoreDamage()
+            );
+        });
+    }
+
+    public void removeSlotFluidTag(int slot, TagKey<Fluid> tag) {
+        updateFilterData(current -> {
+            Map<String, Set<TagKey<Fluid>>> newSlots = new HashMap<>(current.fluidFilterTags());
+            String key = String.valueOf(slot);
+            Set<TagKey<Fluid>> tags = new HashSet<>(newSlots.getOrDefault(key, Set.of()));
+            if (!tags.remove(tag)) return current;
+            if (tags.isEmpty()) newSlots.remove(key);
+            else newSlots.put(key, tags);
+            return new FilterData(
+                current.items(), current.fluids(),
+                current.isBlacklist(), current.nbtMatchMode(),
+                current.tagSlots(), current.excludedTagSlots(),
+                newSlots, current.excludedFluidTags(),
+                current.ignoreDamage()
+            );
+        });
+    }
+
+    public void addExcludedFluidTag(int slot, TagKey<Fluid> tag) {
+        updateFilterData(current -> {
+            Map<String, Set<TagKey<Fluid>>> newExcluded = new HashMap<>(current.excludedFluidTags());
+            String key = String.valueOf(slot);
+            Set<TagKey<Fluid>> tags = new HashSet<>(newExcluded.getOrDefault(key, Set.of()));
+            if (!tags.add(tag)) return current;
+            newExcluded.put(key, tags);
+            return new FilterData(
+                current.items(), current.fluids(),
+                current.isBlacklist(), current.nbtMatchMode(),
+                current.tagSlots(), current.excludedTagSlots(),
+                current.fluidFilterTags(), newExcluded,
+                current.ignoreDamage()
+            );
+        });
+    }
+
+    public void removeExcludedFluidTag(int slot, TagKey<Fluid> tag) {
+        updateFilterData(current -> {
+            Map<String, Set<TagKey<Fluid>>> newExcluded = new HashMap<>(current.excludedFluidTags());
+            String key = String.valueOf(slot);
+            Set<TagKey<Fluid>> tags = new HashSet<>(newExcluded.getOrDefault(key, Set.of()));
+            if (!tags.remove(tag)) return current;
+            if (tags.isEmpty()) newExcluded.remove(key);
+            else newExcluded.put(key, tags);
+            return new FilterData(
+                current.items(), current.fluids(),
+                current.isBlacklist(), current.nbtMatchMode(),
+                current.tagSlots(), current.excludedTagSlots(),
+                current.fluidFilterTags(), newExcluded,
+                current.ignoreDamage()
+            );
+        });
+    }
+
+    public void clearSlotFluidTags(int slot) {
+        updateFilterData(current -> {
+            Map<String, Set<TagKey<Fluid>>> newSlots = new HashMap<>(current.fluidFilterTags());
+            Map<String, Set<TagKey<Fluid>>> newExcluded = new HashMap<>(current.excludedFluidTags());
+            newSlots.remove(String.valueOf(slot));
+            newExcluded.remove(String.valueOf(slot));
+            return new FilterData(
+                current.items(), current.fluids(),
+                current.isBlacklist(), current.nbtMatchMode(),
+                current.tagSlots(), current.excludedTagSlots(),
+                newSlots, newExcluded,
                 current.ignoreDamage()
             );
         });

@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.intergration;
+package com.coobird.staticlogistics.integration;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.ITransferHandler;
@@ -21,9 +21,7 @@ public class ExtendedTypeRegisterHandler {
 
     private static final ThreadLocal<Boolean> isInMekChemicalTransfer = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> isInMekHeatTransfer = ThreadLocal.withInitial(() -> false);
-
     private static final ThreadLocal<Boolean> isInArsSourceTransfer = ThreadLocal.withInitial(() -> false);
-
     private static final ThreadLocal<Boolean> isInPncPressureTransfer = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> isInPncHeatTransfer = ThreadLocal.withInitial(() -> false);
 
@@ -32,11 +30,9 @@ public class ExtendedTypeRegisterHandler {
             registerMekanismChemicals();
             registerMekanismHeat();
         }
-
         if (ModCompat.isArsNouveauLoaded()) {
             registerArsNouveauSource();
         }
-
         if (ModCompat.isPneumaticcraftLoaded()) {
             registerPneumaticcraftPressure();
             registerPneumaticcraftHeat();
@@ -62,16 +58,18 @@ public class ExtendedTypeRegisterHandler {
                 return false;
             }
 
+            TransferContext newContext = null;
             try {
                 isInMekChemicalTransfer.set(true);
-                TransferContext newContext = context.withIncrementedDepth();
+                newContext = context.withIncrementedDepth();
+                final TransferContext ctx = newContext;
                 return TransferUtils.doTransferNodes(
-                    newContext.level(),
-                    newContext.sourceNode().gPos().pos(),
-                    newContext.sourceNode().face(),
+                    ctx.level(),
+                    ctx.sourceNode().gPos().pos(),
+                    ctx.sourceNode().face(),
                     targets,
                     mekanism.common.capabilities.Capabilities.CHEMICAL.block(),
-                    newContext.limit(),
+                    ctx.limit(),
                     new TransferUtils.SimpleProtocol<>(
                         (src, max) -> {
                             try {
@@ -98,10 +96,12 @@ public class ExtendedTypeRegisterHandler {
                         },
                         ChemicalStack::isEmpty
                     ),
-                    newContext.isPullMode(),
-                    newContext
+                    ctx.isPullMode(),
+                    ctx,
+                    ctx.linkManager().getCapabilityCache()
                 );
             } finally {
+                if (newContext != null) newContext.recycle();
                 isInMekChemicalTransfer.set(false);
             }
         };
@@ -129,16 +129,18 @@ public class ExtendedTypeRegisterHandler {
                 return false;
             }
 
+            TransferContext newContext = null;
             try {
                 isInMekHeatTransfer.set(true);
-                TransferContext newContext = context.withIncrementedDepth();
+                newContext = context.withIncrementedDepth();
+                final TransferContext ctx = newContext;
                 return TransferUtils.doTransferNodes(
-                    newContext.level(),
-                    newContext.sourceNode().gPos().pos(),
-                    newContext.sourceNode().face(),
+                    ctx.level(),
+                    ctx.sourceNode().gPos().pos(),
+                    ctx.sourceNode().face(),
                     targets,
                     mekanism.common.capabilities.Capabilities.HEAT,
-                    newContext.limit(),
+                    ctx.limit(),
                     new TransferUtils.SimpleProtocol<>(
                         (src, max) -> {
                             try {
@@ -180,10 +182,12 @@ public class ExtendedTypeRegisterHandler {
                         },
                         val -> val <= 0
                     ),
-                    newContext.isPullMode(),
-                    newContext
+                    ctx.isPullMode(),
+                    ctx,
+                    ctx.linkManager().getCapabilityCache()
                 );
             } finally {
+                if (newContext != null) newContext.recycle();
                 isInMekHeatTransfer.set(false);
             }
         };
@@ -211,16 +215,18 @@ public class ExtendedTypeRegisterHandler {
                 return false;
             }
 
+            TransferContext newContext = null;
             try {
                 isInArsSourceTransfer.set(true);
-                TransferContext newContext = context.withIncrementedDepth();
+                newContext = context.withIncrementedDepth();
+                final TransferContext ctx = newContext;
                 return TransferUtils.doTransferNodes(
-                    newContext.level(),
-                    newContext.sourceNode().gPos().pos(),
-                    newContext.sourceNode().face(),
+                    ctx.level(),
+                    ctx.sourceNode().gPos().pos(),
+                    ctx.sourceNode().face(),
                     targets,
                     com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry.SOURCE_CAPABILITY,
-                    newContext.limit(),
+                    ctx.limit(),
                     new TransferUtils.SimpleProtocol<>(
                         (src, max) -> {
                             try {
@@ -247,10 +253,12 @@ public class ExtendedTypeRegisterHandler {
                         },
                         val -> val <= 0
                     ),
-                    newContext.isPullMode(),
-                    newContext
+                    ctx.isPullMode(),
+                    ctx,
+                    ctx.linkManager().getCapabilityCache()
                 );
             } finally {
+                if (newContext != null) newContext.recycle();
                 isInArsSourceTransfer.set(false);
             }
         };
@@ -278,16 +286,18 @@ public class ExtendedTypeRegisterHandler {
                 return false;
             }
 
+            TransferContext newContext = null;
             try {
                 isInPncPressureTransfer.set(true);
-                TransferContext newContext = context.withIncrementedDepth();
+                newContext = context.withIncrementedDepth();
+                final TransferContext ctx = newContext;
                 return TransferUtils.doTransferNodes(
-                    newContext.level(),
-                    newContext.sourceNode().gPos().pos(),
-                    newContext.sourceNode().face(),
+                    ctx.level(),
+                    ctx.sourceNode().gPos().pos(),
+                    ctx.sourceNode().face(),
                     targets,
                     me.desht.pneumaticcraft.api.PNCCapabilities.AIR_HANDLER_MACHINE,
-                    newContext.limit(),
+                    ctx.limit(),
                     new TransferUtils.SimpleProtocol<>(
                         (src, max) -> {
                             try {
@@ -317,10 +327,12 @@ public class ExtendedTypeRegisterHandler {
                         },
                         val -> val <= 0
                     ),
-                    newContext.isPullMode(),
-                    newContext
+                    ctx.isPullMode(),
+                    ctx,
+                    ctx.linkManager().getCapabilityCache()
                 );
             } finally {
+                if (newContext != null) newContext.recycle();
                 isInPncPressureTransfer.set(false);
             }
         };
@@ -348,16 +360,18 @@ public class ExtendedTypeRegisterHandler {
                 return false;
             }
 
+            TransferContext newContext = null;
             try {
                 isInPncHeatTransfer.set(true);
-                TransferContext newContext = context.withIncrementedDepth();
+                newContext = context.withIncrementedDepth();
+                final TransferContext ctx = newContext;
                 return TransferUtils.doTransferNodes(
-                    newContext.level(),
-                    newContext.sourceNode().gPos().pos(),
-                    newContext.sourceNode().face(),
+                    ctx.level(),
+                    ctx.sourceNode().gPos().pos(),
+                    ctx.sourceNode().face(),
                     targets,
                     me.desht.pneumaticcraft.api.PNCCapabilities.HEAT_EXCHANGER_BLOCK,
-                    newContext.limit(),
+                    ctx.limit(),
                     new TransferUtils.SimpleProtocol<>(
                         (src, max) -> {
                             try {
@@ -385,10 +399,12 @@ public class ExtendedTypeRegisterHandler {
                         },
                         val -> val <= 0
                     ),
-                    newContext.isPullMode(),
-                    newContext
+                    ctx.isPullMode(),
+                    ctx,
+                    ctx.linkManager().getCapabilityCache()
                 );
             } finally {
+                if (newContext != null) newContext.recycle();
                 isInPncHeatTransfer.set(false);
             }
         };

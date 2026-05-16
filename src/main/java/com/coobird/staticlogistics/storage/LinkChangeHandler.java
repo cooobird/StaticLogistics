@@ -23,7 +23,6 @@ public class LinkChangeHandler {
     private final LinkManager linkManager;
     private final Runnable markDirty;
     private final LinkRemovalService linkRemovalService;
-    private final GlobalLogisticsManager globalManager;
 
     public LinkChangeHandler(ServerLevel level, SyncManager syncManager,
                              NetworkSyncManager networkSyncManager,
@@ -35,7 +34,6 @@ public class LinkChangeHandler {
         this.linkManager = linkManager;
         this.markDirty = markDirty;
         this.linkRemovalService = new LinkRemovalService(level.getServer(), globalManager);
-        this.globalManager = globalManager;
     }
 
     public void onFaceConfigChanged(long key, BlockPos pos, Direction face, FaceConfigComposite cfg) {
@@ -46,10 +44,6 @@ public class LinkChangeHandler {
         }
 
         LogisticsNode currentNode = LogisticsNode.fromKey(key, level.dimension());
-        for (LogisticsNode target : cfg.getLinkedNodes()) {
-            globalManager.addIncomingLink(currentNode, target);
-        }
-
         autoSymmetrizeLinks(currentNode, cfg);
         linkManager.refreshLocalCache(key, pos, face, cfg);
         syncManager.syncNode(pos, face, cfg);
@@ -59,9 +53,7 @@ public class LinkChangeHandler {
 
     public void onContainerConfigChanged(ContainerConfig config) {
         markDirty.run();
-
         validateAndCleanLinksForContainer(config);
-
         for (long faceKey : config.getLinkedFaceKeys()) {
             FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
             if (faceCfg != null) {
@@ -93,10 +85,8 @@ public class LinkChangeHandler {
     private void processFace(long faceKey, ContainerConfig containerConfig) {
         FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
         if (faceCfg == null) return;
-
         LogisticsNode selfNode = LogisticsNode.fromKey(faceKey, level.dimension());
         BlockPos selfPos = selfNode.gPos().pos();
-
         boolean changed = false;
         Iterator<LogisticsNode> it = faceCfg.getLinkedNodes().iterator();
         while (it.hasNext()) {
@@ -108,14 +98,13 @@ public class LinkChangeHandler {
                 changed = true;
             }
         }
-
         if (changed) {
             if (faceCfg.getLinkedNodes().isEmpty() && !faceCfg.isGlobalInputEnabled() && !faceCfg.isGlobalOutputEnabled()) {
                 linkManager.removeFaceConfig(faceKey);
             } else {
                 networkSyncManager.syncToDimension(selfPos, selfNode.face(), faceCfg);
                 linkManager.refreshLocalCache(faceKey, selfPos, selfNode.face(), faceCfg);
-                linkManager.setDirty();
+                linkManager.markDirty();
             }
         }
     }
@@ -139,9 +128,8 @@ public class LinkChangeHandler {
             if (remoteCfg == null) continue;
             if (!remoteCfg.getLinkedNodes().contains(currentNode)) {
                 remoteCfg.getLinkedNodes().add(currentNode);
-                globalManager.addIncomingLink(remoteNode, currentNode);
                 remoteCfg.markDirty();
-                remoteMgr.setDirty();
+                remoteMgr.markDirty();
                 remoteMgr.getNetworkSyncManager().syncToDimension(remoteNode.gPos().pos(), remoteNode.face(), remoteCfg);
             }
         }

@@ -84,12 +84,9 @@ public class SLCommands {
         Direction face = Direction.from3DDataValue((int) (key & 0x7));
         manager.refreshLocalCache(key, pos, face, config);
         manager.syncConfigToClients(pos);
-        manager.setDirty();
+        manager.markDirty();
     }
 
-    /**
-     * 显示指定位置的信息：容器配置（升级倍率、跨维度、升级物品）和每个面的分组/所有者
-     */
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
         ServerLevel level = source.getLevel();
         LinkManager manager = LinkManager.get(level);
@@ -123,14 +120,25 @@ public class SLCommands {
                 found = true;
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_direction", dir.getName()).withStyle(ChatFormatting.AQUA), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.group",
-                    Component.literal(config.faceConfig.getGroupId()).withStyle(ChatFormatting.WHITE)), false);
+                    config.faceConfig.getGroupId()).withStyle(ChatFormatting.WHITE), false);
                 UUID ownerUuid = config.faceConfig.getOwner();
                 Component ownerText = (ownerUuid == null)
                     ? Component.translatable("msg.staticlogistics.unknown_owner")
                     : Component.literal(config.faceConfig.getOwnerName());
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.owner",
-                    ownerText.copy().withStyle(ChatFormatting.YELLOW)), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.types_mask", config.getSelectedTypesMask()), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.owner", ownerText.copy()), false);
+
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.global_input",
+                    config.isGlobalInputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
+                ).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.global_output",
+                    config.isGlobalOutputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
+                ).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.input_channel", config.linkConfig.getInputChannel()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.output_channel", config.linkConfig.getOutputChannel()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.strategy", config.linkConfig.getStrategy().getDisplayName()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.priority", config.linkConfig.getPriority()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.types_mask", config.getSelectedTypesMask()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes", config.getLinkedNodes().size()).withStyle(ChatFormatting.DARK_GRAY), false);
             }
         }
         if (!found) {

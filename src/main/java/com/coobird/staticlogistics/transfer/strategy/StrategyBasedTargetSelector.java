@@ -6,7 +6,6 @@ import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -16,7 +15,7 @@ import java.util.*;
 public class StrategyBasedTargetSelector implements TargetSelector {
 
     @Override
-    public List<LogisticsNode> selectTargets(TransferContext context, LinkConfig.SideData settings) {
+    public List<LogisticsNode> selectTargets(TransferContext context) {
         ServerLevel level = context.level();
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
         LogisticsNode sourceNode = context.sourceNode();
@@ -31,65 +30,77 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
             FaceConfigComposite targetCfg = LinkManager.get(targetLevel).getFaceConfig(target.toKey());
             if (targetCfg == null) continue;
-
             if (!targetCfg.isGlobalInputEnabled()) continue;
 
-            LinkConfig.SideData targetData = targetCfg.linkConfig.getSettings(type);
-
-            boolean bothUnset = (settings.outputChannel == 0 && targetData.inputChannel == 0);
-            boolean bothSetAndEqual = (settings.outputChannel != 0 && targetData.inputChannel != 0 && targetData.inputChannel == settings.outputChannel);
-            if (!(bothUnset || bothSetAndEqual)) continue;
+            int srcOut = sourceConfig.linkConfig.getOutputChannel();
+            int dstIn = targetCfg.linkConfig.getInputChannel();
+            boolean channelMatch = (srcOut != 0 && dstIn != 0 && srcOut == dstIn);
+            if (!channelMatch) continue;
 
             targetSet.add(target);
         }
 
-        if (settings.outputChannel != 0) {
-            targetSet.addAll(globalManager.getReceiversForChannel(type, settings.outputChannel));
+        int outputChannel = sourceConfig.linkConfig.getOutputChannel();
+        if (outputChannel != 0) {
+            targetSet.addAll(globalManager.getReceiversForChannel(type, outputChannel));
         }
 
         if (targetSet.isEmpty()) return Collections.emptyList();
 
         List<LogisticsNode> allTargets = new ArrayList<>(targetSet);
-        BlockPos sourcePos = sourceNode.gPos().pos();
+        int configVersion = sourceConfig.getVersion();
+        List<LogisticsNode> cached = sourceConfig.getCachedTargets(configVersion);
 
-        Map<LogisticsNode, Integer> priorityCache = new HashMap<>();
-        if (settings.strategy == DistributionStrategy.SEQUENTIAL) {
-            for (LogisticsNode node : allTargets) {
-                priorityCache.put(node, getPriority(globalManager, node, type));
-            }
+        DistributionStrategy strategy = sourceConfig.linkConfig.getStrategy();
+        if (cached != null && strategy != DistributionStrategy.RANDOM) {
+            return new ArrayList<>(cached);
         }
 
-        return switch (settings.strategy) {
-            case SEQUENTIAL -> allTargets.stream()
-                .sorted(Comparator.comparingInt((LogisticsNode node) -> priorityCache.getOrDefault(node, 0))
-                    .reversed()
-                    .thenComparingDouble(node -> node.gPos().pos().distSqr(sourcePos)))
-                .toList();
+        BlockPos sourcePos = sourceNode.gPos().pos();
 
-            case NEAREST -> allTargets.stream()
+        List<LogisticsNode> sorted;
+        switch (strategy) {
+            case SEQUENTIAL -> {
+                Map<LogisticsNode, Integer> priorityCache = new HashMap<>();
+                for (LogisticsNode node : allTargets) {
+                    priorityCache.put(node, getPriority(globalManager, node, type));
+                }
+                sorted = allTargets.stream()
+                    .sorted(Comparator.comparingInt((LogisticsNode node) -> priorityCache.getOrDefault(node, 0))
+                        .reversed()
+                        .thenComparingDouble(node -> node.gPos().pos().distSqr(sourcePos)))
+                    .toList();
+            }
+            case NEAREST -> sorted = allTargets.stream()
                 .sorted(Comparator.comparingDouble(node -> node.gPos().pos().distSqr(sourcePos)))
                 .toList();
-
-            case FURTHEST -> allTargets.stream()
-                .sorted(Comparator.comparingDouble((LogisticsNode node) -> node.gPos().pos().distSqr(sourcePos))
-                    .reversed())
+            case FURTHEST -> sorted = allTargets.stream()
+                .sorted(Comparator.comparingDouble((LogisticsNode node) -> node.gPos().pos().distSqr(sourcePos)).reversed())
                 .toList();
-
             case RANDOM -> {
                 Collections.shuffle(allTargets);
-                yield allTargets;
+                sorted = allTargets;
             }
-
             case ROUND_ROBIN, SLOT_ROUND_ROBIN -> {
-                if (allTargets.size() <= 1) yield allTargets;
-                int index = globalManager.getNextRoundRobinIndex(sourceNode.toKey(), allTargets.size());
-                List<LogisticsNode> result = new ArrayList<>();
-                for (int i = 0; i < allTargets.size(); i++) {
-                    result.add(allTargets.get((index + i) % allTargets.size()));
+                if (allTargets.size() <= 1) {
+                    sorted = allTargets;
+                } else {
+                    int index = globalManager.getNextRoundRobinIndex(sourceNode.toKey(), allTargets.size());
+                    List<LogisticsNode> result = new ArrayList<>();
+                    for (int i = 0; i < allTargets.size(); i++) {
+                        result.add(allTargets.get((index + i) % allTargets.size()));
+                    }
+                    sorted = result;
                 }
-                yield result;
             }
-        };
+            default -> sorted = allTargets;
+        }
+
+        if (strategy != DistributionStrategy.RANDOM) {
+            sourceConfig.setCachedTargets(sorted, configVersion);
+        }
+
+        return sorted;
     }
 
     private int getPriority(GlobalLogisticsManager globalManager, LogisticsNode node, TransferType type) {
@@ -97,7 +108,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         if (targetLevel != null) {
             FaceConfigComposite cfg = LinkManager.get(targetLevel).getFaceConfig(node.toKey());
             if (cfg != null) {
-                return cfg.linkConfig.getSettings(type).priority;
+                return cfg.linkConfig.getPriority();
             }
         }
         return 0;

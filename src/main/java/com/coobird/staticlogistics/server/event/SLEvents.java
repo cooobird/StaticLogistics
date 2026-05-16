@@ -3,13 +3,16 @@ package com.coobird.staticlogistics.server.event;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.network.c2s.*;
+import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.storage.LinkManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -45,6 +48,7 @@ public class SLEvents {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         GlobalLogisticsManager.release(event.getServer());
+        LinkManager.shutdownSaver();
     }
 
     @SubscribeEvent
@@ -53,6 +57,7 @@ public class SLEvents {
 
         registrar.playToClient(S2CSyncFaceConfigPacket.TYPE, S2CSyncFaceConfigPacket.STREAM_CODEC, S2CSyncFaceConfigPacket::handle);
         registrar.playToClient(S2CSyncBulkFaceConfigPacket.TYPE, S2CSyncBulkFaceConfigPacket.STREAM_CODEC, S2CSyncBulkFaceConfigPacket::handle);
+        registrar.playToClient(S2CRemoveBulkFaceConfigPacket.TYPE, S2CRemoveBulkFaceConfigPacket.STREAM_CODEC, S2CRemoveBulkFaceConfigPacket::handle);
 
         registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
@@ -96,6 +101,9 @@ public class SLEvents {
     }
 
     private static void cleanToolStoredNodes(ItemStack stack, Set<LogisticsNode> removedNodes, ServerPlayer player) {
+        if (!SLConfig.shouldAutoCleanStoredNodes()) {
+            return;
+        }
         if (!(stack.getItem() instanceof LinkConfiguratorItem)) return;
         List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (storedNodes == null || storedNodes.isEmpty()) return;

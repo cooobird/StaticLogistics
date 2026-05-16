@@ -128,7 +128,13 @@ public class ConfigFilterManager {
             }
         }
         boolean hasBasicFilter = useBasic && !fluids.isEmpty();
-        boolean hasTagFilter = useTag && (!filter.fluidFilterTags().isEmpty() || !filter.excludedFluidTags().isEmpty());
+        Set<TagKey<Fluid>> allFluidWhitelistTags = filter.fluidFilterTags().values().stream()
+            .flatMap(Set::stream)
+            .collect(Collectors.toSet());
+        Set<TagKey<Fluid>> allFluidBlacklistTags = filter.excludedFluidTags().values().stream()
+            .flatMap(Set::stream)
+            .collect(Collectors.toSet());
+        boolean hasTagFilter = useTag && (!allFluidWhitelistTags.isEmpty() || !allFluidBlacklistTags.isEmpty());
 
         if (!hasBasicFilter && !hasTagFilter) return true;
 
@@ -136,7 +142,7 @@ public class ConfigFilterManager {
 
         boolean basicPass = !hasBasicFilter || new BasicLogisticsFilter(Collections.emptySet(), fluids, true).test(stack, isBlacklist);
         boolean tagPass = !hasTagFilter || new TagLogisticsFilter(Collections.emptySet(), Collections.emptySet(),
-            filter.fluidFilterTags(), filter.excludedFluidTags(), true).test(stack, isBlacklist);
+            allFluidWhitelistTags, allFluidBlacklistTags, true).test(stack, isBlacklist);
 
         return basicPass && tagPass;
     }

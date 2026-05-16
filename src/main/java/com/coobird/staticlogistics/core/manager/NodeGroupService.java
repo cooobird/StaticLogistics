@@ -10,10 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 维护节点到所属组的映射，以及组内节点角色。
  * 职责：节点的注册/注销，组 ID 查询，组内所有节点及角色。
+ * 线程安全：所有修改操作通过 synchronized 保证原子性。
  */
 public class NodeGroupService {
     private final Map<LogisticsNode, String> nodeToGroup = new ConcurrentHashMap<>();
     private final GroupMemberService groupMemberService;
+    private final Object lock = new Object();
 
     public NodeGroupService(GroupMemberService groupMemberService) {
         this.groupMemberService = groupMemberService;
@@ -23,25 +25,30 @@ public class NodeGroupService {
      * 注册节点到指定组，若已存在且组不同则先注销。
      */
     public void register(String groupId, LogisticsNode node, NodeRole role) {
-        if (groupId == null || groupId.isEmpty()) {
-            unregister(node);
-            return;
+        synchronized (lock) {
+            if (groupId == null || groupId.isEmpty()) {
+                unregister(node);
+                return;
+            }
+            String currentGroup = nodeToGroup.get(node);
+            if (currentGroup != null && !currentGroup.equals(groupId)) {
+                groupMemberService.removeNode(currentGroup, node);
+                nodeToGroup.remove(node);
+            }
+            groupMemberService.addNode(groupId, node, role);
+            nodeToGroup.put(node, groupId);
         }
-        String currentGroup = nodeToGroup.get(node);
-        if (currentGroup != null && !currentGroup.equals(groupId)) {
-            unregister(node);
-        }
-        groupMemberService.addNode(groupId, node, role);
-        nodeToGroup.put(node, groupId);
     }
 
     /**
      * 注销节点（从原组中移除）
      */
     public void unregister(LogisticsNode node) {
-        String groupId = nodeToGroup.remove(node);
-        if (groupId != null) {
-            groupMemberService.removeNode(groupId, node);
+        synchronized (lock) {
+            String groupId = nodeToGroup.remove(node);
+            if (groupId != null) {
+                groupMemberService.removeNode(groupId, node);
+            }
         }
     }
 

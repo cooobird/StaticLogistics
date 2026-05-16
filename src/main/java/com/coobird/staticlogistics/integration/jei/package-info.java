@@ -1,3 +1,3 @@
 @javax.annotation.ParametersAreNonnullByDefault
 @net.minecraft.MethodsReturnNonnullByDefault
-package com.coobird.staticlogistics.intergration;
+package com.coobird.staticlogistics.integration.jei;

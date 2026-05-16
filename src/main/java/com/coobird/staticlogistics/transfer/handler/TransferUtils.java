@@ -27,7 +27,7 @@ public class TransferUtils {
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
         int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
-        TransferContext context
+        TransferContext context, CapabilityCache capabilityCache
     ) {
         if (context != null && context.isDepthExceeded()) {
             LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
@@ -47,7 +47,7 @@ public class TransferUtils {
         if (localContainer == null) return false;
 
         boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
-        C localCap = CapabilityCache.getOrCreateCache(localLevel, localPos, localFace, cap).getCapability();
+        C localCap = capabilityCache.getOrCreateCache(localLevel, localPos, localFace, cap).getCapability();
         if (localCap == null) return false;
 
         boolean movedAny = false;
@@ -68,20 +68,20 @@ public class TransferUtils {
                 remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4))
                 continue;
 
-            C remoteCap = CapabilityCache.getOrCreateCache(remoteLevel, remoteNode.gPos().pos(), remoteNode.face(), cap).getCapability();
+            C remoteCap = capabilityCache.getOrCreateCache(remoteLevel, remoteNode.gPos().pos(), remoteNode.face(), cap).getCapability();
             if (remoteCap == null) continue;
 
             C from = isPullMode ? remoteCap : localCap;
             C to = isPullMode ? localCap : remoteCap;
 
             while (remaining > 0) {
-                T available = protocol.simulateExtract(from, remaining);
-                if (protocol.isEmpty(available)) break;
+                ExtractionResult<T> result = protocol.simulateExtract(from, remaining);
+                if (protocol.isEmpty(result)) break;
 
-                int accepted = protocol.executeInsert(to, available);
+                int accepted = protocol.executeInsert(to, result.value());
                 if (accepted <= 0) break;
 
-                protocol.commitExtract(from, available, accepted);
+                protocol.commitExtract(from, result, accepted);
                 remaining -= accepted;
                 movedAny = true;
             }
@@ -98,21 +98,25 @@ public class TransferUtils {
     }
 
     public interface TransferProtocol<C, T> {
-        T simulateExtract(C source, int max);
+        ExtractionResult<T> simulateExtract(C source, int max);
 
         int executeInsert(C dest, T stack);
 
-        void commitExtract(C source, T stack, int actual);
+        void commitExtract(C source, ExtractionResult<T> result, int actual);
 
-        boolean isEmpty(T stack);
+        boolean isEmpty(ExtractionResult<T> result);
     }
 
-    public record SimpleProtocol<C, T>(BiFunction<C, Integer, T> extractor, BiFunction<C, T, Integer> inserter,
-                                       TriConsumer<C, T, Integer> committer,
-                                       Predicate<T> emptyChecker) implements TransferProtocol<C, T> {
+    public record SimpleProtocol<C, T>(
+        BiFunction<C, Integer, T> extractor,
+        BiFunction<C, T, Integer> inserter,
+        TriConsumer<C, T, Integer> committer,
+        Predicate<T> emptyChecker
+    ) implements TransferProtocol<C, T> {
         @Override
-        public T simulateExtract(C source, int max) {
-            return extractor.apply(source, max);
+        public ExtractionResult<T> simulateExtract(C source, int max) {
+            T value = extractor.apply(source, max);
+            return ExtractionResult.of(value);
         }
 
         @Override
@@ -121,13 +125,13 @@ public class TransferUtils {
         }
 
         @Override
-        public void commitExtract(C source, T stack, int act) {
-            committer.accept(source, stack, act);
+        public void commitExtract(C source, ExtractionResult<T> result, int actual) {
+            committer.accept(source, result.value(), actual);
         }
 
         @Override
-        public boolean isEmpty(T stack) {
-            return emptyChecker.test(stack);
+        public boolean isEmpty(ExtractionResult<T> result) {
+            return emptyChecker.test(result.value());
         }
     }
 

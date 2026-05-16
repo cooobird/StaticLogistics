@@ -30,7 +30,6 @@ public final class SLConfig {
 
     public static ModConfigSpec.IntValue MEK_CHEMICAL_STACK;
     public static ModConfigSpec.IntValue MEK_HEAT_STACK;
-    public static ModConfigSpec.IntValue MEK_STRICT_ENERGY_STACK;
     public static ModConfigSpec.IntValue ARS_SOURCE_STACK;
     public static ModConfigSpec.IntValue PNEUMATIC_PRESSURE_STACK;
     public static ModConfigSpec.IntValue PNEUMATIC_HEAT_STACK;
@@ -43,6 +42,8 @@ public final class SLConfig {
 
     public static ModConfigSpec.ConfigValue<List<? extends String>> COMPONENT_STRATEGY_OVERRIDES;
 
+    public static ModConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
+
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
     private static volatile int MaxTransferLimit = 10_000_000;
@@ -52,7 +53,6 @@ public final class SLConfig {
 
     private static volatile int MekChemicalStack = 250;
     private static volatile int MekHeatStack = 1000;
-    private static volatile int MekStrictEnergyStack = 1024;
     private static volatile int ArsSourceStack = 100;
     private static volatile int PneumaticPressureStack = 1000;
     private static volatile int PneumaticHeatStack = 1000;
@@ -62,6 +62,12 @@ public final class SLConfig {
     private static volatile int diamondMultCache = 5;
     private static volatile int netheriteMultCache = 8;
     private static volatile int netherStarMultCache = 10_000;
+
+    private static volatile boolean autoCleanStoredNodes = false;
+
+    private static final double feToEuRatio = 4.0;
+    private static final double feToMjRatio = 15.0;
+    private static final double feToJRatio = 2.5;
 
     public static void register(ModContainer container) {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -77,6 +83,10 @@ public final class SLConfig {
             .translation("config.staticlogistics.max_transfer_limit")
             .comment("Maximum amount of items/fluids/energy transferred per tick. Large values may cause performance issues.")
             .defineInRange("max_transfer_limit", MaxTransferLimit, 1, Integer.MAX_VALUE);
+        AUTO_CLEAN_STORED_NODES = builder
+            .translation("config.staticlogistics.auto_clean_stored_nodes")
+            .comment("If true, when a logistics node is removed, the stored node references in players' Link Configurator items will be automatically cleaned up.")
+            .define("auto_clean_stored_nodes", false);
         builder.pop();
 
         builder.push("core");
@@ -98,9 +108,6 @@ public final class SLConfig {
         MEK_HEAT_STACK = builder
             .translation("config.staticlogistics.mek_heat_stack_size")
             .defineInRange("mek_heat_stack_size", MekHeatStack, 1, Integer.MAX_VALUE);
-        MEK_STRICT_ENERGY_STACK = builder
-            .translation("config.staticlogistics.mek_strict_energy_stack_size")
-            .defineInRange("mek_strict_energy_stack_size", MekStrictEnergyStack, 1, Integer.MAX_VALUE);
         ARS_SOURCE_STACK = builder
             .translation("config.staticlogistics.ars_source_stack_size")
             .defineInRange("ars_source_stack_size", ArsSourceStack, 1, Integer.MAX_VALUE);
@@ -183,7 +190,6 @@ public final class SLConfig {
 
             MekChemicalStack = MEK_CHEMICAL_STACK.get();
             MekHeatStack = MEK_HEAT_STACK.get();
-            MekStrictEnergyStack = MEK_STRICT_ENERGY_STACK.get();
             ArsSourceStack = ARS_SOURCE_STACK.get();
             PneumaticPressureStack = PNEUMATIC_PRESSURE_STACK.get();
             PneumaticHeatStack = PNEUMATIC_HEAT_STACK.get();
@@ -193,6 +199,8 @@ public final class SLConfig {
             diamondMultCache = DIAMOND_MULTIPLIER.get();
             netheriteMultCache = NETHERITE_MULTIPLIER.get();
             netherStarMultCache = NETHER_STAR_MULTIPLIER.get();
+
+            autoCleanStoredNodes = AUTO_CLEAN_STORED_NODES.get();
 
             loadComponentStrategyOverrides();
         }
@@ -244,10 +252,6 @@ public final class SLConfig {
         return MekHeatStack;
     }
 
-    public static int getMekStrictEnergyStack() {
-        return MekStrictEnergyStack;
-    }
-
     public static int getArsSourceStack() {
         return ArsSourceStack;
     }
@@ -269,5 +273,9 @@ public final class SLConfig {
             case "nether_star" -> netherStarMultCache;
             default -> 1;
         };
+    }
+
+    public static boolean shouldAutoCleanStoredNodes() {
+        return autoCleanStoredNodes;
     }
 }

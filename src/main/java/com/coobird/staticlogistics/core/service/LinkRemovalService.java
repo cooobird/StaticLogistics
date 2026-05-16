@@ -35,6 +35,6 @@ public class LinkRemovalService {
             selfMgr.removeLink(source, selfNode);
         }
 
-        selfMgr.removeFaceConfigInternal(selfNode.toKey(), false);
+        selfMgr.removeFaceConfigDataOnly(selfNode.toKey());
     }
 }

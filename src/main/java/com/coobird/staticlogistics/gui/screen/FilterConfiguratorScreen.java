@@ -56,7 +56,7 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("open_face_config", true);
             PacketDistributor.sendToServer(new C2SConfigureFacePayload(
-                menu.getPos(), menu.getFace(), menu.getTransferType().id(), tag));
+                menu.getPos(), menu.getFace(), tag));
             playClickSound();
             return true;
         }

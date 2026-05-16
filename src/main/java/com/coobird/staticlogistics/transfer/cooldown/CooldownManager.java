@@ -2,27 +2,24 @@ package com.coobird.staticlogistics.transfer.cooldown;
 
 import it.unimi.dsi.fastutil.longs.Long2LongMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongIterator;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class CooldownManager {
     private final Map<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new ConcurrentHashMap<>();
-    private final Map<ResourceKey<Level>, Integer> cleanCursors = new ConcurrentHashMap<>();
 
-    private static final int CLEAN_THRESHOLD = 1000;  // 超过此数量才进行清理
-    private static final int BATCH_SIZE = 200;       // 每次最多清理的条目数
+    private static final int FULL_CLEAN_INTERVAL_TICKS = 200;
+    private static final int BATCH_CLEAN_THRESHOLD = 500;
+    private static final int BATCH_SIZE = 200;
+
+    private int tickCounter = 0;
 
     /**
      * 设置冷却
-     *
-     * @param dimension     维度
-     * @param key           节点 key
-     * @param durationTicks 冷却持续时间（tick）
-     * @param currentTick   当前维度的游戏时间（绝对 tick）
      */
     public void setCooldown(ResourceKey<Level> dimension, long key, int durationTicks, long currentTick) {
         long nextAllowedTick = currentTick + durationTicks;
@@ -45,39 +42,45 @@ public class CooldownManager {
     }
 
     /**
-     * 分片清理过期条目，每次调用最多清理 BATCH_SIZE 个条目。
-     * 仅在条目数超过 CLEAN_THRESHOLD 时执行。
+     * 每 tick 调用，执行清理策略
      */
-    public void cleanExpiredBatched(ResourceKey<Level> dimension, long currentTick) {
+    public void tick(ResourceKey<Level> dimension, long currentTick) {
+        tickCounter++;
+        if (tickCounter >= FULL_CLEAN_INTERVAL_TICKS) {
+            tickCounter = 0;
+            for (ResourceKey<Level> dim : dimensionCooldowns.keySet()) {
+                cleanExpiredAll(dim, currentTick);
+            }
+        } else {
+            Long2LongMap map = dimensionCooldowns.get(dimension);
+            if (map != null && map.size() > BATCH_CLEAN_THRESHOLD) {
+                cleanExpiredBatched(dimension, currentTick);
+            }
+        }
+    }
+
+    private void cleanExpiredAll(ResourceKey<Level> dimension, long currentTick) {
         Long2LongMap map = dimensionCooldowns.get(dimension);
-        if (map == null || map.size() < CLEAN_THRESHOLD) return;
+        if (map == null) return;
+        map.values().removeIf(nextTick -> nextTick <= currentTick);
+        if (map.isEmpty()) {
+            dimensionCooldowns.remove(dimension);
+        }
+    }
 
-        int cursor = cleanCursors.getOrDefault(dimension, 0);
-        int size = map.size();
-        if (cursor >= size) cursor = 0;
-
-        LongIterator it = map.keySet().iterator();
-        // 跳过 cursor 个元素
-        for (int i = 0; i < cursor && it.hasNext(); i++) it.next();
-
+    private void cleanExpiredBatched(ResourceKey<Level> dimension, long currentTick) {
+        Long2LongMap map = dimensionCooldowns.get(dimension);
+        if (map == null) return;
+        Iterator<Long2LongMap.Entry> it = map.long2LongEntrySet().iterator();
         int processed = 0;
-        int removed = 0;
         while (it.hasNext() && processed < BATCH_SIZE) {
-            long key = it.next();
-            if (map.get(key) <= currentTick) {
+            Long2LongMap.Entry entry = it.next();
+            if (entry.getLongValue() <= currentTick) {
                 it.remove();
-                removed++;
             }
             processed++;
         }
-
-        if (it.hasNext()) {
-            cleanCursors.put(dimension, cursor + processed);
-        } else {
-            cleanCursors.remove(dimension);
-        }
-
-        if (removed > 0 && map.isEmpty()) {
+        if (map.isEmpty()) {
             dimensionCooldowns.remove(dimension);
         }
     }
@@ -98,6 +101,5 @@ public class CooldownManager {
      */
     public void clearForDimension(ResourceKey<Level> dimension) {
         dimensionCooldowns.remove(dimension);
-        cleanCursors.remove(dimension);
     }
 }

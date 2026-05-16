@@ -135,9 +135,6 @@ dependencies {
     compileOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
     runtimeOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
 
-    compileOnly "curse.maven:ars-additions-974408:7646325"
-    runtimeOnly "curse.maven:ars-additions-974408:7646325"
-
     compileOnly "dev.architectury:architectury-neoforge:${architectury_version}"
     compileOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
     runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
@@ -150,6 +147,15 @@ dependencies {
 
     compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
     runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
+
+    runtimeOnly "curse.maven:ars-additions-974408:7646325"
+
+    runtimeOnly "curse.maven:titanium-287342:7951516"
+    runtimeOnly "curse.maven:functional-storage-556861:7061714"
+
+    runtimeOnly "curse.maven:mcjtylib-233105:7299488"
+    runtimeOnly "curse.maven:rftools-base-326041:7263404"
+    runtimeOnly "curse.maven:rftools-power-290209:7263410"
 }
 
 tasks.named('processResources', ProcessResources) {

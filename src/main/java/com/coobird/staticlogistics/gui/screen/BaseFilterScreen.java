@@ -10,6 +10,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -339,9 +340,15 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
     private void clearOrphanedSlotTags() {
         for (int row = 0; row < 4; row++) {
             int index = getSlotIndex(row, 0);
-            if (getFilterItem(index).isEmpty() && (!menu.getSlotTags(row).isEmpty() || !menu.getExcludedTags(row).isEmpty())) {
-                menu.clearSlotTags(row);
-                sendFilterUpdate();
+            boolean hasItem = !getFilterItem(index).isEmpty();
+            boolean hasFluid = getFluidItem(index) != null;
+            if (!hasItem && !hasFluid) {
+                if (!menu.getSlotTags(row).isEmpty() || !menu.getExcludedTags(row).isEmpty() ||
+                    !menu.getSlotFluidTags(row).isEmpty() || !menu.getExcludedFluidTags(row).isEmpty()) {
+                    menu.clearSlotTags(row);
+                    menu.clearSlotFluidTags(row);
+                    sendFilterUpdate();
+                }
             }
         }
     }
@@ -366,11 +373,16 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
             g.blit(SLGuiTextures.GUI_ATLAS, startX + barWidth - 2, y, btnU + btnW - 2, btnV, 2, barHeight, 512, 512);
             g.blit(SLGuiTextures.GUI_ATLAS, startX + 2, y, barWidth - 4, barHeight, btnU + 2, btnV, 1, barHeight, 512, 512);
 
-            Set<TagKey<Item>> tags = menu.getSlotTags(row);
+            // 显示当前槽位的标签（物品或流体）
+            Set<TagKey<Item>> itemTags = menu.getSlotTags(row);
+            Set<TagKey<Fluid>> fluidTags = menu.getSlotFluidTags(row);
             String displayText = "...";
             int maxTextWidth = barWidth - 4;
-            if (!tags.isEmpty()) {
-                String tagStr = tags.stream().map(t -> t.location().toString()).collect(Collectors.joining("; "));
+            if (!itemTags.isEmpty()) {
+                String tagStr = itemTags.stream().map(t -> t.location().toString()).collect(Collectors.joining("; "));
+                displayText = font.plainSubstrByWidth(tagStr, maxTextWidth);
+            } else if (!fluidTags.isEmpty()) {
+                String tagStr = fluidTags.stream().map(t -> t.location().toString()).collect(Collectors.joining("; "));
                 displayText = font.plainSubstrByWidth(tagStr, maxTextWidth);
             }
             g.drawString(font, displayText, startX + 4, y + 4, 0xCCCCCC, false);
@@ -391,7 +403,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
 
         if (hoveredTagBarRow >= 0) {
             if (selectedTagIndices[hoveredTagBarRow] < 0) selectedTagIndices[hoveredTagBarRow] = 0;
-            renderTagDropdown(g, mouseX, mouseY, hoveredTagBarRow);
+            new TagDropdownWidget(g, mouseX, mouseY, hoveredTagBarRow, this).render();
         }
 
         if (hoveredDelButtonRow >= 0) {
@@ -431,18 +443,18 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         return result;
     }
 
-    private List<String> buildTagDisplayLines(List<EnhancedTagOption> options) {
-        List<String> lines = new ArrayList<>();
-        for (EnhancedTagOption opt : options) {
-            String typeStr = switch (opt.type) {
-                case ITEM -> Component.translatable("tag_type.staticlogistics.item").getString();
-                case BLOCK -> Component.translatable("tag_type.staticlogistics.block").getString();
-                case FLUID -> Component.translatable("tag_type.staticlogistics.fluid").getString();
-            };
-            String tagName = getTagDisplayName(opt.rawTag, opt.type);
-            lines.add("-> " + typeStr + " " + tagName);
+    private List<EnhancedTagOption> collectEnhancedTagsForFluid(Fluid fluid) {
+        if (fluid == null) return List.of();
+        List<EnhancedTagOption> all = new ArrayList<>();
+        BuiltInRegistries.FLUID.wrapAsHolder(fluid).tags()
+            .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID)));
+        Map<ResourceLocation, EnhancedTagOption> unique = new LinkedHashMap<>();
+        for (EnhancedTagOption opt : all) {
+            unique.putIfAbsent(opt.rawTag.location(), opt);
         }
-        return lines;
+        List<EnhancedTagOption> result = new ArrayList<>(unique.values());
+        result.sort(Comparator.comparing(a -> a.rawTag.location().toString()));
+        return result;
     }
 
     private String getTagDisplayName(TagKey<?> tag, TagType type) {
@@ -460,120 +472,6 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         return text;
     }
 
-    private void renderTagDropdown(GuiGraphics g, int mouseX, int mouseY, int row) {
-        int index = getSlotIndex(row, 0);
-        ItemStack ref = getFilterItem(index);
-        if (ref.isEmpty()) return;
-
-        List<EnhancedTagOption> options = collectEnhancedTags(ref);
-        tagOptionsCache[row] = options;
-        if (options.isEmpty()) return;
-
-        String itemName = ref.getHoverName().getString();
-        int maxVisible = 5;
-        int lineHeight = 10;
-        int titleHeight = 15;
-        int hintHeight = 38;
-
-        Set<TagKey<Item>> activeTags = menu.getSlotTags(row);
-        Set<TagKey<Item>> excludedTags = menu.getExcludedTags(row);
-
-        int scrollOffset;
-        if (selectedTagIndices[row] >= 0) {
-            int idealOffset = selectedTagIndices[row] - maxVisible / 2;
-            scrollOffset = Math.max(0, Math.min(idealOffset, options.size() - maxVisible));
-        } else {
-            scrollOffset = 0;
-        }
-
-        List<String> visibleLines = new ArrayList<>();
-        List<EnhancedTagOption> visibleOpts = new ArrayList<>();
-        int maxLineWidth = 0;
-        int maxAllowedWidth = 240;
-        for (int i = 0; i < maxVisible; i++) {
-            int optIdx = scrollOffset + i;
-            if (optIdx >= options.size()) break;
-            EnhancedTagOption opt = options.get(optIdx);
-            String typeStr = switch (opt.type) {
-                case ITEM -> Component.translatable("tag_type.staticlogistics.item").getString();
-                case BLOCK -> Component.translatable("tag_type.staticlogistics.block").getString();
-                case FLUID -> Component.translatable("tag_type.staticlogistics.fluid").getString();
-            };
-            String tagName = getTagDisplayName(opt.rawTag, opt.type);
-            TagKey<Item> itemTag = opt.toItemTag();
-            boolean isActive = activeTags.contains(itemTag);
-            boolean isExcluded = excludedTags.contains(itemTag);
-            String prefix;
-            if (isActive) {
-                prefix = Component.translatable("gui.staticlogistics.tag.active").getString() + " ";
-            } else if (isExcluded) {
-                prefix = Component.translatable("gui.staticlogistics.tag.excluded").getString() + " ";
-            } else {
-                prefix = "  ";
-            }
-            String line = prefix + typeStr + " " + tagName;
-            int width = font.width(line);
-            if (width > maxAllowedWidth) {
-                line = font.plainSubstrByWidth(line, maxAllowedWidth - 4);
-                width = font.width(line);
-            }
-            if (width > maxLineWidth) maxLineWidth = width;
-            visibleLines.add(line);
-            visibleOpts.add(opt);
-        }
-
-        int listWidth = Math.max(100, maxLineWidth + 28);
-        int listHeight = titleHeight + Math.min(options.size(), maxVisible) * lineHeight + hintHeight;
-
-        int startX = mouseX + 12;
-        int startY = mouseY - 13;
-        if (startX + listWidth > this.width) startX = mouseX - listWidth - 4;
-        if (startY + listHeight > this.height) startY = this.height - listHeight - 5;
-        if (startX < 0) startX = 4;
-        if (startY < 0) startY = 4;
-
-        g.pose().pushPose();
-        g.pose().translate(0, 0, 500);
-        g.fill(startX, startY, startX + listWidth, startY + listHeight, 0xCC000000);
-        g.renderOutline(startX, startY, listWidth, listHeight, 0xFFFFFFFF);
-        g.drawString(font, itemName, startX + 4, startY + 2, 0xFFD700, false);
-
-        int yOffset = startY + titleHeight;
-        for (int i = 0; i < visibleLines.size(); i++) {
-            String line = visibleLines.get(i);
-            int optIdx = scrollOffset + i;
-            boolean highlighted = optIdx == selectedTagIndices[row];
-            EnhancedTagOption opt = visibleOpts.get(i);
-            TagKey<Item> itemTag = opt.toItemTag();
-            boolean isActive = activeTags.contains(itemTag);
-            boolean isExcluded = excludedTags.contains(itemTag);
-
-            int color;
-            if (highlighted) {
-                color = 0xFFFF55;
-            } else if (isActive) {
-                color = 0x55FF55;
-            } else if (isExcluded) {
-                color = 0xFF5555;
-            } else {
-                color = 0xCCCCCC;
-            }
-            g.drawString(font, line, startX + 4, yOffset + i * lineHeight, color, false);
-        }
-
-        int hintY = startY + titleHeight + Math.min(options.size(), maxVisible) * lineHeight;
-        g.drawString(font, Component.translatable("gui.staticlogistics.tag_dropdown.help")
-                .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC),
-            startX + 4, hintY, 0xAAAAAA, false);
-        g.drawString(font, Component.translatable("gui.staticlogistics.tag_dropdown.help2")
-                .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC),
-            startX + 4, hintY + 12, 0xAAAAAA, false);
-        g.drawString(font, Component.translatable("gui.staticlogistics.tag_dropdown.help3")
-                .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC),
-            startX + 4, hintY + 24, 0xAAAAAA, false);
-        g.pose().popPose();
-    }
-
     protected boolean handleTagBarClick(double mx, double my, int button) {
         if (button != 0 && button != 1) return false;
         int startX = leftPos + TAG_BAR_X_OFFSET;
@@ -586,6 +484,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
             if (mx >= delBtnX && mx < delBtnX + 19 && my >= y && my < y + 17) {
                 if (button == 0) {
                     menu.clearSlotTags(row);
+                    menu.clearSlotFluidTags(row);
                     sendFilterUpdate();
                     resetRowCache(row);
                     return true;
@@ -606,23 +505,40 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                     if (selectedTagIndices[row] < 0) scrollOffset = 0;
                     int actualIdx = scrollOffset + itemIdx;
                     if (actualIdx >= 0 && actualIdx < options.size()) {
-                        TagKey<Item> itemTag = options.get(actualIdx).toItemTag();
-                        if (button == 0) {
-                            if (menu.getSlotTags(row).contains(itemTag)) {
-                                menu.removeSlotTag(row, itemTag);
-                            } else {
-                                menu.addSlotTag(row, itemTag);
-                                if (menu.getExcludedTags(row).contains(itemTag)) {
-                                    menu.removeExcludedTag(row, itemTag);
-                                }
-                            }
-                        } else {
-                            if (menu.getExcludedTags(row).contains(itemTag)) {
-                                menu.removeExcludedTag(row, itemTag);
-                            } else {
-                                menu.addExcludedTag(row, itemTag);
+                        EnhancedTagOption opt = options.get(actualIdx);
+                        if (opt.type == TagType.ITEM || opt.type == TagType.BLOCK) {
+                            TagKey<Item> itemTag = opt.toItemTag();
+                            if (button == 0) {
                                 if (menu.getSlotTags(row).contains(itemTag)) {
                                     menu.removeSlotTag(row, itemTag);
+                                } else {
+                                    menu.addSlotTag(row, itemTag);
+                                    menu.removeExcludedTag(row, itemTag);
+                                }
+                            } else {
+                                if (menu.getExcludedTags(row).contains(itemTag)) {
+                                    menu.removeExcludedTag(row, itemTag);
+                                } else {
+                                    menu.addExcludedTag(row, itemTag);
+                                    menu.removeSlotTag(row, itemTag);
+                                }
+                            }
+                        } else { // FLUID
+                            @SuppressWarnings("unchecked")
+                            TagKey<Fluid> fluidTag = (TagKey<Fluid>) opt.rawTag;
+                            if (button == 0) {
+                                if (menu.getSlotFluidTags(row).contains(fluidTag)) {
+                                    menu.removeSlotFluidTag(row, fluidTag);
+                                } else {
+                                    menu.addSlotFluidTag(row, fluidTag);
+                                    menu.removeExcludedFluidTag(row, fluidTag);
+                                }
+                            } else {
+                                if (menu.getExcludedFluidTags(row).contains(fluidTag)) {
+                                    menu.removeExcludedFluidTag(row, fluidTag);
+                                } else {
+                                    menu.addExcludedFluidTag(row, fluidTag);
+                                    menu.removeSlotFluidTag(row, fluidTag);
                                 }
                             }
                         }
@@ -641,26 +557,49 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                     if (!ref.isEmpty()) {
                         optionsBar = collectEnhancedTags(ref);
                         tagOptionsCache[row] = optionsBar;
+                    } else {
+                        Fluid fluid = getFluidItem(index);
+                        if (fluid != null) {
+                            optionsBar = collectEnhancedTagsForFluid(fluid);
+                            tagOptionsCache[row] = optionsBar;
+                        }
                     }
                 }
                 if (optionsBar != null && !optionsBar.isEmpty() && selectedTagIndices[row] >= 0 && selectedTagIndices[row] < optionsBar.size()) {
-                    TagKey<Item> itemTag = optionsBar.get(selectedTagIndices[row]).toItemTag();
-                    if (button == 0) {
-                        if (menu.getSlotTags(row).contains(itemTag)) {
-                            menu.removeSlotTag(row, itemTag);
+                    EnhancedTagOption opt = optionsBar.get(selectedTagIndices[row]);
+                    if (opt.type == TagType.ITEM || opt.type == TagType.BLOCK) {
+                        TagKey<Item> itemTag = opt.toItemTag();
+                        if (button == 0) {
+                            if (menu.getSlotTags(row).contains(itemTag)) {
+                                menu.removeSlotTag(row, itemTag);
+                            } else {
+                                menu.addSlotTag(row, itemTag);
+                                menu.removeExcludedTag(row, itemTag);
+                            }
                         } else {
-                            menu.addSlotTag(row, itemTag);
                             if (menu.getExcludedTags(row).contains(itemTag)) {
                                 menu.removeExcludedTag(row, itemTag);
+                            } else {
+                                menu.addExcludedTag(row, itemTag);
+                                menu.removeSlotTag(row, itemTag);
                             }
                         }
                     } else {
-                        if (menu.getExcludedTags(row).contains(itemTag)) {
-                            menu.removeExcludedTag(row, itemTag);
+                        @SuppressWarnings("unchecked")
+                        TagKey<Fluid> fluidTag = (TagKey<Fluid>) opt.rawTag;
+                        if (button == 0) {
+                            if (menu.getSlotFluidTags(row).contains(fluidTag)) {
+                                menu.removeSlotFluidTag(row, fluidTag);
+                            } else {
+                                menu.addSlotFluidTag(row, fluidTag);
+                                menu.removeExcludedFluidTag(row, fluidTag);
+                            }
                         } else {
-                            menu.addExcludedTag(row, itemTag);
-                            if (menu.getSlotTags(row).contains(itemTag)) {
-                                menu.removeSlotTag(row, itemTag);
+                            if (menu.getExcludedFluidTags(row).contains(fluidTag)) {
+                                menu.removeExcludedFluidTag(row, fluidTag);
+                            } else {
+                                menu.addExcludedFluidTag(row, fluidTag);
+                                menu.removeSlotFluidTag(row, fluidTag);
                             }
                         }
                     }
@@ -761,6 +700,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                         if (!existing.isEmpty()) {
                             removeFilterItem(index);
                             menu.clearSlotTags(row);
+                            menu.clearSlotFluidTags(row);
                             sendFilterUpdate();
                             resetRowCache(row);
                             return true;
@@ -768,6 +708,8 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                         Fluid existingFluid = getFluidItem(index);
                         if (existingFluid != null) {
                             removeFluidSlot(index);
+                            menu.clearSlotTags(row);
+                            menu.clearSlotFluidTags(row);
                             sendFilterUpdate();
                             resetRowCache(row);
                             return true;
@@ -819,6 +761,68 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         return -1;
     }
 
+    public Rect2i getFilterGridArea() {
+        int cols = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER ? 1 : GRID_COLS;
+        int rows = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER ? 4 : GRID_ROWS;
+        int startX = leftPos + GRID_START_X;
+        int startY = topPos + GRID_START_Y;
+        int width = cols * SLOT_SIZE;
+        int height = rows * SLOT_SIZE;
+        return new Rect2i(startX, startY, width, height);
+    }
+
+    public void acceptGhostIngredient(ItemStack stack) {
+        if (stack.isEmpty()) return;
+        int hoveredSlot = getHoveredFilterSlot();
+        if (hoveredSlot != -1) {
+            setFilterItem(hoveredSlot, stack.copyWithCount(1));
+        } else {
+            int emptySlot = findFirstEmptyFilterSlot();
+            if (emptySlot != -1) {
+                setFilterItem(emptySlot, stack.copyWithCount(1));
+            }
+        }
+        sendFilterUpdate();
+    }
+
+    public void acceptGhostIngredient(FluidStack fluid) {
+        if (fluid.isEmpty()) return;
+        int hoveredSlot = getHoveredFilterSlot();
+        if (hoveredSlot != -1) {
+            setFluidSlot(hoveredSlot, fluid.getFluid());
+        } else {
+            int emptySlot = findFirstEmptyFilterSlot();
+            if (emptySlot != -1) {
+                setFluidSlot(emptySlot, fluid.getFluid());
+            }
+        }
+        sendFilterUpdate();
+    }
+
+    private int getHoveredFilterSlot() {
+        int startX = leftPos + GRID_START_X;
+        int startY = topPos + GRID_START_Y;
+        boolean tagMode = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER;
+        int rows = tagMode ? 4 : GRID_ROWS;
+        int cols = tagMode ? 1 : GRID_COLS;
+        double mx = 0;
+        double my = 0;
+        if (minecraft != null) {
+            mx = minecraft.mouseHandler.xpos() * minecraft.getWindow().getGuiScaledWidth() / minecraft.getWindow().getScreenWidth();
+            my = minecraft.mouseHandler.ypos() * minecraft.getWindow().getGuiScaledHeight() / minecraft.getWindow().getScreenHeight();
+        }
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                int x = startX + col * SLOT_SIZE;
+                int y = startY + row * SLOT_SIZE;
+                if (mx >= x && mx < x + 16 && my >= y && my < y + 16) {
+                    return getSlotIndex(row, col);
+                }
+            }
+        }
+        return -1;
+    }
+
     protected abstract ItemStack getFilterItem(int index);
 
     protected abstract void setFilterItem(int index, ItemStack stack);
@@ -836,4 +840,159 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
     protected abstract void setFluidSlot(int index, Fluid fluid);
 
     protected abstract void removeFluidSlot(int index);
+
+    private class TagDropdownWidget {
+        private final GuiGraphics graphics;
+        private final int mouseX;
+        private final int mouseY;
+        private final int row;
+        private final BaseFilterScreen<T> screen;
+
+        TagDropdownWidget(GuiGraphics graphics, int mouseX, int mouseY, int row, BaseFilterScreen<T> screen) {
+            this.graphics = graphics;
+            this.mouseX = mouseX;
+            this.mouseY = mouseY;
+            this.row = row;
+            this.screen = screen;
+        }
+
+        void render() {
+            int index = getSlotIndex(row, 0);
+            ItemStack ref = getFilterItem(index);
+            Fluid fluid = null;
+            List<EnhancedTagOption> options;
+            String displayName;
+            if (!ref.isEmpty()) {
+                options = collectEnhancedTags(ref);
+                displayName = ref.getHoverName().getString();
+            } else {
+                fluid = getFluidItem(index);
+                if (fluid == null) return;
+                options = collectEnhancedTagsForFluid(fluid);
+                displayName = new FluidStack(fluid, 1000).getHoverName().getString();
+            }
+            tagOptionsCache[row] = options;
+            if (options.isEmpty()) return;
+
+            Set<TagKey<Item>> activeItemTags = menu.getSlotTags(row);
+            Set<TagKey<Item>> excludedItemTags = menu.getExcludedTags(row);
+            Set<TagKey<Fluid>> activeFluidTags = menu.getSlotFluidTags(row);
+            Set<TagKey<Fluid>> excludedFluidTags = menu.getExcludedFluidTags(row);
+
+            int maxVisible = 5;
+            int lineHeight = 10;
+            int titleHeight = 15;
+            int hintHeight = 38;
+
+            int scrollOffset;
+            if (selectedTagIndices[row] >= 0) {
+                int idealOffset = selectedTagIndices[row] - maxVisible / 2;
+                scrollOffset = Math.max(0, Math.min(idealOffset, options.size() - maxVisible));
+            } else {
+                scrollOffset = 0;
+            }
+
+            List<String> visibleLines = new ArrayList<>();
+            List<EnhancedTagOption> visibleOpts = new ArrayList<>();
+            int maxLineWidth = 0;
+            int maxAllowedWidth = 240;
+            for (int i = 0; i < maxVisible; i++) {
+                int optIdx = scrollOffset + i;
+                if (optIdx >= options.size()) break;
+                EnhancedTagOption opt = options.get(optIdx);
+                String typeStr = switch (opt.type) {
+                    case ITEM -> Component.translatable("tag_type.staticlogistics.item").getString();
+                    case BLOCK -> Component.translatable("tag_type.staticlogistics.block").getString();
+                    case FLUID -> Component.translatable("tag_type.staticlogistics.fluid").getString();
+                };
+                String tagName = getTagDisplayName(opt.rawTag, opt.type);
+                boolean isActive, isExcluded;
+                if (opt.type == TagType.ITEM || opt.type == TagType.BLOCK) {
+                    TagKey<Item> itemTag = opt.toItemTag();
+                    isActive = activeItemTags.contains(itemTag);
+                    isExcluded = excludedItemTags.contains(itemTag);
+                } else {
+                    @SuppressWarnings("unchecked")
+                    TagKey<Fluid> fluidTag = (TagKey<Fluid>) opt.rawTag;
+                    isActive = activeFluidTags.contains(fluidTag);
+                    isExcluded = excludedFluidTags.contains(fluidTag);
+                }
+                String prefix;
+                if (isActive) {
+                    prefix = Component.translatable("gui.staticlogistics.tag.active").getString() + " ";
+                } else if (isExcluded) {
+                    prefix = Component.translatable("gui.staticlogistics.tag.excluded").getString() + " ";
+                } else {
+                    prefix = "  ";
+                }
+                String line = prefix + typeStr + " " + tagName;
+                int width = font.width(line);
+                if (width > maxAllowedWidth) {
+                    line = font.plainSubstrByWidth(line, maxAllowedWidth - 4);
+                    width = font.width(line);
+                }
+                if (width > maxLineWidth) maxLineWidth = width;
+                visibleLines.add(line);
+                visibleOpts.add(opt);
+            }
+
+            int listWidth = Math.max(100, maxLineWidth + 28);
+            int listHeight = titleHeight + Math.min(options.size(), maxVisible) * lineHeight + hintHeight;
+
+            int startX = mouseX + 12;
+            int startY = mouseY - 13;
+            if (startX + listWidth > screen.width) startX = mouseX - listWidth - 4;
+            if (startY + listHeight > screen.height) startY = screen.height - listHeight - 5;
+            if (startX < 0) startX = 4;
+            if (startY < 0) startY = 4;
+
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, 0, 500);
+            graphics.fill(startX, startY, startX + listWidth, startY + listHeight, 0xCC000000);
+            graphics.renderOutline(startX, startY, listWidth, listHeight, 0xFFFFFFFF);
+            graphics.drawString(font, displayName, startX + 4, startY + 2, 0xFFD700, false);
+
+            int yOffset = startY + titleHeight;
+            for (int i = 0; i < visibleLines.size(); i++) {
+                String line = visibleLines.get(i);
+                int optIdx = scrollOffset + i;
+                boolean highlighted = optIdx == selectedTagIndices[row];
+                EnhancedTagOption opt = visibleOpts.get(i);
+                boolean isActive, isExcluded;
+                if (opt.type == TagType.ITEM || opt.type == TagType.BLOCK) {
+                    TagKey<Item> itemTag = opt.toItemTag();
+                    isActive = activeItemTags.contains(itemTag);
+                    isExcluded = excludedItemTags.contains(itemTag);
+                } else {
+                    @SuppressWarnings("unchecked")
+                    TagKey<Fluid> fluidTag = (TagKey<Fluid>) opt.rawTag;
+                    isActive = activeFluidTags.contains(fluidTag);
+                    isExcluded = excludedFluidTags.contains(fluidTag);
+                }
+                int color;
+                if (highlighted) {
+                    color = 0xFFFF55;
+                } else if (isActive) {
+                    color = 0x55FF55;
+                } else if (isExcluded) {
+                    color = 0xFF5555;
+                } else {
+                    color = 0xCCCCCC;
+                }
+                graphics.drawString(font, line, startX + 4, yOffset + i * lineHeight, color, false);
+            }
+
+            int hintY = startY + titleHeight + Math.min(options.size(), maxVisible) * lineHeight;
+            graphics.drawString(font, Component.translatable("gui.staticlogistics.tag_dropdown.help")
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC),
+                startX + 4, hintY, 0xAAAAAA, false);
+            graphics.drawString(font, Component.translatable("gui.staticlogistics.tag_dropdown.help2")
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC),
+                startX + 4, hintY + 12, 0xAAAAAA, false);
+            graphics.drawString(font, Component.translatable("gui.staticlogistics.tag_dropdown.help3")
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC),
+                startX + 4, hintY + 24, 0xAAAAAA, false);
+            graphics.pose().popPose();
+        }
+    }
 }

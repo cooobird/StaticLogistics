@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.intergration;
+package com.coobird.staticlogistics.integration;
 
 import net.neoforged.fml.ModList;
 
