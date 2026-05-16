@@ -1,0 +1,83 @@
+# --- IDE & Editor Stuff ---
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.idea_modules/
+atlassian-ide-plugin.xml
+*.class
+*.ctxt
+*~
+
+# --- Project Build & Gradle ---
+.gradle/
+build/
+**/build/
+.gradletasknamecache
+gradle-app.setting
+
+# --- Data Generator Output (Generated Resources) ---
+# 忽略所有层级下的 src/generated 文件夹及其内容
+**/src/generated/**
+/generated/
+
+# --- Minecraft Runtime Data ---
+run/
+runs/
+*.log
+hs_err_pid*
+.mixin.out
+*.stackdump
+
+# --- Package Files ---
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# --- System Specific Files ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.fuse_hidden*
+.nfs*
+
+# --- Whitelist ---
+!gradle/wrapper/gradle-wrapper.jar

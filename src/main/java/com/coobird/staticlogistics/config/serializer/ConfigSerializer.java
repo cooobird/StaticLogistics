@@ -1,0 +1,61 @@
+package com.coobird.staticlogistics.config.serializer;
+
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.mojang.logging.LogUtils;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import org.slf4j.Logger;
+
+import java.util.UUID;
+
+public class ConfigSerializer {
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    public static CompoundTag serializeNBT(FaceConfigComposite config, HolderLookup.Provider p) {
+        CompoundTag nbt = new CompoundTag();
+        nbt.putString("group_id", config.faceConfig.getGroupId());
+
+        UUID ownerUuid = config.faceConfig.getOwner();
+        if (ownerUuid != null) nbt.putUUID("owner", ownerUuid);
+        nbt.putString("owner_name", config.faceConfig.getOwnerName());
+
+        nbt.putInt("input_channel", config.linkConfig.getInputChannel());
+        nbt.putInt("output_channel", config.linkConfig.getOutputChannel());
+        nbt.putString("strategy", config.linkConfig.getStrategy().name());
+        nbt.putInt("priority", config.linkConfig.getPriority());
+
+        try {
+            nbt.put("filter_upgrades", config.filterConfig.getUpgrades().serializeNBT(p));
+        } catch (Exception e) {
+            LOGGER.error("Failed to serialize filter upgrades for face config", e);
+            nbt.put("filter_upgrades", new CompoundTag());
+        }
+        nbt.putInt("selected_types_mask", config.getSelectedTypesMask());
+        return nbt;
+    }
+
+    public static void deserializeNBT(FaceConfigComposite config, HolderLookup.Provider p, CompoundTag nbt) {
+        config.faceConfig.setGroupId(nbt.getString("group_id"));
+
+        UUID ownerUuid = nbt.hasUUID("owner") ? nbt.getUUID("owner") : null;
+        String ownerName = nbt.contains("owner_name") ? nbt.getString("owner_name") : "Unknown";
+        if (ownerUuid != null) config.faceConfig.setOwner(ownerUuid, ownerName);
+
+        config.linkConfig.setInputChannel(nbt.getInt("input_channel"));
+        config.linkConfig.setOutputChannel(nbt.getInt("output_channel"));
+        try {
+            config.linkConfig.setStrategy(DistributionStrategy.valueOf(nbt.getString("strategy")));
+        } catch (Exception e) {
+            config.linkConfig.setStrategy(DistributionStrategy.SEQUENTIAL);
+        }
+        config.linkConfig.setPriority(nbt.getInt("priority"));
+
+        if (nbt.contains("filter_upgrades")) {
+            config.filterConfig.getUpgrades().deserializeNBT(p, nbt.getCompound("filter_upgrades"));
+        }
+        if (nbt.contains("selected_types_mask")) {
+            config.setSelectedTypesMask(nbt.getInt("selected_types_mask"));
+        }
+    }
+}

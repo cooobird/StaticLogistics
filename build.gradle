@@ -1,0 +1,201 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'idea'
+    id 'net.neoforged.moddev' version '2.0.140'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+    validateAccessTransformers = true
+    runs {
+        client {
+            client()
+            programArguments.addAll '--username', 'gu_gu_'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        client1 {
+            client()
+            programArguments.addAll '--username', 'gu_gu__', '--uuid', '12345678-1234-1234-1234-123456789012'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        server {
+            server()
+            //programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        gameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        data {
+            data()
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+            jvmArguments.addAll([
+                    // 忽略无效指令，避免有的人没安装 JetBrain Runtime 无法启动游戏
+                    "-XX:+IgnoreUnrecognizedVMOptions",
+                    // 启用 JetBrain Runtime 热重载功能
+                    "-XX:+AllowEnhancedClassRedefinition",
+                    "-Djava.net.preferIPv4Stack=true"
+                    // 并发修改检测
+                    //"-javaagent:mods/CMESuckMyDuck-1.0.5.jar=net/minecraft/util/ClassInstanceMultiMap;byClass;Map;nonstatic"
+            ])
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir 'src/generated/resources'
+        }
+    }
+}
+
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+    maven {
+        name = "Jared's maven"
+        url = "https://maven.blamejared.com/"
+    }
+    maven { url 'https://modmaven.dev/' }
+    maven {
+        url = "https://www.cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
+    maven {
+        name = "ftbMavenReleases"
+        url = uri("https://maven.ftb.dev/releases")
+    }
+    maven {
+        url = "https://maven.architectury.dev/"
+    }
+    maven { url 'https://maven.blamejared.com' }
+    maven {
+        name = 'GeckoLib'
+        url 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+        content {
+            includeGroup("software.bernie.geckolib")
+        }
+    }
+    maven {
+        name = 'TerraformersMC'
+        url = 'https://maven.terraformersmc.com/'
+    }
+    maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
+    maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
+    mavenLocal()
+}
+
+dependencies {
+    runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+    compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
+    compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
+
+    compileOnly "curse.maven:jade-324717:6011258"
+    runtimeOnly "curse.maven:jade-324717:6011258"
+
+    compileOnly "mekanism:Mekanism:${mekanism_version}:api"
+    compileOnly "mekanism:Mekanism:${mekanism_version}"
+    runtimeOnly "mekanism:Mekanism:${mekanism_version}"
+    runtimeOnly "mekanism:Mekanism:${mekanism_version}:additions"
+    runtimeOnly "mekanism:Mekanism:${mekanism_version}:generators"
+    runtimeOnly "mekanism:Mekanism:${mekanism_version}:tools"
+
+    compileOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
+    runtimeOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
+
+    compileOnly "dev.architectury:architectury-neoforge:${architectury_version}"
+    compileOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
+    runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
+
+    runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
+    runtimeOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
+    runtimeOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
+    runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+    runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+
+    compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
+    runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
+
+    runtimeOnly "curse.maven:ars-additions-974408:7646325"
+
+    runtimeOnly "curse.maven:titanium-287342:7951516"
+    runtimeOnly "curse.maven:functional-storage-556861:7061714"
+
+    runtimeOnly "curse.maven:mcjtylib-233105:7299488"
+    runtimeOnly "curse.maven:rftools-base-326041:7263404"
+    runtimeOnly "curse.maven:rftools-power-290209:7263410"
+}
+
+tasks.named('processResources', ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
