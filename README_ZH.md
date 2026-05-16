@@ -40,7 +40,6 @@ D:\SoftWareSpace\GameProject\MinecraftModWorkSpace\StaticLogistics-neoforge-1.21
 - Mekanism - 用于化学品和热量传输
 - Ars Nouveau - 用于魔源传输
 - PneumaticCraft: Repressurized - 用于气压和热量传输
-- Create - 额外兼容性
 
 ### 安装步骤
 1. 下载最新版本的 StaticLogistics
