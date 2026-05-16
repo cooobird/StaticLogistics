@@ -39,7 +39,6 @@ A modern logistics mod for Minecraft featuring flexible item/fluid/energy transf
 - Mekanism - For chemical and heat transfer
 - Ars Nouveau - For source transfer
 - PneumaticCraft: Repressurized - For pressure and heat transfer
-- Create - For additional compatibility
 
 ### Installation Steps
 1. Download the latest version of StaticLogistics
