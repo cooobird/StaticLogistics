@@ -7,7 +7,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
-import java.util.Set;
 import java.util.UUID;
 
 public class GroupService {
@@ -22,27 +21,6 @@ public class GroupService {
     public static boolean canModify(UUID owner, Player actor) {
         if (owner == null) return true;
         return permissionService.canModify(owner, actor);
-    }
-
-    public static String getNextGroupId(String currentId, Set<String> existing) {
-        if (currentId == null || currentId.isEmpty()) return "1";
-        if (!existing.contains(currentId)) return currentId;
-
-        if (currentId.matches("\\d+")) {
-            int max = existing.stream()
-                .filter(s -> s.matches("\\d+"))
-                .mapToInt(Integer::parseInt)
-                .max()
-                .orElse(Integer.parseInt(currentId));
-            return String.valueOf(max + 1);
-        }
-
-        String next = currentId + "_copy";
-        int counter = 1;
-        while (existing.contains(next)) {
-            next = currentId + "_" + counter++;
-        }
-        return next;
     }
 
     public static String getNextGroupIdForPlayer(Player player) {

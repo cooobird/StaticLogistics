@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
@@ -16,6 +17,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.player.Player;
@@ -171,6 +173,15 @@ public class LinkOperationHelper {
 
         currentMgr.activateNode(current.toKey(), current.gPos().pos(), current.face(), currentCfg);
         storedMgr.activateNode(stored.toKey(), stored.gPos().pos(), stored.face(), storedCfg);
+
+        if (player instanceof ServerPlayer serverPlayer) {
+            S2CSyncFaceConfigPacket currentPacket = new S2CSyncFaceConfigPacket(current.gPos(), current.face(), currentCfg);
+            GroupService.syncToTeamMembers(serverPlayer, currentPacket);
+            S2CSyncFaceConfigPacket storedPacket = new S2CSyncFaceConfigPacket(stored.gPos(), stored.face(), storedCfg);
+            GroupService.syncToTeamMembers(serverPlayer, storedPacket);
+        }
+
+
 
         return true;
     }

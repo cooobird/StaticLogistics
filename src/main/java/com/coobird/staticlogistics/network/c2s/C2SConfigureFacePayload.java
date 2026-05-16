@@ -9,6 +9,7 @@ import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
+import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.config.LinkConfig;
@@ -23,6 +24,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -161,6 +163,11 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, ResourceLoca
                 GlobalLogisticsManager.get(serverLevel.getServer()).syncGroupLinks(serverLevel, config.faceConfig.getGroupId(), selfNode);
                 long key = LinkManager.posToKey(payload.pos(), payload.face());
                 manager.activateNode(key, payload.pos(), payload.face(), config);
+
+                if (player instanceof ServerPlayer serverPlayer) {
+                    S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face(), config);
+                    GroupService.syncToTeamMembers(serverPlayer, syncPacket);
+                }
             }
         });
     }
