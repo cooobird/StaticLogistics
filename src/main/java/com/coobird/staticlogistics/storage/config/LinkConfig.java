@@ -4,6 +4,10 @@ import com.coobird.staticlogistics.api.type.DistributionStrategy;
 
 import java.util.function.Consumer;
 
+/**
+ * 链接通道配置 —— 管理输入/输出频道（1-16）、分发策略和优先级。
+ * 频道 0 表示禁用，频道值会被 {@code clampChannel} 钳位到有效范围。
+ */
 public class LinkConfig {
     public static final int MIN_CHANNEL = 1;
     public static final int MAX_CHANNEL = 16;
@@ -61,10 +65,16 @@ public class LinkConfig {
         this.onDirty = onDirty;
     }
 
+    /**
+     * 所有字段都是默认值就是空配置
+     */
     public boolean isDefault() {
         return inputChannel == 0 && outputChannel == 0 && strategy == DistributionStrategy.SEQUENTIAL && priority == 0;
     }
 
+    /**
+     * 频道值钳位到有效范围：0=禁用, 1-16=有效频道
+     */
     public static int clampChannel(int value) {
         if (value == DISABLED_CHANNEL) return DISABLED_CHANNEL;
         return Math.max(MIN_CHANNEL, Math.min(MAX_CHANNEL, value));

@@ -9,14 +9,18 @@ import net.minecraft.util.StringRepresentable;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 物品分发策略——决定物品按什么顺序分给多个目标节点
+ */
 public enum DistributionStrategy implements StringRepresentable {
-    SEQUENTIAL("sequential"),
-    ROUND_ROBIN("round_robin"),
-    NEAREST("nearest"),
-    FURTHEST("furthest"),
-    RANDOM("random"),
-    SLOT_ROUND_ROBIN("slot_round_robin");
+    SEQUENTIAL("sequential"),       // 顺序分发：按固定顺序一个个来
+    ROUND_ROBIN("round_robin"),     // 轮询分发：轮流分给每个目标
+    NEAREST("nearest"),             // 优先发给最近的
+    FURTHEST("furthest"),           // 优先发给最远的
+    RANDOM("random"),               // 随机挑一个发
+    SLOT_ROUND_ROBIN("slot_round_robin"); // 按槽位轮询：每个目标的不同槽位轮着来
 
+    // 名字→策略的缓存，避免每次都遍历 values()
     private static final Map<String, DistributionStrategy> NAME_CACHE = new HashMap<>();
 
     static {
@@ -25,6 +29,7 @@ public enum DistributionStrategy implements StringRepresentable {
         }
     }
 
+    // 策略的序列化名称
     private final String name;
 
     DistributionStrategy(String name) {
@@ -36,19 +41,23 @@ public enum DistributionStrategy implements StringRepresentable {
         return name;
     }
 
+    // 本地化 key，用于在前端显示策略名称
     public String getDescriptionId() {
         return "strategy.staticlogistics." + name;
     }
 
+    // 获取可翻译的显示名称（Component 形式）
     public Component getDisplayName() {
         return Component.translatable(getDescriptionId());
     }
 
+    // 根据名字查策略，找不到就返回预设的默认值
     public static DistributionStrategy byName(String name, DistributionStrategy fallback) {
         DistributionStrategy strategy = NAME_CACHE.get(name);
         return strategy != null ? strategy : fallback;
     }
 
+    // 网络包传输用的编解码器，用 ordinal 序号传输省流量
     public static final StreamCodec<RegistryFriendlyByteBuf, DistributionStrategy> STREAM_CODEC =
         ByteBufCodecs.VAR_INT.<RegistryFriendlyByteBuf>cast().map(
             index -> DistributionStrategy.values()[index],

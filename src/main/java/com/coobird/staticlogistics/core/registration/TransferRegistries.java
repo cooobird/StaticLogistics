@@ -19,14 +19,20 @@ import java.util.Map;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
+/**
+ * 传输类型和处理器的注册中心。
+ * 内置物品、流体、能量三种传输类型，也支持外部模组注册自定义类型。
+ */
 public class TransferRegistries {
     private static final Map<ResourceLocation, TransferType> TYPES = new LinkedHashMap<>();
     private static final Map<ResourceLocation, ITransferHandler> HANDLERS = new LinkedHashMap<>();
 
+    // 三种内置传输类型
     public static TransferType ITEM;
     public static TransferType FLUID;
     public static TransferType ENERGY;
 
+    // 初始化内置的三种传输类型及其处理器
     public static void init() {
         ITEM = registerInternal("item", 0xFFFFFFFF, 0, Capabilities.ItemHandler.BLOCK,
             SLConfig::getItemStack, () -> new ItemStack(Items.IRON_INGOT));
@@ -51,24 +57,29 @@ public class TransferRegistries {
         return type;
     }
 
+    // 根据 ID 获取传输类型
     @Nullable
     public static TransferType get(ResourceLocation id) {
         return TYPES.get(id);
     }
 
+    // 为已有传输类型注册处理器
     public static void registerHandler(TransferType type, ITransferHandler handler) {
         HANDLERS.put(type.id(), handler);
     }
 
+    // 外部模组注册自定义传输类型 + 处理器
     public static void registerExternal(TransferType type, ITransferHandler handler) {
         TYPES.put(type.id(), type);
         HANDLERS.put(type.id(), handler);
     }
 
+    // 获取所有已注册的传输类型
     public static Collection<TransferType> getAllActive() {
         return TYPES.values();
     }
 
+    // 获取某个传输类型对应的处理器
     @Nullable
     public static ITransferHandler getHandler(TransferType type) {
         return HANDLERS.get(type.id());

@@ -81,6 +81,7 @@ sourceSets {
 }
 
 repositories {
+    mavenLocal()
     maven { url = 'https://maven.minecraftforge.net/' }
     maven {
         name = "Jared's maven"
@@ -114,7 +115,13 @@ repositories {
     }
     maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
     maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
-    mavenLocal()
+    maven {
+        name = "Refined Storage"
+        url = uri("https://maven.creeperhost.net")
+        content {
+            includeGroup("com.refinedmods.refinedstorage")
+        }
+    }
 }
 
 dependencies {
@@ -156,6 +163,11 @@ dependencies {
     runtimeOnly "curse.maven:mcjtylib-233105:7299488"
     runtimeOnly "curse.maven:rftools-base-326041:7263404"
     runtimeOnly "curse.maven:rftools-power-290209:7263410"
+
+    api("com.refinedmods.refinedstorage:refinedstorage-neoforge:${refinedstorageVersion}")
+    runtimeOnly "curse.maven:integrateddynamics-${integrateddynamics_version}"
+    runtimeOnly "curse.maven:commoncapabilites-${commoncapabilities_version}"
+    runtimeOnly "curse.maven:cyclopscore-${cyclopscore_version}"
 }
 
 tasks.named('processResources', ProcessResources) {

@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GroupSyncScheduler {
     private final Set<String> pendingSync = ConcurrentHashMap.newKeySet();
 
+    // 标记组为脏，等待下一次 tick 时同步
     public void markDirty(String groupId) {
         if (groupId != null && !groupId.isEmpty()) {
             pendingSync.add(groupId);

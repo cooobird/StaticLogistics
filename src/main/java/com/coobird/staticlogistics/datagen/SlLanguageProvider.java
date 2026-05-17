@@ -137,6 +137,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
         add("msg.staticlogistics.wrench.sneak_required", "Sneak required to use the wrench.", "使用扳手需要潜行。");
         add("msg.staticlogistics.wrench.not_container", "This block is not a container.", "该方块不是容器。");
+        add("msg.staticlogistics.wrench.no_block_entity", "This block has no data to save.", "该方块没有可保存的数据。");
         add("msg.staticlogistics.wrench.no_permission", "No permission to remove this machine.", "没有权限移除此机器。");
         add("msg.staticlogistics.wrench.removed", "Successfully removed %s.", "已拆卸 %s。");
         add("msg.staticlogistics.wrench.failed", "Failed to remove block.", "拆卸方块失败。");
@@ -221,6 +222,26 @@ public class SlLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.strategies.header", "--- Data Component Strategies (Page %s/%s) ---", "--- 数据组件匹配策略 (第%s/%s页) ---");
         add("commands.staticlogistics.strategies.line", "%s -> %s", "%s -> %s");
         add("commands.staticlogistics.strategies.next_page", "Use /sl strategies %s for next page.", "输入 /sl strategies %s 查看下一页。");
+
+
+        add("commands.staticlogistics.stats.header", "═════ StaticLogistics Stats ═════", "═════ StaticLogistics 传输统计 ═════");
+        add("commands.staticlogistics.stats.total", "Total Transfers: %s", "总传输次数：%s");
+        add("commands.staticlogistics.stats.amount", "Total Amount: %s", "总传输量：%s");
+        add("commands.staticlogistics.stats.failed", "Failed: %s", "失败次数：%s");
+        add("commands.staticlogistics.stats.log_size", "Log Entries: %s/200", "日志条目：%s/200");
+        add("commands.staticlogistics.stats.by_type", "── By Type ──", "── 按类型 ──");
+        add("commands.staticlogistics.stats.type_line", "  %s: %s times, %s total", "  %s：%s次，%s总量");
+        add("commands.staticlogistics.stats.sub_help", "Sub: /sl stats recent | top | reset", "子命令：/sl stats recent | top | reset");
+
+        add("commands.staticlogistics.stats.recent_header", "── Recent %s Transfers ──", "── 最近 %s 条传输 ──");
+        add("commands.staticlogistics.stats.recent_line", "[%s] %s(%s) → %s(%s) %sx%s %s", "[%s] %s(%s) → %s(%s) %sx%s %s");
+
+        add("commands.staticlogistics.stats.top_send", "── Top Senders ──", "── Top发送节点 ──");
+        add("commands.staticlogistics.stats.top_recv", "── Top Receivers ──", "── Top接收节点 ──");
+        add("commands.staticlogistics.stats.top_line", "  #%s [%s %s] sent %s / %s total", "  #%s [%s %s] 发送%s次 / %s总量");
+        add("commands.staticlogistics.stats.top_recv_line", "  #%s [%s %s] received %s / %s total", "  #%s [%s %s] 接收%s次 / %s总量");
+
+        add("commands.staticlogistics.stats.reset", "Stats reset.", "传输统计已重置");
 
         add("match_strategy.staticlogistics.exact", "EXACT", "精确");
         add("match_strategy.staticlogistics.contains", "CONTAINS", "包含");

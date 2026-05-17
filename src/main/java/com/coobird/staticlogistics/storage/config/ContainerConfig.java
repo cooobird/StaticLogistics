@@ -13,6 +13,10 @@ import org.slf4j.Logger;
 
 import java.util.function.Consumer;
 
+/**
+ * 容器升级配置 —— 管理速度/范围/堆叠三种升级的倍率计算和缓存。
+ * 也记录是否装了跨维度升级卡，以及该容器关联了哪些面。
+ */
 public class ContainerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -91,6 +95,9 @@ public class ContainerConfig {
         return upgrades;
     }
 
+    /**
+     * 重新计算所有升级卡的倍率并更新缓存，只在 cacheDirty 为 true 时执行
+     */
     private void updateCache() {
         if (!cacheDirty) return;
 
@@ -134,10 +141,13 @@ public class ContainerConfig {
         this.cachedDimEffective = dim;
         this.cacheDirty = false;
 
-        LOGGER.info("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
+        LOGGER.debug("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
             cachedSpeedMult, cachedRangeMult, cachedStackMult, cachedDimEffective);
     }
 
+    /**
+     * 带溢出检测的乘法：结果超过 INFINITY_MARKER 就返回 INFINITY_MARKER
+     */
     private long multiplyWithOverflowCheck(long a, long b) {
         if (a == 0 || b == 0) return 0;
         long result = a * b;
@@ -147,6 +157,9 @@ public class ContainerConfig {
         return result;
     }
 
+    /**
+     * 标记缓存失效并触发变更回调
+     */
     public void markDirty() {
         this.cacheDirty = true;
         if (onDirty != null) onDirty.accept(this);
@@ -156,6 +169,9 @@ public class ContainerConfig {
         this.onDirty = onDirty;
     }
 
+    /**
+     * 没有任何升级卡就是默认（空）配置
+     */
     public boolean isDefault() {
         for (int i = 0; i < upgrades.getSlots(); i++) {
             if (!upgrades.getStackInSlot(i).isEmpty()) return false;

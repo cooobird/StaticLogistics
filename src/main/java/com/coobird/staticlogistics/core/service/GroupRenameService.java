@@ -10,6 +10,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
+/**
+ * 组重命名服务——遍历所有维度中属于旧组 ID 的配置，批量改为新组 ID。
+ */
 public class GroupRenameService {
     private final PermissionService permissionService;
     private final GlobalLogisticsManager globalManager;
@@ -19,6 +22,7 @@ public class GroupRenameService {
         this.globalManager = globalManager;
     }
 
+    // 遍历所有维度的所有面配置，将匹配旧组 ID 的配置改为新组 ID
     public void renameGroup(Level level, Player player, String oldId, String newId) {
         if (oldId.equals(newId) || newId.isEmpty()) return;
 

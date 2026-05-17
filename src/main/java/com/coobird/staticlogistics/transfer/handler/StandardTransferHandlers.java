@@ -1,14 +1,12 @@
 package com.coobird.staticlogistics.transfer.handler;
 
 import com.coobird.staticlogistics.api.ITransferHandler;
-import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.config.manager.ConfigFilterManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.mojang.logging.LogUtils;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
@@ -36,15 +34,19 @@ public class StandardTransferHandlers {
             final TransferContext ctx = newContext;
             DistributionStrategy strategy = context.sourceConfig().linkConfig.getStrategy();
 
+            // 预先获取过滤器配置，避免每次物品检查都重复查询 LinkManager
+            LinkManager linkManager = ctx.linkManager();
+            FaceConfigComposite sourceCfg = linkManager.getFaceConfig(ctx.sourceNode().toKey());
+
             TransferUtils.TransferProtocol<IItemHandler, ItemStack> protocol;
             if (strategy == DistributionStrategy.SLOT_ROUND_ROBIN) {
-                protocol = new SlotRoundRobinProtocol(ctx);
+                protocol = new SlotRoundRobinProtocol(ctx, sourceCfg);
             } else {
                 protocol = new TransferUtils.SimpleProtocol<>(
                     (handler, max) -> {
                         for (int i = 0; i < handler.getSlots(); i++) {
                             ItemStack stack = handler.extractItem(i, max, true);
-                            if (!stack.isEmpty() && isItemAllowed(ctx.sourceNode(), stack, ctx.isPullMode(), ctx.level())) {
+                            if (!stack.isEmpty() && isItemAllowed(sourceCfg, stack, ctx.isPullMode())) {
                                 return stack;
                             }
                         }
@@ -62,7 +64,7 @@ public class StandardTransferHandlers {
                         int toExtract = act;
                         for (int i = 0; i < handler.getSlots() && toExtract > 0; i++) {
                             ItemStack simulated = handler.extractItem(i, toExtract, true);
-                            if (!simulated.isEmpty() && isItemAllowed(ctx.sourceNode(), simulated, ctx.isPullMode(), ctx.level())) {
+                            if (!simulated.isEmpty() && isItemAllowed(sourceCfg, simulated, ctx.isPullMode())) {
                                 handler.extractItem(i, toExtract, false);
                                 toExtract -= simulated.getCount();
                             }
@@ -92,10 +94,12 @@ public class StandardTransferHandlers {
 
     private static class SlotRoundRobinProtocol implements TransferUtils.TransferProtocol<IItemHandler, ItemStack> {
         private final TransferContext context;
+        private final FaceConfigComposite sourceCfg;
         private final int[] cursor;
 
-        SlotRoundRobinProtocol(TransferContext context) {
+        SlotRoundRobinProtocol(TransferContext context, FaceConfigComposite sourceCfg) {
             this.context = context;
+            this.sourceCfg = sourceCfg;
             this.cursor = context.getSlotCursor();
         }
 
@@ -107,7 +111,7 @@ public class StandardTransferHandlers {
             for (int i = 0; i < slots; i++) {
                 int slot = (start + i) % slots;
                 ItemStack stack = handler.extractItem(slot, max, true);
-                if (!stack.isEmpty() && isItemAllowed(context.sourceNode(), stack, context.isPullMode(), context.level())) {
+                if (!stack.isEmpty() && isItemAllowed(sourceCfg, stack, context.isPullMode())) {
                     return ExtractionResult.of(stack, slot);
                 }
             }
@@ -146,9 +150,7 @@ public class StandardTransferHandlers {
         }
     }
 
-    private static boolean isItemAllowed(LogisticsNode sourceNode, ItemStack stack, boolean isPullMode, ServerLevel level) {
-        LinkManager manager = LinkManager.get(level);
-        FaceConfigComposite config = manager.getFaceConfig(sourceNode.toKey());
+    private static boolean isItemAllowed(FaceConfigComposite config, ItemStack stack, boolean isPullMode) {
         if (config == null) return true;
         return isPullMode
             ? ConfigFilterManager.isItemInputAllowed(stack, config)

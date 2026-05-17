@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.item.handler;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
+import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
@@ -26,8 +27,12 @@ public class LinkModeHandler implements ModeHandler {
             Direction face = context.getClickedFace();
 
             if (settings.storedMode() != null && settings.storedMode() != settings.mode()) {
-                String newGroupId = GroupService.getNextGroupIdForPlayer(player);
-                LinkOperationHelper.executeBatchLink(stack, newGroupId, settings, pos, face, serverLevel, player);
+                // 组 ID 在 addNode 首次存节点时已分配；空为兜底（旧版配置器兼容）
+                String groupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+                if (groupId.isEmpty()) {
+                    groupId = GroupService.getNextGroupIdForPlayer(player);
+                }
+                LinkOperationHelper.executeBatchLink(stack, groupId, settings, pos, face, serverLevel, player);
                 return InteractionResult.SUCCESS;
             }
 

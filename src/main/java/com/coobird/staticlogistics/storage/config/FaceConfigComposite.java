@@ -20,6 +20,11 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+/**
+ * 面容复合配置 —— 组合 FaceConfig + LinkConfig + FilterConfig 三个子配置，
+ * 管理链接节点集合、全局输入/输出开关、目标缓存和序列化。
+ * 这是整个物流系统最核心的数据模型。
+ */
 public class FaceConfigComposite {
     public final FaceConfig faceConfig;
     public final LinkConfig linkConfig;
@@ -86,6 +91,9 @@ public class FaceConfigComposite {
         return globalInputEnabled;
     }
 
+    /**
+     * 开启全局输入，如果频道是禁用状态则自动设到最小频道
+     */
     public void setGlobalInputEnabled(boolean enabled) {
         if (this.globalInputEnabled != enabled) {
             this.globalInputEnabled = enabled;
@@ -100,6 +108,9 @@ public class FaceConfigComposite {
         return globalOutputEnabled;
     }
 
+    /**
+     * 开启全局输出，如果频道是禁用状态则自动设到最小频道
+     */
     public void setGlobalOutputEnabled(boolean enabled) {
         if (this.globalOutputEnabled != enabled) {
             this.globalOutputEnabled = enabled;
@@ -110,6 +121,9 @@ public class FaceConfigComposite {
         }
     }
 
+    /**
+     * 根据全局输入/输出开关判断节点角色（发送/接收/双向/无）
+     */
     public NodeRole determineRole() {
         boolean canSend = globalOutputEnabled;
         boolean canReceive = globalInputEnabled;
@@ -119,6 +133,9 @@ public class FaceConfigComposite {
         return NodeRole.NONE;
     }
 
+    /**
+     * 计算考虑了容器升级（堆叠倍率）后的实际传输限制
+     */
     public int getTransferLimit(TransferType type) {
         if (sharedContainerConfig == null) {
             return Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
@@ -138,6 +155,9 @@ public class FaceConfigComposite {
         this.version = version;
     }
 
+    /**
+     * 从缓存获取目标列表（版本匹配时命中），避免每次 tick 重建
+     */
     @Nullable
     public List<LogisticsNode> getCachedTargets(int currentVersion) {
         if (cachedTargets != null && targetsCacheVersion == currentVersion) {
@@ -146,6 +166,9 @@ public class FaceConfigComposite {
         return null;
     }
 
+    /**
+     * 设置目标缓存，同时写入全局缓存
+     */
     public void setCachedTargets(List<LogisticsNode> targets, int currentVersion) {
         if (targets != null && !targets.isEmpty()) {
             int cacheSize = Math.min(targets.size(), LogisticsConstants.Cache.getTargetCacheSize());
@@ -191,6 +214,9 @@ public class FaceConfigComposite {
         return globalTargetCache.size();
     }
 
+    /**
+     * 序列化为 NBT（含版本、全局开关、链接节点）
+     */
     public CompoundTag serializeNBT(HolderLookup.Provider p) {
         CompoundTag tag = ConfigSerializer.serializeNBT(this, p);
         tag.putInt("version", version);
@@ -207,6 +233,9 @@ public class FaceConfigComposite {
         return tag;
     }
 
+    /**
+     * 从 NBT 反序列化
+     */
     public void deserializeNBT(HolderLookup.Provider p, CompoundTag nbt) {
         ConfigSerializer.deserializeNBT(this, p, nbt);
         if (nbt.contains("version")) version = nbt.getInt("version");

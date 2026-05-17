@@ -11,6 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 链接级联删除服务——删除一个节点的同时清除所有指向它和它指向的链接。
+ */
 public class LinkRemovalService {
     private final MinecraftServer server;
     private final GlobalLogisticsManager globalManager;
@@ -20,6 +23,7 @@ public class LinkRemovalService {
         this.globalManager = globalManager;
     }
 
+    // 级联删除：先断开 outgoing 链接，再断开所有 incoming 链接，最后删除数据
     public void cascadeRemove(LogisticsNode selfNode, FaceConfigComposite selfConfig) {
         ServerLevel selfLevel = server.getLevel(selfNode.gPos().dimension());
         if (selfLevel == null) return;

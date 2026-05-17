@@ -58,8 +58,9 @@ public class LogisticsTicker {
         }
 
         LinkManager manager = LinkManager.get(level);
+        // 快速判空：没有活跃提供者直接返回，避免创建 LongOpenHashSet 快照
+        if (!manager.hasActiveProviders()) return;
         LongSet activeKeys = manager.getActiveProviderKeys();
-        if (activeKeys.isEmpty()) return;
 
         long[] keys = activeKeys.toLongArray();
         int totalBatches = (keys.length + LogisticsConstants.Performance.getTickerBatchSize() - 1) / LogisticsConstants.Performance.getTickerBatchSize();
@@ -110,6 +111,13 @@ public class LogisticsTicker {
 
     public static void wakeup(ServerLevel level, long sourceKey) {
         cooldownManager.removeCooldown(level.dimension(), sourceKey);
+    }
+
+    /**
+     * 方块/节点移除时批量清理冷却，防止已拆除节点的冷却记录残留
+     */
+    public static void cleanupCooldowns(ResourceKey<Level> dimension, long[] keys) {
+        cooldownManager.removeCooldowns(dimension, keys);
     }
 
     public static void wakeupGroup(MinecraftServer server, String groupId) {

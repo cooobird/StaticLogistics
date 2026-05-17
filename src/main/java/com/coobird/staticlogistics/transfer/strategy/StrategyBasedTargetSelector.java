@@ -53,7 +53,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
         DistributionStrategy strategy = sourceConfig.linkConfig.getStrategy();
         if (cached != null && strategy != DistributionStrategy.RANDOM) {
-            return new ArrayList<>(cached);
+            return cached; // getCachedTargets 已返回防御性拷贝，无需再次拷贝
         }
 
         BlockPos sourcePos = sourceNode.gPos().pos();

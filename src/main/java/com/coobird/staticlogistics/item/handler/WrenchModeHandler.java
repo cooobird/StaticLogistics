@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.item.handler;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -21,6 +20,11 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
+/**
+ * 扳手模式：潜行右键搬运方块。
+ * 通用对比法——两次 saveWithoutMetadata（中间清空容器）。
+ * 不同 = 有内容 → 完整保存（含燃烧进度）。相同 = 默认态 → 不保存（堆叠）。
+ */
 public class WrenchModeHandler implements ModeHandler {
 
     @Override
@@ -43,8 +47,8 @@ public class WrenchModeHandler implements ModeHandler {
                 return InteractionResult.SUCCESS;
             }
 
-            if (!TransferUtils.hasLogisticsCapability(level, pos, null)) {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.not_container"), true);
+            if (level.getBlockEntity(pos) == null) {
+                player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.no_block_entity"), true);
                 return InteractionResult.SUCCESS;
             }
 
@@ -56,27 +60,24 @@ public class WrenchModeHandler implements ModeHandler {
 
             if (be != null) {
                 HolderLookup.Provider registries = level.registryAccess();
-                CompoundTag beTag = be.saveWithoutMetadata(registries);
 
-                beTag.remove("x");
-                beTag.remove("y");
-                beTag.remove("z");
-                beTag.remove("id");
-                beTag.remove("NeoForgeData");
+                CompoundTag tag1 = be.saveWithoutMetadata(registries);
+                stripPosition(tag1);
 
-                if (be instanceof Container container) {
-                    container.clearContent();
+                if (be instanceof Container c) {
+                    c.clearContent();
                 }
 
-                if (!beTag.isEmpty()) {
-                    dropStack.set(SLDataComponents.STORED_BE_NBT.get(), CustomData.of(beTag));
+                CompoundTag tag2 = be.saveWithoutMetadata(registries);
+                stripPosition(tag2);
+
+                if (!tag1.equals(tag2)) {
+                    dropStack.set(SLDataComponents.STORED_BE_NBT.get(), CustomData.of(tag1));
                 }
             }
 
-            // 移除方块
             level.removeBlock(pos, false);
 
-            // 掉落物品
             if (!player.addItem(dropStack)) {
                 player.drop(dropStack, false);
             }
@@ -85,5 +86,13 @@ public class WrenchModeHandler implements ModeHandler {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.removed", state.getBlock().getName()), true);
         }
         return InteractionResult.SUCCESS;
+    }
+
+    private static void stripPosition(CompoundTag tag) {
+        tag.remove("x");
+        tag.remove("y");
+        tag.remove("z");
+        tag.remove("id");
+        tag.remove("NeoForgeData");
     }
 }

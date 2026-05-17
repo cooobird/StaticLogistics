@@ -48,8 +48,15 @@ public class LinkOperationHelper {
         if (nodes.contains(newNode)) {
             nodes.remove(newNode);
             player.displayClientMessage(Component.translatable("msg.staticlogistics.node_removed", nodes.size()).withStyle(ChatFormatting.RED), true);
-            if (nodes.isEmpty()) stack.remove(SLDataComponents.STORED_MODE.get());
+            if (nodes.isEmpty()) {
+                stack.remove(SLDataComponents.STORED_MODE.get());
+            }
         } else {
+            // 第一个节点存入时自动分配新组 ID，同会话内后续链接都用这个组
+            if (nodes.isEmpty()) {
+                String newId = GroupService.getNextGroupIdForPlayer(player);
+                stack.set(SLDataComponents.SELECTED_GROUP.get(), newId);
+            }
             nodes.add(newNode);
             stack.set(SLDataComponents.STORED_MODE.get(), mode.getId());
             player.displayClientMessage(Component.translatable("msg.staticlogistics.node_added", nodes.size()).withStyle(ChatFormatting.GREEN), true);
@@ -65,6 +72,7 @@ public class LinkOperationHelper {
         }
         stack.remove(SLDataComponents.STORED_NODES.get());
         stack.remove(SLDataComponents.STORED_MODE.get());
+        stack.remove(SLDataComponents.SELECTED_GROUP.get());
         player.displayClientMessage(Component.translatable("msg.staticlogistics.selection_cleared").withStyle(ChatFormatting.YELLOW), true);
         level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.5f, 0.5f);
     }
@@ -159,6 +167,9 @@ public class LinkOperationHelper {
 
         currentCfg.addLinkedNode(stored);
         storedCfg.addLinkedNode(current);
+
+        GlobalLogisticsManager.get(level.getServer()).addReverseLink(current.toKey(), stored.toKey());
+        GlobalLogisticsManager.get(level.getServer()).addReverseLink(stored.toKey(), current.toKey());
 
         if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
             currentCfg.setGlobalOutputEnabled(true);

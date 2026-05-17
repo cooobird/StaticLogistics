@@ -19,9 +19,12 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -134,7 +137,6 @@ public class SLEvents {
         if (!stack.has(SLDataComponents.STORED_BE_NBT.get())) {
             stack = player.getOffhandItem();
         }
-
         if (!stack.has(SLDataComponents.STORED_BE_NBT.get())) return;
 
         CustomData customData = stack.get(SLDataComponents.STORED_BE_NBT.get());
@@ -146,8 +148,16 @@ public class SLEvents {
 
         if (newBe != null) {
             newBe.loadWithComponents(savedBeTag, level.registryAccess());
+            if (newBe instanceof Container c) {
+                for (int i = 0; i < c.getContainerSize(); i++) {
+                    ItemStack item = c.getItem(i);
+                    if (!item.isEmpty()) {
+                        c.setItem(i, item.copy());
+                    }
+                }
+            }
             newBe.setChanged();
-            level.sendBlockUpdated(pos, event.getState(), event.getState(), 3);
+            level.sendBlockUpdated(pos, level.getBlockState(pos), level.getBlockState(pos), 3);
 
             if (!player.getAbilities().instabuild) {
                 stack.remove(SLDataComponents.STORED_BE_NBT.get());

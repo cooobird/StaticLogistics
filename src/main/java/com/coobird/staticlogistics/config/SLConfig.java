@@ -15,77 +15,126 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+// 模组主配置文件：定义所有可配置项，注册到 NeoForge 配置系统，并在加载/重载时把值缓存到 volatile 字段中
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public final class SLConfig {
 
+    // 构造出的 ModConfigSpec 对象，注册和事件匹配时用
     private static ModConfigSpec CONFIG_SPEC;
 
+    // ===== 通用设置 =====
+    // 物流节点的默认搜索半径（格）
     public static ModConfigSpec.IntValue DEFAULT_RADIUS;
+    // 物流节点的默认工作间隔（tick）
     public static ModConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
+    // 每 tick 最大传输量上限
     public static ModConfigSpec.IntValue MAX_TRANSFER_LIMIT;
 
+    // ===== 核心资源每 tick 传输量 =====
+    // 物品每 tick 传输堆叠数
     public static ModConfigSpec.IntValue DEFAULT_ITEM_STACK;
+    // 流体每 tick 传输量（mB）
     public static ModConfigSpec.IntValue DEFAULT_FLUID_STACK;
+    // 能量每 tick 传输量（FE）
     public static ModConfigSpec.IntValue DEFAULT_ENERGY_STACK;
 
+    // ===== 联动模组资源传输量 =====
+    // Mekanism 化学品每 tick 传输量
     public static ModConfigSpec.IntValue MEK_CHEMICAL_STACK;
+    // Mekanism 热量每 tick 传输量
     public static ModConfigSpec.IntValue MEK_HEAT_STACK;
+    // Ars Nouveau 魔源每 tick 传输量
     public static ModConfigSpec.IntValue ARS_SOURCE_STACK;
+    // PneumaticCraft 气压每 tick 传输量
     public static ModConfigSpec.IntValue PNEUMATIC_PRESSURE_STACK;
+    // PneumaticCraft 热量每 tick 传输量
     public static ModConfigSpec.IntValue PNEUMATIC_HEAT_STACK;
 
+    // ===== 升级倍率（按材料等级） =====
+    // 铁升级的倍率
     public static ModConfigSpec.IntValue IRON_MULTIPLIER;
+    // 金升级的倍率
     public static ModConfigSpec.IntValue GOLD_MULTIPLIER;
+    // 钻石升级的倍率
     public static ModConfigSpec.IntValue DIAMOND_MULTIPLIER;
+    // 下界合金升级的倍率
     public static ModConfigSpec.IntValue NETHERITE_MULTIPLIER;
+    // 下界之星升级的倍率
     public static ModConfigSpec.IntValue NETHER_STAR_MULTIPLIER;
 
+    // ===== 过滤器相关 =====
+    // 数据组件匹配策略覆盖列表（格式："命名空间:组件ID=策略"）
     public static ModConfigSpec.ConfigValue<List<? extends String>> COMPONENT_STRATEGY_OVERRIDES;
 
+    // ===== 杂项 =====
+    // 是否在物流节点被拆除时自动清理玩家物品中存储的节点引用
     public static ModConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
 
+    // ===== 缓存设置 =====
+    // 供应方缓存最大条目数
     public static ModConfigSpec.IntValue CACHE_PROVIDER_SIZE;
+    // 缓存哈希表的负载因子
     public static ModConfigSpec.DoubleValue CACHE_LOAD_FACTOR;
+    // 每个面缓存的目标最大数量
     public static ModConfigSpec.IntValue CACHE_TARGET_SIZE;
+    // 全局目标缓存最大条目数
     public static ModConfigSpec.IntValue CACHE_GLOBAL_TARGET_SIZE;
 
+    // ===== 网络设置 =====
+    // 批量同步数据包每包最大条目数
     public static ModConfigSpec.IntValue NETWORK_MAX_BULK_ENTRIES;
 
+    // ===== 性能设置 =====
+    // 每 tick 处理的节点数量
     public static ModConfigSpec.IntValue PERF_TICKER_BATCH_SIZE;
+    // 冷却清理间隔（tick）
     public static ModConfigSpec.IntValue PERF_CLEAN_INTERVAL;
+    // 传输失败后的默认冷却时间（tick）
     public static ModConfigSpec.IntValue PERF_DEFAULT_COOLDOWN;
+    // 触发批量清理的冷却条目阈值
     public static ModConfigSpec.IntValue PERF_BATCH_CLEAN_THRESHOLD;
+    // 每次批量清理的条目数
     public static ModConfigSpec.IntValue PERF_BATCH_CLEAN_SIZE;
+    // 传输上下文对象池大小
     public static ModConfigSpec.IntValue PERF_CONTEXT_POOL_SIZE;
 
+    // ----- 运行时缓存值（volatile 保证多线程可见性） -----
+    // 通用设置缓存值
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
     private static volatile int MaxTransferLimit = 10_000_000;
+    // 核心资源传输量缓存值
     private static volatile int DefaultItemStack = 8;
     private static volatile int DefaultFluidStack = 250;
     private static volatile int DefaultEnergyStack = 1024;
 
+    // 联动模组资源传输量缓存值
     private static volatile int MekChemicalStack = 250;
     private static volatile int MekHeatStack = 1000;
     private static volatile int ArsSourceStack = 100;
     private static volatile int PneumaticPressureStack = 1000;
     private static volatile int PneumaticHeatStack = 1000;
 
+    // 升级倍率缓存值
     private static volatile int ironMultCache = 2;
     private static volatile int goldMultCache = 3;
     private static volatile int diamondMultCache = 5;
     private static volatile int netheriteMultCache = 8;
     private static volatile int netherStarMultCache = 10_000;
 
+    // 杂项缓存值
     private static volatile boolean autoCleanStoredNodes = false;
 
+    // 缓存设置缓存值
     private static volatile int cacheProviderSize = 1000;
     private static volatile double cacheLoadFactor = 0.75;
     private static volatile int cacheTargetSize = 50;
     private static volatile int cacheGlobalTargetSize = 500;
 
+    // 网络设置缓存值
     private static volatile int networkMaxBulkEntries = 100;
 
+    // 性能设置缓存值
     private static volatile int perfTickerBatchSize = 50;
     private static volatile int perfCleanInterval = 200;
     private static volatile int perfDefaultCooldown = 10;
@@ -93,6 +142,7 @@ public final class SLConfig {
     private static volatile int perfBatchCleanSize = 200;
     private static volatile int perfContextPoolSize = 100;
 
+    // 注册配置文件：构建 ModConfigSpec 并注册到 NeoForge 配置系统（SERVER 类型）
     public static void register(ModContainer container) {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
@@ -249,6 +299,7 @@ public final class SLConfig {
         container.registerConfig(ModConfig.Type.SERVER, CONFIG_SPEC, "staticlogistics-server.toml");
     }
 
+    // 监听 NeoForge 配置事件，当匹配到本模组的配置 spec 时触发热加载
     @SubscribeEvent
     public static void onConfigEvent(ModConfigEvent event) {
         if (event.getConfig().getSpec() == CONFIG_SPEC) {
@@ -256,6 +307,7 @@ public final class SLConfig {
         }
     }
 
+    // 配置加载/重载回调：把 ModConfigSpec 的当前值同步到 volatile 缓存字段
     public static void onLoad() {
         if (CONFIG_SPEC.isLoaded()) {
             DefaultRadius = DEFAULT_RADIUS.get();
@@ -284,6 +336,7 @@ public final class SLConfig {
         }
     }
 
+    // 解析数据组件匹配策略覆盖列表，写入 ComponentMatchStrategyRegistry
     private static void loadComponentStrategyOverrides() {
         List<? extends String> list = COMPONENT_STRATEGY_OVERRIDES.get();
         if (list == null || list.isEmpty()) return;
@@ -298,6 +351,7 @@ public final class SLConfig {
         ComponentMatchStrategyRegistry.loadConfigOverrides(map);
     }
 
+    // 把缓存、网络、性能相关配置项同步到 volatile 缓存字段
     private static void loadPerformanceConfig() {
         cacheProviderSize = CACHE_PROVIDER_SIZE.get();
         cacheLoadFactor = CACHE_LOAD_FACTOR.get();

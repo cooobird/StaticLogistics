@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
+import com.coobird.staticlogistics.util.TransferLogManager;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -84,6 +85,13 @@ public class TransferUtils {
                 protocol.commitExtract(from, result, accepted);
                 remaining -= accepted;
                 movedAny = true;
+
+                // 传输日志记录
+                if (context != null) {
+                    LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
+                    LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
+                    TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), accepted, true);
+                }
             }
             if (remaining <= 0) break;
         }

@@ -94,6 +94,16 @@ public class CooldownManager {
     }
 
     /**
+     * 批量移除多个节点的冷却（方块拆除/批量移除时调用，防止冷却残留）
+     */
+    public void removeCooldowns(ResourceKey<Level> dimension, long[] keys) {
+        Long2LongMap map = dimensionCooldowns.get(dimension);
+        if (map == null) return;
+        for (long key : keys) map.remove(key);
+        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
+    }
+
+    /**
      * 清理整个维度的冷却数据（维度卸载时调用）
      */
     public void clearForDimension(ResourceKey<Level> dimension) {

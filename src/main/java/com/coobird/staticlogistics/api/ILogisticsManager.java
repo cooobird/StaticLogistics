@@ -7,8 +7,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 物流管理器的核心接口，负责节点的注册、注销、频道查询和链接同步
+ */
 public interface ILogisticsManager {
 
+    /**
+     * 把一个节点注册到指定频道里，同时指定它的角色（发/收/双向）
+     */
     void registerNode(String groupId, LogisticsNode node, NodeRole role);
 
     /**

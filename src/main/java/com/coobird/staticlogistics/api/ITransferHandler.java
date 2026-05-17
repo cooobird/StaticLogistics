@@ -4,6 +4,9 @@ import com.coobird.staticlogistics.transfer.context.TransferContext;
 
 import java.util.List;
 
+/**
+ * 传输处理器——具体执行一次物流传输（抽物品/流体/能量等）
+ */
 @FunctionalInterface
 public interface ITransferHandler {
     /**

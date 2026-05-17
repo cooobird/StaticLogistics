@@ -1,3 +1,39 @@
+# 更新日志（1.1.2-SNAPSHOT）
+
+## 性能优化
+- **反向链接索引**：新增 `reverseLinks` 索引（`Map<Long, LongSet>`），将"谁连向我"的查询从 O(n) 全维度遍历降为 O(1) 直接查表，大幅降低 ticker 开销。
+- **索引同步**：在所有链路增删路径（直接链接、批量链接、合并链接、面移除、方块移除、移除模式）同步维护反向链接索引，确保双向数据始终一致。
+- **缓存快照防并发**：`CacheManager.getActiveProviderKeys()` 返回快照副本（`LongOpenHashSet`）替代 live view，防止遍历时其他线程写入导致崩溃。
+- **传输上下文线程安全**：给对象池加 `ReentrantLock` + 硬上限 200，防止高并发下池膨胀。
+- **热路径日志降级**：`ContainerConfig.updateCache()` 的 `LOGGER.info` 降为 `LOGGER.debug`，减少生产环境磁盘 IO。
+- **过滤器配置缓存**：`StandardTransferHandlers` 中 `FaceConfig` 查找从每次传输改为每次 transfer 只查一次，避免重复哈希计算。
+- **消除双重列表拷贝**：`StrategyBasedTargetSelector` 移除 `new ArrayList<>(cachedTargets)` 的冗余拷贝，直接排序原列表。
+- **NBT 增量保存**：`LinkManagerStorage` 引入脏 key 追踪（`dirtyFaceKeys/dirtyContainerKeys`），仅序列化变化的条目，每 100 次增量为一个完整保存周期，大幅减少磁盘 IO。
+- **Ticker 快速判空**：`hasActiveProviders()` 判空再取快照，空跑时零内存分配。
+- **冷却批量清理**：方块拆除/批量移除时清理对应节点的冷却记录，防止已拆除节点的冷却残留。
+- **能力缓存 TTL**：`CapabilityCache` 每 500 次访问清理已被 NeoForge 作废的缓存条目，防止长期运行后缓存膨胀。
+- **NBT 过滤器缓存**：`NbtLogisticsFilter` 对同物品连续检查走 hash 缓存，避免反复 NBT 序列化比对。
+- **冗余方法清理**：移除 `CacheManager.getMaxCacheSize()`、`getUsageRatio()` 和 `LinkManager.flush()`，全项目无调用者。
+
+## 新功能
+- **传输日志面板**：新增 `TransferLogManager`，环形缓冲记录最近 200 条传输，累计总量/按类型/按节点统计。
+- **`/sl stats` 命令**：
+  - `stats` — 总览（总次数、总量、失败数、按类型分布）
+  - `stats recent` — 最近 20 条传输明细
+  - `stats top` — Top10 发送 + 接收节点排行
+  - `stats reset` — 重置统计
+
+## 兼容性改进
+- **扳手模式全面化**：移除 `hasLogisticsCapability()` 检查，改为检查方块是否有 `BlockEntity`，支持搬运 Integrated Dynamics、Create、AE2、Mekanism 等所有模组方块。
+- **扳手智能保存**：采用通用对比法——两次 `saveWithoutMetadata`（中间清空容器），两次不同则完整保存 NBT，相同则为默认态不保存。燃烧进度、燃料耐久随物品一同保留。不依赖任何字段名，全模组通用。
+- **放置状态同步**：放置已保存 NBT 的方块后，遍历容器槽位触发 `setItem`，自动更新方块状态（雕纹书架、唱片机等视觉生效）。
+
+## 修复
+- **组 ID 自增修复**：组 ID 改为会话绑定——库存第一个节点时自增，清空配置器时重置。同一会话内多次链接共用一组，不再每次链接都生成新组。
+
+## 代码可读性
+- 为 api、registry、core 包共 32 个核心文件添加直白中文注释，类/方法/字段各有说明。
+
 # 更新日志（1.1.1-SNAPSHOT）
 
 ## 代码质量与架构优化
@@ -64,7 +100,7 @@
 - **支持从 JEI 拖放物品/流体到过滤器格子**：实现 `GhostIngredientHandler`，为过滤器槽位生成整体目标区域，拖放时精准填入对应格子。
 - 优化过滤器标签选择下拉菜单，代码更简洁，交互更稳定。
 - 标签栏显示优化：优先显示物品标签，若无则显示该槽位的流体标签，避免空白。
-- 新增配置文件选项“自动清理存放点”，默认关闭。
+- 新增配置文件选项"自动清理存放点"，默认关闭。
 - 配置界面频道颜色按钮支持左键增加、右键减少，数值在 1~16 循环。
 
 ## 修复

@@ -10,6 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 传输上下文类，用于管理物流传输过程中的状态信息
@@ -21,6 +22,8 @@ public final class TransferContext {
 
     // 对象池，使用双端队列存储可复用的TransferContext实例
     private static final Deque<TransferContext> POOL = new ArrayDeque<>();
+    private static final ReentrantLock POOL_LOCK = new ReentrantLock();
+    private static final int HARD_MAX_POOL_SIZE = 200;
 
     private ServerLevel level;                // 服务器世界实例
     private LogisticsNode sourceNode;         // 源物流节点
@@ -50,7 +53,13 @@ public final class TransferContext {
      */
     public static TransferContext obtain(ServerLevel level, LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
                                          TransferType type, int limit, boolean isPullMode, long currentTick, LinkManager linkManager) {
-        TransferContext ctx = POOL.poll();
+        POOL_LOCK.lock();
+        TransferContext ctx;
+        try {
+            ctx = POOL.poll();
+        } finally {
+            POOL_LOCK.unlock();
+        }
         if (ctx == null) {
             ctx = new TransferContext();
         }
@@ -71,17 +80,22 @@ public final class TransferContext {
      * 如果对象池已满则丢弃该实例
      */
     public void recycle() {
-        if (POOL.size() < LogisticsConstants.Performance.getTransferContextPoolSize()) {
-            this.level = null;
-            this.sourceNode = null;
-            this.sourceConfig = null;
-            this.type = null;
-            this.limit = 0;
-            this.isPullMode = false;
-            this.currentTick = 0;
-            this.depth = 0;
-            this.linkManager = null;
-            POOL.offer(this);
+        this.level = null;
+        this.sourceNode = null;
+        this.sourceConfig = null;
+        this.type = null;
+        this.limit = 0;
+        this.isPullMode = false;
+        this.currentTick = 0;
+        this.depth = 0;
+        this.linkManager = null;
+        POOL_LOCK.lock();
+        try {
+            if (POOL.size() < Math.min(LogisticsConstants.Performance.getTransferContextPoolSize(), HARD_MAX_POOL_SIZE)) {
+                POOL.offer(this);
+            }
+        } finally {
+            POOL_LOCK.unlock();
         }
     }
 

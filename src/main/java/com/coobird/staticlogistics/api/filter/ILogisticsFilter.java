@@ -3,6 +3,9 @@ package com.coobird.staticlogistics.api.filter;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.fluids.FluidStack;
 
+/**
+ * 物流过滤器接口——用来筛选哪些物品/流体可以通过这个节点
+ */
 public interface ILogisticsFilter {
     /**
      * 执行过滤测试

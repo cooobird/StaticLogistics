@@ -5,6 +5,10 @@ import net.minecraft.core.BlockPos;
 import java.util.UUID;
 import java.util.function.Consumer;
 
+/**
+ * 面容基础配置 —— 记录分组ID、所有者信息、坐标。
+ * 这是 FaceConfigComposite 的子组件，被组合使用。
+ */
 public class FaceConfig {
     private String groupId = "";
     private UUID owner = null;
@@ -38,10 +42,16 @@ public class FaceConfig {
         markDirty();
     }
 
+    /**
+     * 是否已经分配到某个物流组
+     */
     public boolean hasGroup() {
         return !groupId.isEmpty();
     }
 
+    /**
+     * 设置面容所有者（含名称）
+     */
     public void setOwner(UUID owner, String ownerName) {
         this.owner = owner;
         this.ownerName = ownerName != null ? ownerName : "Unknown";
@@ -69,6 +79,9 @@ public class FaceConfig {
         this.onDirty = onDirty;
     }
 
+    /**
+     * 没有 groupId 就是默认（空）配置
+     */
     public boolean isDefault() {
         return groupId.isEmpty();
     }
