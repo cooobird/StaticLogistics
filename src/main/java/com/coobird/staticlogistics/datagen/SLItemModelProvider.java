@@ -16,9 +16,11 @@ import java.util.Set;
 
 public class SLItemModelProvider extends ItemModelProvider {
     protected final Set<Item> skip = new HashSet<>();
+    protected final Set<Item> handheld = new HashSet<>();
 
     public SLItemModelProvider(PackOutput output, ExistingFileHelper existingFileHelper) {
         super(output, Staticlogistics.MODID, existingFileHelper);
+        handheld.add(SLItems.LINK_CONFIGURATOR.get());
     }
 
     @Override
@@ -31,7 +33,8 @@ public class SLItemModelProvider extends ItemModelProvider {
             if (skip.contains(item.get())) continue;
 
             String path = item.getId().getPath();
-            withExistingParent(path, "item/generated")
+            String parent = handheld.contains(item.get()) ? "item/handheld" : "item/generated";
+            withExistingParent(path, parent)
                 .texture("layer0", ResourceLocation.fromNamespaceAndPath(modid, "item/" + path));
         }
     }

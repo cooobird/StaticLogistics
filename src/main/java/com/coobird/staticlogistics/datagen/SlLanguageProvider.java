@@ -135,17 +135,12 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.no_dimension_upgrade", "No dimension upgrade installed!", "未安装跨维度升级！");
         add("msg.staticlogistics.unknown_owner", "Unknown", "未知");
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
-        add("msg.staticlogistics.wrench.sneak_required", "Sneak required to use the wrench.", "使用扳手需要潜行。");
-        add("msg.staticlogistics.wrench.not_container", "This block is not a container.", "该方块不是容器。");
-        add("msg.staticlogistics.wrench.no_block_entity", "This block has no data to save.", "该方块没有可保存的数据。");
         add("msg.staticlogistics.wrench.no_permission", "No permission to remove this machine.", "没有权限移除此机器。");
-        add("msg.staticlogistics.wrench.removed", "Successfully removed %s.", "已拆卸 %s。");
-        add("msg.staticlogistics.wrench.failed", "Failed to remove block.", "拆卸方块失败。");
 
         add("mode.staticlogistics.wrench", "Wrench", "扳手");
         add("mode.staticlogistics.wrench.desc",
-            "Shift + Right-click a machine to remove it.",
-            "潜行+右键快速拆卸机器");
+            "Shift + Right-click a machine to remove it. With Mekanism Additions installed, plastic blocks can also be dismantled.",
+            "潜行+右键拆卸机器。安装 Mekanism：拓展 后可拆卸塑料方块。");
         add("mode.staticlogistics.link_as_input", "Select point as Insert", "选取点为存入端");
         add("mode.staticlogistics.link_as_input.desc",
             "Shift + Right-click a node to store it as an insert target. Resources will be inserted into this node.",
@@ -174,6 +169,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.stored_nodes", "Stored Nodes: %s (As %s)", "待连接节点：%s（设为 %s）");
         add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
         add("tooltip.staticlogistics.auto_clean_disabled", "Auto clean disabled", "自动清理已禁用");
+        add("tooltip.staticlogistics.auto_clean_enabled", "Auto clean enabled", "自动清理已启用");
         add("tooltip.staticlogistics.auto_clean_enable_hint", "Enable via config/staticlogistics-server.toml", "可在配置文件中启用");
         add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级：%s");
         add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "效果倍率：%s");
@@ -258,6 +254,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.default_tick_interval", "Base Tick Interval (Ticks)", "基础传输间隔(Tick)");
         add("config.staticlogistics.max_transfer_limit", "Max Transfer per Tick", "单次传输最大数量");
         add("config.staticlogistics.auto_clean_stored_nodes", "Auto Clean Stored Nodes", "自动清理存储节点");
+        add("config.staticlogistics.auto_clean_stored_nodes.tooltip", "If true, when a logistics node is removed, the stored node references in players' Link Configurator items will be automatically cleaned up.", "如果为 true，当物流节点被移除时，玩家的连接配置器物品中的存储节点引用将自动清理。");
 
         add("staticlogistics.configuration.cache", "Cache Settings", "缓存设置");
         add("config.staticlogistics.cache.provider_size", "Provider Cache Size", "提供者缓存大小");

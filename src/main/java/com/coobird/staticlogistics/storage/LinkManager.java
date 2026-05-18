@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import com.coobird.staticlogistics.server.ticker.LogisticsTicker;
 import com.coobird.staticlogistics.storage.cache.CacheManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
@@ -429,6 +430,7 @@ public class LinkManager {
      */
     public void onBlockRemoved(BlockPos pos) {
         onBlocksRemovedBulk(List.of(pos));
+        LinkOperationHelper.cleanStoredNodesForPos(level, pos);
     }
 
     /**

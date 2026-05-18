@@ -19,6 +19,7 @@ public class ContainerConfigModeHandler implements ModeHandler {
         var level = context.getLevel();
         var player = context.getPlayer();
         if (player == null) return InteractionResult.PASS;
+        if (!player.isSecondaryUseActive()) return InteractionResult.PASS;
         if (!level.isClientSide && player instanceof ServerPlayer serverPlayer && level instanceof ServerLevel serverLevel) {
             BlockPos pos = context.getClickedPos();
             if (!TransferUtils.hasLogisticsCapability(level, pos, null)) {

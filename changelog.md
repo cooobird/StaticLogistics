@@ -1,5 +1,18 @@
 # 更新日志（1.1.2-SNAPSHOT）
 
+## 扳手模式重写
+- **对标行业标准**：扳手回归简洁——旋转 + 拆卸 Mek 塑料方块，其他模组（Mekanism/Create 等）的拆卸由对应模组自身的 `CONFIGURATORS`/`CHAIN_RIDEABLE` 标签机制处理，不再越俎代庖。
+- **ItemAbility 门控**：`canPerformAction` 只在 WRENCH 模式放行 `wrench_` 类能力，非扳手模式拒绝，防止其他模组在非预期模式下接管拆卸。
+- **RightClickBlock 双层事件防护**：
+  - `EventPriority.HIGHEST`：检测 Create 的 `IWrenchable` 方块，非扳手模式抢先取消事件，阻止 `WrenchEventHandler`（`EventPriority.HIGH`）的直接拆卸调用。
+  - `EventPriority.LOW`：非 IWrenchable 方块设置 `UseBlock=FALSE`，阻止 Mekanism `CommonPlayerTracker` 的 `UseBlock=TRUE` 覆盖，恢复正常物品→方块处理流程。
+- **Create IWrenchable 直接引用**：`instanceof IWrenchable` 替代反射，通过 `ModCompat.isCreateLoaded()` 守卫，干净精确。
+- **移除冗余逻辑**：删除 Container NBT 默认状态对比、刷怪笼开关、扳手命名空间黑名单、多方块检测（反射/属性/标签）——这些不再属于扳手的职责。
+- **移除 SLItemAbilities**：删除自定义 ItemAbility 常量类、ToolMode 能力集合、ModeHandler.abilities() 声明，能力归属由各模组自身的标签体系定义。
+- **存点清理修复**：节点被拆除时永远清理存点引用，不再受 `auto_clean_stored_nodes` 配置开关限制——方块都没了，存点必然失效，这是基础正确性。
+- **翻译键和配置清理**：删除 `sneak_required`、`not_container`、`no_block_entity`、`spawner_disabled`、`removed`、`failed`、`allow_spawner_wrench`、`wrench_blacklist` 等不再使用的翻译键和配置缓存字段。
+- **扳手模式工具提示**：更新 `mode.staticlogistics.wrench.desc`，注明安装 Mekanism Additions 后可拆卸塑料方块。
+
 ## 性能优化
 - **反向链接索引**：新增 `reverseLinks` 索引（`Map<Long, LongSet>`），将"谁连向我"的查询从 O(n) 全维度遍历降为 O(1) 直接查表，大幅降低 ticker 开销。
 - **索引同步**：在所有链路增删路径（直接链接、批量链接、合并链接、面移除、方块移除、移除模式）同步维护反向链接索引，确保双向数据始终一致。
@@ -24,9 +37,15 @@
   - `stats reset` — 重置统计
 
 ## 兼容性改进
-- **扳手模式全面化**：移除 `hasLogisticsCapability()` 检查，改为检查方块是否有 `BlockEntity`，支持搬运 Integrated Dynamics、Create、AE2、Mekanism 等所有模组方块。
-- **扳手智能保存**：采用通用对比法——两次 `saveWithoutMetadata`（中间清空容器），两次不同则完整保存 NBT，相同则为默认态不保存。燃烧进度、燃料耐久随物品一同保留。不依赖任何字段名，全模组通用。
 - **放置状态同步**：放置已保存 NBT 的方块后，遍历容器槽位触发 `setItem`，自动更新方块状态（雕纹书架、唱片机等视觉生效）。
+- **配置器防冒用**：新增 `STORED_NODES_OWNER` 数据组件，存节点时记 UUID，链接时校验，防止别人捡到配置器用你的存点创建链接。
+
+## 数值平衡
+- **升级倍率重调**：铁×2 → 金×4 → 钻石×8 → 下界合金×16 → 下界之星×64。每级翻倍，消除原来下界之星 10,000 倍的崩坏跳跃。
+- **配方重做**：每级加主题材料（红石块/末影眼/木桶/潜影壳），标签过滤器不再使用命名牌（不可再生→纸+书），NBT 过滤器加红石。详见数据生成器。
+
+## 权限审计
+- 全部 C2S 网络包均已校验 `canPlayerModify` 或 `canPlayerAccess`，容器配置为物理升级槽位不设限。权限完整。
 
 ## 修复
 - **组 ID 自增修复**：组 ID 改为会话绑定——库存第一个节点时自增，清空配置器时重置。同一会话内多次链接共用一组，不再每次链接都生成新组。

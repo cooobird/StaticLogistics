@@ -135,6 +135,7 @@ dependencies {
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
     compileOnly "mekanism:Mekanism:${mekanism_version}"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}"
+    compileOnly "mekanism:Mekanism:${mekanism_version}:additions"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:additions"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:generators"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:tools"
@@ -146,10 +147,13 @@ dependencies {
     compileOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
     runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
 
-    runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
+    compileOnly ("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
+    runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
+    compileOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
     runtimeOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
+    compileOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
     runtimeOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
-    runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+    compileOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
     runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
 
     compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
@@ -168,6 +172,12 @@ dependencies {
     runtimeOnly "curse.maven:integrateddynamics-${integrateddynamics_version}"
     runtimeOnly "curse.maven:commoncapabilites-${commoncapabilities_version}"
     runtimeOnly "curse.maven:cyclopscore-${cyclopscore_version}"
+
+    runtimeOnly "curse.maven:sophisticated-core-618298:8084486"
+    runtimeOnly "curse.maven:sophisticated-backpacks-422301:8084526"
+    runtimeOnly "curse.maven:sophisticated-storage-619320:8084562"
+
+    runtimeOnly "curse.maven:immersive-engineering-231951:6733669"
 }
 
 tasks.named('processResources', ProcessResources) {

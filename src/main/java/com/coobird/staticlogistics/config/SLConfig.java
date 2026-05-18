@@ -70,7 +70,6 @@ public final class SLConfig {
     // 是否在物流节点被拆除时自动清理玩家物品中存储的节点引用
     public static ModConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
 
-    // ===== 缓存设置 =====
     // 供应方缓存最大条目数
     public static ModConfigSpec.IntValue CACHE_PROVIDER_SIZE;
     // 缓存哈希表的负载因子
@@ -117,10 +116,10 @@ public final class SLConfig {
 
     // 升级倍率缓存值
     private static volatile int ironMultCache = 2;
-    private static volatile int goldMultCache = 3;
-    private static volatile int diamondMultCache = 5;
-    private static volatile int netheriteMultCache = 8;
-    private static volatile int netherStarMultCache = 10_000;
+    private static volatile int goldMultCache = 4;
+    private static volatile int diamondMultCache = 8;
+    private static volatile int netheriteMultCache = 16;
+    private static volatile int netherStarMultCache = 64;
 
     // 杂项缓存值
     private static volatile boolean autoCleanStoredNodes = false;
@@ -252,16 +251,16 @@ public final class SLConfig {
             .defineInRange("iron_multiplier", ironMultCache, 1, 1024);
         GOLD_MULTIPLIER = builder
             .translation("config.staticlogistics.gold_multiplier")
-            .defineInRange("gold_multiplier", goldMultCache, 1, 2048);
+            .defineInRange("gold_multiplier", goldMultCache, 1, 256);
         DIAMOND_MULTIPLIER = builder
             .translation("config.staticlogistics.diamond_multiplier")
-            .defineInRange("diamond_multiplier", diamondMultCache, 1, 4096);
+            .defineInRange("diamond_multiplier", diamondMultCache, 1, 512);
         NETHERITE_MULTIPLIER = builder
             .translation("config.staticlogistics.netherite_multiplier")
-            .defineInRange("netherite_multiplier", netheriteMultCache, 1, 8192);
+            .defineInRange("netherite_multiplier", netheriteMultCache, 1, 1024);
         NETHER_STAR_MULTIPLIER = builder
             .translation("config.staticlogistics.nether_star_multiplier")
-            .defineInRange("nether_star_multiplier", netherStarMultCache, 1, 100_000);
+            .defineInRange("nether_star_multiplier", netherStarMultCache, 1, 10_000);
         builder.pop();
 
         builder.push("filter");
@@ -330,7 +329,6 @@ public final class SLConfig {
             netherStarMultCache = NETHER_STAR_MULTIPLIER.get();
 
             autoCleanStoredNodes = AUTO_CLEAN_STORED_NODES.get();
-
             loadComponentStrategyOverrides();
             loadPerformanceConfig();
         }

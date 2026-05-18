@@ -3,9 +3,10 @@ package com.coobird.staticlogistics.server.event;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.network.c2s.*;
 import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
@@ -13,6 +14,7 @@ import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
+import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -25,9 +27,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -102,9 +107,6 @@ public class SLEvents {
     }
 
     private static void cleanToolStoredNodes(ItemStack stack, Set<LogisticsNode> removedNodes, ServerPlayer player) {
-        if (!SLConfig.shouldAutoCleanStoredNodes()) {
-            return;
-        }
         if (!(stack.getItem() instanceof LinkConfiguratorItem)) return;
         List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (storedNodes == null || storedNodes.isEmpty()) return;
@@ -123,6 +125,29 @@ public class SLEvents {
                 storedNodes.size() - updatedNodes.size()).withStyle(ChatFormatting.GRAY),
             true
         );
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRightClickBlockPre(PlayerInteractEvent.RightClickBlock event) {
+        ItemStack stack = event.getItemStack();
+        if (stack.getItem() instanceof LinkConfiguratorItem item
+            && item.getSettings(stack).mode() != ToolMode.WRENCH
+            && ModCompat.isCreateLoaded()
+            && event.getLevel().getBlockState(event.getPos()).getBlock() instanceof IWrenchable) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOW)
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        ItemStack stack = event.getItemStack();
+        if (stack.getItem() instanceof LinkConfiguratorItem item) {
+            if (item.getSettings(stack).mode() != ToolMode.WRENCH) {
+                event.setUseBlock(TriState.FALSE);
+                event.setUseItem(TriState.DEFAULT);
+                if (event.isCanceled()) event.setCanceled(false);
+            }
+        }
     }
 
     @SubscribeEvent

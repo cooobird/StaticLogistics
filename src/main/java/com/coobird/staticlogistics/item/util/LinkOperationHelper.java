@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.item.util;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
@@ -41,8 +42,25 @@ public class LinkOperationHelper {
         }
     }
 
+    /**
+     * 方块被移除时，清理所有在线玩家配置器中的无效存点
+     */
+    public static void cleanStoredNodesForPos(ServerLevel level, BlockPos pos) {
+        if (!SLConfig.shouldAutoCleanStoredNodes()) return;
+        for (ServerPlayer sp : level.getServer().getPlayerList().getPlayers()) {
+            ItemStack stack = sp.getMainHandItem();
+            if (stack.getItem() instanceof LinkConfiguratorItem) validateStoredNodes(stack, level);
+            stack = sp.getOffhandItem();
+            if (stack.getItem() instanceof LinkConfiguratorItem) validateStoredNodes(stack, level);
+        }
+    }
+
     public static void addNode(ItemStack stack, GlobalPos gpos, Direction face, ToolMode mode, Player player, Level level) {
         if (!mode.isLinkMode()) return;
+        if (level instanceof ServerLevel sl && !TransferUtils.hasLogisticsCapability(sl, gpos.pos(), face)) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.no_capability").withStyle(ChatFormatting.RED), true);
+            return;
+        }
         List<LogisticsNode> nodes = new ArrayList<>(stack.getOrDefault(SLDataComponents.STORED_NODES.get(), List.of()));
         LogisticsNode newNode = new LogisticsNode(gpos, face);
         if (nodes.contains(newNode)) {
@@ -52,10 +70,11 @@ public class LinkOperationHelper {
                 stack.remove(SLDataComponents.STORED_MODE.get());
             }
         } else {
-            // 第一个节点存入时自动分配新组 ID，同会话内后续链接都用这个组
+            // 第一个节点存入时自动分配新组 ID，并记录存点人 UUID（防冒用）
             if (nodes.isEmpty()) {
                 String newId = GroupService.getNextGroupIdForPlayer(player);
                 stack.set(SLDataComponents.SELECTED_GROUP.get(), newId);
+                stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
             }
             nodes.add(newNode);
             stack.set(SLDataComponents.STORED_MODE.get(), mode.getId());
@@ -73,12 +92,20 @@ public class LinkOperationHelper {
         stack.remove(SLDataComponents.STORED_NODES.get());
         stack.remove(SLDataComponents.STORED_MODE.get());
         stack.remove(SLDataComponents.SELECTED_GROUP.get());
+        stack.remove(SLDataComponents.STORED_NODES_OWNER.get());
         player.displayClientMessage(Component.translatable("msg.staticlogistics.selection_cleared").withStyle(ChatFormatting.YELLOW), true);
         level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.5f, 0.5f);
     }
 
     public static void executeBatchLink(ItemStack stack, String groupId, LinkConfiguratorItem.ToolSettings settings,
                                         BlockPos pos, Direction face, ServerLevel level, Player player) {
+        // 校验存点人是否当前玩家，防止别人捡到工具冒用
+        String storedOwner = stack.get(SLDataComponents.STORED_NODES_OWNER.get());
+        if (storedOwner != null && !storedOwner.isEmpty() && !storedOwner.equals(player.getStringUUID())) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission").withStyle(ChatFormatting.RED), true);
+            return;
+        }
+
         if (settings.typeMask() == 0) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.no_types_selected")
                 .withStyle(ChatFormatting.RED), true);

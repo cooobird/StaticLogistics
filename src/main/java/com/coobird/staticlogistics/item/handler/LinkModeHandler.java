@@ -27,7 +27,6 @@ public class LinkModeHandler implements ModeHandler {
             Direction face = context.getClickedFace();
 
             if (settings.storedMode() != null && settings.storedMode() != settings.mode()) {
-                // 组 ID 在 addNode 首次存节点时已分配；空为兜底（旧版配置器兼容）
                 String groupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
                 if (groupId.isEmpty()) {
                     groupId = GroupService.getNextGroupIdForPlayer(player);

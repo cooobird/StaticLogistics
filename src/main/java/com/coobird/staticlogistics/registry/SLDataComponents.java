@@ -47,4 +47,8 @@ public class SLDataComponents {
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<CustomData>> STORED_BE_NBT = DATA_COMPONENT_TYPES.register("stored_block_entity",
         () -> DataComponentType.<CustomData>builder().persistent(CustomData.CODEC).build());
+
+    // 存节点的玩家 UUID，链接时校验防止别人捡到工具冒用
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> STORED_NODES_OWNER =
+        register("stored_nodes_owner", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
 }

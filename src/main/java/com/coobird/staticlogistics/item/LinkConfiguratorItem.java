@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.item.handler.*;
@@ -28,6 +27,7 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.common.ItemAbility;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumMap;
@@ -88,10 +88,6 @@ public class LinkConfiguratorItem extends Item {
             tooltip.add(Component.translatable("tooltip.staticlogistics.stored_nodes", nodesInfo, settings.storedMode().getDisplayName()));
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint").withStyle(ChatFormatting.GRAY));
-        if (!SLConfig.shouldAutoCleanStoredNodes()) {
-            tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_disabled").withStyle(ChatFormatting.RED));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_enable_hint").withStyle(ChatFormatting.DARK_GRAY));
-        }
         super.appendHoverText(stack, context, tooltip, flag);
     }
 
@@ -113,6 +109,17 @@ public class LinkConfiguratorItem extends Item {
         if (mc != null && mc.player != null) mc.setScreen(new LinkConfiguratorScreen(stack));
     }
 
+    /**
+     * 扳手模式门控：只在 WRENCH 模式放行 wrench_ 类 ItemAbility。
+     */
+    @Override
+    public boolean canPerformAction(ItemStack stack, ItemAbility action) {
+        if (getSettings(stack).mode() != ToolMode.WRENCH && action.name().startsWith("wrench_")) {
+            return false;
+        }
+        return super.canPerformAction(stack, action);
+    }
+
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Level level = context.getLevel();
@@ -124,12 +131,13 @@ public class LinkConfiguratorItem extends Item {
         }
         ToolSettings settings = getSettings(stack);
 
-        if (!player.isSecondaryUseActive()) return InteractionResult.PASS;
-
         ModeHandler handler = HANDLERS.get(settings.mode());
-        if (handler != null) {
-            return handler.handle(this, context, stack, settings);
+        if (handler == null) return InteractionResult.PASS;
+
+        InteractionResult result = handler.handle(this, context, stack, settings);
+        if (result == InteractionResult.PASS && settings.mode() != ToolMode.WRENCH) {
+            return InteractionResult.SUCCESS;
         }
-        return InteractionResult.PASS;
+        return result;
     }
 }

@@ -11,11 +11,19 @@ public class ModCompat {
         return ModList.get().isLoaded("mekanism");
     }
 
+    public static boolean isMekanismAdditionsLoaded() {
+        return ModList.get().isLoaded("mekanismadditions");
+    }
+
     public static boolean isArsNouveauLoaded() {
         return ModList.get().isLoaded("ars_nouveau");
     }
 
     public static boolean isPneumaticcraftLoaded() {
         return ModList.get().isLoaded("pneumaticcraft");
+    }
+
+    public static boolean isCreateLoaded() {
+        return ModList.get().isLoaded("create");
     }
 }
