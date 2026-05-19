@@ -14,6 +14,7 @@ import com.coobird.staticlogistics.storage.service.ContainerConfigService;
 import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
+import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.logging.LogUtils;
@@ -308,14 +309,14 @@ public class LinkManager {
     }
 
     /**
-     * 删除面容配置（含级联和网络同步）
+     * 删除面配置（含级联和网络同步）
      */
     public void removeFaceConfig(long key) {
         removeFaceConfigInternal(key, true, true);
     }
 
     /**
-     * 仅删除面容数据，不做级联也不发包
+     * 仅删除面数据（不含级联和网络同步）
      */
     public void removeFaceConfigDataOnly(long key) {
         removeFaceConfigInternal(key, false, false);
@@ -330,6 +331,7 @@ public class LinkManager {
             FaceConfigComposite config = faceConfigService.get(key);
             if (config == null) return;
             LogisticsNode selfNode = createNodeFromKey(key);
+            List<LogisticsNode> affectedNodes = doCascade ? List.copyOf(config.getLinkedNodes()) : List.of();
             if (doCascade) {
                 changeHandler.cascadeRemove(selfNode, config);
             }
@@ -340,6 +342,12 @@ public class LinkManager {
             LogisticsTicker.wakeup(level, key);
             if (sendPacket) {
                 networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
+            }
+            for (LogisticsNode node : affectedNodes) {
+                ServerLevel nodeLevel = level.getServer().getLevel(node.gPos().dimension());
+                if (nodeLevel != null) {
+                    LinkManager.get(nodeLevel).syncNodeToDimension(node);
+                }
             }
             markFaceDirty(key);
         } finally {
@@ -431,6 +439,63 @@ public class LinkManager {
     public void onBlockRemoved(BlockPos pos) {
         onBlocksRemovedBulk(List.of(pos));
         LinkOperationHelper.cleanStoredNodesForPos(level, pos);
+    }
+
+    /**
+     * 返回该方块所有面上存在的面容配置数量（用于 debug）
+     */
+    public int getFaceConfigCountAt(BlockPos pos) {
+        int count = 0;
+        for (Direction face : Direction.values()) {
+            if (faceConfigService.get(posToKey(pos, face)) != null) count++;
+        }
+        return count;
+    }
+
+    // 事件驱动的全量孤儿扫描：只在有方块被拆后才激活，扫完自动停止
+    private boolean orphanScanNeeded;
+    private Long[] orphanKeys;
+    private int orphanScanCursor;
+    private static final int ORPHAN_SCAN_BATCH = 16;
+
+    public void markOrphanScanNeeded() {
+        orphanScanNeeded = true;
+    }
+
+    public boolean isOrphanScanNeeded() {
+        return orphanScanNeeded;
+    }
+
+    public void validateOrphanedConfigs() {
+        Set<Long> keys = getAllConfigKeys();
+        int size = keys.size();
+        if (size == 0) {
+            orphanScanNeeded = false;
+            orphanKeys = null;
+            orphanScanCursor = 0;
+            return;
+        }
+        if (orphanKeys == null || orphanKeys.length != size) {
+            orphanKeys = keys.toArray(new Long[0]);
+            orphanScanCursor = 0;
+        }
+        if (orphanScanCursor >= orphanKeys.length) {
+            // 扫完一圈，停止
+            orphanScanNeeded = false;
+            orphanScanCursor = 0;
+            return;
+        }
+        int end = Math.min(orphanScanCursor + ORPHAN_SCAN_BATCH, orphanKeys.length);
+        for (int i = orphanScanCursor; i < end; i++) {
+            long key = orphanKeys[i];
+            FaceConfigComposite cfg = faceConfigService.get(key);
+            if (cfg == null) continue;
+            LogisticsNode node = createNodeFromKey(key);
+            if (!TransferUtils.hasLogisticsCapability(level, node.gPos().pos(), node.face())) {
+                removeFaceConfigInternal(key, true, true);
+            }
+        }
+        orphanScanCursor = end >= orphanKeys.length ? 0 : end;
     }
 
     /**

@@ -102,6 +102,11 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     }
 
     @Override
+    protected boolean shouldShowTypePanel() {
+        return true;
+    }
+
+    @Override
     protected String getSearchHintKey() {
         return "gui.staticlogistics.search_types";
     }

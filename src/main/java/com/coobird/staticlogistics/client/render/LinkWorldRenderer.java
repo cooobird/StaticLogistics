@@ -106,14 +106,15 @@ public class LinkWorldRenderer {
 
                 BlockPos p = node.gPos().pos();
                 double distSq = p.distToCenterSqr(cam.x, cam.y, cam.z);
-                if (distSq > MAX_RENDER_DIST_SQ) continue;
-                if (!frustum.isVisible(new AABB(p))) continue;
+                boolean srcVisible = distSq <= MAX_RENDER_DIST_SQ && frustum.isVisible(new AABB(p));
 
-                if (renderedFrames.add(p)) {
+                if (srcVisible && renderedFrames.add(p)) {
                     drawFrame(builder, mat, p, 1.0f, 1.0f, 1.0f, 0.25f);
                 }
-                renderNodeFaceStatus(node, cfg, builder, mat, pulse);
-                renderFlows(node, cfg, currentDim, builder, mat, cam, distSq);
+                if (srcVisible) {
+                    renderNodeFaceStatus(node, cfg, builder, mat, pulse);
+                }
+                renderFlows(node, cfg, currentDim, builder, mat, cam, distSq, srcVisible, frustum);
             }
         }
 
@@ -128,13 +129,16 @@ public class LinkWorldRenderer {
     }
 
     private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg, ResourceKey<Level> currentDim,
-                                    VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq) {
+                                    VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq,
+                                    boolean srcVisible, Frustum frustum) {
         int particleFactor = getParticleFactor(srcDistSq);
         if (!srcCfg.isGlobalOutputEnabled()) return;
 
         int srcOut = srcCfg.linkConfig.getOutputChannel();
         if (srcOut < 1 || srcOut > 16) return;
         int colorIndex = (srcOut - 1) % RenderConstants.DYE_COLORS.length;
+
+        BlockPos srcPos = src.gPos().pos();
 
         for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
             if (!dst.gPos().dimension().equals(currentDim)) continue;
@@ -145,8 +149,14 @@ public class LinkWorldRenderer {
             int dstIn = dstCfg.linkConfig.getInputChannel();
             if (dstIn < 1 || dstIn > 16 || dstIn != srcOut) continue;
 
-            Vec3 sPos = Vec3.atCenterOf(src.gPos().pos()).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
-            Vec3 dPos = Vec3.atCenterOf(dst.gPos().pos()).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
+            // 只有两端都不在视野内才隐藏线
+            BlockPos dstPos = dst.gPos().pos();
+            double dstDistSq = dstPos.distToCenterSqr(camPos.x, camPos.y, camPos.z);
+            boolean dstVisible = dstDistSq <= MAX_RENDER_DIST_SQ && frustum.isVisible(new AABB(dstPos));
+            if (!srcVisible && !dstVisible) continue;
+
+            Vec3 sPos = Vec3.atCenterOf(srcPos).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
+            Vec3 dPos = Vec3.atCenterOf(dstPos).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
             float offset = (srcCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled()) ? 0.15f : 0.0f;
             drawDirectedLineOptimized(builder, mat, sPos, dPos, src.face(), colorIndex, offset, particleFactor);
         }

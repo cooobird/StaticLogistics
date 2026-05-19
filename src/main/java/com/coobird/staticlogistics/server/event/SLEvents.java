@@ -14,9 +14,9 @@ import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -26,6 +26,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -129,23 +130,30 @@ public class SLEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickBlockPre(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getEntity() == null || !event.getEntity().isSecondaryUseActive()) return;
+        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
         ItemStack stack = event.getItemStack();
-        if (stack.getItem() instanceof LinkConfiguratorItem item
-            && item.getSettings(stack).mode() != ToolMode.WRENCH
-            && ModCompat.isCreateLoaded()
-            && event.getLevel().getBlockState(event.getPos()).getBlock() instanceof IWrenchable) {
-            event.setCanceled(true);
+        if (stack.getItem() instanceof LinkConfiguratorItem item) {
+            if (item.getSettings(stack).mode() == ToolMode.WRENCH) {
+                LinkManager.get(serverLevel).onBlockRemoved(event.getPos());
+            }
         }
     }
 
+    /**
+     * 处理mek的扳手模式
+     */
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         ItemStack stack = event.getItemStack();
         if (stack.getItem() instanceof LinkConfiguratorItem item) {
             if (item.getSettings(stack).mode() != ToolMode.WRENCH) {
-                event.setUseBlock(TriState.FALSE);
-                event.setUseItem(TriState.DEFAULT);
-                if (event.isCanceled()) event.setCanceled(false);
+                Block block = event.getLevel().getBlockState(event.getPos()).getBlock();
+                if (ModCompat.isMekanismLoaded() && BuiltInRegistries.BLOCK.getKey(block).getNamespace().equals("mekanism")) {
+                    if (event.isCanceled()) event.setCanceled(false);
+                    event.setUseBlock(TriState.FALSE);
+                    event.setUseItem(TriState.DEFAULT);
+                }
             }
         }
     }

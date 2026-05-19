@@ -137,6 +137,21 @@ public enum ClientLinkData {
         return new ArrayList<>(groups);
     }
 
+    /**
+     * 获取属于指定列表中任一 UUID 的组 ID（含队员）
+     */
+    public List<String> getGroupsByOwners(Collection<UUID> owners) {
+        Set<String> groups = new HashSet<>();
+        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
+            for (FaceConfigComposite cfg : dimMap.values()) {
+                if (owners.contains(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
+                    groups.add(cfg.faceConfig.getGroupId());
+                }
+            }
+        }
+        return new ArrayList<>(groups);
+    }
+
     public List<LogisticsNode> getNodesInGroup(String groupId) {
         List<LogisticsNode> nodes = new ArrayList<>();
         dimensionConfigs.forEach((dim, dimMap) -> {

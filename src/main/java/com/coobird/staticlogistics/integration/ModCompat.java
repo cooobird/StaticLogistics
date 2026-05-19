@@ -26,4 +26,5 @@ public class ModCompat {
     public static boolean isCreateLoaded() {
         return ModList.get().isLoaded("create");
     }
+
 }

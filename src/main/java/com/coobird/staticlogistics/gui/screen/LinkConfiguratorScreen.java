@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -193,10 +194,11 @@ public class LinkConfiguratorScreen extends Screen {
 
         if (mx >= leftPos - 25 && mx < leftPos) {
             for (int i = 0; i < MODE_COUNT; i++) {
-                int ry = topPos + 12 + (i * 20);
+                int ry = topPos + 7 + (i * 19);
                 boolean isSel = (i == modeIdx);
                 int bh = isSel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
-                if (my >= (isSel ? ry - 1 : ry) && my < (isSel ? ry - 1 : ry) + bh) {
+                int by = isSel ? ry - 1 : ry;
+                if (my >= by && my < by + bh) {
                     this.modeIdx = i;
                     syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true);
                     return true;
@@ -288,7 +290,7 @@ public class LinkConfiguratorScreen extends Screen {
     private void renderModeTooltips(GuiGraphics g, int mx, int my) {
         if (mx >= leftPos - 25 && mx < leftPos) {
             for (int i = 0; i < MODE_COUNT; i++) {
-                int ry = topPos + 12 + (i * 20);
+                int ry = topPos + 7 + (i * 19);
                 boolean isSel = (i == modeIdx);
                 int bh = isSel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
                 int actualY = isSel ? ry - 1 : ry;
@@ -442,7 +444,22 @@ public class LinkConfiguratorScreen extends Screen {
         String filter = this.confirmedSearchTerm.toLowerCase();
         UUID playerUUID = p.getUUID();
 
-        this.cachedGroupList = ClientLinkData.INSTANCE.getGroupsByOwner(playerUUID).stream()
+        // 收集所有需查询的 UUID（自己 + FTB 队友）
+        List<UUID> ownerUUIDs = new ArrayList<>();
+        ownerUUIDs.add(playerUUID);
+        if (ModCompat.isFtbTeamsLoaded()) {
+            try {
+                var api = dev.ftb.mods.ftbteams.api.FTBTeamsAPI.api();
+                if (api != null) {
+                    api.getManager().getTeamForPlayerID(playerUUID).ifPresent(team -> {
+                        ownerUUIDs.addAll(team.getMembers());
+                    });
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        this.cachedGroupList = ClientLinkData.INSTANCE.getGroupsByOwners(ownerUUIDs).stream()
             .filter(gid -> gid != null && !gid.isEmpty())
             .filter(s -> s.toLowerCase().contains(filter))
             .sorted((a, b) -> {

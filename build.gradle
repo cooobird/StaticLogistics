@@ -159,7 +159,8 @@ dependencies {
     compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
     runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
 
-    runtimeOnly "curse.maven:ars-additions-974408:7646325"
+    compileOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}:api"
+    runtimeOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}"
 
     runtimeOnly "curse.maven:titanium-287342:7951516"
     runtimeOnly "curse.maven:functional-storage-556861:7061714"
@@ -172,10 +173,6 @@ dependencies {
     runtimeOnly "curse.maven:integrateddynamics-${integrateddynamics_version}"
     runtimeOnly "curse.maven:commoncapabilites-${commoncapabilities_version}"
     runtimeOnly "curse.maven:cyclopscore-${cyclopscore_version}"
-
-    runtimeOnly "curse.maven:sophisticated-core-618298:8084486"
-    runtimeOnly "curse.maven:sophisticated-backpacks-422301:8084526"
-    runtimeOnly "curse.maven:sophisticated-storage-619320:8084562"
 
     runtimeOnly "curse.maven:immersive-engineering-231951:6733669"
 }

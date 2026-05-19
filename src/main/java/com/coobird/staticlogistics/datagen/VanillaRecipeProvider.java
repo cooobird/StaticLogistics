@@ -189,6 +189,11 @@ public class VanillaRecipeProvider extends RecipeProvider {
             Ingredient.of(Items.DIAMOND),
             Ingredient.of(Items.BOOK),
             Ingredient.of(Items.REDSTONE));
+
+        // ── 过滤器 NBT 清理（已配置 → 干净）──
+        shapelessSingle(output, SLItems.BASIC_FILTER_UPGRADE.toStack());
+        shapelessSingle(output, SLItems.TAG_FILTER_UPGRADE.toStack());
+        shapelessSingle(output, SLItems.NBT_FILTER_UPGRADE.toStack());
     }
 
     protected void shaped(RecipeOutput output, String prefix, String suffix, ShapedRecipePattern pattern, ItemStack result) {
@@ -200,5 +205,14 @@ public class VanillaRecipeProvider extends RecipeProvider {
         ResourceLocation id = Staticlogistics.asResource("shapeless/" + prefix + getItemName(result.getItem()) + suffix);
         NonNullList<Ingredient> zingredients = NonNullList.of(Ingredient.EMPTY, ingredients);
         output.accept(id, new ShapelessRecipe("", CraftingBookCategory.MISC, result, zingredients), null);
+    }
+
+    /**
+     * 单物品无序配方：用于清理已配置的过滤器
+     */
+    protected void shapelessSingle(RecipeOutput output, ItemStack result) {
+        ResourceLocation id = Staticlogistics.asResource("shapeless/clear_" + getItemName(result.getItem()));
+        NonNullList<Ingredient> list = NonNullList.of(Ingredient.EMPTY, Ingredient.of(result.getItem()));
+        output.accept(id, new ShapelessRecipe("", CraftingBookCategory.MISC, result, list), null);
     }
 }

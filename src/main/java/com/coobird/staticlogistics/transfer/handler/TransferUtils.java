@@ -101,7 +101,10 @@ public class TransferUtils {
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
         return TransferRegistries.getAllActive().stream().anyMatch(type -> {
             var cap = type.capability();
-            return cap != null && level.getCapability(cap, pos, face) != null;
+            if (cap == null) return false;
+            // 先查指定面，查不到再查方块级（气动工艺等无面限制的能力）
+            return level.getCapability(cap, pos, face) != null
+                || level.getCapability(cap, pos, null) != null;
         });
     }
 

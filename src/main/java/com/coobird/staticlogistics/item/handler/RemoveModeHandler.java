@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.item.handler;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
@@ -17,6 +18,8 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 
+import java.util.List;
+
 public class RemoveModeHandler implements ModeHandler {
     @Override
     public InteractionResult handle(LinkConfiguratorItem item, UseOnContext context, ItemStack stack, LinkConfiguratorItem.ToolSettings settings) {
@@ -32,11 +35,23 @@ public class RemoveModeHandler implements ModeHandler {
             var config = mgr.getFaceConfig(key);
             if (config != null) {
                 if (GroupService.canModify(config.faceConfig.getOwner(), player)) {
+                    List<LogisticsNode> affectedNodes = List.copyOf(config.getLinkedNodes());
                     mgr.removeFaceConfig(key);
                     level.playSound(null, pos, SoundEvents.ITEM_BREAK, SoundSource.BLOCKS, 0.5f, 0.8f);
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.links_removed_smart"), true);
                     S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, new FaceConfigComposite());
                     GroupService.syncToTeamMembers((ServerPlayer) player, syncPacket);
+                    for (LogisticsNode node : affectedNodes) {
+                        ServerLevel nodeLevel = serverLevel.getServer().getLevel(node.gPos().dimension());
+                        if (nodeLevel != null) {
+                            LinkManager nodeMgr = LinkManager.get(nodeLevel);
+                            FaceConfigComposite nodeConfig = nodeMgr.getFaceConfig(node.toKey());
+                            if (nodeConfig != null) {
+                                S2CSyncFaceConfigPacket nodePacket = new S2CSyncFaceConfigPacket(node.gPos(), node.face(), nodeConfig);
+                                GroupService.syncToTeamMembers((ServerPlayer) player, nodePacket);
+                            }
+                        }
+                    }
                 } else {
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission_to_remove"), true);
                 }

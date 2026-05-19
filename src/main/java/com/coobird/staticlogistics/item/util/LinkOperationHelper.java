@@ -112,6 +112,12 @@ public class LinkOperationHelper {
             return;
         }
 
+        // 检查当前点击节点是否有物流能力
+        if (!TransferUtils.hasLogisticsCapability(level, pos, face)) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.no_capability").withStyle(ChatFormatting.RED), true);
+            return;
+        }
+
         List<LogisticsNode> targets = settings.storedNodes().stream()
             .filter(n -> !n.isAt(level.dimension(), pos, face)).toList();
         if (targets.isEmpty()) {
@@ -135,13 +141,29 @@ public class LinkOperationHelper {
                 senderContainer = srcMgr.getOrCreateContainerConfig(srcNode.gPos().pos());
             }
 
+            // 范围升级以发送端容器为准。存入模式下发送端是当前点击的节点（currentNode）
+            ContainerConfig rangeContainer;
+            BlockPos senderPos;
+            BlockPos receiverPos;
+            if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
+                // 存入模式：stored=输入端，current=输出端 → 范围来自输出端
+                rangeContainer = LinkManager.get(level).getOrCreateContainerConfig(currentNode.gPos().pos());
+                senderPos = currentNode.gPos().pos();
+                receiverPos = srcNode.gPos().pos();
+            } else {
+                // 提取模式：stored=输出端，current=输入端 → 范围来自输出端
+                rangeContainer = senderContainer;
+                senderPos = srcNode.gPos().pos();
+                receiverPos = currentNode.gPos().pos();
+            }
+
             boolean sameDim = srcNode.isInSameDimension(currentNode);
-            if (!sameDim && !LogisticsCalculator.isDimensionEffective(senderContainer)) {
+            if (!sameDim && !LogisticsCalculator.isDimensionEffective(rangeContainer)) {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_dimension_upgrade").withStyle(ChatFormatting.RED), true);
                 continue;
             }
-            if (sameDim && !LogisticsCalculator.isWithinRange(srcNode.gPos().pos(), currentNode.gPos().pos(), senderContainer)) {
-                double maxDist = LogisticsCalculator.getMaxTransferDistance(senderContainer);
+            if (sameDim && !LogisticsCalculator.isWithinRange(senderPos, receiverPos, rangeContainer)) {
+                double maxDist = LogisticsCalculator.getMaxTransferDistance(rangeContainer);
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.out_of_range", (int) maxDist).withStyle(ChatFormatting.RED), true);
                 continue;
             }
