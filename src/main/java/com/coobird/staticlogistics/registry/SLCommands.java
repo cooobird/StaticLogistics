@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.registry;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
@@ -103,8 +104,8 @@ public class SLCommands {
      * 刷新单个节点的本地缓存并同步到客户端
      */
     private static void refreshNode(LinkManager manager, long key, FaceConfigComposite config) {
-        BlockPos pos = BlockPos.of(key >> 3);
-        Direction face = Direction.from3DDataValue((int) (key & 0x7));
+        BlockPos pos = LogisticsNode.keyToPos(key);
+        Direction face = LogisticsNode.keyToFace(key);
         manager.refreshLocalCache(key, pos, face, config);
         manager.syncConfigToClients(pos);
         manager.markDirtyBatch(() -> {

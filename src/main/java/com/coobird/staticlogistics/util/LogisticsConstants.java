@@ -44,13 +44,6 @@ public final class LogisticsConstants {
         public static int getTargetCacheSize() {
             return SLConfig.getCacheTargetSize();
         }
-
-        /**
-         * 全局目标缓存最大条目数
-         */
-        public static int getGlobalTargetCacheSize() {
-            return SLConfig.getCacheGlobalTargetSize();
-        }
     }
 
     /**

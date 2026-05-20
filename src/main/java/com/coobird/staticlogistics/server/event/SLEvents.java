@@ -141,7 +141,7 @@ public class SLEvents {
     }
 
     /**
-     * 处理mek的扳手模式
+     * 处理mek及其扩展的扳手模式
      */
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
@@ -149,7 +149,10 @@ public class SLEvents {
         if (stack.getItem() instanceof LinkConfiguratorItem item) {
             if (item.getSettings(stack).mode() != ToolMode.WRENCH) {
                 Block block = event.getLevel().getBlockState(event.getPos()).getBlock();
-                if (ModCompat.isMekanismLoaded() && BuiltInRegistries.BLOCK.getKey(block).getNamespace().equals("mekanism")) {
+                if (ModCompat.isMekanismLoaded() &&
+                    BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mekanism") ||
+                    BuiltInRegistries.BLOCK.getKey(block).getNamespace().endsWith("mekanism") ||
+                    BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mek")) {
                     if (event.isCanceled()) event.setCanceled(false);
                     event.setUseBlock(TriState.FALSE);
                     event.setUseItem(TriState.DEFAULT);

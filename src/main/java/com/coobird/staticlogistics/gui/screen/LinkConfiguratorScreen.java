@@ -185,7 +185,7 @@ public class LinkConfiguratorScreen extends Screen {
             return true;
         }
 
-        if (handleTransferTypeClick(mx, my)) return true;
+        if (handleTransferTypeClick(mx, my, b)) return true;
 
         if (!editingGroupId.isEmpty() && !renameBox.isMouseOver(mx, my)) {
             confirmRename();
@@ -254,37 +254,33 @@ public class LinkConfiguratorScreen extends Screen {
         return super.mouseClicked(mx, my, b);
     }
 
-    private boolean handleTransferTypeClick(double mx, double my) {
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+    private boolean handleTransferTypeClick(double mx, double my, int button) {
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
+        if (types.isEmpty()) return false;
+
+        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         int perRow = 8;
         int btnWidth = 19;
         int spacing = 4;
         int rowSpacing = 22;
         int startX = leftPos + 15;
         int startY = topPos + 18;
+        int rows = (types.size() + perRow - 1) / perRow;
+        if (mx < startX || mx >= startX + perRow * (btnWidth + spacing)
+            || my < startY || my >= startY + rows * rowSpacing) return false;
 
-        for (int i = 0; i < types.size(); i++) {
-            TransferType type = types.get(i);
-            boolean isSelected = (mask & type.getFlag()) != 0;
-            int row = i / perRow;
-            int col = i % perRow;
-            int baseX = startX + col * (btnWidth + spacing);
-            int baseY = startY + row * rowSpacing;
-            int bw = isSelected ? SLGuiTextures.Button.Big.SELECTED_WIDTH : SLGuiTextures.Button.Big.DISABLED_WIDTH;
-            int bh = isSelected ? SLGuiTextures.Button.Big.SELECTED_HEIGHT : SLGuiTextures.Button.Big.DISABLED_HEIGHT;
-            int drawX = isSelected ? baseX - 1 : baseX;
-            int drawY = isSelected ? baseY - 1 : baseY;
+        // 找到点击的是哪个类型按钮
+        int col = (int) ((mx - startX) / (btnWidth + spacing));
+        int row = (int) ((my - startY) / rowSpacing);
+        int idx = row * perRow + col;
+        if (idx < 0 || idx >= types.size()) return false;
 
-            if (mx >= drawX && mx < drawX + bw && my >= drawY && my < drawY + bh) {
-                int bit = type.getFlag();
-                int newMask = mask ^ bit;
-                stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), newMask);
-                syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true);
-                return true;
-            }
-        }
-        return false;
+        // 多选 toggle：点谁切谁
+        TransferType clicked = types.get(idx);
+        int newMask = mask ^ clicked.getFlag();
+        stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), newMask);
+        syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true);
+        return true;
     }
 
     private void renderModeTooltips(GuiGraphics g, int mx, int my) {

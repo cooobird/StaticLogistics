@@ -35,22 +35,75 @@ public class RemoveModeHandler implements ModeHandler {
             var config = mgr.getFaceConfig(key);
             if (config != null) {
                 if (GroupService.canModify(config.faceConfig.getOwner(), player)) {
-                    List<LogisticsNode> affectedNodes = List.copyOf(config.getLinkedNodes());
-                    mgr.removeFaceConfig(key);
-                    level.playSound(null, pos, SoundEvents.ITEM_BREAK, SoundSource.BLOCKS, 0.5f, 0.8f);
-                    player.displayClientMessage(Component.translatable("msg.staticlogistics.links_removed_smart"), true);
-                    S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, new FaceConfigComposite());
-                    GroupService.syncToTeamMembers((ServerPlayer) player, syncPacket);
-                    for (LogisticsNode node : affectedNodes) {
-                        ServerLevel nodeLevel = serverLevel.getServer().getLevel(node.gPos().dimension());
-                        if (nodeLevel != null) {
-                            LinkManager nodeMgr = LinkManager.get(nodeLevel);
-                            FaceConfigComposite nodeConfig = nodeMgr.getFaceConfig(node.toKey());
-                            if (nodeConfig != null) {
-                                S2CSyncFaceConfigPacket nodePacket = new S2CSyncFaceConfigPacket(node.gPos(), node.face(), nodeConfig);
-                                GroupService.syncToTeamMembers((ServerPlayer) player, nodePacket);
+                    String selectedGroup = settings.group();
+
+                    // 必须选取组才能移除
+                    if (selectedGroup.isEmpty()) {
+                        player.displayClientMessage(Component.translatable("msg.staticlogistics.select_group_to_remove"), true);
+                        return InteractionResult.SUCCESS;
+                    }
+
+                    // 移除选中的组
+                    config.faceConfig.removeGroupId(selectedGroup);
+                    config.markDirty();
+                    mgr.markFaceDirty(key);
+
+                    // 级联清理：遍历链接面，如果该面在这个组里没有其他链接节点了，也移除该组
+                    for (LogisticsNode linked : config.getLinkedNodes()) {
+                        ServerLevel linkedLevel = serverLevel.getServer().getLevel(linked.gPos().dimension());
+                        if (linkedLevel == null) continue;
+                        LinkManager linkedMgr = LinkManager.get(linkedLevel);
+                        FaceConfigComposite linkedCfg = linkedMgr.getFaceConfig(linked.toKey());
+                        if (linkedCfg == null || !linkedCfg.faceConfig.getGroupIds().contains(selectedGroup)) continue;
+                        // 检查该链接面是否还有其他链接节点也属于 selectedGroup
+                        boolean hasOtherInGroup = false;
+                        for (LogisticsNode other : linkedCfg.getLinkedNodes()) {
+                            if (other.equals(mgr.createNodeFromKey(key))) continue; // 跳过被移除的面自己
+                            ServerLevel otherLevel = serverLevel.getServer().getLevel(other.gPos().dimension());
+                            if (otherLevel != null) {
+                                FaceConfigComposite otherCfg = LinkManager.get(otherLevel).getFaceConfig(other.toKey());
+                                if (otherCfg != null && otherCfg.faceConfig.getGroupIds().contains(selectedGroup)) {
+                                    hasOtherInGroup = true;
+                                    break;
+                                }
                             }
                         }
+                        if (!hasOtherInGroup) {
+                            linkedCfg.faceConfig.removeGroupId(selectedGroup);
+                            linkedCfg.markDirty();
+                            linkedMgr.markFaceDirty(linked.toKey());
+                            linkedMgr.syncNodeToDimension(linked);
+                            S2CSyncFaceConfigPacket linkedPacket = new S2CSyncFaceConfigPacket(linked.gPos(), linked.face(), linkedCfg);
+                            GroupService.syncToTeamMembers((ServerPlayer) player, linkedPacket);
+                        }
+                    }
+
+                    // 面没有组了 → 完整移除面配置
+                    if (!config.faceConfig.hasGroup()) {
+                        List<LogisticsNode> affectedNodes = List.copyOf(config.getLinkedNodes());
+                        mgr.removeFaceConfig(key);
+                        level.playSound(null, pos, SoundEvents.ITEM_BREAK, SoundSource.BLOCKS, 0.5f, 0.8f);
+                        player.displayClientMessage(Component.translatable("msg.staticlogistics.links_removed_smart"), true);
+                        S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, new FaceConfigComposite());
+                        GroupService.syncToTeamMembers((ServerPlayer) player, syncPacket);
+                        for (LogisticsNode node : affectedNodes) {
+                            ServerLevel nodeLevel = serverLevel.getServer().getLevel(node.gPos().dimension());
+                            if (nodeLevel != null) {
+                                LinkManager nodeMgr = LinkManager.get(nodeLevel);
+                                FaceConfigComposite nodeConfig = nodeMgr.getFaceConfig(node.toKey());
+                                if (nodeConfig != null) {
+                                    S2CSyncFaceConfigPacket nodePacket = new S2CSyncFaceConfigPacket(node.gPos(), node.face(), nodeConfig);
+                                    GroupService.syncToTeamMembers((ServerPlayer) player, nodePacket);
+                                }
+                            }
+                        }
+                    } else {
+                        mgr.refreshLocalCache(key, pos, face, config);
+                        mgr.syncNodeToDimension(mgr.createNodeFromKey(key));
+                        level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 0.8f);
+                        player.displayClientMessage(Component.translatable("msg.staticlogistics.group_removed_from_face", selectedGroup), true);
+                        S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, config);
+                        GroupService.syncToTeamMembers((ServerPlayer) player, syncPacket);
                     }
                 } else {
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission_to_remove"), true);

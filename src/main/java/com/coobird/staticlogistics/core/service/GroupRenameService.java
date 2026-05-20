@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.core.service;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -36,12 +37,13 @@ public class GroupRenameService {
             for (long key : mgr.getAllConfigKeys()) {
                 FaceConfigComposite config = mgr.getFaceConfig(key);
 
-                if (config != null && config.faceConfig.getGroupId().equals(oldId) && permissionService.canModify(config.faceConfig.getOwner(), player)) {
+                if (config != null && config.faceConfig.getGroupIds().contains(oldId) && permissionService.canModify(config.faceConfig.getOwner(), player)) {
 
-                    config.faceConfig.setGroupId(newId);
+                    config.faceConfig.removeGroupId(oldId);
+                    config.faceConfig.addGroupId(newId);
 
-                    BlockPos pos = BlockPos.of(key >> 3);
-                    Direction face = Direction.from3DDataValue((int) (key & 0x7));
+                    BlockPos pos = LogisticsNode.keyToPos(key);
+                    Direction face = LogisticsNode.keyToFace(key);
                     mgr.refreshLocalCache(key, pos, face, config);
                     mgr.syncConfigToClients(pos);
 

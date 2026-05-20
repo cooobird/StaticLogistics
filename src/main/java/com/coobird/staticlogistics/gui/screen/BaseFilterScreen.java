@@ -130,6 +130,20 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
         boolean tagMode = menu.getActiveUpgradeType() == UpgradeType.TAG_FILTER;
         int rows = tagMode ? 4 : GRID_ROWS;
         int cols = tagMode ? 1 : GRID_COLS;
+        ItemStack carried = menu.getCarried();
+        Component carriedItemName = null;
+        Component carriedFluidName = null;
+        if (!carried.isEmpty()) {
+            carriedItemName = carried.getHoverName();
+            IFluidHandler fluidCap = carried.getCapability(Capabilities.FluidHandler.ITEM);
+            if (fluidCap != null) {
+                FluidStack stored = fluidCap.drain(Integer.MAX_VALUE, IFluidHandler.FluidAction.SIMULATE);
+                if (!stored.isEmpty()) {
+                    carriedFluidName = stored.getHoverName();
+                }
+            }
+        }
+        boolean hasCarriedFluid = carriedFluidName != null;
 
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < cols; col++) {
@@ -155,9 +169,26 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                     if (!stack.isEmpty()) {
                         TooltipFlag flag = minecraft.options.advancedItemTooltips ? TooltipFlag.ADVANCED : TooltipFlag.NORMAL;
                         List<Component> tooltip = stack.getTooltipLines(Item.TooltipContext.of(minecraft.level), minecraft.player, flag);
+                        if (hasCarriedFluid) {
+                            tooltip.add(Component.empty());
+                            tooltip.add(Component.translatable("gui.staticlogistics.filter.left_click_item", carriedItemName).withStyle(ChatFormatting.GRAY));
+                            tooltip.add(Component.translatable("gui.staticlogistics.filter.right_click_fluid", carriedFluidName).withStyle(ChatFormatting.GRAY));
+                        }
                         g.renderComponentTooltip(this.font, tooltip, mx, my);
                         return;
                     }
+
+                    List<Component> emptyTooltip = new ArrayList<>();
+                    if (!carried.isEmpty()) {
+                        emptyTooltip.add(Component.translatable("gui.staticlogistics.filter.left_click_item", carriedItemName).withStyle(ChatFormatting.GRAY));
+                    }
+                    if (hasCarriedFluid) {
+                        emptyTooltip.add(Component.translatable("gui.staticlogistics.filter.right_click_fluid", carriedFluidName).withStyle(ChatFormatting.GRAY));
+                    }
+                    if (!emptyTooltip.isEmpty()) {
+                        g.renderComponentTooltip(this.font, emptyTooltip, mx, my);
+                    }
+                    return;
                 }
             }
         }
@@ -838,6 +869,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
     protected abstract Fluid getFluidItem(int index);
 
     protected abstract void setFluidSlot(int index, Fluid fluid);
+
 
     protected abstract void removeFluidSlot(int index);
 

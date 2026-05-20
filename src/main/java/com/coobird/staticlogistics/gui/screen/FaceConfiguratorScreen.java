@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.client.util.RenderConstants;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
@@ -36,7 +37,8 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     private static final int RIGHT_X = 90;
     private static final int OUT_BTN_X = RIGHT_X, OUT_BTN_Y = 20;
     private static final int OUT_COLOR_X = RIGHT_X + 20, OUT_COLOR_Y = 18;
-    private static final int STRAT_X = RIGHT_X, STRAT_Y = 65;
+    private static final int STRAT_X = 138, STRAT_Y = 18;
+    private static final int EXTRACT_X = 138, EXTRACT_Y = 38;
 
     private static final int INPUT_FILTER_X = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X;
     private static final int INPUT_FILTER_Y = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
@@ -67,7 +69,8 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             priorityBoxX, priorityBoxY,
             PRIORITY_BOX_WIDTH, BTN_SIZE, Component.translatable("gui.staticlogistics.label.priority"));
         this.priorityBox.setBordered(true);
-        this.priorityBox.setMaxLength(5);
+        this.priorityBox.setMaxLength(10);
+        this.priorityBox.setFilter(s -> s.isEmpty() || s.matches("-?[0-9]*"));
         this.priorityBox.setValue(String.valueOf(menu.getPriority()));
         this.priorityBox.setResponder(s -> {
             try {
@@ -103,7 +106,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     protected boolean shouldShowTypePanel() {
-        return true;
+        return menu.isGlobalOutputEnabled();
     }
 
     @Override
@@ -206,6 +209,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         renderColorButton(graphics, OUT_COLOR_X, OUT_COLOR_Y, outColorIdx);
         if (menu.isGlobalOutputEnabled()) {
             renderStrategyButton(graphics, mouseX, mouseY);
+            renderExtractionModeButton(graphics, mouseX, mouseY);
         }
 
         if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty()) {
@@ -235,7 +239,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         else if (hasShiftDown()) delta *= 10;
         else if (hasControlDown()) delta *= 5;
         int newPriority = menu.getPriority() + delta;
-        newPriority = Math.max(-9999, Math.min(9999, newPriority));
         sendConfigUpdate("priority", newPriority);
     }
 
@@ -343,6 +346,25 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         g.drawString(this.font, label, bx + (totalWidth - textWidth) / 2, by + (height - 8) / 2, 0xFFFFFFFF, false);
     }
 
+    private int getExtractionModeButtonWidth() {
+        return this.font.width(menu.getExtractionMode().getDisplayName()) + 12;
+    }
+
+    private void renderExtractionModeButton(GuiGraphics g, int mx, int my) {
+        Component label = menu.getExtractionMode().getDisplayName();
+        int textWidth = this.font.width(label);
+        int totalWidth = Math.max(textWidth + 12, SLGuiTextures.Button.Middle.WIDTH);
+        int bx = leftPos + EXTRACT_X, by = topPos + EXTRACT_Y;
+        int height = SLGuiTextures.Button.Middle.HEIGHT;
+        boolean hover = isMouseOver(mx, my, EXTRACT_X, EXTRACT_Y, totalWidth, height);
+        int u = hover ? 350 : 372;
+        int v = 2;
+        g.blit(GUI_TEXTURE, bx, by, u, v, 2, height, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.blit(GUI_TEXTURE, bx + totalWidth - 2, by, u + SLGuiTextures.Button.Middle.WIDTH - 2, v, 2, height, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.blit(GUI_TEXTURE, bx + 2, by, totalWidth - 4, height, u + 2, v, 1, height, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        g.drawString(this.font, label, bx + (totalWidth - textWidth) / 2, by + (height - 8) / 2, 0xFFFFFFFF, false);
+    }
+
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (menu.isGlobalInputEnabled()) {
@@ -409,8 +431,17 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             playClickSound();
             handled = true;
         } else if (menu.isGlobalOutputEnabled() && isMouseOver(mx, my, STRAT_X, STRAT_Y, getStrategyButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
-            int nextOrd = (menu.getStrategy().ordinal() + 1) % DistributionStrategy.values().length;
+            int len = DistributionStrategy.values().length;
+            int ord = menu.getStrategy().ordinal();
+            int nextOrd = button == 1 ? (ord - 1 + len) % len : (ord + 1) % len;
             sendConfigUpdate("strategy", DistributionStrategy.values()[nextOrd].getSerializedName());
+            playClickSound();
+            handled = true;
+        } else if (menu.isGlobalOutputEnabled() && isMouseOver(mx, my, EXTRACT_X, EXTRACT_Y, getExtractionModeButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
+            int len = ExtractionMode.values().length;
+            int ord = menu.getExtractionMode().ordinal();
+            int nextOrd = button == 1 ? (ord - 1 + len) % len : (ord + 1) % len;
+            sendConfigUpdate("extractionMode", ExtractionMode.values()[nextOrd].getSerializedName());
             playClickSound();
             handled = true;
         }
@@ -465,6 +496,11 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             g.renderComponentTooltip(this.font, List.of(
                 Component.translatable("gui.staticlogistics.strategy"),
                 menu.getStrategy().getDisplayName().copy().withStyle(ChatFormatting.AQUA)), mx, my);
+        }
+        if (menu.isGlobalOutputEnabled() && isMouseOver(mx, my, EXTRACT_X, EXTRACT_Y, getExtractionModeButtonWidth(), SLGuiTextures.Button.Middle.HEIGHT)) {
+            g.renderComponentTooltip(this.font, List.of(
+                Component.translatable("gui.staticlogistics.extraction_mode"),
+                menu.getExtractionMode().getDisplayName().copy().withStyle(ChatFormatting.AQUA)), mx, my);
         }
 
         int inputSlotX = leftPos + INPUT_FILTER_X;

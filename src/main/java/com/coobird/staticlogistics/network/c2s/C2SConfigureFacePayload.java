@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
@@ -141,6 +142,13 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                         changed[0] = true;
                     }
                 }
+                if (tag.contains("extractionMode")) {
+                    ExtractionMode newVal = ExtractionMode.byName(tag.getString("extractionMode"), ExtractionMode.SEQUENTIAL);
+                    if (newVal != menu.getExtractionMode()) {
+                        menu.setExtractionMode(newVal);
+                        changed[0] = true;
+                    }
+                }
                 if (tag.contains("selected_types_mask")) {
                     int mask = tag.getInt("selected_types_mask");
                     if (menu.getSelectedTypesMask() != mask) {
@@ -155,7 +163,9 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
             if (changed[0]) {
                 config.markDirty();
                 LogisticsNode selfNode = new LogisticsNode(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face());
-                GlobalLogisticsManager.get(serverLevel.getServer()).syncGroupLinks(serverLevel, config.faceConfig.getGroupId(), selfNode);
+                for (String gid : config.faceConfig.getGroupIds()) {
+                    GlobalLogisticsManager.get(serverLevel.getServer()).syncGroupLinks(serverLevel, gid, selfNode);
+                }
                 manager.activateNode(key, payload.pos(), payload.face(), config);
 
                 if (player instanceof ServerPlayer serverPlayer) {

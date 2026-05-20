@@ -71,38 +71,39 @@ public class LogisticsTicker {
 
         for (int i = startIdx; i < endIdx; i++) {
             long sourceKey = keys[i];
-            if (cooldownManager.hasCooldown(dim, sourceKey, currentTick)) continue;
-
             LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
             FaceConfigComposite config = manager.getFaceConfig(sourceKey);
             if (config == null || config.isDefault()) continue;
 
-            boolean movedSomething = false;
-
             for (var type : TransferRegistries.getAllActive()) {
                 if (!config.isTypeSelected(type)) continue;
+
+                boolean isEnergy = type.capability() != null && type.capability() == net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK;
+                long typeCooldownKey = (sourceKey << 8) | type.bitOffset();
+                if (!isEnergy && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
 
                 int limit = config.getTransferLimit(type);
                 TransferContext context = TransferContext.obtain(
                     level, sourceNode, config, type, limit, false, currentTick, manager
                 );
 
+                boolean typeMoved = false;
                 try {
-                    if (transferExecutor.executeTransfer(context)) {
-                        movedSomething = true;
-                    }
+                    typeMoved = transferExecutor.executeTransfer(context);
                 } finally {
                     context.recycle();
                 }
-            }
 
-            int baseInterval = SLConfig.getDefaultTickInterval();
-            int speedMult = config.sharedContainerConfig.getSpeedMultiplier();
-            int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
-            if (movedSomething) {
-                cooldownManager.setCooldown(dim, sourceKey, actualInterval, currentTick);
-            } else {
-                cooldownManager.setCooldown(dim, sourceKey, LogisticsConstants.Performance.getDefaultCooldownTicks(), currentTick);
+                if (!isEnergy) {
+                    int baseInterval = SLConfig.getDefaultTickInterval();
+                    int speedMult = config.sharedContainerConfig.getSpeedMultiplier();
+                    int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
+                    if (typeMoved) {
+                        cooldownManager.setCooldown(dim, typeCooldownKey, actualInterval, currentTick);
+                    } else {
+                        cooldownManager.setCooldown(dim, typeCooldownKey, LogisticsConstants.Performance.getDefaultCooldownTicks(), currentTick);
+                    }
+                }
             }
         }
 
@@ -110,14 +111,14 @@ public class LogisticsTicker {
     }
 
     public static void wakeup(ServerLevel level, long sourceKey) {
-        cooldownManager.removeCooldown(level.dimension(), sourceKey);
+        cooldownManager.removeAllForSourceKey(level.dimension(), sourceKey);
     }
 
     /**
      * 方块/节点移除时批量清理冷却，防止已拆除节点的冷却记录残留
      */
     public static void cleanupCooldowns(ResourceKey<Level> dimension, long[] keys) {
-        cooldownManager.removeCooldowns(dimension, keys);
+        for (long k : keys) cooldownManager.removeAllForSourceKey(dimension, k);
     }
 
     public static void wakeupGroup(MinecraftServer server, String groupId) {
@@ -126,7 +127,7 @@ public class LogisticsTicker {
         for (LogisticsNode sender : senders) {
             ServerLevel level = server.getLevel(sender.gPos().dimension());
             if (level != null) {
-                cooldownManager.removeCooldown(level.dimension(), sender.toKey());
+                cooldownManager.removeAllForSourceKey(level.dimension(), sender.toKey());
             }
         }
     }

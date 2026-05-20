@@ -33,14 +33,6 @@ public class ConfigRepository {
         return faceConfigs.containsKey(key);
     }
 
-    public boolean isEmpty() {
-        return faceConfigs.isEmpty();
-    }
-
-    public int size() {
-        return faceConfigs.size();
-    }
-
     public Set<Long> keySet() {
         return faceConfigs.keySet();
     }

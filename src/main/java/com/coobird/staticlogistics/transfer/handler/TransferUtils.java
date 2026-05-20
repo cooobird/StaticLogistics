@@ -36,8 +36,8 @@ public class TransferUtils {
         }
         if (destinations.isEmpty() || limit <= 0) return false;
 
-        int maxAllowed = SLConfig.getMaxTransferLimit();
-        int safeLimit = Math.min(limit, maxAllowed);
+        long maxAllowed = SLConfig.getMaxTransferLimit();
+        int safeLimit = (int) Math.min((long) limit, maxAllowed);
         if (safeLimit < limit) {
             LOGGER.debug("Transfer limit clamped from {} to {}", limit, safeLimit);
         }
@@ -79,6 +79,8 @@ public class TransferUtils {
                 ExtractionResult<T> result = protocol.simulateExtract(from, remaining);
                 if (protocol.isEmpty(result)) break;
 
+                if (!protocol.canInsert(to, result.value(), remoteNode)) break;
+
                 int accepted = protocol.executeInsert(to, result.value());
                 if (accepted <= 0) break;
 
@@ -102,7 +104,6 @@ public class TransferUtils {
         return TransferRegistries.getAllActive().stream().anyMatch(type -> {
             var cap = type.capability();
             if (cap == null) return false;
-            // 先查指定面，查不到再查方块级（气动工艺等无面限制的能力）
             return level.getCapability(cap, pos, face) != null
                 || level.getCapability(cap, pos, null) != null;
         });
@@ -116,14 +117,27 @@ public class TransferUtils {
         void commitExtract(C source, ExtractionResult<T> result, int actual);
 
         boolean isEmpty(ExtractionResult<T> result);
+
+        /**
+         * 可选目标端过滤检查：false 则跳过插入
+         */
+        default boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
+            return true;
+        }
     }
 
     public record SimpleProtocol<C, T>(
         BiFunction<C, Integer, T> extractor,
         BiFunction<C, T, Integer> inserter,
         TriConsumer<C, T, Integer> committer,
-        Predicate<T> emptyChecker
+        Predicate<T> emptyChecker,
+        @javax.annotation.Nullable java.util.function.BiPredicate<T, LogisticsNode> targetFilter
     ) implements TransferProtocol<C, T> {
+        public SimpleProtocol(BiFunction<C, Integer, T> extractor, BiFunction<C, T, Integer> inserter,
+                              TriConsumer<C, T, Integer> committer, Predicate<T> emptyChecker) {
+            this(extractor, inserter, committer, emptyChecker, null);
+        }
+
         @Override
         public ExtractionResult<T> simulateExtract(C source, int max) {
             T value = extractor.apply(source, max);
@@ -143,6 +157,11 @@ public class TransferUtils {
         @Override
         public boolean isEmpty(ExtractionResult<T> result) {
             return emptyChecker.test(result.value());
+        }
+
+        @Override
+        public boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
+            return targetFilter == null || targetFilter.test(stack, targetNode);
         }
     }
 

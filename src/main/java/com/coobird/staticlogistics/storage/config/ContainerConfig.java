@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.storage.config;
 
 import com.coobird.staticlogistics.api.type.UpgradeTier;
 import com.coobird.staticlogistics.api.type.UpgradeType;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -25,6 +26,7 @@ public class ContainerConfig {
     private int cachedStackMult = 1;
     private boolean cachedDimEffective = false;
     private boolean cacheDirty = true;
+    private long configGenAtCache = -1; // 追踪配置代数，重载时自动失效
     public static final int INFINITY_MARKER = Integer.MAX_VALUE;
     private BlockPos pos = BlockPos.ZERO;
 
@@ -96,10 +98,12 @@ public class ContainerConfig {
     }
 
     /**
-     * 重新计算所有升级卡的倍率并更新缓存，只在 cacheDirty 为 true 时执行
+     * 重新计算所有升级卡的倍率并更新缓存。
+     * cacheDirty 为 true，或配置已重载（configGeneration 变化）时重新计算。
      */
     private void updateCache() {
-        if (!cacheDirty) return;
+        if (!cacheDirty && configGenAtCache == SLConfig.configGeneration) return;
+        configGenAtCache = SLConfig.configGeneration;
 
         long speed = 1L, range = 1L, stack = 1L;
         boolean dim = false;

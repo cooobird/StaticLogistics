@@ -8,7 +8,6 @@ import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
-import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -66,7 +65,7 @@ public class LinkChangeHandler {
             FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
             if (faceCfg != null) {
                 BlockPos pos = faceCfg.faceConfig.getPos();
-                Direction face = Direction.from3DDataValue((int) (faceKey & LogisticsConstants.Storage.FACE_MASK));
+                Direction face = LogisticsNode.keyToFace(faceKey);
                 linkManager.refreshLocalCache(faceKey, pos, face, faceCfg);
                 if (faceCfg.determineRole().canSend()) {
                     linkManager.activateNode(faceKey, pos, face, faceCfg);
@@ -145,11 +144,14 @@ public class LinkChangeHandler {
             if (remoteCfg == null) continue;
             if (!remoteCfg.getLinkedNodes().contains(currentNode)) {
                 remoteCfg.getLinkedNodes().add(currentNode);
-                GlobalLogisticsManager.get(level.getServer()).addReverseLink(remoteNode.toKey(), currentNode.toKey());
                 remoteCfg.markDirty();
                 remoteMgr.markFaceDirty(remoteNode.toKey());
                 remoteMgr.syncNodeToDimension(remoteNode);
             }
+        }
+        // 对称链接修改了 linkedNodes，标记索引失效
+        if (!remotes.isEmpty()) {
+            GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
         }
     }
 }

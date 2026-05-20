@@ -46,7 +46,7 @@ public final class LogisticsCalculator {
      */
     public static long getTransferLimit(ContainerConfig container, TransferType type) {
         if (container == null) {
-            return Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
+            return Math.min((long) type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
         }
         long stackMult = getStackMultiplier(container);
         long limit = (long) type.getBaseStackSize() * stackMult;

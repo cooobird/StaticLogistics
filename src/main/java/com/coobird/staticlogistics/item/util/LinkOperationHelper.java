@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.item.util;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
@@ -46,12 +45,11 @@ public class LinkOperationHelper {
      * 方块被移除时，清理所有在线玩家配置器中的无效存点
      */
     public static void cleanStoredNodesForPos(ServerLevel level, BlockPos pos) {
-        if (!SLConfig.shouldAutoCleanStoredNodes()) return;
         for (ServerPlayer sp : level.getServer().getPlayerList().getPlayers()) {
-            ItemStack stack = sp.getMainHandItem();
-            if (stack.getItem() instanceof LinkConfiguratorItem) validateStoredNodes(stack, level);
-            stack = sp.getOffhandItem();
-            if (stack.getItem() instanceof LinkConfiguratorItem) validateStoredNodes(stack, level);
+            for (int i = 0; i < sp.getInventory().getContainerSize(); i++) {
+                ItemStack stack = sp.getInventory().getItem(i);
+                if (stack.getItem() instanceof LinkConfiguratorItem) validateStoredNodes(stack, level);
+            }
         }
     }
 
@@ -192,33 +190,43 @@ public class LinkOperationHelper {
 
         LinkManager currentMgr = LinkManager.get(level);
         FaceConfigComposite currentCfg = currentMgr.getOrCreateFaceConfig(current.gPos().pos(), current.face());
-        currentCfg.faceConfig.setGroupId(groupId);
-        currentCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
-        currentCfg.setSelectedTypesMask(settings.typeMask());
+        boolean currentIsNew = currentCfg.faceConfig.getGroupIds().isEmpty();
 
         ServerLevel storedLevel = level.getServer().getLevel(stored.gPos().dimension());
         if (storedLevel == null) return false;
 
         LinkManager storedMgr = LinkManager.get(storedLevel);
         FaceConfigComposite storedCfg = storedMgr.getOrCreateFaceConfig(stored.gPos().pos(), stored.face());
-        storedCfg.faceConfig.setGroupId(groupId);
-        storedCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
-        storedCfg.setSelectedTypesMask(settings.typeMask());
+        boolean storedIsNew = storedCfg.faceConfig.getGroupIds().isEmpty();
+
+        if (currentIsNew) {
+            currentCfg.faceConfig.setGroupId(groupId);
+            currentCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
+            currentCfg.setSelectedTypesMask(settings.typeMask());
+        } else {
+            currentCfg.faceConfig.addGroupId(groupId);
+        }
+        if (storedIsNew) {
+            storedCfg.faceConfig.setGroupId(groupId);
+            storedCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
+            storedCfg.setSelectedTypesMask(settings.typeMask());
+        } else {
+            storedCfg.faceConfig.addGroupId(groupId);
+        }
 
         int defaultChannel = 1;
         if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
-            currentCfg.linkConfig.setInputChannel(defaultChannel);
-            storedCfg.linkConfig.setOutputChannel(defaultChannel);
+            if (currentIsNew) currentCfg.linkConfig.setInputChannel(defaultChannel);
+            if (storedIsNew) storedCfg.linkConfig.setOutputChannel(defaultChannel);
         } else {
-            currentCfg.linkConfig.setOutputChannel(defaultChannel);
-            storedCfg.linkConfig.setInputChannel(defaultChannel);
+            if (currentIsNew) currentCfg.linkConfig.setOutputChannel(defaultChannel);
+            if (storedIsNew) storedCfg.linkConfig.setInputChannel(defaultChannel);
         }
 
         currentCfg.addLinkedNode(stored);
         storedCfg.addLinkedNode(current);
 
-        GlobalLogisticsManager.get(level.getServer()).addReverseLink(current.toKey(), stored.toKey());
-        GlobalLogisticsManager.get(level.getServer()).addReverseLink(stored.toKey(), current.toKey());
+        GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
 
         if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
             currentCfg.setGlobalOutputEnabled(true);
@@ -226,10 +234,15 @@ public class LinkOperationHelper {
         } else if (settings.storedMode() == ToolMode.LINK_AS_EXTRACT) {
             storedCfg.setGlobalOutputEnabled(true);
             currentCfg.setGlobalInputEnabled(true);
+        } else {
+            if (storedIsNew) storedCfg.setGlobalOutputEnabled(true);
+            if (currentIsNew) currentCfg.setGlobalInputEnabled(true);
         }
 
-        GlobalLogisticsManager.get(level.getServer()).registerNode(groupId, stored, storedCfg.determineRole());
-        GlobalLogisticsManager.get(level.getServer()).registerNode(groupId, current, currentCfg.determineRole());
+        if (storedIsNew)
+            GlobalLogisticsManager.get(level.getServer()).registerNode(groupId, stored, storedCfg.determineRole());
+        if (currentIsNew)
+            GlobalLogisticsManager.get(level.getServer()).registerNode(groupId, current, currentCfg.determineRole());
 
         currentCfg.markDirty();
         storedCfg.markDirty();

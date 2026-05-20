@@ -31,6 +31,7 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
@@ -102,7 +103,7 @@ public class LinkWorldRenderer {
             for (var entry : activeNodes.entrySet()) {
                 LogisticsNode node = entry.getKey();
                 FaceConfigComposite cfg = entry.getValue();
-                if (cfg.isDefault() || !currentGroupId.equals(cfg.faceConfig.getGroupId())) continue;
+                if (cfg.isDefault() || !cfg.faceConfig.getGroupIds().contains(currentGroupId)) continue;
 
                 BlockPos p = node.gPos().pos();
                 double distSq = p.distToCenterSqr(cam.x, cam.y, cam.z);
@@ -114,7 +115,7 @@ public class LinkWorldRenderer {
                 if (srcVisible) {
                     renderNodeFaceStatus(node, cfg, builder, mat, pulse);
                 }
-                renderFlows(node, cfg, currentDim, builder, mat, cam, distSq, srcVisible, frustum);
+                renderFlows(node, cfg, activeNodes, currentDim, currentGroupId, builder, mat, cam, distSq, srcVisible, frustum);
             }
         }
 
@@ -128,7 +129,9 @@ public class LinkWorldRenderer {
         return 1;
     }
 
-    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg, ResourceKey<Level> currentDim,
+    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg,
+                                    Map<LogisticsNode, FaceConfigComposite> activeNodes,
+                                    ResourceKey<Level> currentDim, String currentGroupId,
                                     VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq,
                                     boolean srcVisible, Frustum frustum) {
         int particleFactor = getParticleFactor(srcDistSq);
@@ -142,8 +145,9 @@ public class LinkWorldRenderer {
 
         for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
             if (!dst.gPos().dimension().equals(currentDim)) continue;
-            FaceConfigComposite dstCfg = ClientLinkData.INSTANCE.getFaceConfig(dst);
+            FaceConfigComposite dstCfg = activeNodes.get(dst);
             if (dstCfg == null) continue;
+            if (!dstCfg.faceConfig.getGroupIds().contains(currentGroupId)) continue;
             if (!dstCfg.isGlobalInputEnabled()) continue;
 
             int dstIn = dstCfg.linkConfig.getInputChannel();

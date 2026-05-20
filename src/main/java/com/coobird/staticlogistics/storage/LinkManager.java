@@ -60,13 +60,12 @@ public class LinkManager {
     private final ServerLevel level;
     private final Map<Long, Boolean> pendingRemovals = new ConcurrentHashMap<>();
     private final Object removalLock = new Object();
+    private final Object dirtyLock = new Object();
 
     private LinkManagerStorage storage;
     private ScheduledFuture<?> pendingSave;
 
-
     private final LongSet dirtyFaceKeys = new LongOpenHashSet();
-
     private final LongSet dirtyContainerKeys = new LongOpenHashSet();
     private int incrementalSaveCounter = 0;
     private static final int FULL_SAVE_INTERVAL = 100;
@@ -118,10 +117,12 @@ public class LinkManager {
     }
 
     /**
-     * 标记面容配置变更（增量保存）
+     * 标记面配置变更（增量保存）
      */
     public void markFaceDirty(long faceKey) {
-        dirtyFaceKeys.add(faceKey);
+        synchronized (dirtyLock) {
+            dirtyFaceKeys.add(faceKey);
+        }
         scheduleSave();
     }
 
@@ -129,22 +130,28 @@ public class LinkManager {
      * 标记容器配置变更（增量保存）
      */
     public void markContainerDirty(long containerKey) {
-        dirtyContainerKeys.add(containerKey);
+        synchronized (dirtyLock) {
+            dirtyContainerKeys.add(containerKey);
+        }
         scheduleSave();
     }
 
     LongSet drainDirtyFaces() {
-        if (dirtyFaceKeys.isEmpty()) return new LongOpenHashSet();
-        LongSet copy = new LongOpenHashSet(dirtyFaceKeys);
-        dirtyFaceKeys.clear();
-        return copy;
+        synchronized (dirtyLock) {
+            if (dirtyFaceKeys.isEmpty()) return new LongOpenHashSet();
+            LongSet copy = new LongOpenHashSet(dirtyFaceKeys);
+            dirtyFaceKeys.clear();
+            return copy;
+        }
     }
 
     LongSet drainDirtyContainers() {
-        if (dirtyContainerKeys.isEmpty()) return new LongOpenHashSet();
-        LongSet copy = new LongOpenHashSet(dirtyContainerKeys);
-        dirtyContainerKeys.clear();
-        return copy;
+        synchronized (dirtyLock) {
+            if (dirtyContainerKeys.isEmpty()) return new LongOpenHashSet();
+            LongSet copy = new LongOpenHashSet(dirtyContainerKeys);
+            dirtyContainerKeys.clear();
+            return copy;
+        }
     }
 
     boolean needsFullSave() {
@@ -204,10 +211,6 @@ public class LinkManager {
         }
     }
 
-    public static boolean isSaverShutdown() {
-        return isShutdown;
-    }
-
     /**
      * 坐标编码为一个 long 键
      */
@@ -216,10 +219,10 @@ public class LinkManager {
     }
 
     /**
-     * 坐标+面编码为 long 键（低3位存面方向）
+     * 坐标+面编码为 long 键（委托给 LogisticsNode 统一实现）
      */
     public static long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << LogisticsConstants.Storage.FACE_BITS) | (face.get3DDataValue() & LogisticsConstants.Storage.FACE_MASK);
+        return LogisticsNode.posToKey(pos, face);
     }
 
     /**
@@ -276,9 +279,7 @@ public class LinkManager {
         boolean targetRemoved = targetCfg.getLinkedNodes().remove(source);
         if (!sourceRemoved && !targetRemoved) return;
 
-        GlobalLogisticsManager.get(level.getServer()).removeReverseLink(source.toKey(), target.toKey());
-        if (targetRemoved)
-            GlobalLogisticsManager.get(level.getServer()).removeReverseLink(target.toKey(), source.toKey());
+        GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
 
         if (sourceCfg.getLinkedNodes().isEmpty()) {
             sourceCfg.setGlobalOutputEnabled(false);
@@ -338,7 +339,7 @@ public class LinkManager {
             faceConfigService.remove(key);
             cacheManager.remove(key);
             GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
-            GlobalLogisticsManager.get(level.getServer()).removeAllReverseLinksFor(key);
+            GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
             LogisticsTicker.wakeup(level, key);
             if (sendPacket) {
                 networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());

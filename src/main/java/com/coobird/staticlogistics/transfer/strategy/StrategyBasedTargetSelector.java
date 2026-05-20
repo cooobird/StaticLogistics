@@ -24,6 +24,8 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         FaceConfigComposite sourceConfig = context.sourceConfig();
         Set<LogisticsNode> targetSet = new HashSet<>();
 
+        Map<LogisticsNode, FaceConfigComposite> targetConfigCache = new HashMap<>();
+
         for (LogisticsNode target : sourceConfig.getLinkedNodes()) {
             ServerLevel targetLevel = globalManager.getLevel(target.gPos().dimension());
             if (targetLevel == null) continue;
@@ -38,6 +40,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
             if (!channelMatch) continue;
 
             targetSet.add(target);
+            targetConfigCache.put(target, targetCfg);
         }
 
         int outputChannel = sourceConfig.linkConfig.getOutputChannel();
@@ -48,52 +51,47 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         if (targetSet.isEmpty()) return Collections.emptyList();
 
         List<LogisticsNode> allTargets = new ArrayList<>(targetSet);
+
+        // priority 凌驾于分发策略之上：始终按 priority 降序排列
+        // 复用前面的 targetConfigCache 避免重复 FaceConfig 查找
+        Map<LogisticsNode, Integer> priorityCache = new HashMap<>();
+        for (LogisticsNode node : allTargets) {
+            FaceConfigComposite cfg = targetConfigCache.get(node);
+            if (cfg == null) {
+                ServerLevel tl = globalManager.getLevel(node.gPos().dimension());
+                if (tl != null) cfg = LinkManager.get(tl).getFaceConfig(node.toKey());
+            }
+            priorityCache.put(node, cfg != null ? cfg.linkConfig.getPriority() : 0);
+        }
+        allTargets.sort(Comparator.comparingInt((LogisticsNode n) -> priorityCache.getOrDefault(n, 0)).reversed());
+
         int configVersion = sourceConfig.getVersion();
         List<LogisticsNode> cached = sourceConfig.getCachedTargets(configVersion);
 
         DistributionStrategy strategy = sourceConfig.linkConfig.getStrategy();
         if (cached != null && strategy != DistributionStrategy.RANDOM) {
-            return cached; // getCachedTargets 已返回防御性拷贝，无需再次拷贝
+            return cached;
         }
 
         BlockPos sourcePos = sourceNode.gPos().pos();
 
-        List<LogisticsNode> sorted;
-        switch (strategy) {
-            case SEQUENTIAL -> {
-                Map<LogisticsNode, Integer> priorityCache = new HashMap<>();
-                for (LogisticsNode node : allTargets) {
-                    priorityCache.put(node, getPriority(globalManager, node, type));
+        // 按 priority 分组，每组内应用分发策略
+        List<LogisticsNode> sorted = new ArrayList<>();
+        List<LogisticsNode> currentGroup = new ArrayList<>();
+        int currentPriority = Integer.MAX_VALUE;
+        for (LogisticsNode node : allTargets) {
+            int p = priorityCache.getOrDefault(node, 0);
+            if (p != currentPriority) {
+                if (!currentGroup.isEmpty()) {
+                    sorted.addAll(applyStrategy(currentGroup, strategy, sourcePos, sourceNode, globalManager));
+                    currentGroup.clear();
                 }
-                sorted = allTargets.stream()
-                    .sorted(Comparator.comparingInt((LogisticsNode node) -> priorityCache.getOrDefault(node, 0))
-                        .reversed()
-                        .thenComparingDouble(node -> node.gPos().pos().distSqr(sourcePos)))
-                    .toList();
+                currentPriority = p;
             }
-            case NEAREST -> sorted = allTargets.stream()
-                .sorted(Comparator.comparingDouble(node -> node.gPos().pos().distSqr(sourcePos)))
-                .toList();
-            case FURTHEST -> sorted = allTargets.stream()
-                .sorted(Comparator.comparingDouble((LogisticsNode node) -> node.gPos().pos().distSqr(sourcePos)).reversed())
-                .toList();
-            case RANDOM -> {
-                Collections.shuffle(allTargets);
-                sorted = allTargets;
-            }
-            case ROUND_ROBIN, SLOT_ROUND_ROBIN -> {
-                if (allTargets.size() <= 1) {
-                    sorted = allTargets;
-                } else {
-                    int index = globalManager.getNextRoundRobinIndex(sourceNode.toKey(), allTargets.size());
-                    List<LogisticsNode> result = new ArrayList<>();
-                    for (int i = 0; i < allTargets.size(); i++) {
-                        result.add(allTargets.get((index + i) % allTargets.size()));
-                    }
-                    sorted = result;
-                }
-            }
-            default -> sorted = allTargets;
+            currentGroup.add(node);
+        }
+        if (!currentGroup.isEmpty()) {
+            sorted.addAll(applyStrategy(currentGroup, strategy, sourcePos, sourceNode, globalManager));
         }
 
         if (strategy != DistributionStrategy.RANDOM) {
@@ -103,14 +101,34 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         return sorted;
     }
 
-    private int getPriority(GlobalLogisticsManager globalManager, LogisticsNode node, TransferType type) {
-        ServerLevel targetLevel = globalManager.getLevel(node.gPos().dimension());
-        if (targetLevel != null) {
-            FaceConfigComposite cfg = LinkManager.get(targetLevel).getFaceConfig(node.toKey());
-            if (cfg != null) {
-                return cfg.linkConfig.getPriority();
+    private List<LogisticsNode> applyStrategy(List<LogisticsNode> group, DistributionStrategy strategy,
+                                              BlockPos sourcePos, LogisticsNode sourceNode,
+                                              GlobalLogisticsManager globalManager) {
+        if (group.size() <= 1) return new ArrayList<>(group);
+        return switch (strategy) {
+            case SEQUENTIAL -> group.stream()
+                .sorted(Comparator.comparingDouble(n -> n.gPos().pos().distSqr(sourcePos)))
+                .toList();
+            case NEAREST -> group.stream()
+                .sorted(Comparator.comparingDouble(n -> n.gPos().pos().distSqr(sourcePos)))
+                .toList();
+            case FURTHEST -> group.stream()
+                .sorted(Comparator.<LogisticsNode>comparingDouble(n -> n.gPos().pos().distSqr(sourcePos)).reversed())
+                .toList();
+            case RANDOM -> {
+                List<LogisticsNode> shuffled = new ArrayList<>(group);
+                Collections.shuffle(shuffled);
+                yield shuffled;
             }
-        }
-        return 0;
+            case ROUND_ROBIN -> {
+                int index = globalManager.getNextRoundRobinIndex(sourceNode.toKey(), group.size());
+                List<LogisticsNode> result = new ArrayList<>();
+                for (int i = 0; i < group.size(); i++) {
+                    result.add(group.get((index + i) % group.size()));
+                }
+                yield result;
+            }
+            default -> new ArrayList<>(group);
+        };
     }
 }

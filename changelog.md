@@ -1,12 +1,37 @@
 # 更新日志（1.1.3-SNAPSHOT）
 
+## 底层架构重写
+- **多组支持**：FaceConfig 从单组 ID 升级为多组 ID 集合，一个面可同时属于多个物流组。
+- **反向链接索引重构**：从手动同步改为按需从 linkedNodes 真源全量重建，消除索引漂移风险。
+- **死代码清理**：删除 globalTargetCache（写死不读的全局缓存）、20 个未使用的死方法、未使用的配置项及翻译。
+- **线程安全加固**：dirtyFaceKeys/dirtyContainerKeys 加锁保护，消除主线程与存盘线程的并发竞争。
+- **Key 编码统一**：所有坐标+面编码集中到 LogisticsNode，消除 6 处硬编码位移操作。
+
+## 多组管理
+- 移除模式升级：必须选取组才能移除，按组精确移除不再误删其他组的链接。
+- 重命名服务适配多组：removeGroupId + addGroupId 替代破坏性的 setGroupId。
+- 节点注册层适配：NodeGroupService 从单组映射改为多组映射，SyncManager 遍历所有组注册。
+- 客户端数据适配：ClientLinkData 的组查询从 getGroupId() 改为 getGroupIds().contains()。
+
 ## 修复
 - 修复手持配置器非扳手模式下右键 AE2/PneumaticCraft/Create/Mekanism 方块误触发拆卸或旋转。
 - 修复大型多方块结构（Digital Miner、压力室等）被拆后链接、组 ID、渲染边框残留不清理。
 - 修复 AE2 方块无法正常用配置器选取连接。
+- 修复容器配置模式对多方块结构（Mekanism 阀门、Create 壳体等）提示"不具备物流能力"。
+- 修复粒子渲染 dst 面未按组过滤，移除组后面仍残留错误组的粒子效果。
+- 修复配置热重载后已插入的升级卡不生效（需拔插才更新）。
 
 ## 优化
 - 多方块链接清理改为事件驱动：只有方块被拆后才激活扫描，扫完自动停止。
+- 配置器类型选择从单选轮询改为多选 toggle（点击切换启用/禁用）。
+- 分发策略和提取模式按钮支持左键下一个、右键上一个。
+- 优先级移除 ±9999 钳位限制，输入框仅允许数字和负号。
+- 渲染性能：renderFlows 复用外层 activeNodes 缓存，消除重复 ClientLinkData 查找。
+- 传输性能：selectTargets 复用 FaceConfig 查找结果，消除重复 LinkManager 查询。
+- 翻译审计：补遗漏翻译键、删 dead 翻译键；配置类 tooltip 全覆盖。
+- 配置热重载自动失效 ContainerConfig 缓存（configGeneration 计数器），无需拔插升级卡。
+- 多组移除级联优化：只在链接面没有其他同组节点时才级联清除，避免破坏独立的多对一关系。
+- 最大传输量上限从 int 升级为 long（支持整合包极端能量数值）。
 
 # 更新日志（1.1.2-SNAPSHOT）
 

@@ -44,15 +44,6 @@ public class CacheManager {
         }
     }
 
-    public boolean contains(long key) {
-        readLock.lock();
-        try {
-            return activeProviderCache.containsKey(key);
-        } finally {
-            readLock.unlock();
-        }
-    }
-
     /**
      * 返回当前活跃提供者 key 的快照副本，防止遍历时并发写入导致异常
      */
@@ -74,33 +65,6 @@ public class CacheManager {
             return !activeProviderCache.isEmpty();
         } finally {
             readLock.unlock();
-        }
-    }
-
-    public boolean isEmpty() {
-        readLock.lock();
-        try {
-            return activeProviderCache.isEmpty();
-        } finally {
-            readLock.unlock();
-        }
-    }
-
-    public int size() {
-        readLock.lock();
-        try {
-            return activeProviderCache.size();
-        } finally {
-            readLock.unlock();
-        }
-    }
-
-    public void clear() {
-        writeLock.lock();
-        try {
-            activeProviderCache.clear();
-        } finally {
-            writeLock.unlock();
         }
     }
 

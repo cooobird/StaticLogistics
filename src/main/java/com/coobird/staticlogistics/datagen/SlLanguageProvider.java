@@ -1,10 +1,7 @@
 package com.coobird.staticlogistics.datagen;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.type.DistributionStrategy;
-import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.api.type.UpgradeTier;
-import com.coobird.staticlogistics.api.type.UpgradeType;
+import com.coobird.staticlogistics.api.type.*;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;
 import net.minecraft.data.PackOutput;
@@ -59,6 +56,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.label.priority", "Priority", "优先级");
         add("gui.staticlogistics.priority.tooltip", "Hold Shift: ×10, Hold Ctrl: ×5, Hold Shift+Ctrl: ×64", "按住shift点击: ×10, 按住ctrl点击: ×5, 同时按住shift+ctrl点击: ×64");
         add("gui.staticlogistics.strategy", "Distribution Strategy", "分发策略");
+        add("gui.staticlogistics.extraction_mode", "Extraction Mode", "提取模式");
         add("gui.staticlogistics.hint.speed", "Speed Upgrade", "速度升级");
         add("gui.staticlogistics.hint.range", "Range/Dim Upgrade", "范围/维度升级");
         add("gui.staticlogistics.hint.stack", "Stack Upgrade", "堆叠升级");
@@ -96,6 +94,9 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.ignore_durability", "Ignore Durability", "忽略耐久");
         add("gui.staticlogistics.filter.full", "Filter is full", "过滤器已满");
         add("gui.staticlogistics.filter.no_tags", "This item has no tags, cannot be added to the filter.", "此物品无标签，无法添加到过滤器");
+        add("tooltip.staticlogistics.shift_right_mark", "Shift+Right-click: quick mark item to filter", "Shift+右键：快速标记物品到过滤器");
+        add("gui.staticlogistics.filter.left_click_item", "Left-click: mark %s", "左键：标记 %s");
+        add("gui.staticlogistics.filter.right_click_fluid", "Right-click: mark %s", "右键：标记 %s");
 
         add("tag_type.staticlogistics.item", "Item Tag:", "物品标签:");
         add("tag_type.staticlogistics.block", "Block Tag:", "方块标签:");
@@ -113,7 +114,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
         add("msg.staticlogistics.batch_linked", "Successfully linked %s nodes!", "成功建立了 %s 条链路！");
         add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
-        add("msg.staticlogistics.no_nodes_stored", "No nodes stored in linker!", "连接器中未存储任何节点！");
+        add("msg.staticlogistics.no_nodes_stored", "No nodes are stored in the configurator!", "配置器中未存储任何节点！");
         add("msg.staticlogistics.link_failed", "Failed to create links. Check connection rules.", "建立连接失败。请检查连接规则。");
         add("msg.staticlogistics.links_created", "Created %s new link(s)", "建立了 %s 条新链路");
         add("msg.staticlogistics.links_merged", "Merged %s link(s) with %s", "合并了 %s 条链路的 %s 传输");
@@ -131,6 +132,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.no_capability", "This block does not have logistics capability.", "该方块不具备物流能力。");
         add("msg.staticlogistics.no_types_selected", "No transfer type selected. Cannot create link.", "§c未选择任何传输类型，无法建立链接");
         add("msg.staticlogistics.self_link_error", "Cannot link a node to itself.", "无法将节点连接到自身。");
+        add("msg.staticlogistics.group_removed_from_face", "Removed group %s from this face.", "已从该面移除组 %s。");
+        add("msg.staticlogistics.select_group_to_remove", "Select a group first to remove.", "请先选取组再移除。");
         add("msg.staticlogistics.links_removed_smart", "Links removed successfully.", "链接已成功移除。");
         add("msg.staticlogistics.no_dimension_upgrade", "No dimension upgrade installed!", "未安装跨维度升级！");
         add("msg.staticlogistics.unknown_owner", "Unknown", "未知");
@@ -166,7 +169,9 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.type", "Transfer Type: %s", "传输类型：%s");
         add("tooltip.staticlogistics.group", "Group Id: %s", "分组 ID：%s");
         add("tooltip.staticlogistics.none", "None", "无");
-        add("tooltip.staticlogistics.stored_nodes", "Stored Nodes: %s (As %s)", "待连接节点：%s（设为 %s）");
+        add("tooltip.staticlogistics.saved_list", "List of stored nodes：", "已存储的节点列表：");
+        add("tooltip.staticlogistics.stored_nodes", "Stored nodes (%s):", "待连接节点（%s）：");
+        add("tooltip.staticlogistics.stored_mode", "Mode: %s", "模式：%s");
         add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
         add("tooltip.staticlogistics.auto_clean_disabled", "Auto clean disabled", "自动清理已禁用");
         add("tooltip.staticlogistics.auto_clean_enabled", "Auto clean enabled", "自动清理已启用");
@@ -253,6 +258,13 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
         add("config.staticlogistics.default_tick_interval", "Base Tick Interval (Ticks)", "基础传输间隔(Tick)");
         add("config.staticlogistics.max_transfer_limit", "Max Transfer per Tick", "单次传输最大数量");
+        add("config.staticlogistics.max_transfer_limit.tooltip",
+            """
+                Maximum amount of various types transferred per tick.
+                Large values may cause performance issues.""",
+            """
+                每刻传输的各个类型最大数量。
+                数值过大可能导致性能问题。""");
         add("config.staticlogistics.auto_clean_stored_nodes", "Auto Clean Stored Nodes", "自动清理存储节点");
         add("config.staticlogistics.auto_clean_stored_nodes.tooltip", "If true, when a logistics node is removed, the stored node references in players' Link Configurator items will be automatically cleaned up.", "如果为 true，当物流节点被移除时，玩家的连接配置器物品中的存储节点引用将自动清理。");
 
@@ -288,14 +300,6 @@ public class SlLanguageProvider extends LanguageProvider {
                 每个面缓存的目标节点数量。
                 默认：50，范围：10-200。""");
 
-        add("config.staticlogistics.cache.global_target_size", "Global Target Cache Size", "全局目标缓存大小");
-        add("config.staticlogistics.cache.global_target_size.tooltip",
-            """
-                Total cache size for all faces.
-                Default: 500, Range: 100-5000.""",
-            """
-                所有面的总缓存大小。
-                默认：500，范围：100-5000。""");
 
         add("staticlogistics.configuration.network", "Network Settings", "网络设置");
         add("config.staticlogistics.network.max_bulk_entries", "Max Bulk Entries", "最大批量条目数");
@@ -373,8 +377,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.mek_chemical_stack_size", "Base Mek-Chemical Amount", "基础 Mek 化学品传输量");
         add("config.staticlogistics.mek_heat_stack_size", "Base Mek Heat Amount", "基础热量传输量");
         add("config.staticlogistics.ars_source_stack_size", "Base Ars Source Amount", "基础魔源传输量");
-        add("config.staticlogistics.pneumatic_pressure_stack_size", "Base Pneumatic Pressure Amount", "基础气压传输量");
-        add("config.staticlogistics.pneumatic_heat_stack_size", "Base Pneumatic Heat Amount", "基础气动热量传输量");
 
         add("config.staticlogistics.iron_multiplier", "Iron Tier Multiplier", "铁等级倍率");
         add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金等级倍率");
@@ -468,10 +470,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("transfer_type.staticlogistics.mek_heat.desc", "Transport Mekanism Heat", "传输热量。");
         add("transfer_type.staticlogistics.ars_source", "Ars Source", "魔源");
         add("transfer_type.staticlogistics.ars_source.desc", "Transport Ars Source", "传输魔源。");
-        add("transfer_type.staticlogistics.pnc_pressure", "Pneumatic Pressure", "气压");
-        add("transfer_type.staticlogistics.pnc_pressure.desc", "Transport PneumaticCraft pressure", "传输气压。");
-        add("transfer_type.staticlogistics.pnc_heat", "Pneumatic Heat", "气动热量");
-        add("transfer_type.staticlogistics.pnc_heat.desc", "Transport PneumaticCraft heat", "传输气动热量。");
 
         for (DistributionStrategy strategy : DistributionStrategy.values()) {
             String zh = switch (strategy) {
@@ -480,9 +478,16 @@ public class SlLanguageProvider extends LanguageProvider {
                 case NEAREST -> "最近优先";
                 case FURTHEST -> "最远优先";
                 case RANDOM -> "随机分发";
-                case SLOT_ROUND_ROBIN -> "插槽轮询";
             };
             add(strategy.getDescriptionId(), toTitleCase(strategy.getSerializedName()), zh);
+        }
+
+        for (ExtractionMode mode : ExtractionMode.values()) {
+            String zh = switch (mode) {
+                case SEQUENTIAL -> "顺序提取";
+                case SLOT_ROUND_ROBIN -> "插槽轮询提取";
+            };
+            add(mode.getDescriptionId(), toTitleCase(mode.getSerializedName()), zh);
         }
 
         Staticlogistics.chineseProviders.forEach(action -> action.accept(this));

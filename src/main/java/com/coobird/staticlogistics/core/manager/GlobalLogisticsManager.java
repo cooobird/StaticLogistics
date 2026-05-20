@@ -37,10 +37,12 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     private final Map<UUID, Integer> playerNextGroupCounter = new ConcurrentHashMap<>();
 
     /**
-     * 反向链接索引：target 的 nodeKey → 所有指向它的 source nodeKey 集合
-     * 以前找"谁连向我"要遍历所有维度所有面，现在直接查这个 Map，O(1)
+     * 反向链接索引：target 的 nodeKey → 所有指向它的 source nodeKey 集合。
+     * 这是从 linkedNodes 派生的只读缓存，不再手动同步——外部只需调 markReverseLinksStale()，
+     * 下次访问时自动从 linkedNodes 重建。
      */
     private final Map<Long, LongSet> reverseLinks = new ConcurrentHashMap<>();
+    private volatile boolean reverseLinksStale = false;
 
     private GlobalLogisticsManager(MinecraftServer server) {
         this.server = server;
@@ -124,42 +126,18 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     }
 
     /**
-     * 注册一条反向链接：source 指向 target
+     * 标记反向链接索引已失效。外部修改 linkedNodes 后必须调用此方法。
+     * 不再需要手动维护 addReverseLink / removeReverseLink。
      */
-    public void addReverseLink(long sourceNodeKey, long targetNodeKey) {
-        reverseLinks.computeIfAbsent(targetNodeKey, k -> new LongOpenHashSet()).add(sourceNodeKey);
+    public void markReverseLinksStale() {
+        reverseLinksStale = true;
     }
 
     /**
-     * 移除一条反向链接：source → target
-     */
-    public void removeReverseLink(long sourceNodeKey, long targetNodeKey) {
-        LongSet sources = reverseLinks.get(targetNodeKey);
-        if (sources != null) {
-            sources.remove(sourceNodeKey);
-            if (sources.isEmpty()) {
-                reverseLinks.remove(targetNodeKey);
-            }
-        }
-    }
-
-    /**
-     * 移除某个节点的所有反向链接（节点被删除时调用）
-     */
-    public void removeAllReverseLinksFor(long nodeKey) {
-        // 作为target：清除所有指向它的源
-        reverseLinks.remove(nodeKey);
-        // 作为source：从所有target的反向列表移除
-        for (LongSet sources : reverseLinks.values()) {
-            sources.remove(nodeKey);
-        }
-        reverseLinks.values().removeIf(LongSet::isEmpty);
-    }
-
-    /**
-     * O(1) 查找指向 target 的所有源节点
+     * O(1) 查找指向 target 的所有源节点（自动按需重建索引）。
      */
     public Set<LogisticsNode> getSourcesLinkedTo(LogisticsNode target) {
+        ensureReverseLinksFresh();
         Set<LogisticsNode> sources = ConcurrentHashMap.newKeySet();
         LongSet sourceKeys = reverseLinks.get(target.toKey());
         if (sourceKeys == null || sourceKeys.isEmpty()) return sources;
@@ -173,6 +151,31 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             }
         }
         return sources;
+    }
+
+    /**
+     * 从所有维度的 FaceConfigComposite.linkedNodes 重建反向链接索引。
+     * linkedNodes 才是真正的数据源，索引只是缓存。
+     */
+    private void ensureReverseLinksFresh() {
+        if (!reverseLinksStale) return;
+        synchronized (this) {
+            if (!reverseLinksStale) return; // 双重检查
+            reverseLinks.clear();
+            for (ServerLevel level : server.getAllLevels()) {
+                LinkManager mgr = LinkManager.get(level);
+                for (long faceKey : mgr.getAllConfigKeys()) {
+                    FaceConfigComposite cfg = mgr.getFaceConfig(faceKey);
+                    if (cfg == null) continue;
+                    long sourceKey = LinkManager.posToKey(cfg.faceConfig.getPos(),
+                        LogisticsNode.fromKey(faceKey, level.dimension()).face());
+                    for (LogisticsNode linked : cfg.getLinkedNodes()) {
+                        reverseLinks.computeIfAbsent(linked.toKey(), k -> new LongOpenHashSet()).add(sourceKey);
+                    }
+                }
+            }
+            reverseLinksStale = false;
+        }
     }
 
     public int getNextRoundRobinIndex(long nodeKey, int poolSize) {
@@ -223,7 +226,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             while (it.hasNext()) {
                 LogisticsNode linkedNode = it.next();
                 if (!aliveNodes.contains(linkedNode)) {
-                    removeReverseLink(source.toKey(), linkedNode.toKey());
                     it.remove();
                     anyChanged = true;
                 }
@@ -234,6 +236,8 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                 sMgr.markFaceDirty(source.toKey());
             }
         }
+        // 如果本轮清理了死链接，标记反向索引失效
+        markReverseLinksStale();
     }
 
     // 处理节点事件（添加/删除/修改），更新注册、频道索引、标记脏数据
@@ -271,13 +275,15 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         }
     }
 
-    // 通知节点被移除：注销并标记组需要同步
+    // 通知节点被移除：注销前获取所有关联组，注销后标记所有组脏
     public void notifyNodeRemoved(ServerLevel level, LogisticsNode removedNode) {
-        String groupId = getGroupId(removedNode);
+        Set<String> groups = nodeGroupService.getAllGroupIds(removedNode);
         unregisterNode(removedNode);
-        if (groupId != null && !groupId.isEmpty()) {
-            markGroupDirty(groupId);
-            LogisticsTicker.wakeupGroup(server, groupId);
+        for (String gid : groups) {
+            if (gid != null && !gid.isEmpty()) {
+                markGroupDirty(gid);
+                LogisticsTicker.wakeupGroup(server, gid);
+            }
         }
     }
 
@@ -307,9 +313,10 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             for (long key : mgr.getAllConfigKeys()) {
                 FaceConfigComposite cfg = mgr.getFaceConfig(key);
                 if (cfg != null && playerId.equals(cfg.faceConfig.getOwner())) {
-                    String gid = cfg.faceConfig.getGroupId();
-                    if (gid != null && gid.matches("\\d+")) {
-                        ids.add(Integer.parseInt(gid));
+                    for (String gid : cfg.faceConfig.getGroupIds()) {
+                        if (gid != null && gid.matches("\\d+")) {
+                            ids.add(Integer.parseInt(gid));
+                        }
                     }
                 }
             }

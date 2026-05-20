@@ -84,8 +84,12 @@ public class LinkConfiguratorItem extends Item {
         tooltip.add(Component.translatable("tooltip.staticlogistics.type", types.isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(types)));
         tooltip.add(Component.translatable("tooltip.staticlogistics.group", settings.group().isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(settings.group())));
         if (!settings.storedNodes().isEmpty() && settings.storedMode() != null) {
-            String nodesInfo = settings.storedNodes().stream().map(n -> n.gPos().pos().toShortString() + " " + n.face()).collect(Collectors.joining(", "));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_nodes", nodesInfo, settings.storedMode().getDisplayName()));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_mode", settings.storedMode().getDisplayName()).withStyle(ChatFormatting.GRAY));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.saved_list"));
+            for (LogisticsNode n : settings.storedNodes()) {
+                String nodeStr = n.gPos().pos().toShortString() + " " + n.face();
+                tooltip.add(Component.literal("  " + nodeStr).withStyle(ChatFormatting.WHITE));
+            }
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint").withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);

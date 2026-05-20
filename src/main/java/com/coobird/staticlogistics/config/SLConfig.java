@@ -19,6 +19,9 @@ import java.util.Map;
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public final class SLConfig {
 
+    /** 配置代数计数器，每次重载递增。ContainerConfig 用它判断缓存是否失效。 */
+    public static volatile long configGeneration = 0;
+
     // 构造出的 ModConfigSpec 对象，注册和事件匹配时用
     private static ModConfigSpec CONFIG_SPEC;
 
@@ -28,7 +31,7 @@ public final class SLConfig {
     // 物流节点的默认工作间隔（tick）
     public static ModConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
     // 每 tick 最大传输量上限
-    public static ModConfigSpec.IntValue MAX_TRANSFER_LIMIT;
+    public static ModConfigSpec.LongValue MAX_TRANSFER_LIMIT;
 
     // ===== 核心资源每 tick 传输量 =====
     // 物品每 tick 传输堆叠数
@@ -45,10 +48,6 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue MEK_HEAT_STACK;
     // Ars Nouveau 魔源每 tick 传输量
     public static ModConfigSpec.IntValue ARS_SOURCE_STACK;
-    // PneumaticCraft 气压每 tick 传输量
-    public static ModConfigSpec.IntValue PNEUMATIC_PRESSURE_STACK;
-    // PneumaticCraft 热量每 tick 传输量
-    public static ModConfigSpec.IntValue PNEUMATIC_HEAT_STACK;
 
     // ===== 升级倍率（按材料等级） =====
     // 铁升级的倍率
@@ -76,8 +75,6 @@ public final class SLConfig {
     public static ModConfigSpec.DoubleValue CACHE_LOAD_FACTOR;
     // 每个面缓存的目标最大数量
     public static ModConfigSpec.IntValue CACHE_TARGET_SIZE;
-    // 全局目标缓存最大条目数
-    public static ModConfigSpec.IntValue CACHE_GLOBAL_TARGET_SIZE;
 
     // ===== 网络设置 =====
     // 批量同步数据包每包最大条目数
@@ -101,7 +98,7 @@ public final class SLConfig {
     // 通用设置缓存值
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
-    private static volatile int MaxTransferLimit = 10_000_000;
+    private static volatile long MaxTransferLimit = 10_000_000L;
     // 核心资源传输量缓存值
     private static volatile int DefaultItemStack = 8;
     private static volatile int DefaultFluidStack = 250;
@@ -111,8 +108,6 @@ public final class SLConfig {
     private static volatile int MekChemicalStack = 250;
     private static volatile int MekHeatStack = 1000;
     private static volatile int ArsSourceStack = 100;
-    private static volatile int PneumaticPressureStack = 1000;
-    private static volatile int PneumaticHeatStack = 1000;
 
     // 升级倍率缓存值
     private static volatile int ironMultCache = 2;
@@ -128,8 +123,6 @@ public final class SLConfig {
     private static volatile int cacheProviderSize = 1000;
     private static volatile double cacheLoadFactor = 0.75;
     private static volatile int cacheTargetSize = 50;
-    private static volatile int cacheGlobalTargetSize = 500;
-
     // 网络设置缓存值
     private static volatile int networkMaxBulkEntries = 100;
 
@@ -155,7 +148,7 @@ public final class SLConfig {
         MAX_TRANSFER_LIMIT = builder
             .translation("config.staticlogistics.max_transfer_limit")
             .comment("Maximum amount of items/fluids/energy transferred per tick. Large values may cause performance issues.")
-            .defineInRange("max_transfer_limit", MaxTransferLimit, 1, Integer.MAX_VALUE);
+            .defineInRange("max_transfer_limit", MaxTransferLimit, 1L, Long.MAX_VALUE);
         AUTO_CLEAN_STORED_NODES = builder
             .translation("config.staticlogistics.auto_clean_stored_nodes")
             .comment("If true, when a logistics node is removed, the stored node references in players' Link Configurator items will be automatically cleaned up.")
@@ -175,10 +168,6 @@ public final class SLConfig {
             .translation("config.staticlogistics.cache.target_size")
             .comment("Maximum number of targets cached per face.")
             .defineInRange("target_size", 50, 10, 200);
-        CACHE_GLOBAL_TARGET_SIZE = builder
-            .translation("config.staticlogistics.cache.global_target_size")
-            .comment("Maximum number of global target cache entries.")
-            .defineInRange("global_target_size", 500, 100, 5000);
         builder.pop();
 
         builder.push("network");
@@ -237,18 +226,12 @@ public final class SLConfig {
         ARS_SOURCE_STACK = builder
             .translation("config.staticlogistics.ars_source_stack_size")
             .defineInRange("ars_source_stack_size", ArsSourceStack, 1, Integer.MAX_VALUE);
-        PNEUMATIC_PRESSURE_STACK = builder
-            .translation("config.staticlogistics.pneumatic_pressure_stack_size")
-            .defineInRange("pneumatic_pressure_stack_size", PneumaticPressureStack, 1, Integer.MAX_VALUE);
-        PNEUMATIC_HEAT_STACK = builder
-            .translation("config.staticlogistics.pneumatic_heat_stack_size")
-            .defineInRange("pneumatic_heat_stack_size", PneumaticHeatStack, 1, Integer.MAX_VALUE);
         builder.pop();
 
         builder.push("upgrades");
         IRON_MULTIPLIER = builder
             .translation("config.staticlogistics.iron_multiplier")
-            .defineInRange("iron_multiplier", ironMultCache, 1, 1024);
+            .defineInRange("iron_multiplier", ironMultCache, 1, 128);
         GOLD_MULTIPLIER = builder
             .translation("config.staticlogistics.gold_multiplier")
             .defineInRange("gold_multiplier", goldMultCache, 1, 256);
@@ -302,6 +285,7 @@ public final class SLConfig {
     @SubscribeEvent
     public static void onConfigEvent(ModConfigEvent event) {
         if (event.getConfig().getSpec() == CONFIG_SPEC) {
+            configGeneration++;
             onLoad();
         }
     }
@@ -319,9 +303,6 @@ public final class SLConfig {
             MekChemicalStack = MEK_CHEMICAL_STACK.get();
             MekHeatStack = MEK_HEAT_STACK.get();
             ArsSourceStack = ARS_SOURCE_STACK.get();
-            PneumaticPressureStack = PNEUMATIC_PRESSURE_STACK.get();
-            PneumaticHeatStack = PNEUMATIC_HEAT_STACK.get();
-
             ironMultCache = IRON_MULTIPLIER.get();
             goldMultCache = GOLD_MULTIPLIER.get();
             diamondMultCache = DIAMOND_MULTIPLIER.get();
@@ -354,7 +335,6 @@ public final class SLConfig {
         cacheProviderSize = CACHE_PROVIDER_SIZE.get();
         cacheLoadFactor = CACHE_LOAD_FACTOR.get();
         cacheTargetSize = CACHE_TARGET_SIZE.get();
-        cacheGlobalTargetSize = CACHE_GLOBAL_TARGET_SIZE.get();
 
         networkMaxBulkEntries = NETWORK_MAX_BULK_ENTRIES.get();
 
@@ -374,7 +354,7 @@ public final class SLConfig {
         return DefaultTickInterval;
     }
 
-    public static int getMaxTransferLimit() {
+    public static long getMaxTransferLimit() {
         return MaxTransferLimit;
     }
 
@@ -402,14 +382,6 @@ public final class SLConfig {
         return ArsSourceStack;
     }
 
-    public static int getPneumaticPressureStack() {
-        return PneumaticPressureStack;
-    }
-
-    public static int getPneumaticHeatStack() {
-        return PneumaticHeatStack;
-    }
-
     public static int getMultiplierForTier(String tier) {
         return switch (tier.toLowerCase()) {
             case "iron" -> ironMultCache;
@@ -435,10 +407,6 @@ public final class SLConfig {
 
     public static int getCacheTargetSize() {
         return cacheTargetSize;
-    }
-
-    public static int getCacheGlobalTargetSize() {
-        return cacheGlobalTargetSize;
     }
 
     public static int getNetworkMaxBulkEntries() {

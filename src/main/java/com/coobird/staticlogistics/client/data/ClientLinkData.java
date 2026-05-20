@@ -30,15 +30,15 @@ public enum ClientLinkData {
     }
 
     private long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << 3) | (long) (face.get3DDataValue() & 0x7);
+        return LogisticsNode.posToKey(pos, face);
     }
 
     private BlockPos keyToPos(long key) {
-        return BlockPos.of(key >> 3);
+        return LogisticsNode.keyToPos(key);
     }
 
     private Direction keyToFace(long key) {
-        return Direction.from3DDataValue((int) (key & 0x7));
+        return LogisticsNode.keyToFace(key);
     }
 
     /**
@@ -130,7 +130,7 @@ public enum ClientLinkData {
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {
                 if (owner.equals(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
-                    groups.add(cfg.faceConfig.getGroupId());
+                    groups.addAll(cfg.faceConfig.getGroupIds());
                 }
             }
         }
@@ -145,7 +145,7 @@ public enum ClientLinkData {
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {
                 if (owners.contains(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
-                    groups.add(cfg.faceConfig.getGroupId());
+                    groups.addAll(cfg.faceConfig.getGroupIds());
                 }
             }
         }
@@ -156,7 +156,7 @@ public enum ClientLinkData {
         List<LogisticsNode> nodes = new ArrayList<>();
         dimensionConfigs.forEach((dim, dimMap) -> {
             dimMap.forEach((key, config) -> {
-                if (groupId.equals(config.faceConfig.getGroupId())) {
+                if (config.faceConfig.getGroupIds().contains(groupId)) {
                     nodes.add(new LogisticsNode(GlobalPos.of(dim, keyToPos(key)), keyToFace(key)));
                 }
             });
@@ -168,7 +168,7 @@ public enum ClientLinkData {
         List<BlockPos> positions = new ArrayList<>();
         dimensionConfigs.values().forEach(dimMap -> {
             dimMap.forEach((key, config) -> {
-                if (groupId.equals(config.faceConfig.getGroupId())) {
+                if (config.faceConfig.getGroupIds().contains(groupId)) {
                     positions.add(keyToPos(key));
                 }
             });

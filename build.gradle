@@ -140,6 +140,11 @@ dependencies {
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:generators"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:tools"
 
+    runtimeOnly "curse.maven:mekanism-extras-1026040:7921191"
+
+    compileOnly "curse.maven:mekanism-more-machine-1275257:7919872"
+    runtimeOnly "curse.maven:mekanism-more-machine-1275257:7919872"
+
     compileOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
     runtimeOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
 

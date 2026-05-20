@@ -15,7 +15,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -42,7 +41,6 @@ public class FaceConfigComposite {
 
     private List<LogisticsNode> cachedTargets = null;
     private int targetsCacheVersion = -1;
-    private static final Map<Integer, List<LogisticsNode>> globalTargetCache = new ConcurrentHashMap<>();
 
     public FaceConfigComposite() {
         this.faceConfig = new FaceConfig();
@@ -81,10 +79,6 @@ public class FaceConfigComposite {
 
     public void addLinkedNode(LogisticsNode node) {
         if (linkedNodes.add(node)) markDirty();
-    }
-
-    public void removeLinkedNode(LogisticsNode node) {
-        if (linkedNodes.remove(node)) markDirty();
     }
 
     public boolean isGlobalInputEnabled() {
@@ -138,21 +132,16 @@ public class FaceConfigComposite {
      */
     public int getTransferLimit(TransferType type) {
         if (sharedContainerConfig == null) {
-            return Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
+            return (int) Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
         }
         int stackMult = sharedContainerConfig.getStackMultiplier();
         long limit = (long) type.getBaseStackSize() * stackMult;
-        int maxAllowed = SLConfig.getMaxTransferLimit();
-        if (limit > maxAllowed) return maxAllowed;
-        return (int) limit;
+        long maxAllowed = SLConfig.getMaxTransferLimit();
+        return (int) Math.min(limit, maxAllowed);
     }
 
     public int getVersion() {
         return version;
-    }
-
-    void setVersion(int version) {
-        this.version = version;
     }
 
     /**
@@ -175,43 +164,14 @@ public class FaceConfigComposite {
             this.cachedTargets = new ArrayList<>(targets.subList(0, cacheSize));
             this.targetsCacheVersion = currentVersion;
 
-            addToGlobalCache(currentVersion, this.cachedTargets);
         } else {
             clearCache();
         }
     }
 
-    private void addToGlobalCache(int version, List<LogisticsNode> targets) {
-        if (globalTargetCache.size() >= LogisticsConstants.Cache.getGlobalTargetCacheSize()) {
-            evictOldestGlobalCacheConcurrent();
-        }
-        globalTargetCache.put(version, new ArrayList<>(targets));
-    }
-
-    private void evictOldestGlobalCache() {
-        if (!globalTargetCache.isEmpty()) {
-            Integer oldestKey = globalTargetCache.keySet().iterator().next();
-            globalTargetCache.remove(oldestKey);
-        }
-    }
-
-    private void evictOldestGlobalCacheConcurrent() {
-        globalTargetCache.keySet().stream()
-            .min(Integer::compareTo)
-            .ifPresent(globalTargetCache::remove);
-    }
-
     private void clearCache() {
         this.cachedTargets = null;
         this.targetsCacheVersion = -1;
-    }
-
-    public static void clearGlobalCache() {
-        globalTargetCache.clear();
-    }
-
-    public static int getGlobalCacheSize() {
-        return globalTargetCache.size();
     }
 
     /**

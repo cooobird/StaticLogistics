@@ -81,6 +81,10 @@ public class UpgradeItem extends Item {
         tooltip.add(Component.empty());
         tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.install_hint")
             .withStyle(ChatFormatting.DARK_GRAY));
+        if (type == UpgradeType.TAG_FILTER || type == UpgradeType.NBT_FILTER || type == UpgradeType.BASIC_FILTER) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.shift_right_mark")
+                .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        }
     }
 
     public UpgradeType getType() {

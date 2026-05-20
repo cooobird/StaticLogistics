@@ -42,10 +42,4 @@ public class CapabilityCache {
         cache.entrySet().removeIf(entry -> entry.getKey().dimension().equals(dimension));
     }
 
-    /**
-     * 清空所有缓存
-     */
-    public void clear() {
-        cache.clear();
-    }
 }

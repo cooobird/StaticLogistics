@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.storage.config;
 
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 
 import java.util.function.Consumer;
 
 /**
- * 链接通道配置 —— 管理输入/输出频道（1-16）、分发策略和优先级。
- * 频道 0 表示禁用，频道值会被 {@code clampChannel} 钳位到有效范围。
+ * 链接通道配置 —— 管理输入/输出频道（1-16）、分发策略、提取模式和优先级。
  */
 public class LinkConfig {
     public static final int MIN_CHANNEL = 1;
@@ -19,6 +19,7 @@ public class LinkConfig {
     private int inputChannel = 0;
     private int outputChannel = 0;
     private DistributionStrategy strategy = DistributionStrategy.SEQUENTIAL;
+    private ExtractionMode extractionMode = ExtractionMode.SEQUENTIAL;
     private int priority = 0;
 
     public int getInputChannel() {
@@ -44,7 +45,17 @@ public class LinkConfig {
     }
 
     public void setStrategy(DistributionStrategy s) {
-        this.strategy = s;
+        // 迁移旧 SLOT_ROUND_ROBIN → ROUND_ROBIN
+        this.strategy = (s == null) ? DistributionStrategy.SEQUENTIAL : s;
+        markDirty();
+    }
+
+    public ExtractionMode getExtractionMode() {
+        return extractionMode;
+    }
+
+    public void setExtractionMode(ExtractionMode mode) {
+        this.extractionMode = mode != null ? mode : ExtractionMode.SEQUENTIAL;
         markDirty();
     }
 
@@ -69,7 +80,8 @@ public class LinkConfig {
      * 所有字段都是默认值就是空配置
      */
     public boolean isDefault() {
-        return inputChannel == 0 && outputChannel == 0 && strategy == DistributionStrategy.SEQUENTIAL && priority == 0;
+        return inputChannel == 0 && outputChannel == 0 && strategy == DistributionStrategy.SEQUENTIAL
+            && extractionMode == ExtractionMode.SEQUENTIAL && priority == 0;
     }
 
     /**
@@ -86,13 +98,5 @@ public class LinkConfig {
 
     public boolean isOutputEnabled() {
         return outputChannel != DISABLED_CHANNEL;
-    }
-
-    public void disableInputChannel() {
-        setInputChannel(DISABLED_CHANNEL);
-    }
-
-    public void disableOutputChannel() {
-        setOutputChannel(DISABLED_CHANNEL);
     }
 }
