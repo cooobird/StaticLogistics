@@ -3,12 +3,16 @@ package com.coobird.staticlogistics.config;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistry;
+import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -271,12 +275,12 @@ public final class SLConfig {
         container.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "staticlogistics.toml");
     }
 
-    // 监听 NeoForge 配置事件，当匹配到本模组的配置 spec 时触发热加载
     @SubscribeEvent
     public static void onConfigEvent(ModConfigEvent event) {
         if (event.getConfig().getSpec() == CONFIG_SPEC) {
             configGeneration++;
             onLoad();
+            syncConfigToPlayers();
         }
     }
 
@@ -425,5 +429,75 @@ public final class SLConfig {
 
     public static int getPerfContextPoolSize() {
         return perfContextPoolSize;
+    }
+
+    /**
+     * 将当前服务端配置广播给所有在线玩家。
+     * 仅在逻辑服务端调用有效（客户端调用无操作）。
+     */
+    private static void syncConfigToPlayers() {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) return;
+        S2CConfigSyncPayload payload = buildSyncPayload();
+        PacketDistributor.sendToAllPlayers(payload);
+    }
+
+    /**
+     * 从当前 volatile 缓存值构建同步包。
+     */
+    private static S2CConfigSyncPayload buildSyncPayload() {
+        return new S2CConfigSyncPayload(
+            DefaultRadius, DefaultTickInterval, MaxTransferLimit,
+            DefaultItemStack, DefaultFluidStack, DefaultEnergyStack,
+            MekChemicalStack, MekHeatStack, ArsSourceStack,
+            ironMultCache, goldMultCache, diamondMultCache, netheriteMultCache, netherStarMultCache,
+            autoCleanStoredNodes,
+            cacheProviderSize, cacheLoadFactor, cacheTargetSize,
+            networkMaxBulkEntries,
+            perfTickerBatchSize, perfCleanInterval, perfDefaultCooldown,
+            perfBatchCleanThreshold, perfBatchCleanSize, perfContextPoolSize,
+            new ArrayList<>(COMPONENT_STRATEGY_OVERRIDES.get())
+        );
+    }
+
+    /**
+     * 客户端收到服务端同步的配置后，写入 volatile 缓存。
+     */
+    public static void applyServerConfig(S2CConfigSyncPayload p) {
+        if (p == null) {
+            onLoad();
+            return;
+        }
+        DefaultRadius = p.defaultRadius();
+        DefaultTickInterval = p.defaultTickInterval();
+        MaxTransferLimit = p.maxTransferLimit();
+        DefaultItemStack = p.itemStack();
+        DefaultFluidStack = p.fluidStack();
+        DefaultEnergyStack = p.energyStack();
+        MekChemicalStack = p.mekChemicalStack();
+        MekHeatStack = p.mekHeatStack();
+        ArsSourceStack = p.arsSourceStack();
+        ironMultCache = p.ironMult();
+        goldMultCache = p.goldMult();
+        diamondMultCache = p.diamondMult();
+        netheriteMultCache = p.netheriteMult();
+        netherStarMultCache = p.netherStarMult();
+        autoCleanStoredNodes = p.autoCleanStoredNodes();
+        cacheProviderSize = p.cacheProviderSize();
+        cacheLoadFactor = p.cacheLoadFactor();
+        cacheTargetSize = p.cacheTargetSize();
+        networkMaxBulkEntries = p.networkMaxBulkEntries();
+        perfTickerBatchSize = p.tickerBatchSize();
+        perfCleanInterval = p.cleanInterval();
+        perfDefaultCooldown = p.defaultCooldown();
+        perfBatchCleanThreshold = p.batchCleanThreshold();
+        perfBatchCleanSize = p.batchCleanSize();
+        perfContextPoolSize = p.contextPoolSize();
+        Map<String, String> map = new HashMap<>();
+        for (String entry : p.componentStrategyOverrides()) {
+            String[] parts = entry.split("=", 2);
+            if (parts.length == 2) map.put(parts[0], parts[1].toUpperCase());
+        }
+        ComponentMatchStrategyRegistry.loadConfigOverrides(map);
     }
 }

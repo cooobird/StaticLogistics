@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.network.c2s.*;
+import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
 import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
@@ -64,6 +65,7 @@ public class SLEvents {
 
         registrar.playToClient(S2CSyncFaceConfigPacket.TYPE, S2CSyncFaceConfigPacket.STREAM_CODEC, S2CSyncFaceConfigPacket::handle);
         registrar.playToClient(S2CSyncBulkFaceConfigPacket.TYPE, S2CSyncBulkFaceConfigPacket.STREAM_CODEC, S2CSyncBulkFaceConfigPacket::handle);
+        registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
         registrar.playToClient(S2CRemoveBulkFaceConfigPacket.TYPE, S2CRemoveBulkFaceConfigPacket.STREAM_CODEC, S2CRemoveBulkFaceConfigPacket::handle);
 
         registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);
