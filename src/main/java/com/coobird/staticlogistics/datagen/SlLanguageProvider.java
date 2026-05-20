@@ -140,6 +140,28 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
         add("msg.staticlogistics.wrench.no_permission", "No permission to remove this machine.", "没有权限移除此机器。");
 
+        add("msg.staticlogistics.blueprint.anchor_set", "Anchor set at %s. Click opposite corner to copy region.", "锚点已设在 %s。点击对角位置复制区域。");
+        add("msg.staticlogistics.blueprint.anchor_cleared", "Anchor cleared.", "锚点已清除。");
+        add("msg.staticlogistics.blueprint.too_large", "Region too large (%s blocks). Maximum is 4096.", "区域过大（%s 方块）。最大 4096。");
+        add("msg.staticlogistics.blueprint.empty", "No logistics configurations found in this area.", "该区域内未找到物流配置。");
+        add("msg.staticlogistics.blueprint.copied", "Copied %s face(s) from anchor %s.", "已从锚点 %2$s 复制了 %1$s 个面。");
+        add("msg.staticlogistics.blueprint.pasted", "Pasted %s face(s) at anchor %s.", "已在锚点 %2$s 粘贴了 %1$s 个面。");
+        add("tooltip.staticlogistics.blueprint.info", "--- Blueprint ---", "--- 蓝图信息 ---");
+        add("tooltip.staticlogistics.blueprint.face_count", " Faces: %s", "  面：%s 个");
+        add("tooltip.staticlogistics.blueprint.container", " Container Upgrades: %s", "  容器升级：%s");
+        add("tooltip.staticlogistics.blueprint.upgrades", " Upgrades: %s", "  升级卡：%s");
+        add("tooltip.staticlogistics.blueprint.group", " Group: %s", "  组：%s");
+        add("tooltip.staticlogistics.blueprint.region", " Region: %s ~ %s", "  区域：%s 至 %s");
+        add("tooltip.staticlogistics.blueprint.stored", "Blueprint: %s face(s), group %s, at %s", "蓝图：%s 个面，组 %s，锚点 %s");
+        add("tooltip.staticlogistics.blueprint.anchor", "Selected point: %s", "已选起点：%s");
+        add("tooltip.staticlogistics.blueprint.use", "Shift+Right-click: set anchor / copy area / paste", "Shift+右键方块：设锚点 / 复制区域 / 粘贴");
+        add("tooltip.staticlogistics.blueprint.clear", "Shift+Right-click air: clear all", "Shift+右键空气：清空全部");
+        add("tooltip.staticlogistics.blueprint.right_click", "Right-click air: clear anchor only", "右键空气：只清除锚点");
+        add("msg.staticlogistics.blueprint.missing_upgrades", "Missing %s upgrade(s) — check your inventory.", "缺少 %s 张升级卡 — 请检查背包。");
+        add("msg.staticlogistics.blueprint.select_group", "Select a group first before pasting.", "请先在配置器中选取组再粘贴。");
+        add("msg.staticlogistics.blueprint.group_applied", "Applied group %s to %s face(s).", "已将组 %s 应用到 %s 个面。");
+        add("msg.staticlogistics.blueprint.cleared", "Blueprint cleared.", "蓝图已清空。");
+
         add("mode.staticlogistics.wrench", "Wrench", "扳手");
         add("mode.staticlogistics.wrench.desc",
             "Shift + Right-click a machine to remove it. With Mekanism Additions installed, plastic blocks can also be dismantled.",
@@ -250,8 +272,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("match_strategy.staticlogistics.ignore", "IGNORE", "忽略");
 
         add("staticlogistics.configuration.general", "General Settings", "基础设置");
-        add("staticlogistics.configuration.core", "Core Settings", "核心设置");
-        add("staticlogistics.configuration.integration", "Integration Settings", "集成设置");
+        add("staticlogistics.configuration.performance", "Performance Settings", "性能设置");
         add("staticlogistics.configuration.upgrades", "Upgrade Settings", "插件参数");
         add("staticlogistics.configuration.filter", "Filter Settings", "过滤插件参数");
 
@@ -266,9 +287,8 @@ public class SlLanguageProvider extends LanguageProvider {
                 每刻传输的各个类型最大数量。
                 数值过大可能导致性能问题。""");
         add("config.staticlogistics.auto_clean_stored_nodes", "Auto Clean Stored Nodes", "自动清理存储节点");
-        add("config.staticlogistics.auto_clean_stored_nodes.tooltip", "If true, when a logistics node is removed, the stored node references in players' Link Configurator items will be automatically cleaned up.", "如果为 true，当物流节点被移除时，玩家的连接配置器物品中的存储节点引用将自动清理。");
+        add("config.staticlogistics.auto_clean_stored_nodes.tooltip", "If true, stored node references will be automatically cleaned after batch linking or when a node is removed.", "开启后，批量链接完成或节点被移除时，配置器中存储的节点引用将自动清理。");
 
-        add("staticlogistics.configuration.cache", "Cache Settings", "缓存设置");
         add("config.staticlogistics.cache.provider_size", "Provider Cache Size", "提供者缓存大小");
         add("config.staticlogistics.cache.provider_size.tooltip",
             """
@@ -301,7 +321,6 @@ public class SlLanguageProvider extends LanguageProvider {
                 默认：50，范围：10-200。""");
 
 
-        add("staticlogistics.configuration.network", "Network Settings", "网络设置");
         add("config.staticlogistics.network.max_bulk_entries", "Max Bulk Entries", "最大批量条目数");
         add("config.staticlogistics.network.max_bulk_entries.tooltip",
             """
@@ -313,7 +332,6 @@ public class SlLanguageProvider extends LanguageProvider {
                 如果有网络问题可以调低。
                 默认：100，范围：10-1000。""");
 
-        add("staticlogistics.configuration.performance", "Performance Settings", "性能设置");
         add("config.staticlogistics.performance.ticker_batch_size", "Ticker Batch Size", "定时器批处理大小");
         add("config.staticlogistics.performance.ticker_batch_size.tooltip",
             """

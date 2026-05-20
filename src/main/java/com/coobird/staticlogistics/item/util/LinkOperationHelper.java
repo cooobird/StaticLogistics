@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.item.util;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
@@ -175,6 +176,9 @@ public class LinkOperationHelper {
             stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
             player.displayClientMessage(Component.translatable("msg.staticlogistics.batch_linked_to_group", linkedCount, groupId).withStyle(ChatFormatting.AQUA), true);
             level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.0f);
+            if (SLConfig.shouldAutoCleanStoredNodes()) {
+                clearNodes(stack, player, level);
+            }
         }
     }
 

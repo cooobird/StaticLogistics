@@ -29,6 +29,7 @@ public class SLItemModelProvider extends ItemModelProvider {
     }
 
     protected void simpleItem(DeferredRegister.Items register) {
+        skip.add(SLItems.BLUEPRINT.get());
         for (DeferredHolder<Item, ? extends Item> item : register.getEntries()) {
             if (skip.contains(item.get())) continue;
 

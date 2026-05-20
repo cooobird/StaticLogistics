@@ -19,7 +19,9 @@ import java.util.Map;
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public final class SLConfig {
 
-    /** 配置代数计数器，每次重载递增。ContainerConfig 用它判断缓存是否失效。 */
+    /**
+     * 配置代数计数器，每次重载递增。ContainerConfig 用它判断缓存是否失效。
+     */
     public static volatile long configGeneration = 0;
 
     // 构造出的 ModConfigSpec 对象，注册和事件匹配时用
@@ -151,11 +153,29 @@ public final class SLConfig {
             .defineInRange("max_transfer_limit", MaxTransferLimit, 1L, Long.MAX_VALUE);
         AUTO_CLEAN_STORED_NODES = builder
             .translation("config.staticlogistics.auto_clean_stored_nodes")
-            .comment("If true, when a logistics node is removed, the stored node references in players' Link Configurator items will be automatically cleaned up.")
+            .comment("If true, stored node references in Link Configurator items will be automatically cleaned after batch linking or when a node is removed.")
             .define("auto_clean_stored_nodes", false);
+        DEFAULT_ITEM_STACK = builder
+            .translation("config.staticlogistics.item_stack_size")
+            .defineInRange("item_stack_size", DefaultItemStack, 1, 64);
+        DEFAULT_FLUID_STACK = builder
+            .translation("config.staticlogistics.fluid_stack_size")
+            .defineInRange("fluid_stack_size", DefaultFluidStack, 1, Integer.MAX_VALUE);
+        DEFAULT_ENERGY_STACK = builder
+            .translation("config.staticlogistics.energy_stack_size")
+            .defineInRange("energy_stack_size", DefaultEnergyStack, 1, Integer.MAX_VALUE);
+        MEK_CHEMICAL_STACK = builder
+            .translation("config.staticlogistics.mek_chemical_stack_size")
+            .defineInRange("mek_chemical_stack_size", MekChemicalStack, 1, Integer.MAX_VALUE);
+        MEK_HEAT_STACK = builder
+            .translation("config.staticlogistics.mek_heat_stack_size")
+            .defineInRange("mek_heat_stack_size", MekHeatStack, 1, Integer.MAX_VALUE);
+        ARS_SOURCE_STACK = builder
+            .translation("config.staticlogistics.ars_source_stack_size")
+            .defineInRange("ars_source_stack_size", ArsSourceStack, 1, Integer.MAX_VALUE);
         builder.pop();
 
-        builder.push("cache");
+        builder.push("performance");
         CACHE_PROVIDER_SIZE = builder
             .translation("config.staticlogistics.cache.provider_size")
             .comment("Maximum number of provider cache entries. Larger values use more memory but improve cache hit rate.")
@@ -168,16 +188,10 @@ public final class SLConfig {
             .translation("config.staticlogistics.cache.target_size")
             .comment("Maximum number of targets cached per face.")
             .defineInRange("target_size", 50, 10, 200);
-        builder.pop();
-
-        builder.push("network");
         NETWORK_MAX_BULK_ENTRIES = builder
             .translation("config.staticlogistics.network.max_bulk_entries")
             .comment("Maximum entries per bulk sync packet. Larger values may cause network issues.")
             .defineInRange("max_bulk_entries", 100, 10, 1000);
-        builder.pop();
-
-        builder.push("performance");
         PERF_TICKER_BATCH_SIZE = builder
             .translation("config.staticlogistics.performance.ticker_batch_size")
             .comment("Number of nodes processed per tick. Smaller values reduce lag but increase delay.")
@@ -202,30 +216,6 @@ public final class SLConfig {
             .translation("config.staticlogistics.performance.context_pool_size")
             .comment("Transfer context object pool size.")
             .defineInRange("context_pool_size", 100, 20, 500);
-        builder.pop();
-
-        builder.push("core");
-        DEFAULT_ITEM_STACK = builder
-            .translation("config.staticlogistics.item_stack_size")
-            .defineInRange("item_stack_size", DefaultItemStack, 1, 64);
-        DEFAULT_FLUID_STACK = builder
-            .translation("config.staticlogistics.fluid_stack_size")
-            .defineInRange("fluid_stack_size", DefaultFluidStack, 1, Integer.MAX_VALUE);
-        DEFAULT_ENERGY_STACK = builder
-            .translation("config.staticlogistics.energy_stack_size")
-            .defineInRange("energy_stack_size", DefaultEnergyStack, 1, Integer.MAX_VALUE);
-        builder.pop();
-
-        builder.push("integration");
-        MEK_CHEMICAL_STACK = builder
-            .translation("config.staticlogistics.mek_chemical_stack_size")
-            .defineInRange("mek_chemical_stack_size", MekChemicalStack, 1, Integer.MAX_VALUE);
-        MEK_HEAT_STACK = builder
-            .translation("config.staticlogistics.mek_heat_stack_size")
-            .defineInRange("mek_heat_stack_size", MekHeatStack, 1, Integer.MAX_VALUE);
-        ARS_SOURCE_STACK = builder
-            .translation("config.staticlogistics.ars_source_stack_size")
-            .defineInRange("ars_source_stack_size", ArsSourceStack, 1, Integer.MAX_VALUE);
         builder.pop();
 
         builder.push("upgrades");

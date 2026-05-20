@@ -37,7 +37,7 @@ public class TransferUtils {
         if (destinations.isEmpty() || limit <= 0) return false;
 
         long maxAllowed = SLConfig.getMaxTransferLimit();
-        int safeLimit = (int) Math.min((long) limit, maxAllowed);
+        int safeLimit = (int) Math.min(limit, maxAllowed);
         if (safeLimit < limit) {
             LOGGER.debug("Transfer limit clamped from {} to {}", limit, safeLimit);
         }

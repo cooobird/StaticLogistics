@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.registry;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.type.UpgradeTier;
 import com.coobird.staticlogistics.api.type.UpgradeType;
+import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import net.minecraft.world.item.Item;
@@ -31,6 +32,11 @@ public class SLItems {
      * 连接配置器：核心工具，用于配置物流节点之间的连接
      */
     public static final DeferredItem<LinkConfiguratorItem> LINK_CONFIGURATOR = register("link_configurator", "连接配置器", LinkConfiguratorItem::new);
+
+    /**
+     * 物流蓝图：复制/粘贴一个区域内的所有物流配置
+     */
+    public static final DeferredItem<BlueprintItem> BLUEPRINT = register("blueprint", "物流蓝图", BlueprintItem::new);
 
     /**
      * 维度升级插件：允许跨维度传输

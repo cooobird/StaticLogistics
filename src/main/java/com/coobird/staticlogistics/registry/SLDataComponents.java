@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.registry;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.filter.data.FilterData;
+import com.coobird.staticlogistics.item.BlueprintData;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
@@ -51,4 +52,12 @@ public class SLDataComponents {
     // 存节点的玩家 UUID，链接时校验防止别人捡到工具冒用
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> STORED_NODES_OWNER =
         register("stored_nodes_owner", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+    // 物流蓝图数据
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<BlueprintData>> BLUEPRINT_DATA =
+        register("blueprint_data", builder -> builder.persistent(BlueprintData.CODEC).networkSynchronized(BlueprintData.STREAM_CODEC));
+
+    // 蓝图锚点选择（左键记录的坐标）
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> BLUEPRINT_ANCHOR =
+        register("blueprint_anchor", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
 }
