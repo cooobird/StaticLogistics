@@ -268,7 +268,7 @@ public final class SLConfig {
         builder.pop();
 
         CONFIG_SPEC = builder.build();
-        container.registerConfig(ModConfig.Type.SERVER, CONFIG_SPEC, "staticlogistics-server.toml");
+        container.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "staticlogistics.toml");
     }
 
     // 监听 NeoForge 配置事件，当匹配到本模组的配置 spec 时触发热加载

@@ -190,6 +190,17 @@ public class VanillaRecipeProvider extends RecipeProvider {
             Ingredient.of(Items.BOOK),
             Ingredient.of(Items.REDSTONE));
 
+        // ── 蓝图 ──
+        shaped(output, "", "", ShapedRecipePattern.of(
+            Map.of(
+                'P', Ingredient.of(Items.PAPER),
+                'I', Ingredient.of(Items.IRON_INGOT),
+                'L', Ingredient.of(Items.LAPIS_LAZULI)
+            ),
+            "PPP",
+            "ILI"
+        ), SLItems.BLUEPRINT.toStack());
+
         // ── 过滤器 NBT 清理（已配置 → 干净）──
         shapelessSingle(output, SLItems.BASIC_FILTER_UPGRADE.toStack());
         shapelessSingle(output, SLItems.TAG_FILTER_UPGRADE.toStack());
