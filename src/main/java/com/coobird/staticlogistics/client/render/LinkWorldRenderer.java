@@ -37,7 +37,7 @@ public class LinkWorldRenderer {
 
     /**
      * 计算最大渲染距离的平方值。
-     * 基于玩家设置的区块渲染距离，转换为方块距离后乘以安全系数0.7，
+     * 基于玩家设置的区块渲染距离，转换为方块距离后乘以安全系数0.4，
      * 避免在渲染边界处出现闪烁或裁剪问题。返回平方值用于距离比较优化。
      *
      * @return 最大渲染距离的平方值，用于避免在距离比较时进行开方运算
@@ -61,6 +61,7 @@ public class LinkWorldRenderer {
             .setWriteMaskState(RenderType.COLOR_WRITE)
             .setDepthTestState(RenderType.NO_DEPTH_TEST)
             .setCullState(RenderType.NO_CULL)
+            .setLayeringState(RenderType.POLYGON_OFFSET_LAYERING)
             .createCompositeState(false)
     );
 

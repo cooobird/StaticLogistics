@@ -149,15 +149,19 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.blueprint.info", "--- Blueprint ---", "--- 蓝图信息 ---");
         add("tooltip.staticlogistics.blueprint.face_count", " Faces: %s", "  面：%s 个");
         add("tooltip.staticlogistics.blueprint.container", " Container Upgrades: %s", "  容器升级：%s");
-        add("tooltip.staticlogistics.blueprint.upgrades", " Upgrades: %s", "  升级卡：%s");
+        add("tooltip.staticlogistics.blueprint.upgrades", " Upgrades：", "  升级卡：");
         add("tooltip.staticlogistics.blueprint.group", " Group: %s", "  组：%s");
         add("tooltip.staticlogistics.blueprint.region", " Region: %s ~ %s", "  区域：%s 至 %s");
         add("tooltip.staticlogistics.blueprint.stored", "Blueprint: %s face(s), group %s, at %s", "蓝图：%s 个面，组 %s，锚点 %s");
+        add("tooltip.staticlogistics.blueprint.preview", "Preview at %s, rotation: %s°", "预览位置：%s，旋转：%s°");
         add("tooltip.staticlogistics.blueprint.anchor", "Selected point: %s", "已选起点：%s");
-        add("tooltip.staticlogistics.blueprint.use", "Shift+Right-click: set anchor / copy area / paste", "Shift+右键方块：设锚点 / 复制区域 / 粘贴");
+        add("tooltip.staticlogistics.blueprint.use", "Shift+Right-click block: anchor / copy / preview / confirm", "Shift+右键方块：设锚点 / 复制区域 / 预览 / 确认粘贴");
         add("tooltip.staticlogistics.blueprint.clear", "Shift+Right-click air: clear all", "Shift+右键空气：清空全部");
-        add("tooltip.staticlogistics.blueprint.right_click", "Right-click air: clear anchor only", "右键空气：只清除锚点");
+        add("tooltip.staticlogistics.blueprint.scroll", "%s+Scroll: move / %s+Scroll: rotate / %s+Scroll: Y-axis", "%s+滚轮：平移 / %s+滚轮：旋转 / %s+滚轮：升降");
         add("msg.staticlogistics.blueprint.missing_upgrades", "Missing %s upgrade(s) — check your inventory.", "缺少 %s 张升级卡 — 请检查背包。");
+        add("msg.staticlogistics.blueprint.preview_enter", "Preview at %s — right-click to confirm, scroll to adjust.", "预览贴在 %s — 右键确认粘贴，滚轮调整位置。");
+        add("msg.staticlogistics.blueprint.preview_moved", "Preview moved to %s.", "预览已移至 %s。");
+        add("msg.staticlogistics.blueprint.preview_cancelled", "Preview cancelled.", "已取消预览。");
         add("msg.staticlogistics.blueprint.select_group", "Select a group first before pasting.", "请先在配置器中选取组再粘贴。");
         add("msg.staticlogistics.blueprint.group_applied", "Applied group %s to %s face(s).", "已将组 %s 应用到 %s 个面。");
         add("msg.staticlogistics.blueprint.cleared", "Blueprint cleared.", "蓝图已清空。");
@@ -187,6 +191,11 @@ public class SlLanguageProvider extends LanguageProvider {
             "Shift + Right-click to open the detailed configuration GUI for the specific node container.",
             "潜行+右键点击节点容器，打开该容器的详细配置界面（速度、倍率、范围等）。");
 
+        add("key.categories.staticlogistics", "Static Logistics", "静态物流");
+        add("key.staticlogistics.blueprint_preview_move", "Blueprint Preview Move", "蓝图预览移动");
+        add("key.staticlogistics.blueprint_preview_rotate", "Blueprint Preview Rotate", "蓝图预览旋转");
+        add("key.staticlogistics.blueprint_preview_move_y", "Blueprint Preview Move Y", "蓝图预览升降");
+
         add("tooltip.staticlogistics.mode", "Mode: %s", "工具模式：%s");
         add("tooltip.staticlogistics.type", "Transfer Type: %s", "传输类型：%s");
         add("tooltip.staticlogistics.group", "Group Id: %s", "分组 ID：%s");
@@ -194,6 +203,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.saved_list", "List of stored nodes：", "已存储的节点列表：");
         add("tooltip.staticlogistics.stored_nodes", "Stored nodes (%s):", "待连接节点（%s）：");
         add("tooltip.staticlogistics.stored_mode", "Mode: %s", "模式：%s");
+        add("tooltip.staticlogistics.scroll_hint", "Shift+Scroll: switch mode", "Shift+滚轮：切换工具模式");
         add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
         add("tooltip.staticlogistics.auto_clean_disabled", "Auto clean disabled", "自动清理已禁用");
         add("tooltip.staticlogistics.auto_clean_enabled", "Auto clean enabled", "自动清理已启用");

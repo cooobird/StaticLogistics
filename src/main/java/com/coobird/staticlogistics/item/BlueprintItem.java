@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
@@ -10,6 +11,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -24,6 +26,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.neoforged.fml.loading.FMLEnvironment;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
@@ -37,30 +41,41 @@ public class BlueprintItem extends Item {
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
         if (player.isSecondaryUseActive()) {
-            if (!level.isClientSide && (!stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY).isEmpty()
-                || !stack.getOrDefault(SLDataComponents.BLUEPRINT_ANCHOR.get(), "").isEmpty())) {
-                stack.remove(SLDataComponents.BLUEPRINT_DATA.get());
-                stack.remove(SLDataComponents.BLUEPRINT_ANCHOR.get());
-                stack.remove(SLDataComponents.SELECTED_GROUP.get());
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.cleared").withStyle(ChatFormatting.YELLOW), true);
-            }
-            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
-        } else {
-            if (!level.isClientSide && stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY).isEmpty()
-                && !stack.getOrDefault(SLDataComponents.BLUEPRINT_ANCHOR.get(), "").isEmpty()) {
-                stack.remove(SLDataComponents.BLUEPRINT_ANCHOR.get());
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.anchor_cleared").withStyle(ChatFormatting.GRAY), true);
+            if (!level.isClientSide) {
+                boolean had = !stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY).isEmpty()
+                    || !stack.getOrDefault(SLDataComponents.BLUEPRINT_ANCHOR.get(), "").isEmpty()
+                    || !stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "").isEmpty();
+                if (had) {
+                    stack.remove(SLDataComponents.BLUEPRINT_DATA.get());
+                    stack.remove(SLDataComponents.BLUEPRINT_ANCHOR.get());
+                    stack.remove(SLDataComponents.SELECTED_GROUP.get());
+                    stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get());
+                    stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get());
+                    player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.cleared")
+                        .withStyle(ChatFormatting.YELLOW), true);
+                }
             }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         }
+
+        if (!level.isClientSide) {
+            String previewAnchor = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
+            if (!previewAnchor.isEmpty()) {
+                stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get());
+                stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get());
+                player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.preview_cancelled")
+                    .withStyle(ChatFormatting.GRAY), true);
+            }
+        }
+        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
     }
+
 
     @Override
     public InteractionResult useOn(UseOnContext context) {
         var level = context.getLevel();
         var player = context.getPlayer();
         if (player == null) return InteractionResult.PASS;
-
         if (!player.isSecondaryUseActive()) return InteractionResult.PASS;
 
         ItemStack stack = context.getItemInHand();
@@ -70,12 +85,37 @@ public class BlueprintItem extends Item {
         if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
 
         BlueprintData data = stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY);
+        String previewStr = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
 
         if (!data.isEmpty()) {
-            return pasteBlueprint(serverLevel, player, stack, clickedPos);
-        } else {
-            return selectOrCopy(serverLevel, player, stack, clickedPos);
+            if (!previewStr.isEmpty()) {
+                BlockPos previewAnchor = posFromString(previewStr);
+                if (previewAnchor != null && previewAnchor.equals(clickedPos)) {
+                    int rotation = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), 0);
+                    doPaste(serverLevel, player, stack, clickedPos, rotation);
+                    stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get());
+                    stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get());
+                } else {
+                    // 移动预览到新位置
+                    stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), clickedPos.toShortString());
+                    player.displayClientMessage(Component.translatable(
+                            "msg.staticlogistics.blueprint.preview_moved", clickedPos.toShortString())
+                        .withStyle(ChatFormatting.AQUA), true);
+                }
+                return InteractionResult.SUCCESS;
+            }
+
+            // 首次进入预览：从右键点击位置开始
+            stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), clickedPos.toShortString());
+            stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), 0);
+            player.displayClientMessage(Component.translatable(
+                    "msg.staticlogistics.blueprint.preview_enter", clickedPos.toShortString())
+                .withStyle(ChatFormatting.AQUA), true);
+            serverLevel.playSound(null, clickedPos, SoundEvents.STONE_PLACE, SoundSource.BLOCKS, 0.8f, 1.5f);
+            return InteractionResult.SUCCESS;
         }
+
+        return selectOrCopy(serverLevel, player, stack, clickedPos);
     }
 
     private InteractionResult selectOrCopy(ServerLevel level, Player player, ItemStack stack, BlockPos clickedPos) {
@@ -114,10 +154,7 @@ public class BlueprintItem extends Item {
         int maxY = Math.max(a.getY(), b.getY());
         int maxZ = Math.max(a.getZ(), b.getZ());
 
-        int dx = maxX - minX + 1;
-        int dy = maxY - minY + 1;
-        int dz = maxZ - minZ + 1;
-        int volume = dx * dy * dz;
+        int volume = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
         if (volume > 4096) {
             player.displayClientMessage(
                 Component.translatable("msg.staticlogistics.blueprint.too_large", volume).withStyle(ChatFormatting.RED), true);
@@ -170,12 +207,11 @@ public class BlueprintItem extends Item {
             player.displayClientMessage(
                 Component.translatable("msg.staticlogistics.blueprint.empty").withStyle(ChatFormatting.YELLOW), true);
         } else {
-            BlueprintData data = new BlueprintData(anchor, group, entries);
+            BlueprintData data = new BlueprintData(anchor, b, group, entries);
             stack.set(SLDataComponents.BLUEPRINT_DATA.get(), data);
             stack.remove(SLDataComponents.BLUEPRINT_ANCHOR.get());
-            player.displayClientMessage(
-                Component.translatable("msg.staticlogistics.blueprint.copied", entries.size(), anchor.toShortString())
-                    .withStyle(ChatFormatting.GREEN), true);
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.copied", entries.size(), anchor.toShortString())
+                .withStyle(ChatFormatting.GREEN), true);
             level.playSound(null, anchor.offset(maxX - minX, maxY - minY, maxZ - minZ),
                 SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.BLOCKS, 1.0f, 1.0f);
         }
@@ -194,16 +230,11 @@ public class BlueprintItem extends Item {
         return faceTag;
     }
 
-    private InteractionResult pasteBlueprint(ServerLevel level, Player player,
-                                             ItemStack stack, BlockPos clickedPos) {
+    private void doPaste(ServerLevel level, Player player, ItemStack stack,
+                         BlockPos newAnchor, int rotation) {
         BlueprintData data = stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY);
-        if (data.isEmpty()) {
-            player.displayClientMessage(
-                Component.translatable("msg.staticlogistics.blueprint.empty").withStyle(ChatFormatting.YELLOW), true);
-            return InteractionResult.SUCCESS;
-        }
+        if (data.isEmpty()) return;
 
-        BlockPos newAnchor = clickedPos;
         GlobalLogisticsManager globalMgr = GlobalLogisticsManager.get(level.getServer());
         LinkManager mgr = LinkManager.get(level);
         int count = 0;
@@ -222,7 +253,8 @@ public class BlueprintItem extends Item {
         }
 
         for (BlueprintData.BlockEntry entry : data.blocks()) {
-            BlockPos absPos = newAnchor.offset(entry.relativePos());
+            BlockPos rel = entry.relativePos();
+            BlockPos absPos = rotateRelToAbs(rel, newAnchor, rotation);
             ContainerConfig cc = mgr.getOrCreateContainerConfig(absPos);
 
             if (!entry.containerUpgrades().isEmpty()) {
@@ -232,9 +264,10 @@ public class BlueprintItem extends Item {
             }
 
             for (var faceEntry : entry.faces().entrySet()) {
-                Direction face = faceEntry.getKey();
+                Direction originalFace = faceEntry.getKey();
+                Direction rotatedFace = rotateDirection(originalFace, rotation);
                 BlueprintData.FaceEntry fe = faceEntry.getValue();
-                FaceConfigComposite cfg = mgr.getOrCreateFaceConfig(absPos, face);
+                FaceConfigComposite cfg = mgr.getOrCreateFaceConfig(absPos, rotatedFace);
 
                 CompoundTag ft = fe.faceConfig();
                 cfg.linkConfig.setInputChannel(ft.getInt("input_channel"));
@@ -266,28 +299,28 @@ public class BlueprintItem extends Item {
 
                 cfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
                 cfg.markDirty();
-                mgr.markFaceDirty(LinkManager.posToKey(absPos, face));
-                mgr.refreshLocalCache(LinkManager.posToKey(absPos, face), absPos, face, cfg);
-                mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), face));
+                mgr.markFaceDirty(LinkManager.posToKey(absPos, rotatedFace));
+                mgr.refreshLocalCache(LinkManager.posToKey(absPos, rotatedFace), absPos, rotatedFace, cfg);
+                mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), rotatedFace));
                 count++;
             }
         }
 
         for (BlueprintData.BlockEntry entry : data.blocks()) {
-            BlockPos absPos = newAnchor.offset(entry.relativePos());
+            BlockPos absPos = rotateRelToAbs(entry.relativePos(), newAnchor, rotation);
             for (var faceEntry : entry.faces().entrySet()) {
-                Direction face = faceEntry.getKey();
-                FaceConfigComposite srcCfg = mgr.getFaceConfig(LinkManager.posToKey(absPos, face));
+                Direction rotatedFace = rotateDirection(faceEntry.getKey(), rotation);
+                FaceConfigComposite srcCfg = mgr.getFaceConfig(LinkManager.posToKey(absPos, rotatedFace));
                 if (srcCfg == null) continue;
 
                 for (BlockPos relLink : entry.linkedTo()) {
-                    BlockPos absLinkPos = newAnchor.offset(relLink);
+                    BlockPos absLinkPos = rotateRelToAbs(relLink, newAnchor, rotation);
                     for (Direction dstFace : Direction.values()) {
                         long dstKey = LinkManager.posToKey(absLinkPos, dstFace);
                         FaceConfigComposite dstCfg = mgr.getFaceConfig(dstKey);
                         if (dstCfg != null && !dstCfg.isDefault()) {
                             LogisticsNode srcNode = new LogisticsNode(
-                                GlobalPos.of(level.dimension(), absPos), face);
+                                GlobalPos.of(level.dimension(), absPos), rotatedFace);
                             LogisticsNode dstNode = new LogisticsNode(
                                 GlobalPos.of(level.dimension(), absLinkPos), dstFace);
                             srcCfg.addLinkedNode(dstNode);
@@ -306,13 +339,14 @@ public class BlueprintItem extends Item {
         });
 
         for (BlueprintData.BlockEntry entry : data.blocks()) {
-            BlockPos absPos = newAnchor.offset(entry.relativePos());
+            BlockPos absPos = rotateRelToAbs(entry.relativePos(), newAnchor, rotation);
             for (Direction face : entry.faces().keySet()) {
-                FaceConfigComposite cfg = mgr.getFaceConfig(LinkManager.posToKey(absPos, face));
+                Direction rotatedFace = rotateDirection(face, rotation);
+                FaceConfigComposite cfg = mgr.getFaceConfig(LinkManager.posToKey(absPos, rotatedFace));
                 if (cfg != null) {
                     cfg.faceConfig.addGroupId(data.groupId());
                     cfg.markDirty();
-                    mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), face));
+                    mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), rotatedFace));
                 }
             }
         }
@@ -321,14 +355,41 @@ public class BlueprintItem extends Item {
             Component.translatable("msg.staticlogistics.blueprint.pasted", count, newAnchor.toShortString())
                 .withStyle(ChatFormatting.GREEN), true);
         level.playSound(null, newAnchor, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.0f);
+    }
 
-        return InteractionResult.SUCCESS;
+    /**
+     * 根据旋转把相对坐标映射为绝对坐标
+     */
+    public static BlockPos rotateRelToAbs(BlockPos rel, BlockPos anchor, int rotation) {
+        return switch (rotation & 3) {
+            case 1 -> anchor.offset(-rel.getZ(), rel.getY(), rel.getX());   // 90°
+            case 2 -> anchor.offset(-rel.getX(), rel.getY(), -rel.getZ());  // 180°
+            case 3 -> anchor.offset(rel.getZ(), rel.getY(), -rel.getX());   // 270°
+            default -> anchor.offset(rel);  // 0°
+        };
+    }
+
+    /**
+     * 面方向跟着旋转
+     */
+    public static Direction rotateDirection(Direction face, int rotation) {
+        if (face.getAxis() == Direction.Axis.Y) return face;
+        Direction[] h = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
+        int idx = 0;
+        for (int i = 0; i < 4; i++) {
+            if (h[i] == face) {
+                idx = i;
+                break;
+            }
+        }
+        return h[(idx + rotation) & 3];
     }
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         BlueprintData data = stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY);
         String anchorStr = stack.getOrDefault(SLDataComponents.BLUEPRINT_ANCHOR.get(), "");
+        String previewStr = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
 
         if (!data.isEmpty()) {
             int faceCount = 0, containerCount = 0;
@@ -340,13 +401,9 @@ public class BlueprintItem extends Item {
                     tallyUpgradeNames(upgradeNames, entry.containerUpgrades());
                 }
                 for (BlueprintData.FaceEntry fe : entry.faces().values()) {
-                    if (!fe.filterUpgrades().isEmpty()) {
-                        tallyUpgradeNames(upgradeNames, fe.filterUpgrades());
-                    }
+                    if (!fe.filterUpgrades().isEmpty()) tallyUpgradeNames(upgradeNames, fe.filterUpgrades());
                 }
             }
-
-            // 计算区域对角
             int minRelX = 0, minRelY = 0, minRelZ = 0, maxRelX = 0, maxRelY = 0, maxRelZ = 0;
             for (BlueprintData.BlockEntry e : data.blocks()) {
                 BlockPos r = e.relativePos();
@@ -369,9 +426,15 @@ public class BlueprintItem extends Item {
                 Component.translatable(containerCount > 0 ? "gui.staticlogistics.true" : "gui.staticlogistics.false")).withStyle(ChatFormatting.WHITE));
             if (!upgradeNames.isEmpty()) {
                 tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.upgrades").withStyle(ChatFormatting.WHITE));
-                for (String name : upgradeNames) {
+                for (String name : upgradeNames)
                     tooltip.add(Component.literal("    " + name).withStyle(ChatFormatting.AQUA));
-                }
+            }
+
+            if (!previewStr.isEmpty()) {
+                tooltip.add(Component.empty());
+                int rot = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), 0);
+                tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.preview", previewStr,
+                    rot * 90).withStyle(ChatFormatting.AQUA));
             }
             tooltip.add(Component.empty());
         } else if (!anchorStr.isEmpty()) {
@@ -379,8 +442,14 @@ public class BlueprintItem extends Item {
             tooltip.add(Component.empty());
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.use").withStyle(ChatFormatting.GRAY));
+        if (FMLEnvironment.dist.isClient()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.scroll",
+                SLKeyMappings.BLUEPRINT_PREVIEW_MOVE.getTranslatedKeyMessage(),
+                SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE.getTranslatedKeyMessage(),
+                SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y.getTranslatedKeyMessage()
+            ).withStyle(ChatFormatting.GRAY));
+        }
         tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.clear").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.right_click").withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);
     }
 
@@ -391,20 +460,15 @@ public class BlueprintItem extends Item {
             if (itemTag.isEmpty()) continue;
             String id = itemTag.getString("id");
             if (id.isEmpty()) continue;
-            String key = "item." + id.replace(':', '.');
-            names.add(Component.translatable(key).getString());
+            names.add(Component.translatable("item." + id.replace(':', '.')).getString());
         }
     }
 
     private static Map<String, Integer> tallyUpgrades(BlueprintData data) {
-        Map<String, Integer> needed = new java.util.LinkedHashMap<>();
+        Map<String, Integer> needed = new LinkedHashMap<>();
         for (BlueprintData.BlockEntry entry : data.blocks()) {
-            // 容器升级
             tallyFromHandler(needed, entry.containerUpgrades());
-            // 过滤升级
-            for (BlueprintData.FaceEntry fe : entry.faces().values()) {
-                tallyFromHandler(needed, fe.filterUpgrades());
-            }
+            for (BlueprintData.FaceEntry fe : entry.faces().values()) tallyFromHandler(needed, fe.filterUpgrades());
         }
         return needed;
     }
@@ -416,19 +480,18 @@ public class BlueprintItem extends Item {
             CompoundTag itemTag = items.getCompound(i);
             if (itemTag.isEmpty()) continue;
             String id = itemTag.getString("id");
-            int count = itemTag.getInt("count");
-            needed.merge(id, count, Integer::sum);
+            needed.merge(id, itemTag.getInt("count"), Integer::sum);
         }
     }
 
-    private static int consumeUpgrades(net.minecraft.world.entity.player.Player player, Map<String, Integer> needed) {
+    private static int consumeUpgrades(Player player, Map<String, Integer> needed) {
         int totalSkipped = 0;
         for (var e : needed.entrySet()) {
             int remaining = e.getValue();
             var inventory = player.getInventory();
             for (int i = 0; i < inventory.getContainerSize() && remaining > 0; i++) {
                 ItemStack slot = inventory.getItem(i);
-                if (!slot.isEmpty() && net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(slot.getItem()).toString().equals(e.getKey())) {
+                if (!slot.isEmpty() && BuiltInRegistries.ITEM.getKey(slot.getItem()).toString().equals(e.getKey())) {
                     int take = Math.min(remaining, slot.getCount());
                     slot.shrink(take);
                     remaining -= take;
@@ -439,7 +502,7 @@ public class BlueprintItem extends Item {
         return totalSkipped;
     }
 
-    private static String findPlayerGroup(net.minecraft.world.entity.player.Player player) {
+    private static String findPlayerGroup(Player player) {
         for (var hand : InteractionHand.values()) {
             String g = player.getItemInHand(hand).getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
             if (!g.isEmpty()) return g;
@@ -451,6 +514,7 @@ public class BlueprintItem extends Item {
         return "";
     }
 
+    @Nullable
     private static BlockPos posFromString(String s) {
         if (s == null || s.isEmpty()) return null;
         String[] parts = s.split(", ");

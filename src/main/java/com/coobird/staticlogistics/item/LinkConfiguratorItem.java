@@ -79,6 +79,7 @@ public class LinkConfiguratorItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         ToolSettings settings = getSettings(stack);
+        tooltip.add(Component.translatable("tooltip.staticlogistics.scroll_hint").withStyle(ChatFormatting.GREEN));
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode().getDisplayName()));
         String types = settings.getSelectedTypes().stream().map(t -> Component.translatable(t.translationKey()).getString()).collect(Collectors.joining(", "));
         tooltip.add(Component.translatable("tooltip.staticlogistics.type", types.isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(types)));

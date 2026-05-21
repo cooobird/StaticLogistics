@@ -42,7 +42,8 @@ public record C2SUpdateToolSettingsPayload(String groupId, int mode,
             }
 
             String rawId = payload.groupId().trim();
-            String safeId = rawId.replaceAll("[^a-zA-Z0-9_\\-]", "");
+            // 去除控制字符，保留中英文、数字、空格、下划线、连字符
+            String safeId = rawId.replaceAll("[^\\p{L}\\p{N}_\\- ]", "");
             String finalId = safeId.isEmpty() ? "" : safeId.substring(0, Math.min(safeId.length(), 32));
             stack.set(SLDataComponents.SELECTED_GROUP.get(), finalId);
 

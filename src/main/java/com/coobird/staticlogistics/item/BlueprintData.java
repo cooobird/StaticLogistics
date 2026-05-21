@@ -14,20 +14,23 @@ import java.util.Map;
 
 /**
  * 物流蓝图数据 —— 存储一个区域内所有面配置和容器配置的相对位置快照。
+ * anchor = 起点，corner2 = 终点（选区对角），用于渲染选区范围。
  * 粘贴时以新锚点为基准重建。
  */
-public record BlueprintData(BlockPos anchor, String groupId, List<BlockEntry> blocks) {
+public record BlueprintData(BlockPos anchor, BlockPos corner2, String groupId, List<BlockEntry> blocks) {
 
-    public static final BlueprintData EMPTY = new BlueprintData(BlockPos.ZERO, "", List.of());
+    public static final BlueprintData EMPTY = new BlueprintData(BlockPos.ZERO, BlockPos.ZERO, "", List.of());
 
     public static final Codec<BlueprintData> CODEC = RecordCodecBuilder.create(inst -> inst.group(
         BlockPos.CODEC.fieldOf("anchor").forGetter(BlueprintData::anchor),
+        BlockPos.CODEC.fieldOf("corner2").forGetter(BlueprintData::corner2),
         Codec.STRING.fieldOf("group").forGetter(BlueprintData::groupId),
         Codec.list(BlockEntry.CODEC).fieldOf("blocks").forGetter(BlueprintData::blocks)
     ).apply(inst, BlueprintData::new));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, BlueprintData> STREAM_CODEC = StreamCodec.composite(
         BlockPos.STREAM_CODEC, BlueprintData::anchor,
+        BlockPos.STREAM_CODEC, BlueprintData::corner2,
         ByteBufCodecs.STRING_UTF8, BlueprintData::groupId,
         ByteBufCodecs.fromCodecWithRegistries(Codec.list(BlockEntry.CODEC)), BlueprintData::blocks,
         BlueprintData::new

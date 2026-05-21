@@ -111,6 +111,9 @@ public class RemoveModeHandler implements ModeHandler {
             } else {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_links_on_face", face.getName()), true);
             }
+            // 根源清理：移除所有面配置中已失活的组ID
+            com.coobird.staticlogistics.core.manager.GlobalLogisticsManager.get(serverLevel.getServer())
+                .cleanupOrphanedGroupIds(player.getUUID());
         }
         return InteractionResult.SUCCESS;
     }

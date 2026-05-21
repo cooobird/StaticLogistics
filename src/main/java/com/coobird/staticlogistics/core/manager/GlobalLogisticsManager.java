@@ -296,13 +296,25 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         return server;
     }
 
-    // 为玩家自动分配下一个未使用的数字组 ID
+    // 为玩家自动分配下一个未使用的数字组 ID（单调递增，不复用）
     public synchronized String getNextGroupIdForPlayer(UUID playerId) {
         Set<Integer> used = getNumericGroupIdsForPlayer(playerId);
-        int next = 1;
+
+        // 没有任何数字组 → 重置计数器，从1开始
+        if (used.isEmpty()) {
+            playerNextGroupCounter.put(playerId, 1);
+            return "1";
+        }
+
+        // 有已有组 → 从记录的最大值往上找，不回落复用
+        int counter = Math.max(
+            playerNextGroupCounter.getOrDefault(playerId, 0),
+            used.stream().max(Integer::compareTo).orElse(0));
+        int next = counter + 1;
         while (used.contains(next)) {
             next++;
         }
+        playerNextGroupCounter.put(playerId, next);
         return Integer.toString(next);
     }
 
@@ -322,6 +334,27 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             }
         }
         return ids;
+    }
+
+    /**
+     * 根源清理：遍历所有维度的玩家面配置，移除已无活跃节点的组ID（空组清零）。
+     * 调用时机：删除链路/组操作后。
+     */
+    public void cleanupOrphanedGroupIds(UUID playerId) {
+        for (ServerLevel level : server.getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            for (long key : mgr.getAllConfigKeys()) {
+                FaceConfigComposite cfg = mgr.getFaceConfig(key);
+                if (cfg == null || !playerId.equals(cfg.faceConfig.getOwner())) continue;
+                for (String gid : new java.util.ArrayList<>(cfg.faceConfig.getGroupIds())) {
+                    if (nodeGroupService.getNodesInGroup(gid).isEmpty()) {
+                        cfg.faceConfig.removeGroupId(gid);
+                        cfg.markDirty();
+                        mgr.markFaceDirty(key);
+                    }
+                }
+            }
+        }
     }
 
     // 持久化保存计数器到 NBT

@@ -494,6 +494,16 @@ public class LinkManager {
             LogisticsNode node = createNodeFromKey(key);
             if (!TransferUtils.hasLogisticsCapability(level, node.gPos().pos(), node.face())) {
                 removeFaceConfigInternal(key, true, true);
+            } else {
+                // 清扫已失活的组ID
+                for (String gid : new java.util.ArrayList<>(cfg.faceConfig.getGroupIds())) {
+                    if (GlobalLogisticsManager.get(level.getServer()).getNodeGroupService()
+                        .getNodesInGroup(gid).isEmpty()) {
+                        cfg.faceConfig.removeGroupId(gid);
+                        cfg.markDirty();
+                        markFaceDirty(key);
+                    }
+                }
             }
         }
         orphanScanCursor = end >= orphanKeys.length ? 0 : end;

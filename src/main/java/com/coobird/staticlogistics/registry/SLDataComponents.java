@@ -60,4 +60,12 @@ public class SLDataComponents {
     // 蓝图锚点选择（左键记录的坐标）
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> BLUEPRINT_ANCHOR =
         register("blueprint_anchor", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+    // 蓝图粘贴预览锚点（贴之前先预览位置）
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> BLUEPRINT_PREVIEW_ANCHOR =
+        register("blueprint_preview_anchor", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+    // 蓝图预览旋转（0/1/2/3 = 0°/90°/180°/270° 绕Y轴）
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> BLUEPRINT_PREVIEW_ROTATION =
+        register("blueprint_preview_rotation", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 }

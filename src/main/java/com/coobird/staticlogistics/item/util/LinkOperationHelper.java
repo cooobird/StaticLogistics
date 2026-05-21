@@ -69,10 +69,13 @@ public class LinkOperationHelper {
                 stack.remove(SLDataComponents.STORED_MODE.get());
             }
         } else {
-            // 第一个节点存入时自动分配新组 ID，并记录存点人 UUID（防冒用）
+            // 第一个节点存入时：如果已选了组就用它，没选才自动分配新组 ID
             if (nodes.isEmpty()) {
-                String newId = GroupService.getNextGroupIdForPlayer(player);
-                stack.set(SLDataComponents.SELECTED_GROUP.get(), newId);
+                String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+                if (currentGroup.isEmpty()) {
+                    String newId = GroupService.getNextGroupIdForPlayer(player);
+                    stack.set(SLDataComponents.SELECTED_GROUP.get(), newId);
+                }
                 stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
             }
             nodes.add(newNode);

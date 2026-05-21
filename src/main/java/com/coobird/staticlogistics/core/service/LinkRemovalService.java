@@ -40,5 +40,8 @@ public class LinkRemovalService {
         }
 
         selfMgr.removeFaceConfigDataOnly(selfNode.toKey());
+
+        // 根源清理：移除所有残留空组ID
+        globalManager.cleanupOrphanedGroupIds(selfConfig.faceConfig.getOwner());
     }
 }

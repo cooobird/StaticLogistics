@@ -4,7 +4,6 @@ package com.coobird.staticlogistics.datagen;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.registry.SLItems;
 import net.minecraft.data.PackOutput;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.client.model.generators.ItemModelProvider;
 import net.neoforged.neoforge.common.data.ExistingFileHelper;
@@ -29,14 +28,13 @@ public class SLItemModelProvider extends ItemModelProvider {
     }
 
     protected void simpleItem(DeferredRegister.Items register) {
-        skip.add(SLItems.BLUEPRINT.get());
         for (DeferredHolder<Item, ? extends Item> item : register.getEntries()) {
             if (skip.contains(item.get())) continue;
 
             String path = item.getId().getPath();
             String parent = handheld.contains(item.get()) ? "item/handheld" : "item/generated";
             withExistingParent(path, parent)
-                .texture("layer0", ResourceLocation.fromNamespaceAndPath(modid, "item/" + path));
+                .texture("layer0", Staticlogistics.asResource("item/" + path));
         }
     }
 }
