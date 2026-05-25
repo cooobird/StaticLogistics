@@ -30,28 +30,24 @@ public class NodeConfigModeHandler implements ModeHandler {
             BlockPos pos = context.getClickedPos();
             Direction face = context.getClickedFace();
             LinkManager mgr = LinkManager.get(serverLevel);
-            FaceConfigComposite config = mgr.getFaceConfig(LinkManager.posToKey(pos, face));
+            FaceConfigComposite config = mgr.getOrCreateFaceConfig(pos, face);
 
-            if (config != null) {
-                if (config.canPlayerAccess(player)) {
-                    var firstType = settings.getSelectedTypes().isEmpty()
-                        ? TransferRegistries.ITEM : settings.getSelectedTypes().getFirst();
-                    BlockState state = level.getBlockState(pos);
-                    var title = state.getBlock().getName().copy()
-                        .append(Component.literal(String.format(" [%d, %d, %d]", pos.getX(), pos.getY(), pos.getZ()))
-                            .withStyle(ChatFormatting.GRAY));
-                    serverPlayer.openMenu(new SimpleMenuProvider(
-                            (id, inv, p) -> new FaceConfiguratorMenu(id, inv, pos, face), title),
-                        buf -> {
-                            buf.writeBlockPos(pos);
-                            buf.writeEnum(face);
-                            buf.writeResourceLocation(firstType.id());
-                        });
-                } else {
-                    player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission"), true);
-                }
+            if (config != null && config.canPlayerAccess(player)) {
+                var firstType = settings.getSelectedTypes().isEmpty()
+                    ? TransferRegistries.ITEM : settings.getSelectedTypes().getFirst();
+                BlockState state = level.getBlockState(pos);
+                var title = state.getBlock().getName().copy()
+                    .append(Component.literal(String.format(" [%d, %d, %d]", pos.getX(), pos.getY(), pos.getZ()))
+                        .withStyle(ChatFormatting.GRAY));
+                serverPlayer.openMenu(new SimpleMenuProvider(
+                        (id, inv, p) -> new FaceConfiguratorMenu(id, inv, pos, face), title),
+                    buf -> {
+                        buf.writeBlockPos(pos);
+                        buf.writeEnum(face);
+                        buf.writeResourceLocation(firstType.id());
+                    });
             } else {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.no_face_config"), true);
+                player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission"), true);
             }
         }
         return InteractionResult.SUCCESS;

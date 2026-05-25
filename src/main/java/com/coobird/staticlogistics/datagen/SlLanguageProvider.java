@@ -138,7 +138,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.no_permission", "Access Denied: Insufficient permissions.", "访问拒绝：权限不足。");
         add("msg.staticlogistics.no_permission_to_remove", "Cannot remove: You must be the owner or a Team Officer.", "无法移除：你必须是所有者 or 具备团队管理员权限。");
         add("msg.staticlogistics.links_removed_partial", "Cleaned %s links; %s others were skipped (Protected).", "清理了 %s 条链路；另有 %s 条受保护无法移除。");
-        add("msg.staticlogistics.no_face_config", "No face configuration found at this location.", "该位置未找到面配置。");
         add("msg.staticlogistics.no_capability", "This block does not have logistics capability.", "该方块不具备物流能力。");
         add("msg.staticlogistics.no_types_selected", "No transfer type selected. Cannot create link.", "§c未选择任何传输类型，无法建立链接");
         add("msg.staticlogistics.self_link_error", "Cannot link a node to itself.", "无法将节点连接到自身。");

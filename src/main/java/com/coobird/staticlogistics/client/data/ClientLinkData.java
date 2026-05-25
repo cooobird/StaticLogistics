@@ -75,6 +75,8 @@ public enum ClientLinkData {
     public void invalidate() {
         dimensionConfigs.clear();
         configVersions.clear();
+        knownGroupIds.clear();
+        knownOwnerNames.clear();
         dataVersion++;
     }
 

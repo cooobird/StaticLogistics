@@ -48,7 +48,10 @@
 - 加号按钮被编辑框命中区域覆盖导致无法提交（调整检测顺序）
 - `g.fill` 参数顺序写反导致悬停出现巨大白色区域
 - 搜索框重复渲染 EditBox 背景与侧面板纹理内置槽位冲突
+- `SlLanguageProvider` 重复翻译键 `gui.staticlogistics.add_group` 导致 datagen 崩溃
 - `NODE_CONFIG`/`FACE_CONFIG` 枚举引用同步修复
 - **`LinkConfiguratorScreen` 输入处理代码被误删**：`mouseClicked`/`keyPressed`/`mouseScrolled` 等全部丢失，导致所有按钮和编辑框无法交互、E 键无法关闭 UI
 - **`ServerEvents` 注册缺失**：`git checkout` 还原文件时丢失了 `C2SOpenContainerConfigPayload`、`C2SOpenFaceConfigPayload`、`C2SClearStoredNodesPayload`、`C2SDeleteGroupPayload` 的注册，导致面配置切换到容器配置时崩溃
 - 分组 Tooltip 坐标列表过长：默认只显示 5 条，按住 Shift 显示全部
+- **存档切换后组信息串数据**：`ClientLinkData.invalidate()` 未清空 `knownGroupIds`/`knownOwnerNames`，换存档时旧数据残留
+- **未建立链接前无法打开面配置 UI**：`NodeConfigModeHandler` 改用 `getOrCreateFaceConfig`，即使无链接也自动创建默认配置，允许先插入升级卡再链接
