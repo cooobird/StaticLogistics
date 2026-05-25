@@ -49,8 +49,10 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.tooltip.toggle_type", "Click to enable/disable types", "点击以启用/禁用类型");
         add("gui.staticlogistics.tooltip.group_id", "Group #%s", "分组 #%s");
         add("gui.staticlogistics.tooltip.shift_export", "Shift + Click to export coordinates", "Shift + 点击导出坐标");
+        add("gui.staticlogistics.tooltip.shift_more", "Hold Shift to show %s more...", "按住 Shift 显示剩余 %s 项...");
         add("gui.staticlogistics.tooltip.rename_hint", "Double-click to rename group", "双击以重命名分组");
         add("gui.staticlogistics.tooltip.select_hint", "Click to select this group", "点击以选择该分组");
+        add("gui.staticlogistics.tooltip.right_click_delete", "Right-click to delete the group and all connections it has", "右键点击以删除该分组及其拥有的所有连接");
         add("gui.staticlogistics.rename_hint", "Enter new group name...", "输入新组名...");
 
         add("gui.staticlogistics.label.status", "--- Current Status ---", "--- 当前状态 ---");

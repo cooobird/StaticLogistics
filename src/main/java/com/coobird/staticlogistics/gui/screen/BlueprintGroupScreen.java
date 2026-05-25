@@ -83,7 +83,7 @@ public class BlueprintGroupScreen extends Screen {
         if (!this.hoveredGroupId.isEmpty()) {
             g.pose().pushPose();
             g.pose().translate(0, 0, 500);
-            renderGroupTooltip(g, mx, my, this.hoveredGroupId);
+            renderGroupTooltip(g, mx, my, this.hoveredGroupId, hasShiftDown());
             g.pose().popPose();
         }
     }
@@ -160,7 +160,7 @@ public class BlueprintGroupScreen extends Screen {
         g.disableScissor();
     }
 
-    private void renderGroupTooltip(GuiGraphics g, int mx, int my, String gid) {
+    private void renderGroupTooltip(GuiGraphics g, int mx, int my, String gid, boolean shiftDown) {
         Player player = Minecraft.getInstance().player;
         if (player == null) return;
 
@@ -176,11 +176,19 @@ public class BlueprintGroupScreen extends Screen {
                 .withStyle(ChatFormatting.GRAY));
 
         if (!positions.isEmpty()) {
+            int maxShown = shiftDown ? Integer.MAX_VALUE : 5;
+            int count = 0;
             for (BlockPos p : positions) {
+                if (count >= maxShown) break;
                 double dist = Math.sqrt(p.distToCenterSqr(player.position()));
                 lines.add(Component.literal(String.format(
                     " §f[%d, %d, %d] §b(%.1fm)",
                     p.getX(), p.getY(), p.getZ(), dist)));
+                count++;
+            }
+            if (positions.size() > maxShown) {
+                lines.add(Component.translatable("gui.staticlogistics.tooltip.shift_more",
+                    positions.size() - maxShown).withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
             }
             lines.add(Component.empty());
         }

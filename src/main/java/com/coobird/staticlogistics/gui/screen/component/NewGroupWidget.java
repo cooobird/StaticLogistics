@@ -15,7 +15,7 @@ public class NewGroupWidget {
     public static final int ADD_BTN_SIZE = 12;
     public static final int ADD_BTN_X = 75, ADD_BTN_Y = 129;
     public static final int NEW_GROUP_X = 12, NEW_GROUP_Y = 130, NEW_GROUP_W = 77;
-    private static final int SX_OFFSET = GroupPanel.SIDE_PANEL_X;
+    private static final int SX_OFFSET = 202;
     private static final int LIST_OFFSET_X = GroupPanel.LIST_OFFSET_X;
 
     private final EditBox editBox;

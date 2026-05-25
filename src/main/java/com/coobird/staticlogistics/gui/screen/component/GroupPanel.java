@@ -98,21 +98,17 @@ public class GroupPanel {
         this.hoveredGroupId = "";
         int sx = leftPos + SIDE_PANEL_X;
 
-        // 侧面板背景（纹理中已含搜索栏）
         g.blit(SLGuiTextures.GUI_ATLAS, sx, topPos, 0, 144,
             SLGuiTextures.Background.BY_GROUP_WIDTH,
             SLGuiTextures.Background.BY_GROUP_HEIGHT,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
-        // 搜索框（无边框，直接 overlay 在背景纹理的搜索栏槽位上）
         this.searchBox.setX(sx + BAR_X + 1);
         this.searchBox.setY(topPos + BAR_Y + 1);
         this.searchBox.render(g, mx, my, partialTick);
 
-        // 分组列表
         renderGroupList(g, font, stack, sx, topPos, mx, my);
 
-        // 行内重命名框
         if (this.renameBox.isVisible()) {
             this.renameBox.render(g, mx, my, partialTick);
         }
@@ -385,7 +381,7 @@ public class GroupPanel {
         return cachedGroupList;
     }
 
-    public void renderGroupTooltip(GuiGraphics g, Font font, int mx, int my, String gid) {
+    public void renderGroupTooltip(GuiGraphics g, Font font, int mx, int my, String gid, boolean shiftDown) {
         Player player = Minecraft.getInstance().player;
         if (player == null) return;
 
@@ -401,12 +397,20 @@ public class GroupPanel {
                 .withStyle(ChatFormatting.GRAY));
         }
 
+        int maxShown = shiftDown ? Integer.MAX_VALUE : 5;
         if (!positions.isEmpty()) {
+            int count = 0;
             for (BlockPos p : positions) {
+                if (count >= maxShown) break;
                 double dist = Math.sqrt(p.distToCenterSqr(player.position()));
                 lines.add(Component.literal(
                     String.format(" §f[%d, %d, %d] §b(%.1fm)",
                         p.getX(), p.getY(), p.getZ(), dist)));
+                count++;
+            }
+            if (positions.size() > maxShown) {
+                lines.add(Component.translatable("gui.staticlogistics.tooltip.shift_more",
+                    positions.size() - maxShown).withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
             }
             lines.add(Component.empty());
         }
