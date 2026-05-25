@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.item;
+package com.coobird.staticlogistics.api;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;

@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.type.UpgradeTier;
 import com.coobird.staticlogistics.api.type.UpgradeType;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.network.c2s.C2SOpenHandFilterPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -25,7 +26,7 @@ public class UpgradeItem extends Item {
 
     public UpgradeItem(UpgradeType type) {
         super(new Item.Properties()
-            .stacksTo(1)
+            .stacksTo(64)
             .rarity(Rarity.RARE));
         this.type = type;
         this.tier = null;
@@ -37,14 +38,6 @@ public class UpgradeItem extends Item {
             .rarity(tier.rarity));
         this.type = type;
         this.tier = tier;
-    }
-
-    public UpgradeItem(UpgradeType type, int stackSize) {
-        super(new Item.Properties()
-            .stacksTo(stackSize)
-            .rarity(Rarity.RARE));
-        this.type = type;
-        this.tier = null;
     }
 
     @Override
@@ -72,10 +65,18 @@ public class UpgradeItem extends Item {
         } else if (tier != null) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.tier_display", tier.getDisplayName()));
             int multiplier = tier.getMultiplier();
-            String valueDisplay = (multiplier == Integer.MAX_VALUE) ? "∞" : "x" + multiplier;
-
-            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
-                .withStyle(ChatFormatting.GREEN));
+            if (type == UpgradeType.SPEED) {
+                // 速度升级显示实际 tick 间隔（最少 1 tick）
+                int baseInterval = SLConfig.getDefaultTickInterval();
+                int effectiveInterval = Math.max(1, (int) (baseInterval / Math.sqrt(multiplier)));
+                String valueDisplay = effectiveInterval + " tick" + (effectiveInterval != 1 ? "s" : "");
+                tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
+                    .withStyle(ChatFormatting.GREEN));
+            } else {
+                String valueDisplay = (multiplier >= Integer.MAX_VALUE) ? "∞" : "x" + multiplier;
+                tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
+                    .withStyle(ChatFormatting.GREEN));
+            }
         }
 
         tooltip.add(Component.empty());

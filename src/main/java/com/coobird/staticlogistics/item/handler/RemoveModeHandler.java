@@ -48,26 +48,17 @@ public class RemoveModeHandler implements ModeHandler {
                     config.markDirty();
                     mgr.markFaceDirty(key);
 
-                    // 级联清理：遍历链接面，如果该面在这个组里没有其他链接节点了，也移除该组
+                    // 级联清理：移除该链接面所属组中已无其他节点的链接面配置
                     for (LogisticsNode linked : config.getLinkedNodes()) {
                         ServerLevel linkedLevel = serverLevel.getServer().getLevel(linked.gPos().dimension());
                         if (linkedLevel == null) continue;
                         LinkManager linkedMgr = LinkManager.get(linkedLevel);
                         FaceConfigComposite linkedCfg = linkedMgr.getFaceConfig(linked.toKey());
                         if (linkedCfg == null || !linkedCfg.faceConfig.getGroupIds().contains(selectedGroup)) continue;
-                        // 检查该链接面是否还有其他链接节点也属于 selectedGroup
-                        boolean hasOtherInGroup = false;
-                        for (LogisticsNode other : linkedCfg.getLinkedNodes()) {
-                            if (other.equals(mgr.createNodeFromKey(key))) continue; // 跳过被移除的面自己
-                            ServerLevel otherLevel = serverLevel.getServer().getLevel(other.gPos().dimension());
-                            if (otherLevel != null) {
-                                FaceConfigComposite otherCfg = LinkManager.get(otherLevel).getFaceConfig(other.toKey());
-                                if (otherCfg != null && otherCfg.faceConfig.getGroupIds().contains(selectedGroup)) {
-                                    hasOtherInGroup = true;
-                                    break;
-                                }
-                            }
-                        }
+                        // 全局检查：该组还有没有其他活跃节点
+                        boolean hasOtherInGroup = com.coobird.staticlogistics.core.manager.GlobalLogisticsManager
+                            .get(serverLevel.getServer()).getNodeGroupService()
+                            .getNodesInGroup(selectedGroup).size() > 1;  // >1 因为当前面自己占1个
                         if (!hasOtherInGroup) {
                             linkedCfg.faceConfig.removeGroupId(selectedGroup);
                             linkedCfg.markDirty();

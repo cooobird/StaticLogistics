@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.item.util;
+package com.coobird.staticlogistics.api.type;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -9,7 +9,7 @@ public enum ToolMode implements StringRepresentable {
     LINK_AS_INSERT("link_as_input", ChatFormatting.AQUA, 1),
     LINK_AS_EXTRACT("link_as_output", ChatFormatting.GOLD, 2),
     REMOVE("remove", ChatFormatting.RED, 3),
-    FACE_CONFIG("face_config", ChatFormatting.LIGHT_PURPLE, 4),
+    NODE_CONFIG("node_config", ChatFormatting.LIGHT_PURPLE, 4),
     CONTAINER_CONFIG("container_config", ChatFormatting.GREEN, 5);
 
     private final String name;

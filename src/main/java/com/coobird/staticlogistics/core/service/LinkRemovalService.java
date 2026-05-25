@@ -41,7 +41,7 @@ public class LinkRemovalService {
 
         selfMgr.removeFaceConfigDataOnly(selfNode.toKey());
 
-        // 根源清理：移除所有残留空组ID
+        // 根源清理：移除所有残留空组ID（owner 可能为 null，cleanupOrphanedGroupIds 内部已做空值保护）
         globalManager.cleanupOrphanedGroupIds(selfConfig.faceConfig.getOwner());
     }
 }

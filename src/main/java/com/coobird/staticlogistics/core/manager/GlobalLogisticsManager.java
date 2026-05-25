@@ -11,6 +11,8 @@ import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -340,12 +342,15 @@ public class GlobalLogisticsManager implements ILogisticsManager {
      * 根源清理：遍历所有维度的玩家面配置，移除已无活跃节点的组ID（空组清零）。
      * 调用时机：删除链路/组操作后。
      */
-    public void cleanupOrphanedGroupIds(UUID playerId) {
+    public void cleanupOrphanedGroupIds(@Nullable UUID playerId) {
+        if (playerId == null) return;
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
             for (long key : mgr.getAllConfigKeys()) {
                 FaceConfigComposite cfg = mgr.getFaceConfig(key);
-                if (cfg == null || !playerId.equals(cfg.faceConfig.getOwner())) continue;
+                if (cfg == null) continue;
+                UUID owner = cfg.faceConfig.getOwner();
+                if (!playerId.equals(owner)) continue;
                 for (String gid : new java.util.ArrayList<>(cfg.faceConfig.getGroupIds())) {
                     if (nodeGroupService.getNodesInGroup(gid).isEmpty()) {
                         cfg.faceConfig.removeGroupId(gid);
@@ -355,6 +360,53 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                 }
             }
         }
+    }
+
+    /**
+     * 删除指定分组及其所有关联节点。
+     */
+    public void removeGroup(String groupId) {
+        if (groupId == null || groupId.isEmpty()) return;
+        Map<LogisticsNode, NodeRole> nodes = nodeGroupService.getNodesInGroup(groupId);
+        for (LogisticsNode node : new ArrayList<>(nodes.keySet())) {
+            nodeGroupService.unregister(node);
+        }
+        // 清理面配置中的组引用
+        for (ServerLevel level : server.getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            for (long key : mgr.getAllConfigKeys()) {
+                FaceConfigComposite cfg = mgr.getFaceConfig(key);
+                if (cfg != null && cfg.faceConfig.getGroupIds().contains(groupId)) {
+                    cfg.faceConfig.removeGroupId(groupId);
+                    cfg.markDirty();
+                    mgr.markFaceDirty(key);
+                }
+            }
+        }
+        markReverseLinksStale();
+    }
+
+    /**
+     * 收集指定分组的所有面配置条目（用于客户端同步清理）。
+     */
+    public List<GlobalLogisticsManager.FaceEntry> collectGroupFaceConfigs(String groupId) {
+        List<FaceEntry> result = new ArrayList<>();
+        if (groupId == null || groupId.isEmpty()) return result;
+        for (ServerLevel level : server.getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            for (long key : mgr.getAllConfigKeys()) {
+                FaceConfigComposite cfg = mgr.getFaceConfig(key);
+                if (cfg != null && cfg.faceConfig.getGroupIds().contains(groupId)) {
+                    result.add(new FaceEntry(
+                        GlobalPos.of(level.dimension(), LogisticsNode.keyToPos(key)),
+                        LogisticsNode.keyToFace(key)));
+                }
+            }
+        }
+        return result;
+    }
+
+    public record FaceEntry(GlobalPos pos, Direction face) {
     }
 
     // 持久化保存计数器到 NBT

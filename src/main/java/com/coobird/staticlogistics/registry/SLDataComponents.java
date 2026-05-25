@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.api.BlueprintData;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.filter.data.FilterData;
-import com.coobird.staticlogistics.item.BlueprintData;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;

@@ -1,141 +1,52 @@
-# 更新日志（1.1.4-SNAPSHOT）
+# 更新日志（1.1.5-SNAPSHOT）
 
-## 蓝图画布系统重写
-- **操作流程重构**：Shift+右键方块设锚点/复制区域/进入预览/确认粘贴，全程统一键位。
-- **粘贴预览**：复制完成后进入预览模式，显示旋转后的区域线框 + 每个方块位线框 + 橙色链接线，直观展现将要粘贴的配置和连接关系。
-- **预览调整**：Shift+滚轮水平平移、Ctrl+滚轮旋转 90°、Alt+滚轮升降 Y 轴。
-- **键位映射**：三个预览调整按键可通过「选项→控制→Static Logistics」自由更改。
-- **选区渲染修复**：BlueprintData 新增 corner2 字段存储对角坐标，不再依赖配置条目反推 bbox，彻底解决选区线框不完整问题。
-- **Tooltip 动态按键**：蓝图物品描述中的操作按键根据玩家实际绑定的键位动态显示，不改写死。
-- **配置器 Scroll 提示**：LinkConfigurator tooltip 新增「Shift+滚轮：切换工具模式」提示行。
-- **线框防闪烁**：蓝图和链路渲染均施加 `POLYGON_OFFSET_LAYERING`，消除线框与方块面的 Z-Fighting 闪烁。
+## GUI 组件化拆分
+- **LinkConfiguratorScreen 拆分**：从单文件 685 行拆为 11 个独立组件 + 精简主屏。
+  - `LeftSidebar`：左侧模式标签栏（5 个标签 + 图标 + Tooltip）
+  - `TransferTypeGrid`：中间类型按钮网格（8 列多选 toggle + 物品图标 + Tooltip）
+  - `GroupPanel`：右侧分组面板（搜索框 + 分组列表 + 滚动条 + 所有者头像 + 行内重命名 + Tooltip + 导出）
+  - `NewGroupWidget`：右侧最下方新建分组（编辑框 + 大号按钮底层 + 加号按钮）
+  - `TitleBar`：9-slice 标题栏组件（消除 3 处重复渲染）
+  - `ContainerStats`：容器升级统计面板（范围/速度/维度/堆叠）
+  - `FaceControls`：Face 界面通用控件集（开关/颜色/操作/策略/过滤按钮）
+- **BaseFilterScreen 拆分**：从 610 行拆为 4 个组件 + 精简基类。
+  - `FilterGridWidget`：过滤槽位网格（9×4 或 1×4 模式）+ Tooltip + 点击处理
+  - `TagBarWidget`：标签下拉栏（4 行标签选择 + 左键启用/右键排除）
+  - `BlacklistButton`：黑/白名单切换按钮（9-slice 拼接）
+  - `NbtModeControls`：NBT 匹配模式（全匹配/部分匹配/忽略耐久）
+- 其余 Screen 同步精简：`FaceConfiguratorScreen`、`ContainerConfiguratorScreen`、`FilterConfiguratorScreen`、`HandFilterScreen`、`BlueprintGroupScreen`
 
-## 组 ID 系统修复
-- **不复用机制**：`getNextGroupIdForPlayer` 改为单调递增计数器，删除已释放的 ID 不复用。
-- **删光重置**：当玩家所有链路和面配置中无任何数字组 ID 时，计数器自动重置为 1。
-- **根源清理**：新增 `GlobalLogisticsManager.cleanupOrphanedGroupIds`，遍历所有面配置清除已失活的组 ID。
-- **三处触发**：RemoveModeHandler、LinkRemovalService、孤儿扫描均调用清理，确保面配置与活跃节点同步。
-- **修复重命名残留**：重命名组后旧数字 ID 不再残留于其他面配置中，避免计数器异常高位。
+## 新建分组交互
+- 右键分组列表项立即删除分组及其所有链接节点（发送 `C2SDeleteGroupPayload`）
+- NewGroupWidget 独立编辑框：点击输入名称，按 Enter 或点击加号提交创建
+- `ClientLinkData.addKnownGroup/removeKnownGroup`：即使无链接节点的分组也能在列表中显示
+- 分组 Tooltip 新增红色「右键删除」提示行
+- 加号按钮命中判定优先于编辑框，避免误触发编辑模式
 
-## 渲染优化
-- 蓝图区域渲染两批次合并为单批次，角框始终在蓝框之上。
-- 预览模式每个方块位画淡蓝线框 + 橙色链接线，清晰展示连接拓扑。
-- 选区对角和预览锚点均用完整 12 边方块线框标记。
+## 项目结构重组
+- `ToolMode` 从 `item/util` 移至 `api/type`（被 7 个文件引用）
+- `BlueprintData` 从 `item` 移至 `api`（跨层共享的数据记录）
+- `TransferLogManager` 从 `util` 移至 `transfer`
+- `PlayerEvents` 从 `server/event/game/entity` 提升至 `server/event`（消除 4 级嵌套）
+- `SLLevelEvents` 从 `server/event/game` 提升至 `server/event`
+- `SLEvents` 重命名为 `ServerEvents`（与 `ClientEvents` 对齐）
+- `S2CConfigSyncPayload` 重命名为 `S2CConfigSyncPacket`（统一 S2C 命名）
 
-# 更新日志（1.1.3-SNAPSHOT）
+## 死代码清理
+- `ClientLinkData`：移除 7 个未使用方法（`getFaceConfig`×3、`getAllNodes`、`remove`、`getGroupsByOwner`、`getNodesInGroup`）
+- `GroupPanel`：移除 `reposition()`、`positionRenameBox()`
+- `LeftSidebar`：移除 `getHoveredMode()`
+- `FilterGridWidget`：移除 `collectEnhancedTagsForFluid()`
+- `LinkManager`：移除 `getFaceConfigCountAt()`
 
-## 底层架构重写
-- **多组支持**：FaceConfig 从单组 ID 升级为多组 ID 集合，一个面可同时属于多个物流组。
-- **反向链接索引重构**：从手动同步改为按需从 linkedNodes 真源全量重建，消除索引漂移风险。
-- **死代码清理**：删除 globalTargetCache（写死不读的全局缓存）、20 个未使用的死方法、未使用的配置项及翻译。
-- **线程安全加固**：dirtyFaceKeys/dirtyContainerKeys 加锁保护，消除主线程与存盘线程的并发竞争。
-- **Key 编码统一**：所有坐标+面编码集中到 LogisticsNode，消除 6 处硬编码位移操作。
-
-## 多组管理
-- 移除模式升级：必须选取组才能移除，按组精确移除不再误删其他组的链接。
-- 重命名服务适配多组：removeGroupId + addGroupId 替代破坏性的 setGroupId。
-- 节点注册层适配：NodeGroupService 从单组映射改为多组映射，SyncManager 遍历所有组注册。
-- 客户端数据适配：ClientLinkData 的组查询从 getGroupId() 改为 getGroupIds().contains()。
-
-## 修复
-- 修复手持配置器非扳手模式下右键 AE2/PneumaticCraft/Create/Mekanism 方块误触发拆卸或旋转。
-- 修复大型多方块结构（Digital Miner、压力室等）被拆后链接、组 ID、渲染边框残留不清理。
-- 修复 AE2 方块无法正常用配置器选取连接。
-- 修复容器配置模式对多方块结构（Mekanism 阀门、Create 壳体等）提示"不具备物流能力"。
-- 修复粒子渲染 dst 面未按组过滤，移除组后面仍残留错误组的粒子效果。
-- 修复配置热重载后已插入的升级卡不生效（需拔插才更新）。
-- 修复重命名组后选中该组时无法添加新节点：配置器上的 SELECTED_GROUP 没有跟随重命名更新，导致新节点被写入旧组 ID。
-
-## 优化
-- 多方块链接清理改为事件驱动：只有方块被拆后才激活扫描，扫完自动停止。
-- 配置器类型选择从单选轮询改为多选 toggle（点击切换启用/禁用）。
-- 分发策略和提取模式按钮支持左键下一个、右键上一个。
-- 优先级移除 ±9999 钳位限制，输入框仅允许数字和负号。
-- 渲染性能：renderFlows 复用外层 activeNodes 缓存，消除重复 ClientLinkData 查找。
-- 传输性能：selectTargets 复用 FaceConfig 查找结果，消除重复 LinkManager 查询。
-- 翻译审计：补遗漏翻译键、删 dead 翻译键；配置类 tooltip 全覆盖。
-- 配置热重载自动失效 ContainerConfig 缓存（configGeneration 计数器），无需拔插升级卡。
-- 多组移除级联优化：只在链接面没有其他同组节点时才级联清除，避免破坏独立的多对一关系。
-- 最大传输量上限从 int 升级为 long（支持整合包极端能量数值）。
-- 连接线、粒子渲染距离跟随玩家渲染距离设置（chunks × 16 × 0.7），不再依赖 GameRenderer 内部 API 或硬限制 128 格。
-
-## 配置系统
-- 配置类型从 SERVER 改为 COMMON：修复局域网游戏时主机无法打开配置界面的问题（NeoForge 限制 SERVER 配置在开放局域网后不可编辑）。
-- 新增配置同步机制：主机修改配置后立刻推送给所有在线客户端，无需重进游戏即可生效。
-  - 新增 S2CConfigSyncPayload 网络包，含 27 项配置值的完整同步。
-  - 客户端收到后直接刷新 volatile 缓存，传输、渲染、升级倍率等立刻应用新值。
-
-## 蓝图系统
-- 蓝图物品：区域复制粘贴，选锚点→选对角→复制，粘贴时按蓝图记录自动应用组 ID。
-- 粘贴消耗物品栏中的升级卡：容器升级和过滤器升级，按蓝图内方块数量统计并从玩家物品栏扣减。
-- 蓝图区域渲染：QUADS 蓝色半透线框，锚点（绿框）和对角（红框）标记，含距离裁剪。
-- 蓝图 tooltip：显示区域尺寸、所属组、面数量、容器升级数、升级卡数等结构信息。
-- 蓝图配方：3 纸（顶行）+ 铁锭 + 青金石 + 铁锭（中行），通过 datagen 自动生成。
-
-# 更新日志（1.1.2-SNAPSHOT）
-
-## 扳手模式重写
-- 扳手回归简洁：旋转 + 拆卸 Mek 塑料方块，其他模组的拆卸由各自标签机制处理。
-- `canPerformAction` 只在 WRENCH 模式放行 `wrench_` 类能力。
-- 新增 Create IWrenchable 和 Mekanism 的事件级防护，防止非扳手模式误触发。
-- 删除冗余逻辑：刷怪笼开关、命名空间黑名单、多方块反射检测、自定义 ItemAbility 常量类。
-- 节点拆除时永远清理存点引用，不再受配置开关限制。
-
-## 新功能
-- 传输日志面板：环形缓冲记录最近 200 条传输，累计总量/按类型/按节点统计。
-- `/sl stats` 命令：总览、最近传输、Top10 排行、重置统计。
-
-## 性能优化
-- 新增反向链接索引，"谁连向我"查询从 O(n) 降为 O(1)。
-- NBT 增量保存：仅序列化变化的条目，大幅减少磁盘 IO。
-- 缓存快照防并发、对象池加锁、热路径日志降级、Ticker 快速判空等多项优化。
-
-## 数值平衡
-- 升级倍率重调：铁×2 → 金×4 → 钻石×8 → 下界合金×16 → 下界之星×64。
-- 配方重做：每级加主题材料，标签过滤器改用纸+书，NBT 过滤器加红石。
-
-## 兼容性
-- 配置器防冒用：存节点时记 UUID，链接时校验。
-- 放置已保存 NBT 的方块后自动更新方块状态。
+## 重复消除
+- `playClickSound()`：创建 `SoundUtil`，5 处重复定义改为统一调用
+- `renderTitle`：`TitleBar.render()` 替代 `LinkConfiguratorScreen` 中的重复代码
+- `NewGroupWidget` 解耦 `GroupPanel` 常量引用（`LIST_OFFSET_X`/`SIDE_PANEL_X` 改为本地常量）
 
 ## 修复
-- 组 ID 改为会话绑定：同一会话内多次链接共用一组，不再每次链接都生成新组。
-
-## 代码可读性
-- 为 api、registry、core 包共 32 个核心文件添加中文注释。
-
-# 更新日志（1.1.1-SNAPSHOT）
-
-## 代码质量
-- 修复 `LinkManager.pendingRemovals` 并发安全问题。
-- `CacheManager` 实现 LRU 缓存，`FaceConfigComposite` 添加全局缓存管理，防止内存泄漏。
-- 线程池添加异常处理、优雅关闭和状态检查。
-- `LogisticsTicker` 分批处理（每批 50 节点），平滑负载。
-- `CacheManager` 读写锁替代 synchronized，提高并发性能。
-- `PermissionService` 改为单例，`Objects.equals()` 替换不安全字符串比较。
-- 配置常量集中管理（`LogisticsConstants`），消除重复定义。
-- 性能参数配置化：缓存、网络、批处理等参数支持热重载。
-
-# 更新日志（1.1-SNAPSHOT）
-
-## 传输系统
-- 引入 `ExtractionResult` 包装提取结果，解决物品复制问题。
-- `SLOT_ROUND_ROBIN` 策略精确槽位绑定，修复物品异常增减。
-- 频道机制简化：面共享频道，范围固定 1~16，不再允许 0。
-
-## 界面
-- 流体槽位支持标签过滤，JEI 拖放物品/流体到过滤器格子。
-- 配置界面频道颜色按钮左键增加、右键减少，1~16 循环。
-- 新增配置文件选项"自动清理存放点"。
-
-## 性能
-- 配置延迟写入、批量网络同步、对象池复用传输上下文、目标节点排序缓存。
-- 修复能力缓存和冷却缓存的潜在内存泄漏。
-
-## 修复
-- 修复扳手模式拆除物流容器后链接残留。
-- 修复 Tag Filter 模式流体槽位无法选取标签。
-- 修复频道值为 0 导致传输失效及粒子线不渲染。
-- 修复清除槽位时遗留标签数据。
-- 修复多人同时操作节点配置冲突。
-- 加强网络包权限校验。
+- 加号按钮被编辑框命中区域覆盖导致无法提交（调整检测顺序）
+- `g.fill` 参数顺序写反导致悬停出现巨大白色区域
+- 搜索框重复渲染 EditBox 背景与侧面板纹理内置槽位冲突
+- `SlLanguageProvider` 重复翻译键 `gui.staticlogistics.add_group` 导致 datagen 崩溃
+- `NODE_CONFIG`/`FACE_CONFIG` 枚举引用同步修复

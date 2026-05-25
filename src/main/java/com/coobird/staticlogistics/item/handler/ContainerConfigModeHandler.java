@@ -42,8 +42,11 @@ public class ContainerConfigModeHandler implements ModeHandler {
             }
             BlockState state = level.getBlockState(pos);
             var title = state.getBlock().getName().copy();
-            serverPlayer.openMenu(new SimpleMenuProvider((id, inv, p) -> new ContainerConfiguratorMenu(id, inv, pos), title),
-                buf -> buf.writeBlockPos(pos));
+            serverPlayer.openMenu(new SimpleMenuProvider((id, inv, p) -> new ContainerConfiguratorMenu(id, inv, pos, null), title),
+                buf -> {
+                    buf.writeBlockPos(pos);
+                    buf.writeEnum(Direction.UP);
+                });
         }
         return InteractionResult.SUCCESS;
     }

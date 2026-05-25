@@ -3,12 +3,12 @@ package com.coobird.staticlogistics.server.event;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.network.c2s.*;
-import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
+import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPacket;
 import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
@@ -46,7 +46,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
-public class SLEvents {
+public class ServerEvents {
 
     @SubscribeEvent
     public static void onServerStarting(ServerAboutToStartEvent event) {
@@ -65,7 +65,7 @@ public class SLEvents {
 
         registrar.playToClient(S2CSyncFaceConfigPacket.TYPE, S2CSyncFaceConfigPacket.STREAM_CODEC, S2CSyncFaceConfigPacket::handle);
         registrar.playToClient(S2CSyncBulkFaceConfigPacket.TYPE, S2CSyncBulkFaceConfigPacket.STREAM_CODEC, S2CSyncBulkFaceConfigPacket::handle);
-        registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
+        registrar.playToClient(S2CConfigSyncPacket.TYPE, S2CConfigSyncPacket.STREAM_CODEC, S2CConfigSyncPacket::handle);
         registrar.playToClient(S2CRemoveBulkFaceConfigPacket.TYPE, S2CRemoveBulkFaceConfigPacket.STREAM_CODEC, S2CRemoveBulkFaceConfigPacket::handle);
 
         registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);

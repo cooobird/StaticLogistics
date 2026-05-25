@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -180,14 +181,14 @@ public class LinkManagerStorage extends SavedData {
             for (String keyStr : cTag.getAllKeys()) {
                 try {
                     long key = Long.parseLong(keyStr);
-                    ContainerConfig cfg = new ContainerConfig();
                     BlockPos pos = BlockPos.of(key);
-                    cfg.setPos(pos);
+                    // 使用 getOrCreate 而非 new，确保已关联的面配置引用不被破坏
+                    ContainerConfig cfg = containerConfigService.getOrCreate(pos);
                     CompoundTag nbt = cTag.getCompound(keyStr);
                     if (nbt.contains("upgrades")) {
                         cfg.getUpgrades().deserializeNBT(provider, nbt.getCompound("upgrades"));
                     }
-                    containerRepository.put(key, cfg);
+                    cfg.markDirty();
                 } catch (Exception e) {
                     LOGGER.error("Failed to load container config for key: {}", keyStr, e);
                 }
@@ -196,6 +197,30 @@ public class LinkManagerStorage extends SavedData {
         if (tag.contains("global_logistics")) {
             GlobalLogisticsManager.get(level.getServer()).load(tag.getCompound("global_logistics"));
         }
+
+        // 重新注册所有已加载的节点到 GlobalLogisticsManager（解决重进游戏后插件失效的问题）
+        GlobalLogisticsManager glm = GlobalLogisticsManager.get(level.getServer());
+        for (Long key : configRepository.keySet()) {
+            FaceConfigComposite cfg = configRepository.get(key);
+            if (cfg == null || cfg.isDefault()) continue;
+            LogisticsNode node = linkManager.createNodeFromKey(key);
+            NodeRole role = cfg.determineRole();
+            if (role != NodeRole.NONE) {
+                for (String gid : cfg.faceConfig.getGroupIds()) {
+                    if (gid != null && !gid.isEmpty()) {
+                        glm.registerNode(gid, node, role);
+                    }
+                }
+                // 重新注册频道索引
+                int inputChannel = cfg.linkConfig.getInputChannel();
+                if (inputChannel != 0) {
+                    for (var type : com.coobird.staticlogistics.core.registration.TransferRegistries.getAllActive()) {
+                        glm.registerNodeToChannel(type, inputChannel, node);
+                    }
+                }
+            }
+        }
+
         return storage;
     }
 }

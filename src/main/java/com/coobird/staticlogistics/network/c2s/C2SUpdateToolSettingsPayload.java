@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.api.type.ToolMode;
+import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -36,9 +37,10 @@ public record C2SUpdateToolSettingsPayload(String groupId, int mode,
         context.enqueueWork(() -> {
             var player = context.player();
             ItemStack stack = player.getItemInHand(InteractionHand.MAIN_HAND);
-            if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
+            if (!(stack.getItem() instanceof LinkConfiguratorItem) && !(stack.getItem() instanceof BlueprintItem)) {
                 stack = player.getItemInHand(InteractionHand.OFF_HAND);
-                if (!(stack.getItem() instanceof LinkConfiguratorItem)) return;
+                if (!(stack.getItem() instanceof LinkConfiguratorItem) && !(stack.getItem() instanceof BlueprintItem))
+                    return;
             }
 
             String rawId = payload.groupId().trim();

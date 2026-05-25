@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.util;
+package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;

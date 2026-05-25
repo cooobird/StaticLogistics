@@ -8,11 +8,11 @@ import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistr
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
+import com.coobird.staticlogistics.transfer.TransferLogManager.NodeStats;
+import com.coobird.staticlogistics.transfer.TransferLogManager.TransferEntry;
+import com.coobird.staticlogistics.transfer.TransferLogManager.TypeStats;
 import com.coobird.staticlogistics.util.LogisticsConstants;
-import com.coobird.staticlogistics.util.TransferLogManager;
-import com.coobird.staticlogistics.util.TransferLogManager.NodeStats;
-import com.coobird.staticlogistics.util.TransferLogManager.TransferEntry;
-import com.coobird.staticlogistics.util.TransferLogManager.TypeStats;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;

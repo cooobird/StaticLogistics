@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Inventory;
@@ -31,6 +32,7 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
     private static final int HOTBAR_SLOT_END = HOTBAR_SLOT_START + 9;
 
     private final BlockPos pos;
+    private final Direction face;
     private ContainerConfig serverConfig;
 
     private final DataSlot speedMultSlot = DataSlot.standalone();
@@ -41,12 +43,13 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
     private final ItemStack[] lastUpgradeStacks = new ItemStack[TOTAL_CONFIG_SLOTS];
 
     public ContainerConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
-        this(containerId, playerInventory, buf.readBlockPos());
+        this(containerId, playerInventory, buf.readBlockPos(), buf.readEnum(Direction.class));
     }
 
-    public ContainerConfiguratorMenu(int containerId, Inventory playerInventory, @Nullable BlockPos pos) {
+    public ContainerConfiguratorMenu(int containerId, Inventory playerInventory, @Nullable BlockPos pos, @Nullable Direction face) {
         super(SLMenuTypes.CONTAINER_CONFIGURATOR_MENU.get(), containerId);
         this.pos = pos;
+        this.face = face;
 
         addDataSlot(speedMultSlot);
         addDataSlot(rangeMultSlot);
@@ -229,5 +232,9 @@ public class ContainerConfiguratorMenu extends AbstractContainerMenu {
 
     public BlockPos getPos() {
         return pos;
+    }
+
+    public Direction getFace() {
+        return face;
     }
 }

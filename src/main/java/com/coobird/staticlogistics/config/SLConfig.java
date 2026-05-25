@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.config;
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistry;
-import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
+import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPacket;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -438,15 +438,15 @@ public final class SLConfig {
     private static void syncConfigToPlayers() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) return;
-        S2CConfigSyncPayload payload = buildSyncPayload();
+        S2CConfigSyncPacket payload = buildSyncPayload();
         PacketDistributor.sendToAllPlayers(payload);
     }
 
     /**
      * 从当前 volatile 缓存值构建同步包。
      */
-    private static S2CConfigSyncPayload buildSyncPayload() {
-        return new S2CConfigSyncPayload(
+    private static S2CConfigSyncPacket buildSyncPayload() {
+        return new S2CConfigSyncPacket(
             DefaultRadius, DefaultTickInterval, MaxTransferLimit,
             DefaultItemStack, DefaultFluidStack, DefaultEnergyStack,
             MekChemicalStack, MekHeatStack, ArsSourceStack,
@@ -463,7 +463,7 @@ public final class SLConfig {
     /**
      * 客户端收到服务端同步的配置后，写入 volatile 缓存。
      */
-    public static void applyServerConfig(S2CConfigSyncPayload p) {
+    public static void applyServerConfig(S2CConfigSyncPacket p) {
         if (p == null) {
             onLoad();
             return;

@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.item.util;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
@@ -29,6 +30,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class LinkOperationHelper {
+    public static final String DEFAULT_GROUP_NAME = "1";
+
     public static void validateStoredNodes(ItemStack stack, ServerLevel level) {
         List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (storedNodes == null || storedNodes.isEmpty()) return;
@@ -69,12 +72,12 @@ public class LinkOperationHelper {
                 stack.remove(SLDataComponents.STORED_MODE.get());
             }
         } else {
-            // 第一个节点存入时：如果已选了组就用它，没选才自动分配新组 ID
+            // 第一个节点存入时：默认用默认组，除非玩家手动选了自定义组
             if (nodes.isEmpty()) {
                 String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
-                if (currentGroup.isEmpty()) {
-                    String newId = GroupService.getNextGroupIdForPlayer(player);
-                    stack.set(SLDataComponents.SELECTED_GROUP.get(), newId);
+                // 空 或 纯数字旧格式 → 用默认组
+                if (currentGroup.isEmpty() || currentGroup.matches("\\d+")) {
+                    stack.set(SLDataComponents.SELECTED_GROUP.get(), DEFAULT_GROUP_NAME);
                 }
                 stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
             }
@@ -93,7 +96,6 @@ public class LinkOperationHelper {
         }
         stack.remove(SLDataComponents.STORED_NODES.get());
         stack.remove(SLDataComponents.STORED_MODE.get());
-        stack.remove(SLDataComponents.SELECTED_GROUP.get());
         stack.remove(SLDataComponents.STORED_NODES_OWNER.get());
         player.displayClientMessage(Component.translatable("msg.staticlogistics.selection_cleared").withStyle(ChatFormatting.YELLOW), true);
         level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.5f, 0.5f);
@@ -105,12 +107,6 @@ public class LinkOperationHelper {
         String storedOwner = stack.get(SLDataComponents.STORED_NODES_OWNER.get());
         if (storedOwner != null && !storedOwner.isEmpty() && !storedOwner.equals(player.getStringUUID())) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission").withStyle(ChatFormatting.RED), true);
-            return;
-        }
-
-        if (settings.typeMask() == 0) {
-            player.displayClientMessage(Component.translatable("msg.staticlogistics.no_types_selected")
-                .withStyle(ChatFormatting.RED), true);
             return;
         }
 
@@ -179,6 +175,7 @@ public class LinkOperationHelper {
             stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
             player.displayClientMessage(Component.translatable("msg.staticlogistics.batch_linked_to_group", linkedCount, groupId).withStyle(ChatFormatting.AQUA), true);
             level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.0f);
+            // 根据配置决定是否自动清空存点
             if (SLConfig.shouldAutoCleanStoredNodes()) {
                 clearNodes(stack, player, level);
             }
@@ -187,14 +184,7 @@ public class LinkOperationHelper {
 
     public static boolean performSingleLink(ServerLevel level, LogisticsNode current, LogisticsNode stored, String groupId,
                                             LinkConfiguratorItem.ToolSettings settings, Player player) {
-        if (settings.typeMask() == 0) {
-            if (player != null) {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.no_types_selected")
-                    .withStyle(ChatFormatting.RED), true);
-            }
-            return false;
-        }
-
+        // 允许不选类型就链接（mask=0）→ 节点不会传输，方便后续插入过滤
         LinkManager currentMgr = LinkManager.get(level);
         FaceConfigComposite currentCfg = currentMgr.getOrCreateFaceConfig(current.gPos().pos(), current.face());
         boolean currentIsNew = currentCfg.faceConfig.getGroupIds().isEmpty();
@@ -219,15 +209,6 @@ public class LinkOperationHelper {
             storedCfg.setSelectedTypesMask(settings.typeMask());
         } else {
             storedCfg.faceConfig.addGroupId(groupId);
-        }
-
-        int defaultChannel = 1;
-        if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
-            if (currentIsNew) currentCfg.linkConfig.setInputChannel(defaultChannel);
-            if (storedIsNew) storedCfg.linkConfig.setOutputChannel(defaultChannel);
-        } else {
-            if (currentIsNew) currentCfg.linkConfig.setOutputChannel(defaultChannel);
-            if (storedIsNew) storedCfg.linkConfig.setInputChannel(defaultChannel);
         }
 
         currentCfg.addLinkedNode(stored);

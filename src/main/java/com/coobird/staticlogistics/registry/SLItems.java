@@ -126,17 +126,17 @@ public class SLItems {
      * 基础过滤升级插件：允许按物品类型过滤
      */
     public static final DeferredItem<UpgradeItem> BASIC_FILTER_UPGRADE = register("basic_filter_upgrade", "基础过滤升级插件",
-        () -> new UpgradeItem(UpgradeType.BASIC_FILTER, 64));
+        () -> new UpgradeItem(UpgradeType.BASIC_FILTER));
     /**
      * 标签过滤升级插件：允许按物品标签过滤
      */
     public static final DeferredItem<UpgradeItem> TAG_FILTER_UPGRADE = register("tag_filter_upgrade", "标签过滤升级插件",
-        () -> new UpgradeItem(UpgradeType.TAG_FILTER, 64));
+        () -> new UpgradeItem(UpgradeType.TAG_FILTER));
     /**
      * NBT过滤升级插件：允许按物品NBT数据过滤
      */
     public static final DeferredItem<UpgradeItem> NBT_FILTER_UPGRADE = register("nbt_filter_upgrade", "NBT过滤升级插件",
-        () -> new UpgradeItem(UpgradeType.NBT_FILTER, 64));
+        () -> new UpgradeItem(UpgradeType.NBT_FILTER));
 
     /**
      * 注册物品并同时注册其中文名到国际化提供器

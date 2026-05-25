@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.server.event.game.entity;
+package com.coobird.staticlogistics.server.event;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.storage.LinkManager;

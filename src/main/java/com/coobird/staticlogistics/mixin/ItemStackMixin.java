@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.mixin;
 
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.item.util.ToolMode;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;

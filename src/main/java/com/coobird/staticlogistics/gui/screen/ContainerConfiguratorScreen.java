@@ -1,30 +1,38 @@
 package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.ContainerConfiguratorMenu;
+import com.coobird.staticlogistics.gui.screen.component.ContainerStats;
+import com.coobird.staticlogistics.gui.screen.component.FaceControls;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.network.c2s.C2SOpenFaceConfigPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<ContainerConfiguratorMenu> {
+/**
+ * 容器配置器界面 — 使用 {@link ContainerStats} 和 {@link FaceControls} 组件化。
+ */
+public class ContainerConfiguratorScreen
+    extends AbstractConfiguratorScreen<ContainerConfiguratorMenu> {
 
-    public ContainerConfiguratorScreen(ContainerConfiguratorMenu menu, Inventory inventory, Component title) {
+    public ContainerConfiguratorScreen(ContainerConfiguratorMenu menu,
+                                       Inventory inventory, Component title) {
         super(menu, inventory, title);
     }
 
     @Override
     protected void init() {
-        this.imageWidth = SLGuiTextures.Background.WIDTH + SLGuiTextures.Background.BY_GROUP_WIDTH + 2;
+        this.imageWidth = SLGuiTextures.Background.WIDTH
+            + SLGuiTextures.Background.BY_GROUP_WIDTH + 2;
         this.leftPos = (this.width - this.imageWidth) / 2;
         this.topPos = (this.height - this.imageHeight) / 2;
         super.init();
@@ -59,57 +67,60 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
     }
 
     @Override
-    protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
-        Component typeName = Component.translatable(type.translationKey());
-        String nameStr = typeName.getString();
+    protected void renderTypeListItem(GuiGraphics g, TransferType type,
+                                      int x, int y, boolean isSelected) {
+        String name = Component.translatable(type.translationKey()).getString();
         long stackMult = menu.getStackMultiplier();
-        int baseStackSize = type.getBaseStackSize();
-        boolean infinite = false;
-        long finalStackSize = 0;
+        int baseStack = type.getBaseStackSize();
+        boolean infinite;
+        long finalStack;
         try {
-            finalStackSize = Math.multiplyExact(baseStackSize, stackMult);
-            if (finalStackSize >= Integer.MAX_VALUE) {
-                infinite = true;
-            }
+            finalStack = Math.multiplyExact(baseStack, stackMult);
+            infinite = finalStack >= Integer.MAX_VALUE;
         } catch (ArithmeticException e) {
             infinite = true;
+            finalStack = 0;
         }
-        String valueText;
-        int valueColor;
+
+        String valText;
+        int valColor;
         if (infinite) {
-            valueText = Component.translatable("gui.staticlogistics.infinite").getString();
-            valueColor = 0x55FF55;
+            valText = Component.translatable("gui.staticlogistics.infinite").getString();
+            valColor = 0x55FF55;
         } else {
-            valueText = String.valueOf(finalStackSize);
-            valueColor = finalStackSize > baseStackSize ? 0x55FF55 : 0xCCCCCC;
+            valText = String.valueOf(finalStack);
+            valColor = finalStack > baseStack ? 0x55FF55 : 0xCCCCCC;
         }
-        String displayName = font.plainSubstrByWidth(nameStr, 60);
-        String combined = displayName + ": " + valueText;
-        g.drawString(this.font, combined, x + 4, y + 2, valueColor, false);
+        String combined = font.plainSubstrByWidth(name, 60) + ": " + valText;
+        g.drawString(this.font, combined, x + 4, y + 2, valColor, false);
     }
 
     @Override
     protected void renderHoveredTypeTooltip(GuiGraphics g, int mx, int my) {
         if (hoveredType == null) return;
         long stackMult = menu.getStackMultiplier();
-        int baseStackSize = hoveredType.getBaseStackSize();
-        boolean infinite = false;
-        long finalStackSize = 0;
+        int base = hoveredType.getBaseStackSize();
+        boolean infinite;
+        long finalStack;
         try {
-            finalStackSize = Math.multiplyExact(baseStackSize, stackMult);
-            if (finalStackSize >= Integer.MAX_VALUE) {
-                infinite = true;
-            }
+            finalStack = Math.multiplyExact(base, stackMult);
+            infinite = finalStack >= Integer.MAX_VALUE;
         } catch (ArithmeticException e) {
             infinite = true;
+            finalStack = 0;
         }
-        List<Component> tooltip = new ArrayList<>();
-        tooltip.add(Component.translatable(hoveredType.translationKey()).withStyle(ChatFormatting.WHITE));
-        tooltip.add(Component.translatable("gui.staticlogistics.stat.stack")
-            .append(Component.translatable(infinite ? "gui.staticlogistics.infinite" : String.valueOf(stackMult)).withStyle(ChatFormatting.AQUA)));
-        tooltip.add(Component.translatable("gui.staticlogistics.stat.transfer")
-            .append(Component.translatable(infinite ? "gui.staticlogistics.infinite" : String.valueOf(finalStackSize)).withStyle(ChatFormatting.GREEN)));
-        g.renderComponentTooltip(this.font, tooltip, mx, my);
+        List<Component> t = new ArrayList<>();
+        t.add(Component.translatable(hoveredType.translationKey())
+            .withStyle(ChatFormatting.WHITE));
+        t.add(Component.translatable("gui.staticlogistics.stat.stack")
+            .append(Component.translatable(infinite
+                ? "gui.staticlogistics.infinite"
+                : String.valueOf(stackMult)).withStyle(ChatFormatting.AQUA)));
+        t.add(Component.translatable("gui.staticlogistics.stat.transfer")
+            .append(Component.translatable(infinite
+                ? "gui.staticlogistics.infinite"
+                : String.valueOf(finalStack)).withStyle(ChatFormatting.GREEN)));
+        g.renderComponentTooltip(this.font, t, mx, my);
     }
 
     @Override
@@ -117,16 +128,39 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
     }
 
     @Override
-    protected void renderCustomContent(GuiGraphics g, int mouseX, int mouseY) {
+    protected void renderCustomContent(GuiGraphics g, int mx, int my) {
+        Component faceLabel = Component.translatable("gui.staticlogistics.face_config");
+        boolean faceHover = FaceControls.isTextButtonHovered(mx, my,
+            leftPos, topPos, -38, 5, faceLabel, this.font);
+        FaceControls.renderTextButton(g, this.font, leftPos, topPos,
+            -38, 5, faceLabel, faceHover, GUI_TEXTURE);
+
         renderUpgradeSlots(g);
         renderSlotHints(g);
-        renderStats(g);
+
+        ContainerStats.render(g, this.font, leftPos, topPos,
+            menu.getSpeedMultiplier(), menu.getRangeMultiplier(),
+            menu.getStackMultiplier(), menu.isDimensionEffective());
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderTooltips(graphics, mouseX, mouseY);
+    public void render(GuiGraphics g, int mx, int my, float pt) {
+        super.render(g, mx, my, pt);
+        renderSlotTooltips(g, mx, my);
+    }
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        Component faceLabel = Component.translatable("gui.staticlogistics.face_config");
+        if (FaceControls.isTextButtonHovered(mx, my, leftPos, topPos,
+            -38, 5, faceLabel, this.font)) {
+            PacketDistributor.sendToServer(new C2SOpenFaceConfigPayload(
+                menu.getPos(),
+                menu.getFace() != null ? menu.getFace()
+                    : net.minecraft.core.Direction.UP));
+            return true;
+        }
+        return super.mouseClicked(mx, my, button);
     }
 
     private void renderUpgradeSlots(GuiGraphics g) {
@@ -141,73 +175,29 @@ public class ContainerConfiguratorScreen extends AbstractConfiguratorScreen<Cont
     }
 
     private void renderSlotHints(GuiGraphics g) {
-        String[] hintKeys = {"gui.staticlogistics.hint.speed", "gui.staticlogistics.hint.range", "gui.staticlogistics.hint.stack"};
+        String[] keys = {"gui.staticlogistics.hint.speed",
+            "gui.staticlogistics.hint.range",
+            "gui.staticlogistics.hint.stack"};
         for (int i = 0; i < 3; i++) {
-            Component text = Component.translatable(hintKeys[i]);
+            Component text = Component.translatable(keys[i]);
             int x = leftPos + 18;
             int y = topPos + 21 + (i * 30) + 18;
             g.pose().pushPose();
             g.pose().scale(0.8f, 0.8f, 0.8f);
-            g.drawString(this.font, text, (int) (x / 0.8f), (int) (y / 0.8f), 0x88FFFFFF, false);
+            g.drawString(this.font, text,
+                (int) (x / 0.8f), (int) (y / 0.8f), 0x88FFFFFF, false);
             g.pose().popPose();
         }
     }
 
-    private void renderStats(GuiGraphics g) {
-        long speedMult = menu.getSpeedMultiplier();
-        long rangeMult = menu.getRangeMultiplier();
-        long stackMult = menu.getStackMultiplier();
-        boolean hasDimension = menu.isDimensionEffective();
-
-        int baseRange = SLConfig.getDefaultRadius();
-        boolean isRangeInfinite = hasDimension || rangeMult >= ContainerConfig.INFINITY_MARKER;
-        String rangeText = isRangeInfinite
-            ? Component.translatable("gui.staticlogistics.infinite").getString()
-            : (baseRange * rangeMult) + Component.translatable("gui.staticlogistics.unit.meters").getString();
-        int rangeColor = isRangeInfinite ? 0xFF55FF : 0x55FFFF;
-
-        int infoX = leftPos + 75;
-        int infoY = topPos + 16;
-        int spacing = 15;
-        int columnWidth = 66;
-
-        drawStat(g, Component.translatable("gui.staticlogistics.stat.range"), rangeText, infoX, infoY, 0xFFFFFF, rangeColor);
-
-        int baseInterval = SLConfig.getDefaultTickInterval();
-        int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
-        String speedText = actualInterval + Component.translatable("gui.staticlogistics.unit.ticks").getString();
-        int speedColor = speedMult > 1 ? 0x55FF55 : 0xCCCCCC;
-        drawStat(g, Component.translatable("gui.staticlogistics.stat.speed"), speedText, infoX + columnWidth, infoY, 0xFFFFFF, speedColor);
-
-        String dimensionText = hasDimension
-            ? Component.translatable("gui.staticlogistics.true").getString()
-            : Component.translatable("gui.staticlogistics.false").getString();
-        int dimensionColor = hasDimension ? 0x55FF55 : 0xCCCCCC;
-        drawStat(g, Component.translatable("gui.staticlogistics.stat.dimension"), dimensionText, infoX, infoY + spacing, 0xFFFFFF, dimensionColor);
-
-        String stackText;
-        int stackColor;
-        if (stackMult >= ContainerConfig.INFINITY_MARKER) {
-            stackText = Component.translatable("gui.staticlogistics.infinite").getString();
-            stackColor = 0x55FF55;
-        } else {
-            stackText = stackMult + Component.translatable("gui.staticlogistics.unit.multiplier").getString();
-            stackColor = stackMult > 1 ? 0x55FF55 : 0xCCCCCC;
-        }
-        drawStat(g, Component.translatable("gui.staticlogistics.stat.stack"), stackText, infoX + columnWidth, infoY + spacing, 0xFFFFFF, stackColor);
-    }
-
-    private void renderTooltips(GuiGraphics g, int mouseX, int mouseY) {
+    private void renderSlotTooltips(GuiGraphics g, int mx, int my) {
         for (int i = 0; i < menu.slots.size(); i++) {
             Slot slot = menu.getSlot(i);
             if (slot == null) continue;
-            int slotX = leftPos + slot.x;
-            int slotY = topPos + slot.y;
-            if (mouseX >= slotX && mouseX < slotX + 16 && mouseY >= slotY && mouseY < slotY + 16) {
+            int sx = leftPos + slot.x, sy = topPos + slot.y;
+            if (mx >= sx && mx < sx + 16 && my >= sy && my < sy + 16) {
                 ItemStack stack = slot.getItem();
-                if (!stack.isEmpty()) {
-                    g.renderTooltip(font, stack, mouseX, mouseY);
-                }
+                if (!stack.isEmpty()) g.renderTooltip(font, stack, mx, my);
             }
         }
     }

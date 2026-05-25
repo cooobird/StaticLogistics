@@ -51,6 +51,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     private final DataSlot prioritySlot = DataSlot.standalone();
     public final DataSlot selectedTypesMaskSlot = DataSlot.standalone();
 
+
     public FaceConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
         this(containerId, playerInventory, buf.readBlockPos(), buf.readEnum(Direction.class));
     }

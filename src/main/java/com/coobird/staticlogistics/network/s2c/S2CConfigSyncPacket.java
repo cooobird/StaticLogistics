@@ -14,7 +14,7 @@ import java.util.ArrayList;
  * 从服务端同步所有配置值到客户端。
  * 在配置热重载时由服务端广播给所有在线玩家。
  */
-public record S2CConfigSyncPayload(
+public record S2CConfigSyncPacket(
     int defaultRadius, int defaultTickInterval, long maxTransferLimit,
     int itemStack, int fluidStack, int energyStack,
     int mekChemicalStack, int mekHeatStack, int arsSourceStack,
@@ -27,12 +27,12 @@ public record S2CConfigSyncPayload(
     ArrayList<String> componentStrategyOverrides
 ) implements CustomPacketPayload {
 
-    public static final Type<S2CConfigSyncPayload> TYPE = new Type<>(Staticlogistics.asResource("sync_config"));
+    public static final Type<S2CConfigSyncPacket> TYPE = new Type<>(Staticlogistics.asResource("sync_config"));
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, S2CConfigSyncPayload> STREAM_CODEC = new StreamCodec<>() {
+    public static final StreamCodec<RegistryFriendlyByteBuf, S2CConfigSyncPacket> STREAM_CODEC = new StreamCodec<>() {
         @Override
-        public S2CConfigSyncPayload decode(RegistryFriendlyByteBuf buf) {
-            return new S2CConfigSyncPayload(
+        public S2CConfigSyncPacket decode(RegistryFriendlyByteBuf buf) {
+            return new S2CConfigSyncPacket(
                 buf.readInt(), buf.readInt(), buf.readLong(),
                 buf.readInt(), buf.readInt(), buf.readInt(),
                 buf.readInt(), buf.readInt(), buf.readInt(),
@@ -47,7 +47,7 @@ public record S2CConfigSyncPayload(
         }
 
         @Override
-        public void encode(RegistryFriendlyByteBuf buf, S2CConfigSyncPayload p) {
+        public void encode(RegistryFriendlyByteBuf buf, S2CConfigSyncPacket p) {
             buf.writeInt(p.defaultRadius);
             buf.writeInt(p.defaultTickInterval);
             buf.writeLong(p.maxTransferLimit);
@@ -82,10 +82,7 @@ public record S2CConfigSyncPayload(
         return TYPE;
     }
 
-    /**
-     * 客户端收到配置同步包后，把所有值写入 SLConfig 的 volatile 缓存。
-     */
-    public static void handle(final S2CConfigSyncPayload p, final IPayloadContext c) {
+    public static void handle(final S2CConfigSyncPacket p, final IPayloadContext c) {
         c.enqueueWork(() -> SLConfig.applyServerConfig(p));
     }
 }

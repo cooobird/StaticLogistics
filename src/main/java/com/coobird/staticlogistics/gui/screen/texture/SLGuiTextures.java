@@ -52,6 +52,9 @@ public class SLGuiTextures {
         public static final int TRACK_HEIGHT = 95;
     }
 
+    public static final class EditBox {
+        public static final int DEFAULT_U = 437, DEFAULT_V = 24, WIDTH = 37, HEIGHT = 10;
+    }
 
     public static final class Title {
         public static final int U = 416, V = 4;

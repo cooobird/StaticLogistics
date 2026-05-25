@@ -250,9 +250,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     }
 
     protected void playClickSound() {
-        if (this.minecraft != null) {
-            this.minecraft.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F));
-        }
+        com.coobird.staticlogistics.util.SoundUtil.playClickSound();
     }
 
     @Override

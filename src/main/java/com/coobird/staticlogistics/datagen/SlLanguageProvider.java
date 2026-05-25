@@ -41,7 +41,9 @@ public class SlLanguageProvider extends LanguageProvider {
         addCreativeTab(SLCreativeTabs.TAB_STATIC_LOGISTICS, "Static Logistics", "静态物流");
 
         add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置器");
+        add("gui.staticlogistics.new_group", "+ New Group", "＋ 新建分组");
         add("gui.staticlogistics.search_hint", "Search groups...", "搜索分组...");
+        add("gui.staticlogistics.add_group", "Add Group", "添加分组");
         add("gui.staticlogistics.search_types", "Search Types", "搜索类型");
         add("gui.staticlogistics.search_for_values_by_type", "Search for values by type", "按类型搜索值");
         add("gui.staticlogistics.tooltip.toggle_type", "Click to enable/disable types", "点击以启用/禁用类型");
@@ -49,6 +51,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.tooltip.shift_export", "Shift + Click to export coordinates", "Shift + 点击导出坐标");
         add("gui.staticlogistics.tooltip.rename_hint", "Double-click to rename group", "双击以重命名分组");
         add("gui.staticlogistics.tooltip.select_hint", "Click to select this group", "点击以选择该分组");
+        add("gui.staticlogistics.rename_hint", "Enter new group name...", "输入新组名...");
 
         add("gui.staticlogistics.label.status", "--- Current Status ---", "--- 当前状态 ---");
         add("gui.mode.staticlogistics.input", "Insert", "存入");
@@ -85,6 +88,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.whitelist_button", "Whitelist", "白名单");
         add("gui.staticlogistics.open_filter", "Configure Filter", "配置过滤器");
         add("gui.staticlogistics.face_config", "Face Configuration", "面配置");
+        add("gui.staticlogistics.container_config", "Container", "容器");
+        add("gui.staticlogistics.upgrade_config", "Transfer Params", "容器传输参数");
         add("gui.staticlogistics.clear_tags", "Clear the label for this line", "清除这一行的标签");
         add("gui.staticlogistics.tag_dropdown.help", "Scroll to select tags", "滚动选择标签");
         add("gui.staticlogistics.tag_dropdown.help2", "Click the tab to select it, and then tap the selected tab again to uncheck it.", "点击标签选中，再次点击已选中的标签即可取消选中。");
@@ -114,6 +119,9 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
         add("msg.staticlogistics.batch_linked", "Successfully linked %s nodes!", "成功建立了 %s 条链路！");
         add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
+        add("msg.staticlogistics.point_mode_single", "Point mode: Single", "选点模式：单选");
+        add("msg.staticlogistics.point_mode_multi", "Point mode: Multi", "选点模式：多选");
+        add("tooltip.staticlogistics.point_mode", "Point Mode: %s", "选点模式：%s");
         add("msg.staticlogistics.no_nodes_stored", "No nodes are stored in the configurator!", "配置器中未存储任何节点！");
         add("msg.staticlogistics.link_failed", "Failed to create links. Check connection rules.", "建立连接失败。请检查连接规则。");
         add("msg.staticlogistics.links_created", "Created %s new link(s)", "建立了 %s 条新链路");
@@ -146,17 +154,19 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.blueprint.empty", "No logistics configurations found in this area.", "该区域内未找到物流配置。");
         add("msg.staticlogistics.blueprint.copied", "Copied %s face(s) from anchor %s.", "已从锚点 %2$s 复制了 %1$s 个面。");
         add("msg.staticlogistics.blueprint.pasted", "Pasted %s face(s) at anchor %s.", "已在锚点 %2$s 粘贴了 %1$s 个面。");
+        add("msg.staticlogistics.blueprint.skipped_no_cap", "Skipped %s block(s) — target has no logistics capability.", "跳过了 %s 个方块 — 目标不具备物流能力。");
         add("tooltip.staticlogistics.blueprint.info", "--- Blueprint ---", "--- 蓝图信息 ---");
         add("tooltip.staticlogistics.blueprint.face_count", " Faces: %s", "  面：%s 个");
         add("tooltip.staticlogistics.blueprint.container", " Container Upgrades: %s", "  容器升级：%s");
         add("tooltip.staticlogistics.blueprint.upgrades", " Upgrades：", "  升级卡：");
-        add("tooltip.staticlogistics.blueprint.group", " Group: %s", "  组：%s");
+        add("tooltip.staticlogistics.blueprint.group", "Group: %s", "组：%s");
         add("tooltip.staticlogistics.blueprint.region", " Region: %s ~ %s", "  区域：%s 至 %s");
         add("tooltip.staticlogistics.blueprint.stored", "Blueprint: %s face(s), group %s, at %s", "蓝图：%s 个面，组 %s，锚点 %s");
         add("tooltip.staticlogistics.blueprint.preview", "Preview at %s, rotation: %s°", "预览位置：%s，旋转：%s°");
         add("tooltip.staticlogistics.blueprint.anchor", "Selected point: %s", "已选起点：%s");
         add("tooltip.staticlogistics.blueprint.use", "Shift+Right-click block: anchor / copy / preview / confirm", "Shift+右键方块：设锚点 / 复制区域 / 预览 / 确认粘贴");
         add("tooltip.staticlogistics.blueprint.clear", "Shift+Right-click air: clear all", "Shift+右键空气：清空全部");
+        add("tooltip.staticlogistics.blueprint.open_ui", "Right-click to open UI and select group to copy", "右键打开UI选定你想复制的组ID");
         add("tooltip.staticlogistics.blueprint.scroll", "%s+Scroll: move / %s+Scroll: rotate / %s+Scroll: Y-axis", "%s+滚轮：平移 / %s+滚轮：旋转 / %s+滚轮：升降");
         add("msg.staticlogistics.blueprint.missing_upgrades", "Missing %s upgrade(s) — check your inventory.", "缺少 %s 张升级卡 — 请检查背包。");
         add("msg.staticlogistics.blueprint.preview_enter", "Preview at %s — right-click to confirm, scroll to adjust.", "预览贴在 %s — 右键确认粘贴，滚轮调整位置。");
@@ -182,19 +192,14 @@ public class SlLanguageProvider extends LanguageProvider {
         add("mode.staticlogistics.remove.desc",
             "Shift + Right-click a node face to delete all links connected to it.",
             "潜行+右键点击节点面，删除该面上现有的所有物流链路。");
-        add("mode.staticlogistics.face_config", "Configure Node Face", "配置节点面");
-        add("mode.staticlogistics.face_config.desc",
-            "Shift + Right-click to open the detailed configuration GUI for the specific node face.",
-            "潜行+右键点击节点面，打开该面的详细配置界面（过滤、策略等）。");
-        add("mode.staticlogistics.container_config", "Configure Node Container", "配置节点容器");
-        add("mode.staticlogistics.container_config.desc",
-            "Shift + Right-click to open the detailed configuration GUI for the specific node container.",
-            "潜行+右键点击节点容器，打开该容器的详细配置界面（速度、倍率、范围等）。");
+        add("mode.staticlogistics.node_config", "Configure Node", "配置节点");
+        add("mode.staticlogistics.node_config.desc", "Shift + Right-click to configure face and container.", "Shift+右键配置节点面和容器。");
 
         add("key.categories.staticlogistics", "Static Logistics", "静态物流");
         add("key.staticlogistics.blueprint_preview_move", "Blueprint Preview Move", "蓝图预览移动");
         add("key.staticlogistics.blueprint_preview_rotate", "Blueprint Preview Rotate", "蓝图预览旋转");
         add("key.staticlogistics.blueprint_preview_move_y", "Blueprint Preview Move Y", "蓝图预览升降");
+        add("key.staticlogistics.toggle_multi_select", "Toggle Point Mode", "切换选点模式");
 
         add("tooltip.staticlogistics.mode", "Mode: %s", "工具模式：%s");
         add("tooltip.staticlogistics.type", "Transfer Type: %s", "传输类型：%s");

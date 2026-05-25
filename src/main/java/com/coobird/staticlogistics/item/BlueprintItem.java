@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.item;
 
+import com.coobird.staticlogistics.api.BlueprintData;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;

@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.integration.ftb;
 
-import com.coobird.staticlogistics.server.event.game.entity.PlayerEvents;
+import com.coobird.staticlogistics.server.event.PlayerEvents;
 import dev.ftb.mods.ftbteams.api.event.TeamEvent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;

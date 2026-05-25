@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.client.event;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.gui.screen.ContainerConfiguratorScreen;
@@ -9,7 +10,7 @@ import com.coobird.staticlogistics.gui.screen.FilterConfiguratorScreen;
 import com.coobird.staticlogistics.gui.screen.HandFilterScreen;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.item.util.ToolMode;
+import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -52,6 +53,7 @@ public class ClientEvents {
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
+        event.register(SLKeyMappings.CLEAR_STORED_NODES);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -111,6 +113,22 @@ public class ClientEvents {
             stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), rotation);
             PacketDistributor.sendToServer(new C2SUpdateBlueprintPreviewPayload(previewAnchor, rotation));
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onKeyInput(InputEvent.Key event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.screen != null) return;
+        if (event.getAction() != 1) return;
+
+        if (SLKeyMappings.CLEAR_STORED_NODES.consumeClick() && mc.player.isShiftKeyDown()) {
+            ItemStack stack = mc.player.getMainHandItem();
+            if (!(stack.getItem() instanceof LinkConfiguratorItem))
+                stack = mc.player.getOffhandItem();
+            if (stack.getItem() instanceof LinkConfiguratorItem) {
+                PacketDistributor.sendToServer(new C2SClearStoredNodesPayload());
+            }
         }
     }
 

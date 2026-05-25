@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.item.BlueprintData;
+import com.coobird.staticlogistics.api.BlueprintData;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -190,18 +190,29 @@ public class BlueprintRegionRenderer {
         drawEdge(b, mat, x2, y2, z1, x2, y2, z2, r, g, bl, a);
     }
 
-    /** 画单条粗边，向外扩张 EDGE_RADIUS */
+    /**
+     * 画单条粗边，向外扩张 EDGE_RADIUS
+     */
     private static void drawEdgeFlat(VertexConsumer b, Matrix4f mat,
                                      float x1, float y1, float z1, float x2, float y2, float z2,
                                      float r, float g, float bl, float a) {
         float dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
         float minX = x1, minY = y1, minZ = z1, maxX = x2, maxY = y2, maxZ = z2;
         if (dx > 0.1f) {
-            minY -= EDGE_RADIUS; maxY += EDGE_RADIUS; minZ -= EDGE_RADIUS; maxZ += EDGE_RADIUS;
+            minY -= EDGE_RADIUS;
+            maxY += EDGE_RADIUS;
+            minZ -= EDGE_RADIUS;
+            maxZ += EDGE_RADIUS;
         } else if (dy > 0.1f) {
-            minX -= EDGE_RADIUS; maxX += EDGE_RADIUS; minZ -= EDGE_RADIUS; maxZ += EDGE_RADIUS;
+            minX -= EDGE_RADIUS;
+            maxX += EDGE_RADIUS;
+            minZ -= EDGE_RADIUS;
+            maxZ += EDGE_RADIUS;
         } else {
-            minX -= EDGE_RADIUS; maxX += EDGE_RADIUS; minY -= EDGE_RADIUS; maxY += EDGE_RADIUS;
+            minX -= EDGE_RADIUS;
+            maxX += EDGE_RADIUS;
+            minY -= EDGE_RADIUS;
+            maxY += EDGE_RADIUS;
         }
         renderBox(b, mat, minX, minY, minZ, maxX, maxY, maxZ, r, g, bl, a);
     }

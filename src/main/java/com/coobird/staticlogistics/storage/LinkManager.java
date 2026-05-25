@@ -14,7 +14,6 @@ import com.coobird.staticlogistics.storage.service.ContainerConfigService;
 import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
-import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.logging.LogUtils;
@@ -445,14 +444,6 @@ public class LinkManager {
     /**
      * 返回该方块所有面上存在的面容配置数量（用于 debug）
      */
-    public int getFaceConfigCountAt(BlockPos pos) {
-        int count = 0;
-        for (Direction face : Direction.values()) {
-            if (faceConfigService.get(posToKey(pos, face)) != null) count++;
-        }
-        return count;
-    }
-
     // 事件驱动的全量孤儿扫描：只在有方块被拆后才激活，扫完自动停止
     private boolean orphanScanNeeded;
     private Long[] orphanKeys;
@@ -492,7 +483,8 @@ public class LinkManager {
             FaceConfigComposite cfg = faceConfigService.get(key);
             if (cfg == null) continue;
             LogisticsNode node = createNodeFromKey(key);
-            if (!TransferUtils.hasLogisticsCapability(level, node.gPos().pos(), node.face())) {
+            // 只有方块实体真的消失才清（Mek 等机器运行时能力暂时变化不误删）
+            if (level.getBlockEntity(node.gPos().pos()) == null) {
                 removeFaceConfigInternal(key, true, true);
             } else {
                 // 清扫已失活的组ID

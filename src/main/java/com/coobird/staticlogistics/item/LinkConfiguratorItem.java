@@ -1,12 +1,13 @@
 package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.item.handler.*;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
-import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -40,8 +41,7 @@ public class LinkConfiguratorItem extends Item {
 
     static {
         HANDLERS.put(ToolMode.WRENCH, new WrenchModeHandler());
-        HANDLERS.put(ToolMode.FACE_CONFIG, new FaceConfigModeHandler());
-        HANDLERS.put(ToolMode.CONTAINER_CONFIG, new ContainerConfigModeHandler());
+        HANDLERS.put(ToolMode.NODE_CONFIG, new NodeConfigModeHandler());
         HANDLERS.put(ToolMode.REMOVE, new RemoveModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_INSERT, new LinkModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_EXTRACT, new LinkModeHandler());
@@ -92,7 +92,8 @@ public class LinkConfiguratorItem extends Item {
                 tooltip.add(Component.literal("  " + nodeStr).withStyle(ChatFormatting.WHITE));
             }
         }
-        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
+            SLKeyMappings.CLEAR_STORED_NODES.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);
     }
 

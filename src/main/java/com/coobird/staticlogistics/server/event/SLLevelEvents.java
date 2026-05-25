@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.server.event.game;
+package com.coobird.staticlogistics.server.event;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
@@ -64,7 +64,6 @@ public class SLLevelEvents {
     public static void onServerTick(ServerTickEvent.Post event) {
         GlobalLogisticsManager manager = GlobalLogisticsManager.get(event.getServer());
         manager.tick();
-        // 事件驱动的全量孤儿扫描：只在有方块被拆后才跑，扫完自动停止
         for (ServerLevel level : event.getServer().getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
             if (mgr.isOrphanScanNeeded()) {
