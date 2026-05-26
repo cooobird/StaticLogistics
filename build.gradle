@@ -180,6 +180,8 @@ dependencies {
     runtimeOnly "curse.maven:cyclopscore-${cyclopscore_version}"
 
     runtimeOnly "curse.maven:immersive-engineering-231951:6733669"
+
+    runtimeOnly "curse.maven:compact-machines-224218:7621553"
 }
 
 tasks.named('processResources', ProcessResources) {

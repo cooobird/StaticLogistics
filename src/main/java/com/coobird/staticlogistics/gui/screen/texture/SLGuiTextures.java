@@ -91,5 +91,9 @@ public class SLGuiTextures {
         public static final int REDUCE_U = 476, REDUCE_V = 76;
     }
 
+    public static final class NewGroupEditBox {
+        public static final int U = 127, V = 146, WIDTH = 99, HEIGHT = 29;
+    }
+
     public static final int ZOOM_WIDTH = 12, ZOOM_HEIGHT = 12;
 }

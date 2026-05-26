@@ -158,10 +158,10 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     private void handleNewGroupSubmit() {
+        playClickSound();
         String name = newGroupWidget.confirmInput();
         if (name.isEmpty()) return;
         syncSettings(name, true);
-        playClickSound();
         this.setFocused(null);
     }
 

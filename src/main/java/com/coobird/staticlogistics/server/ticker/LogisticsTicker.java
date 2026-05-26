@@ -58,7 +58,6 @@ public class LogisticsTicker {
         }
 
         LinkManager manager = LinkManager.get(level);
-        // 快速判空：没有活跃提供者直接返回，避免创建 LongOpenHashSet 快照
         if (!manager.hasActiveProviders()) return;
         LongSet activeKeys = manager.getActiveProviderKeys();
 
@@ -87,7 +86,7 @@ public class LogisticsTicker {
                     level, sourceNode, config, type, limit, false, currentTick, manager
                 );
 
-                boolean typeMoved = false;
+                boolean typeMoved;
                 try {
                     typeMoved = transferExecutor.executeTransfer(context);
                 } finally {
@@ -96,8 +95,9 @@ public class LogisticsTicker {
 
                 if (!isEnergy) {
                     int baseInterval = SLConfig.getDefaultTickInterval();
-                    int speedMult = config.sharedContainerConfig.getSpeedMultiplier();
-                    int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
+                    int speedMult = config.sharedContainerConfig != null
+                        ? config.sharedContainerConfig.getSpeedMultiplier() : 1;
+                    int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(Math.max(1, speedMult)));
                     if (typeMoved) {
                         cooldownManager.setCooldown(dim, typeCooldownKey, actualInterval, currentTick);
                     } else {

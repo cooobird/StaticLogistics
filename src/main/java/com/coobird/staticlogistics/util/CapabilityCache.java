@@ -27,12 +27,25 @@ public class CapabilityCache {
     @SuppressWarnings("unchecked")
     public <C> BlockCapabilityCache<C, Direction> getOrCreateCache(ServerLevel level, BlockPos pos, Direction side, BlockCapability<C, Direction> cap) {
         CacheKey key = new CacheKey(level.dimension(), pos.immutable(), side, cap);
-        // 每 500 次访问扫一次，清理已被 NeoForge 作废的缓存条目
+
+        BlockCapabilityCache<?, Direction> existing = cache.get(key);
+        if (existing != null && existing.getCapability() != null) {
+            return (BlockCapabilityCache<C, Direction>) existing;
+        }
+
+        if (existing != null) {
+            cache.remove(key);
+        }
+        BlockCapabilityCache<C, Direction> newCache = BlockCapabilityCache.create(cap, level, pos, side);
+        cache.put(key, newCache);
+
+        // 定期全量清理作废条目（防止内存泄漏）
         if (++accessCounter > 500) {
             accessCounter = 0;
             cache.entrySet().removeIf(e -> e.getValue().getCapability() == null);
         }
-        return (BlockCapabilityCache<C, Direction>) cache.computeIfAbsent(key, k -> BlockCapabilityCache.create(cap, level, pos, side));
+
+        return newCache;
     }
 
     /**

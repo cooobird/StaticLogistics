@@ -135,17 +135,8 @@ public class ServerEvents {
         );
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onRightClickBlockPre(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getEntity() == null || !event.getEntity().isSecondaryUseActive()) return;
-        if (!(event.getLevel() instanceof ServerLevel serverLevel)) return;
-        ItemStack stack = event.getItemStack();
-        if (stack.getItem() instanceof LinkConfiguratorItem item) {
-            if (item.getSettings(stack).mode() == ToolMode.WRENCH) {
-                LinkManager.get(serverLevel).onBlockRemoved(event.getPos());
-            }
-        }
-    }
+    // 扳手模式下不删除面配置：旋转方块只需改变朝向，不应影响物流配置。
+    // 方块的清理由 SLLevelEvents.onBlockBreak / WrenchModeHandler.dismantle 各自处理。
 
     /**
      * 处理mek及其扩展的扳手模式

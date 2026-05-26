@@ -37,7 +37,7 @@ public class GroupPanel {
     public static final int SIDE_PANEL_X = SLGuiTextures.Background.WIDTH + 2;
     public static final int BAR_W = 39, BAR_X = 11, BAR_Y = 13;
     public static final int LIST_OFFSET_X = 10, LIST_OFFSET_Y = 32;
-    public static final int SCROLLBAR_X = 88, SCROLLBAR_Y = 25;
+    public static final int SCROLLBAR_X = 87, SCROLLBAR_Y = 25;
     public static final int SELECTION_WIDTH = 75;
 
     private final EditBox searchBox;

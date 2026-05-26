@@ -169,7 +169,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         renderFilterSlots(g);
         renderFilterHints(g);
 
-        // 输入开关 + 颜色
         FaceControls.renderToggle(g, this.font, leftPos, topPos,
             IN_BTN_X, IN_BTN_Y, menu.isGlobalInputEnabled(), GUI_TEXTURE);
         FaceControls.renderColor(g, leftPos, topPos,
