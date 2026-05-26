@@ -63,7 +63,7 @@ public class NewGroupWidget {
             String hint = Component.translatable("gui.staticlogistics.add_group").getString();
             g.drawString(font, hint, ngX + 3, ngY + 8, 0x666666, false);
         }
-        
+
         int addX = sx + ADD_BTN_X + 21;
         int addY = topPos + ADD_BTN_Y;
         g.blit(SLGuiTextures.GUI_ATLAS, addX, addY, ADD_BTN_SIZE, ADD_BTN_SIZE,

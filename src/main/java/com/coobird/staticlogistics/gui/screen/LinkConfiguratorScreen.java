@@ -69,13 +69,24 @@ public class LinkConfiguratorScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        if (groupPanel.searchBoxMouseClicked(mx, my, button)) { this.setFocused(groupPanel.getSearchBox()); return true; }
-        if (groupPanel.renameBoxMouseClicked(mx, my, button)) { this.setFocused(groupPanel.getRenameBox()); return true; }
+        if (groupPanel.searchBoxMouseClicked(mx, my, button)) {
+            this.setFocused(groupPanel.getSearchBox());
+            return true;
+        }
+        if (groupPanel.renameBoxMouseClicked(mx, my, button)) {
+            this.setFocused(groupPanel.getRenameBox());
+            return true;
+        }
 
-        if (newGroupWidget.isAddButtonHit(mx, my, leftPos, topPos)) { handleNewGroupSubmit(); return true; }
+        if (newGroupWidget.isAddButtonHit(mx, my, leftPos, topPos)) {
+            handleNewGroupSubmit();
+            return true;
+        }
 
         if (newGroupWidget.isTextBoxHit(mx, my, leftPos, topPos)) {
-            newGroupWidget.beginEdit(); this.setFocused(newGroupWidget.getEditBox()); return true;
+            newGroupWidget.beginEdit();
+            this.setFocused(newGroupWidget.getEditBox());
+            return true;
         }
 
         var clickedType = TransferTypeGrid.handleClick(mx, my, stack, leftPos, topPos);
@@ -91,9 +102,16 @@ public class LinkConfiguratorScreen extends Screen {
         this.setFocused(null);
 
         int clickedMode = LeftSidebar.getClickedMode(mx, my, leftPos, topPos, modeIdx);
-        if (clickedMode >= 0) { this.modeIdx = clickedMode; syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true); return true; }
+        if (clickedMode >= 0) {
+            this.modeIdx = clickedMode;
+            syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true);
+            return true;
+        }
 
-        if (groupPanel.isSearchTriggerHit(mx, my, leftPos, topPos)) { groupPanel.triggerSearch(); return true; }
+        if (groupPanel.isSearchTriggerHit(mx, my, leftPos, topPos)) {
+            groupPanel.triggerSearch();
+            return true;
+        }
 
         if (groupPanel.handleScrollbarClick(mx, my, leftPos, topPos)) return true;
 
@@ -101,12 +119,19 @@ public class LinkConfiguratorScreen extends Screen {
         if (listResult != null) {
             switch (listResult.getAction()) {
                 case SELECT -> syncSettings(listResult.getGroupId(), true);
-                case RENAME -> { groupPanel.startRename(listResult.getGroupId(), leftPos, topPos); this.setFocused(groupPanel.getRenameBox()); }
-                case EXPORT -> { groupPanel.exportToChat(listResult.getGroupId()); this.onClose(); }
+                case RENAME -> {
+                    groupPanel.startRename(listResult.getGroupId(), leftPos, topPos);
+                    this.setFocused(groupPanel.getRenameBox());
+                }
+                case EXPORT -> {
+                    groupPanel.exportToChat(listResult.getGroupId());
+                    this.onClose();
+                }
                 case DELETE -> {
                     PacketDistributor.sendToServer(new C2SDeleteGroupPayload(listResult.getGroupId()));
                     var player = Minecraft.getInstance().player;
-                    if (player != null) com.coobird.staticlogistics.client.data.ClientLinkData.INSTANCE.removeKnownGroup(player.getUUID(), listResult.getGroupId());
+                    if (player != null)
+                        com.coobird.staticlogistics.client.data.ClientLinkData.INSTANCE.removeKnownGroup(player.getUUID(), listResult.getGroupId());
                     syncSettings("", true);
                 }
             }
@@ -116,7 +141,8 @@ public class LinkConfiguratorScreen extends Screen {
         boolean inMain = mx >= leftPos && mx <= leftPos + SLGuiTextures.Background.WIDTH && my >= topPos && my <= topPos + SLGuiTextures.Background.HEIGHT;
         boolean inSide = mx >= leftPos + GroupPanel.SIDE_PANEL_X && mx <= leftPos + GroupPanel.SIDE_PANEL_X + SLGuiTextures.Background.BY_GROUP_WIDTH && my >= topPos && my <= topPos + SLGuiTextures.Background.BY_GROUP_HEIGHT;
         if ((inMain || inSide) && !stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "").isEmpty()) {
-            syncSettings("", false); return true;
+            syncSettings("", false);
+            return true;
         }
         return super.mouseClicked(mx, my, button);
     }
@@ -150,10 +176,16 @@ public class LinkConfiguratorScreen extends Screen {
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
         if (newGroupWidget.isEditing() && newGroupWidget.getEditBox().canConsumeInput()) {
-            if (keyCode == 257 || keyCode == 335) { handleNewGroupSubmit(); return true; }
+            if (keyCode == 257 || keyCode == 335) {
+                handleNewGroupSubmit();
+                return true;
+            }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
-        if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode) || keyCode == 256) { this.onClose(); return true; }
+        if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode) || keyCode == 256) {
+            this.onClose();
+            return true;
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
@@ -184,7 +216,8 @@ public class LinkConfiguratorScreen extends Screen {
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, typeMask));
         if (!groupId.isEmpty()) {
             var player = Minecraft.getInstance().player;
-            if (player != null) com.coobird.staticlogistics.client.data.ClientLinkData.INSTANCE.addKnownGroup(player.getUUID(), player.getName().getString(), groupId);
+            if (player != null)
+                com.coobird.staticlogistics.client.data.ClientLinkData.INSTANCE.addKnownGroup(player.getUUID(), player.getName().getString(), groupId);
         }
         if (playSound) playClickSound();
     }
@@ -193,6 +226,12 @@ public class LinkConfiguratorScreen extends Screen {
         com.coobird.staticlogistics.util.SoundUtil.playClickSound();
     }
 
-    @Override public void renderBackground(GuiGraphics g, int mx, int my, float pt) {}
-    @Override public boolean isPauseScreen() { return false; }
+    @Override
+    public void renderBackground(GuiGraphics g, int mx, int my, float pt) {
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
 }
