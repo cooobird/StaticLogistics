@@ -53,6 +53,7 @@ public class GroupPanel {
 
     private int lastSeenVersion = -1;
     private List<String> cachedGroupList = Collections.emptyList();
+    private final Map<UUID, ItemStack> headCache = new HashMap<>();
 
     public GroupPanel(Font font, int leftPos, int topPos) {
         int sx = leftPos + SIDE_PANEL_X;
@@ -158,10 +159,13 @@ public class GroupPanel {
                 // 渲染所有者头像
                 UUID ownerUUID = ClientLinkData.INSTANCE.getOwnerUUIDForGroup(gn);
                 if (ownerUUID != null) {
-                    String ownerName = ClientLinkData.INSTANCE.getOwnerNameForGroup(gn);
-                    GameProfile profile = new GameProfile(ownerUUID, ownerName);
-                    ItemStack headStack = new ItemStack(Items.PLAYER_HEAD);
-                    headStack.set(DataComponents.PROFILE, new ResolvableProfile(profile));
+                    ItemStack headStack = headCache.computeIfAbsent(ownerUUID, uid -> {
+                        String ownerName = ClientLinkData.INSTANCE.getOwnerNameForGroup(gn);
+                        GameProfile profile = new GameProfile(uid, ownerName);
+                        ItemStack head = new ItemStack(Items.PLAYER_HEAD);
+                        head.set(DataComponents.PROFILE, new ResolvableProfile(profile));
+                        return head;
+                    });
                     int headSize = 10;
                     g.pose().pushPose();
                     g.pose().translate(textX, itemY + 1, 0);
