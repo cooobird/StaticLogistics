@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.util.RenderConstants;
+import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -89,9 +90,10 @@ public class LinkWorldRenderer {
 
         double maxDistSq = getMaxRenderDistSq();
         float pulse = (float) Math.sin(System.currentTimeMillis() / 200.0) * 0.03f;
-        LinkConfiguratorItem.ToolSettings settings = ((LinkConfiguratorItem) stack.getItem()).getSettings(stack);
+        LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
+            ? lci.getSettings(stack) : null;
 
-        if (!settings.storedNodes().isEmpty() && settings.storedMode() != null) {
+        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null) {
             for (LogisticsNode node : settings.storedNodes()) {
                 if (node.gPos().dimension().equals(currentDim)) {
                     BlockPos p = node.gPos().pos();
@@ -354,8 +356,14 @@ public class LinkWorldRenderer {
     private static ItemStack getActiveConfigurator(Minecraft mc) {
         if (mc.player == null) return ItemStack.EMPTY;
         ItemStack m = mc.player.getMainHandItem();
-        if (m.getItem() instanceof LinkConfiguratorItem) return m;
+        if (isValidLinkTool(m)) return m;
         ItemStack o = mc.player.getOffhandItem();
-        return (o.getItem() instanceof LinkConfiguratorItem) ? o : ItemStack.EMPTY;
+        return (isValidLinkTool(o)) ? o : ItemStack.EMPTY;
+    }
+
+    private static boolean isValidLinkTool(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        var item = stack.getItem();
+        return item instanceof LinkConfiguratorItem || item instanceof BlueprintItem;
     }
 }

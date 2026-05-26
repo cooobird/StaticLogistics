@@ -213,6 +213,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
         add("tooltip.staticlogistics.auto_clean_disabled", "Auto clean disabled", "自动清理已禁用");
         add("tooltip.staticlogistics.auto_clean_enabled", "Auto clean enabled", "自动清理已启用");
+        add("tooltip.staticlogistics.auto_clean_info", "Auto-clears stored nodes after each link (configurable)", "每次建立连接后自动清空存储节点（配置文件可关闭）");
         add("tooltip.staticlogistics.auto_clean_enable_hint", "Enable via config/staticlogistics-server.toml", "可在配置文件中启用");
         add("tooltip.staticlogistics.upgrade.tier_display", "Tier: %s", "等级：%s");
         add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "效果倍率：%s");

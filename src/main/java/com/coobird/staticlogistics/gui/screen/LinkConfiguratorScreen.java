@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.gui.screen;
 
+import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.gui.screen.component.*;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
@@ -203,6 +204,9 @@ public class LinkConfiguratorScreen extends Screen {
         if (newId == null) return;
         if (!Objects.equals(editingId, newId)) {
             PacketDistributor.sendToServer(new C2SGroupRenamePayload(editingId, newId));
+            var player = Minecraft.getInstance().player;
+            if (player != null)
+                ClientLinkData.INSTANCE.removeKnownGroup(player.getUUID(), editingId);
             if (stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "").equals(editingId))
                 syncSettings(newId, false);
         }

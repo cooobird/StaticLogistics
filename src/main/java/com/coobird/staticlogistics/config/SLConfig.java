@@ -123,7 +123,7 @@ public final class SLConfig {
     private static volatile int netherStarMultCache = 64;
 
     // 杂项缓存值
-    private static volatile boolean autoCleanStoredNodes = false;
+    private static volatile boolean autoCleanStoredNodes = true;
 
     // 缓存设置缓存值
     private static volatile int cacheProviderSize = 1000;
@@ -158,7 +158,7 @@ public final class SLConfig {
         AUTO_CLEAN_STORED_NODES = builder
             .translation("config.staticlogistics.auto_clean_stored_nodes")
             .comment("If true, stored node references in Link Configurator items will be automatically cleaned after batch linking or when a node is removed.")
-            .define("auto_clean_stored_nodes", false);
+            .define("auto_clean_stored_nodes", autoCleanStoredNodes);
         DEFAULT_ITEM_STACK = builder
             .translation("config.staticlogistics.item_stack_size")
             .defineInRange("item_stack_size", DefaultItemStack, 1, 64);

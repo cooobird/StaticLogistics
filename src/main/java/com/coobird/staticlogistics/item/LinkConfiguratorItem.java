@@ -92,6 +92,7 @@ public class LinkConfiguratorItem extends Item {
                 tooltip.add(Component.literal("  " + nodeStr).withStyle(ChatFormatting.WHITE));
             }
         }
+        tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_info").withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
             SLKeyMappings.CLEAR_STORED_NODES.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);

@@ -4,11 +4,13 @@ import com.coobird.staticlogistics.api.BlueprintData;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.gui.screen.BlueprintGroupScreen;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -59,13 +61,10 @@ public class BlueprintItem extends Item {
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         }
 
-        if (!level.isClientSide) {
-            String previewAnchor = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
-            if (!previewAnchor.isEmpty()) {
-                stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get());
-                stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get());
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.preview_cancelled")
-                    .withStyle(ChatFormatting.GRAY), true);
+        if (level.isClientSide) {
+            if (FMLEnvironment.dist.isClient()) {
+                BlueprintGroupScreen screen = new BlueprintGroupScreen(stack);
+                Minecraft.getInstance().setScreen(screen);
             }
         }
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
@@ -441,6 +440,11 @@ public class BlueprintItem extends Item {
         } else if (!anchorStr.isEmpty()) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.anchor", anchorStr).withStyle(ChatFormatting.GREEN));
             tooltip.add(Component.empty());
+        }
+        String selectedGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+        if (!selectedGroup.isEmpty()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.group",
+                Component.literal(selectedGroup)).withStyle(ChatFormatting.AQUA));
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.use").withStyle(ChatFormatting.GRAY));
         if (FMLEnvironment.dist.isClient()) {

@@ -327,12 +327,14 @@ public class LinkManager {
             List<LogisticsNode> affectedNodes = doCascade ? List.copyOf(config.getLinkedNodes()) : List.of();
             if (doCascade) {
                 changeHandler.cascadeRemove(selfNode, config);
+            } else {
+                faceConfigService.remove(key);
+                cacheManager.remove(key);
+                GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
+                GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
+                LogisticsTicker.wakeup(level, key);
+                markFaceDirty(key);
             }
-            faceConfigService.remove(key);
-            cacheManager.remove(key);
-            GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
-            GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
-            LogisticsTicker.wakeup(level, key);
             if (sendPacket) {
                 networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
             }
@@ -342,7 +344,6 @@ public class LinkManager {
                     LinkManager.get(nodeLevel).syncNodeToDimension(node);
                 }
             }
-            markFaceDirty(key);
         } finally {
             pendingRemovals.remove(key);
         }
