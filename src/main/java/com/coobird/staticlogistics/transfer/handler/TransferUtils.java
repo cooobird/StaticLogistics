@@ -7,7 +7,6 @@ import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.transfer.TransferLogManager;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
-import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -28,7 +27,7 @@ public class TransferUtils {
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
         int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
-        TransferContext context, CapabilityCache capabilityCache
+        TransferContext context
     ) {
         if (context != null && context.isDepthExceeded()) {
             LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
@@ -48,7 +47,7 @@ public class TransferUtils {
         if (localContainer == null) return false;
 
         boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
-        C localCap = capabilityCache.getOrCreateCache(localLevel, localPos, localFace, cap).getCapability();
+        C localCap = localLevel.getCapability(cap, localPos, localFace);
         if (localCap == null) return false;
 
         boolean movedAny = false;
@@ -69,7 +68,7 @@ public class TransferUtils {
                 remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4))
                 continue;
 
-            C remoteCap = capabilityCache.getOrCreateCache(remoteLevel, remoteNode.gPos().pos(), remoteNode.face(), cap).getCapability();
+            C remoteCap = remoteLevel.getCapability(cap, remoteNode.gPos().pos(), remoteNode.face());
             if (remoteCap == null) continue;
 
             C from = isPullMode ? remoteCap : localCap;

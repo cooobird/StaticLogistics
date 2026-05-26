@@ -53,7 +53,6 @@ public class SLLevelEvents {
             if (event.getLevel() instanceof ServerLevel serverLevel) {
                 LinkManager mgr = LinkManager.get(serverLevel);
                 if (mgr != null) {
-                    mgr.getCapabilityCache().clearForLevel(serverLevel.dimension());
                     mgr.shutdown();
                 }
             }

@@ -90,8 +90,7 @@ public class ExtendedTypeRegisterHandler {
                         ChemicalStack::isEmpty
                     ),
                     ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
+                    ctx
                 );
             } finally {
                 if (newContext != null) newContext.recycle();
@@ -176,8 +175,7 @@ public class ExtendedTypeRegisterHandler {
                         val -> val <= 0
                     ),
                     ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
+                    ctx
                 );
             } finally {
                 if (newContext != null) newContext.recycle();
@@ -247,8 +245,7 @@ public class ExtendedTypeRegisterHandler {
                         val -> val <= 0
                     ),
                     ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
+                    ctx
                 );
             } finally {
                 if (newContext != null) newContext.recycle();

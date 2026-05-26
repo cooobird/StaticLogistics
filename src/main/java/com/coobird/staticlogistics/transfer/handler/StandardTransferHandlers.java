@@ -51,12 +51,8 @@ public class StandardTransferHandlers {
             ContainerConfig localContainer = localMgr.getContainerConfig(localPos);
             if (localContainer == null) return false;
 
-            IItemHandler localCap = ctx.linkManager().getCapabilityCache()
-                .getOrCreateCache(localLevel, localPos, localFace, Capabilities.ItemHandler.BLOCK).getCapability();
-            if (localCap == null) {
-                localCap = localLevel.getCapability(Capabilities.ItemHandler.BLOCK, localPos, localFace);
-                if (localCap == null) return false;
-            }
+            IItemHandler localCap = localLevel.getCapability(Capabilities.ItemHandler.BLOCK, localPos, localFace);
+            if (localCap == null) return false;
 
             int limit = ctx.limit();
             boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
@@ -74,8 +70,7 @@ public class StandardTransferHandlers {
                 if (remoteLevel == null || !remoteLevel.getChunkSource().hasChunk(remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4))
                     continue;
 
-                IItemHandler remoteCap = ctx.linkManager().getCapabilityCache().getOrCreateCache(remoteLevel, remoteNode.gPos().pos(), remoteNode.face(), Capabilities.ItemHandler.BLOCK).getCapability();
-                if (remoteCap == null) remoteCap = remoteLevel.getCapability(Capabilities.ItemHandler.BLOCK, remoteNode.gPos().pos(), remoteNode.face());
+                IItemHandler remoteCap = remoteLevel.getCapability(Capabilities.ItemHandler.BLOCK, remoteNode.gPos().pos(), remoteNode.face());
                 if (remoteCap == null) continue;
 
                 IItemHandler from = isPullMode ? remoteCap : localCap;
@@ -201,8 +196,7 @@ public class StandardTransferHandlers {
                     }
                 ),
                 ctx.isPullMode(),
-                ctx,
-                ctx.linkManager().getCapabilityCache()
+                ctx
             );
         } finally {
             if (newContext != null) newContext.recycle();
@@ -243,8 +237,7 @@ public class StandardTransferHandlers {
                     val -> val <= 0
                 ),
                 ctx.isPullMode(),
-                ctx,
-                ctx.linkManager().getCapabilityCache()
+                ctx
             );
         } finally {
             if (newContext != null) newContext.recycle();

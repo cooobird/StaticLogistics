@@ -14,7 +14,6 @@ import com.coobird.staticlogistics.storage.service.ContainerConfigService;
 import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
-import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -52,7 +51,6 @@ public class LinkManager {
     private final SyncManager syncManager;
     private final NetworkSyncManager networkSyncManager;
     private final DropHandler dropHandler;
-    private final CapabilityCache capabilityCache;
     private final FaceConfigService faceConfigService;
     private final ContainerConfigService containerConfigService;
     private final LinkChangeHandler changeHandler;
@@ -77,7 +75,6 @@ public class LinkManager {
         this.syncManager = new SyncManager(level.dimension(), GlobalLogisticsManager.get(level.getServer()));
         this.networkSyncManager = new NetworkSyncManager(level);
         this.dropHandler = new DropHandler(level);
-        this.capabilityCache = new CapabilityCache();
 
         this.containerConfigService = new ContainerConfigService(level, containerRepository);
         this.faceConfigService = new FaceConfigService(level, configRepository, dropHandler, containerConfigService);
@@ -258,10 +255,6 @@ public class LinkManager {
     @Nullable
     public FaceConfigComposite getFaceConfig(long key) {
         return faceConfigService.get(key);
-    }
-
-    public CapabilityCache getCapabilityCache() {
-        return capabilityCache;
     }
 
     /**
@@ -555,12 +548,6 @@ public class LinkManager {
                 LOGGER.error("Failed to sync bulk removal: {}", e.getMessage(), e);
                 failedSync.addAll(removedPositions.stream().map(GlobalPos::pos).toList());
             }
-        }
-
-        try {
-            capabilityCache.clearForLevel(level.dimension());
-        } catch (Exception e) {
-            LOGGER.error("Failed to clear capability cache: {}", e.getMessage(), e);
         }
 
         scheduleSave();
