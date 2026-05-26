@@ -34,7 +34,7 @@ public class BlueprintGroupScreen extends Screen {
     private static final int PANEL_H = SLGuiTextures.Background.BY_GROUP_HEIGHT;
     private static final int BAR_W = 52, BAR_X = 11, BAR_Y = 13;
     private static final int LIST_OFFSET_X = 10, LIST_OFFSET_Y = 32;
-    private static final int SCROLLBAR_X = 88, SCROLLBAR_Y = 25;
+    private static final int SCROLLBAR_X = 87, SCROLLBAR_Y = 25;
     private static final int SELECTION_WIDTH = 75;
 
     private final ItemStack stack;

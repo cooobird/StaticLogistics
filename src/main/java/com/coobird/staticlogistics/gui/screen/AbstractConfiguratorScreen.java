@@ -24,7 +24,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     private static final int LIST_HEIGHT = SLGuiTextures.List.HEIGHT;
     protected int itemHeight = 18;
     private static final int SELECTION_WIDTH = 78;
-    private static final int SCROLLBAR_X = 88;
+    private static final int SCROLLBAR_X = 87;
     private static final int SCROLLBAR_Y = 25;
 
     protected EditBox typeSearchBox;
