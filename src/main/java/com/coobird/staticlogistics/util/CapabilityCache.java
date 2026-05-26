@@ -39,7 +39,6 @@ public class CapabilityCache {
         BlockCapabilityCache<C, Direction> newCache = BlockCapabilityCache.create(cap, level, pos, side);
         cache.put(key, newCache);
 
-        // 定期全量清理作废条目（防止内存泄漏）
         if (++accessCounter > 500) {
             accessCounter = 0;
             cache.entrySet().removeIf(e -> e.getValue().getCapability() == null);
@@ -54,5 +53,4 @@ public class CapabilityCache {
     public void clearForLevel(ResourceKey<Level> dimension) {
         cache.entrySet().removeIf(entry -> entry.getKey().dimension().equals(dimension));
     }
-
 }

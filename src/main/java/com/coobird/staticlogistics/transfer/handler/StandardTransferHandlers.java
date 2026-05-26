@@ -53,7 +53,10 @@ public class StandardTransferHandlers {
 
             IItemHandler localCap = ctx.linkManager().getCapabilityCache()
                 .getOrCreateCache(localLevel, localPos, localFace, Capabilities.ItemHandler.BLOCK).getCapability();
-            if (localCap == null) return false;
+            if (localCap == null) {
+                localCap = localLevel.getCapability(Capabilities.ItemHandler.BLOCK, localPos, localFace);
+                if (localCap == null) return false;
+            }
 
             int limit = ctx.limit();
             boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
@@ -72,6 +75,7 @@ public class StandardTransferHandlers {
                     continue;
 
                 IItemHandler remoteCap = ctx.linkManager().getCapabilityCache().getOrCreateCache(remoteLevel, remoteNode.gPos().pos(), remoteNode.face(), Capabilities.ItemHandler.BLOCK).getCapability();
+                if (remoteCap == null) remoteCap = remoteLevel.getCapability(Capabilities.ItemHandler.BLOCK, remoteNode.gPos().pos(), remoteNode.face());
                 if (remoteCap == null) continue;
 
                 IItemHandler from = isPullMode ? remoteCap : localCap;
