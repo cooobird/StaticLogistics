@@ -4,6 +4,7 @@
     "package": "com.coobird.staticlogistics.mixin",
     "compatibilityLevel": "JAVA_21",
     "mixins": [
+        "ItemStackMixin"
     ],
     "client": [
     ],

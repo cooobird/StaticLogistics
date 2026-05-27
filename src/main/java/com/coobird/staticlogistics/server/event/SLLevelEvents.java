@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.server.event.game;
+package com.coobird.staticlogistics.server.event;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
@@ -25,7 +25,9 @@ public class SLLevelEvents {
         if (event.isCanceled()) return;
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         try {
-            LinkManager.get(level).onBlockRemoved(event.getPos());
+            LinkManager mgr = LinkManager.get(level);
+            mgr.onBlockRemoved(event.getPos());
+            mgr.markOrphanScanNeeded();
         } catch (Exception e) {
             LOGGER.error("Failed to clean logistics data at {}: {}", event.getPos(), e.getMessage(), e);
         }
@@ -37,7 +39,9 @@ public class SLLevelEvents {
         List<BlockPos> affected = event.getAffectedBlocks();
         if (affected.isEmpty()) return;
         try {
-            LinkManager.get(level).onBlocksRemovedBulk(affected);
+            LinkManager mgr = LinkManager.get(level);
+            mgr.onBlocksRemovedBulk(affected);
+            mgr.markOrphanScanNeeded();
         } catch (Exception e) {
             LOGGER.error("Failed to clean logistics data during explosion: {}", e.getMessage(), e);
         }
@@ -49,7 +53,6 @@ public class SLLevelEvents {
             if (event.getLevel() instanceof ServerLevel serverLevel) {
                 LinkManager mgr = LinkManager.get(serverLevel);
                 if (mgr != null) {
-                    mgr.getCapabilityCache().clearForLevel(serverLevel.dimension());
                     mgr.shutdown();
                 }
             }
@@ -60,5 +63,11 @@ public class SLLevelEvents {
     public static void onServerTick(ServerTickEvent.Post event) {
         GlobalLogisticsManager manager = GlobalLogisticsManager.get(event.getServer());
         manager.tick();
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            if (mgr.isOrphanScanNeeded()) {
+                mgr.validateOrphanedConfigs();
+            }
+        }
     }
 }

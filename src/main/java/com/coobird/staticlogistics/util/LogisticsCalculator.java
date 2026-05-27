@@ -41,22 +41,22 @@ public final class LogisticsCalculator {
         return container != null && container.isDimensionEffective();
     }
 
-    /**
-     * 获取某个传输类型的单次传输上限（考虑堆叠倍率和全局上限）
-     */
+    // 算一次最多传多少，不管配置文件的上限了——源/目标自己有多能装就是多大量
     public static long getTransferLimit(ContainerConfig container, TransferType type) {
         if (container == null) {
-            return Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
+            return type.getBaseStackSize();
         }
         long stackMult = getStackMultiplier(container);
+        if (stackMult >= ContainerConfig.INFINITY_MARKER) {
+            return Integer.MAX_VALUE;
+        }
         long limit = (long) type.getBaseStackSize() * stackMult;
-        long maxAllowed = SLConfig.getMaxTransferLimit();
-        return Math.min(limit, maxAllowed);
+        return Math.min(limit, Integer.MAX_VALUE);
     }
 
-    /**
-     * 计算最大有效传输距离（米）
-     */
+    // 算最远传多远，不设人工上限，倍率多少就是多少
+    // 倍率大到没意义(>=21亿)就直接返回无限远，后面距离检查直接跳过
+    // 如果倍率异常<=0，兜底回退默认半径
     public static double getMaxTransferDistance(ContainerConfig container) {
         if (container == null) return SLConfig.getDefaultRadius();
         double baseRadius = SLConfig.getDefaultRadius();
@@ -64,7 +64,10 @@ public final class LogisticsCalculator {
         if (rangeMult >= ContainerConfig.INFINITY_MARKER) {
             return Double.POSITIVE_INFINITY;
         }
-        return baseRadius * Math.min(rangeMult, 10000L);
+        if (rangeMult <= 0) {
+            return baseRadius;
+        }
+        return baseRadius * rangeMult;
     }
 
     /**
@@ -78,15 +81,4 @@ public final class LogisticsCalculator {
         return actualDistSq <= maxDist * maxDist;
     }
 
-    /**
-     * 获取距离信息（用于提示）
-     */
-    public static DistanceInfo getDistanceInfo(BlockPos senderPos, BlockPos receiverPos, ContainerConfig senderContainer) {
-        double maxDist = getMaxTransferDistance(senderContainer);
-        double actualDist = Math.sqrt(senderPos.distSqr(receiverPos));
-        return new DistanceInfo(actualDist, maxDist, maxDist >= Double.POSITIVE_INFINITY - 1);
-    }
-
-    public record DistanceInfo(double actual, double max, boolean infinite) {
-    }
 }

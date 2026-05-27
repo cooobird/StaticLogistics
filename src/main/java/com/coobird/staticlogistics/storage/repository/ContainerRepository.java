@@ -26,27 +26,11 @@ public class ContainerRepository {
         return containerConfigs.containsKey(key);
     }
 
-    public boolean isEmpty() {
-        return containerConfigs.isEmpty();
-    }
-
-    public int size() {
-        return containerConfigs.size();
-    }
-
     public Collection<ContainerConfig> getAll() {
         return containerConfigs.values();
     }
 
     public Set<Long> keySet() {
         return containerConfigs.keySet();
-    }
-
-    public Set<Long2ObjectMap.Entry<ContainerConfig>> getAllEntries() {
-        return containerConfigs.long2ObjectEntrySet();
-    }
-
-    public void clear() {
-        containerConfigs.clear();
     }
 }

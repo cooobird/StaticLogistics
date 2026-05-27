@@ -12,7 +12,6 @@ import com.coobird.staticlogistics.transfer.cooldown.CooldownManager;
 import com.coobird.staticlogistics.transfer.handler.TransferExecutor;
 import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
 import com.coobird.staticlogistics.util.LogisticsConstants;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -58,10 +57,9 @@ public class LogisticsTicker {
         }
 
         LinkManager manager = LinkManager.get(level);
-        LongSet activeKeys = manager.getActiveProviderKeys();
-        if (activeKeys.isEmpty()) return;
+        long[] keys = manager.getActiveProviderKeysArray();
+        if (keys.length == 0) return;
 
-        long[] keys = activeKeys.toLongArray();
         int totalBatches = (keys.length + LogisticsConstants.Performance.getTickerBatchSize() - 1) / LogisticsConstants.Performance.getTickerBatchSize();
         int batchOffset = dimensionBatchOffsets.compute(dim, (k, v) -> (v == null) ? 0 : v);
 
@@ -70,38 +68,40 @@ public class LogisticsTicker {
 
         for (int i = startIdx; i < endIdx; i++) {
             long sourceKey = keys[i];
-            if (cooldownManager.hasCooldown(dim, sourceKey, currentTick)) continue;
-
             LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
             FaceConfigComposite config = manager.getFaceConfig(sourceKey);
             if (config == null || config.isDefault()) continue;
 
-            boolean movedSomething = false;
-
             for (var type : TransferRegistries.getAllActive()) {
                 if (!config.isTypeSelected(type)) continue;
+
+                boolean isEnergy = type.capability() != null && type.capability() == net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK;
+                long typeCooldownKey = (sourceKey << 8) | type.bitOffset();
+                if (!isEnergy && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
 
                 int limit = config.getTransferLimit(type);
                 TransferContext context = TransferContext.obtain(
                     level, sourceNode, config, type, limit, false, currentTick, manager
                 );
 
+                boolean typeMoved;
                 try {
-                    if (transferExecutor.executeTransfer(context)) {
-                        movedSomething = true;
-                    }
+                    typeMoved = transferExecutor.executeTransfer(context);
                 } finally {
                     context.recycle();
                 }
-            }
 
-            int baseInterval = SLConfig.getDefaultTickInterval();
-            int speedMult = config.sharedContainerConfig.getSpeedMultiplier();
-            int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
-            if (movedSomething) {
-                cooldownManager.setCooldown(dim, sourceKey, actualInterval, currentTick);
-            } else {
-                cooldownManager.setCooldown(dim, sourceKey, LogisticsConstants.Performance.getDefaultCooldownTicks(), currentTick);
+                if (!isEnergy) {
+                    int baseInterval = SLConfig.getDefaultTickInterval();
+                    int speedMult = config.sharedContainerConfig != null
+                        ? config.sharedContainerConfig.getSpeedMultiplier() : 1;
+                    int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(Math.max(1, speedMult)));
+                    if (typeMoved) {
+                        cooldownManager.setCooldown(dim, typeCooldownKey, actualInterval, currentTick);
+                    } else {
+                        cooldownManager.setCooldown(dim, typeCooldownKey, LogisticsConstants.Performance.getDefaultCooldownTicks(), currentTick);
+                    }
+                }
             }
         }
 
@@ -109,7 +109,7 @@ public class LogisticsTicker {
     }
 
     public static void wakeup(ServerLevel level, long sourceKey) {
-        cooldownManager.removeCooldown(level.dimension(), sourceKey);
+        cooldownManager.removeAllForSourceKey(level.dimension(), sourceKey);
     }
 
     public static void wakeupGroup(MinecraftServer server, String groupId) {
@@ -118,7 +118,7 @@ public class LogisticsTicker {
         for (LogisticsNode sender : senders) {
             ServerLevel level = server.getLevel(sender.gPos().dimension());
             if (level != null) {
-                cooldownManager.removeCooldown(level.dimension(), sender.toKey());
+                cooldownManager.removeAllForSourceKey(level.dimension(), sender.toKey());
             }
         }
     }

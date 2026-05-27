@@ -2,11 +2,12 @@ package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.util.RenderConstants;
+import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -16,13 +17,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -31,11 +30,25 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
-    private static final double MAX_RENDER_DIST_SQ = 128.0 * 128.0;
+
+    /**
+     * 计算最大渲染距离的平方值。
+     * 基于玩家设置的区块渲染距离，转换为方块距离后乘以安全系数0.4，
+     * 避免在渲染边界处出现闪烁或裁剪问题。返回平方值用于距离比较优化。
+     *
+     * @return 最大渲染距离的平方值，用于避免在距离比较时进行开方运算
+     */
+    private static double getMaxRenderDistSq() {
+        int chunkDist = Minecraft.getInstance().options.renderDistance().get();
+        double dist = chunkDist * 16 * 0.4;
+        return dist * dist;
+    }
+
     private static final double NEAR_DIST_SQ = 32.0 * 32.0;
     private static final double MID_DIST_SQ = 64.0 * 64.0;
     private static final float BOX_EXPAND = 0.005f;
@@ -49,6 +62,7 @@ public class LinkWorldRenderer {
             .setWriteMaskState(RenderType.COLOR_WRITE)
             .setDepthTestState(RenderType.NO_DEPTH_TEST)
             .setCullState(RenderType.NO_CULL)
+            .setLayeringState(RenderType.POLYGON_OFFSET_LAYERING)
             .createCompositeState(false)
     );
 
@@ -70,20 +84,20 @@ public class LinkWorldRenderer {
         VertexConsumer builder = bufferSource.getBuffer(PIPE_XRAY);
         ResourceKey<Level> currentDim = mc.level.dimension();
 
-        Frustum frustum = event.getFrustum();
-
         poseStack.pushPose();
         poseStack.translate(-cam.x, -cam.y, -cam.z);
         Matrix4f mat = poseStack.last().pose();
 
+        double maxDistSq = getMaxRenderDistSq();
         float pulse = (float) Math.sin(System.currentTimeMillis() / 200.0) * 0.03f;
-        LinkConfiguratorItem.ToolSettings settings = ((LinkConfiguratorItem) stack.getItem()).getSettings(stack);
+        LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
+            ? lci.getSettings(stack) : null;
 
-        if (!settings.storedNodes().isEmpty() && settings.storedMode() != null) {
+        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null) {
             for (LogisticsNode node : settings.storedNodes()) {
                 if (node.gPos().dimension().equals(currentDim)) {
                     BlockPos p = node.gPos().pos();
-                    if (p.distToCenterSqr(cam.x, cam.y, cam.z) <= MAX_RENDER_DIST_SQ && frustum.isVisible(new AABB(p))) {
+                    if (p.distToCenterSqr(cam.x, cam.y, cam.z) <= maxDistSq) {
                         drawFrame(builder, mat, p, 0.8f, 0.8f, 0.8f, 0.4f);
                         boolean isIn = settings.storedMode() == ToolMode.LINK_AS_INSERT;
                         float r = isIn ? 0.2f : 1.0f, g = isIn ? 0.5f : 0.6f, b = isIn ? 1.0f : 0.0f;
@@ -102,18 +116,19 @@ public class LinkWorldRenderer {
             for (var entry : activeNodes.entrySet()) {
                 LogisticsNode node = entry.getKey();
                 FaceConfigComposite cfg = entry.getValue();
-                if (cfg.isDefault() || !currentGroupId.equals(cfg.faceConfig.getGroupId())) continue;
+                if (cfg.isDefault() || !cfg.faceConfig.getGroupIds().contains(currentGroupId)) continue;
 
                 BlockPos p = node.gPos().pos();
                 double distSq = p.distToCenterSqr(cam.x, cam.y, cam.z);
-                if (distSq > MAX_RENDER_DIST_SQ) continue;
-                if (!frustum.isVisible(new AABB(p))) continue;
+                boolean srcVisible = distSq <= maxDistSq;
 
-                if (renderedFrames.add(p)) {
+                if (srcVisible && renderedFrames.add(p)) {
                     drawFrame(builder, mat, p, 1.0f, 1.0f, 1.0f, 0.25f);
                 }
-                renderNodeFaceStatus(node, cfg, builder, mat, pulse);
-                renderFlows(node, cfg, currentDim, builder, mat, cam, distSq);
+                if (srcVisible) {
+                    renderNodeFaceStatus(node, cfg, builder, mat, pulse);
+                }
+                renderFlows(node, cfg, activeNodes, currentDim, currentGroupId, builder, mat, cam, distSq, srcVisible, maxDistSq);
             }
         }
 
@@ -127,26 +142,43 @@ public class LinkWorldRenderer {
         return 1;
     }
 
-    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg, ResourceKey<Level> currentDim,
-                                    VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq) {
+    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg,
+                                    Map<LogisticsNode, FaceConfigComposite> activeNodes,
+                                    ResourceKey<Level> currentDim, String currentGroupId,
+                                    VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq,
+                                    boolean srcVisible, double maxDistSq) {
         int particleFactor = getParticleFactor(srcDistSq);
+        particleFactor = switch (Minecraft.getInstance().options.particles().get()) {
+            case ALL -> particleFactor;
+            case DECREASED -> Math.max(1, particleFactor / 2);
+            case MINIMAL -> 1;
+        };
         if (!srcCfg.isGlobalOutputEnabled()) return;
 
         int srcOut = srcCfg.linkConfig.getOutputChannel();
         if (srcOut < 1 || srcOut > 16) return;
         int colorIndex = (srcOut - 1) % RenderConstants.DYE_COLORS.length;
 
+        BlockPos srcPos = src.gPos().pos();
+
         for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
             if (!dst.gPos().dimension().equals(currentDim)) continue;
-            FaceConfigComposite dstCfg = ClientLinkData.INSTANCE.getFaceConfig(dst);
+            FaceConfigComposite dstCfg = activeNodes.get(dst);
             if (dstCfg == null) continue;
+            if (!dstCfg.faceConfig.getGroupIds().contains(currentGroupId)) continue;
             if (!dstCfg.isGlobalInputEnabled()) continue;
 
             int dstIn = dstCfg.linkConfig.getInputChannel();
             if (dstIn < 1 || dstIn > 16 || dstIn != srcOut) continue;
 
-            Vec3 sPos = Vec3.atCenterOf(src.gPos().pos()).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
-            Vec3 dPos = Vec3.atCenterOf(dst.gPos().pos()).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
+            // 只有两端都不在视野内才隐藏线
+            BlockPos dstPos = dst.gPos().pos();
+            double dstDistSq = dstPos.distToCenterSqr(camPos.x, camPos.y, camPos.z);
+            boolean dstVisible = dstDistSq <= maxDistSq;
+            if (!srcVisible && !dstVisible) continue;
+
+            Vec3 sPos = Vec3.atCenterOf(srcPos).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
+            Vec3 dPos = Vec3.atCenterOf(dstPos).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
             float offset = (srcCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled()) ? 0.15f : 0.0f;
             drawDirectedLineOptimized(builder, mat, sPos, dPos, src.face(), colorIndex, offset, particleFactor);
         }
@@ -324,8 +356,14 @@ public class LinkWorldRenderer {
     private static ItemStack getActiveConfigurator(Minecraft mc) {
         if (mc.player == null) return ItemStack.EMPTY;
         ItemStack m = mc.player.getMainHandItem();
-        if (m.getItem() instanceof LinkConfiguratorItem) return m;
+        if (isValidLinkTool(m)) return m;
         ItemStack o = mc.player.getOffhandItem();
-        return (o.getItem() instanceof LinkConfiguratorItem) ? o : ItemStack.EMPTY;
+        return (isValidLinkTool(o)) ? o : ItemStack.EMPTY;
+    }
+
+    private static boolean isValidLinkTool(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        var item = stack.getItem();
+        return item instanceof LinkConfiguratorItem || item instanceof BlueprintItem;
     }
 }

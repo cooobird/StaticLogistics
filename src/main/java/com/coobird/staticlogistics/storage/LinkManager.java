@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import com.coobird.staticlogistics.server.ticker.LogisticsTicker;
 import com.coobird.staticlogistics.storage.cache.CacheManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
@@ -13,9 +14,9 @@ import com.coobird.staticlogistics.storage.service.ContainerConfigService;
 import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
-import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.logging.LogUtils;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,6 +29,10 @@ import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.*;
 
+/**
+ * 链接管理器 —— 核心调度中心，管理所有面容/容器配置、缓存、同步与持久化。
+ * 每个 ServerLevel 绑定一个实例，通过 {@code LinkManager.get(level)} 获取。
+ */
 public class LinkManager {
     private static final ScheduledExecutorService SAVER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "LinkManager-Saver");
@@ -46,16 +51,21 @@ public class LinkManager {
     private final SyncManager syncManager;
     private final NetworkSyncManager networkSyncManager;
     private final DropHandler dropHandler;
-    private final CapabilityCache capabilityCache;
     private final FaceConfigService faceConfigService;
     private final ContainerConfigService containerConfigService;
     private final LinkChangeHandler changeHandler;
     private final ServerLevel level;
     private final Map<Long, Boolean> pendingRemovals = new ConcurrentHashMap<>();
     private final Object removalLock = new Object();
+    private final Object dirtyLock = new Object();
 
     private LinkManagerStorage storage;
     private ScheduledFuture<?> pendingSave;
+
+    private final LongSet dirtyFaceKeys = new LongOpenHashSet();
+    private final LongSet dirtyContainerKeys = new LongOpenHashSet();
+    private int incrementalSaveCounter = 0;
+    private static final int FULL_SAVE_INTERVAL = 100;
 
     public LinkManager(ServerLevel level) {
         this.level = level;
@@ -65,13 +75,12 @@ public class LinkManager {
         this.syncManager = new SyncManager(level.dimension(), GlobalLogisticsManager.get(level.getServer()));
         this.networkSyncManager = new NetworkSyncManager(level);
         this.dropHandler = new DropHandler(level);
-        this.capabilityCache = new CapabilityCache();
 
         this.containerConfigService = new ContainerConfigService(level, containerRepository);
         this.faceConfigService = new FaceConfigService(level, configRepository, dropHandler, containerConfigService);
         this.containerConfigService.setFaceConfigService(this.faceConfigService);
 
-        this.changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this, this::markDirty, GlobalLogisticsManager.get(level.getServer()));
+        this.changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this, GlobalLogisticsManager.get(level.getServer()));
     }
 
     ConfigRepository getConfigRepository() {
@@ -100,10 +109,56 @@ public class LinkManager {
 
     public void markDirtyBatch(Runnable operation) {
         operation.run();
-        markDirty();
+        scheduleSave();
     }
 
-    private void markDirty() {
+    /**
+     * 标记面配置变更（增量保存）
+     */
+    public void markFaceDirty(long faceKey) {
+        synchronized (dirtyLock) {
+            dirtyFaceKeys.add(faceKey);
+        }
+        scheduleSave();
+    }
+
+    /**
+     * 标记容器配置变更（增量保存）
+     */
+    public void markContainerDirty(long containerKey) {
+        synchronized (dirtyLock) {
+            dirtyContainerKeys.add(containerKey);
+        }
+        scheduleSave();
+    }
+
+    LongSet drainDirtyFaces() {
+        synchronized (dirtyLock) {
+            if (dirtyFaceKeys.isEmpty()) return new LongOpenHashSet();
+            LongSet copy = new LongOpenHashSet(dirtyFaceKeys);
+            dirtyFaceKeys.clear();
+            return copy;
+        }
+    }
+
+    LongSet drainDirtyContainers() {
+        synchronized (dirtyLock) {
+            if (dirtyContainerKeys.isEmpty()) return new LongOpenHashSet();
+            LongSet copy = new LongOpenHashSet(dirtyContainerKeys);
+            dirtyContainerKeys.clear();
+            return copy;
+        }
+    }
+
+    boolean needsFullSave() {
+        return ++incrementalSaveCounter >= FULL_SAVE_INTERVAL;
+    }
+
+    void resetFullSaveCounter() {
+        incrementalSaveCounter = 0;
+    }
+
+    private void scheduleSave() {
         if (storage == null || isShutdown) return;
         try {
             if (pendingSave != null && !pendingSave.isDone()) {
@@ -123,16 +178,6 @@ public class LinkManager {
         } catch (RejectedExecutionException e) {
             LOGGER.warn("Save task rejected, executor may be shutdown", e);
         }
-    }
-
-    public void flush() {
-        if (pendingSave != null && !pendingSave.isDone()) {
-            pendingSave.cancel(false);
-        }
-        if (storage != null) {
-            storage.setDirty();
-        }
-        pendingSave = null;
     }
 
     public void shutdown() {
@@ -162,22 +207,30 @@ public class LinkManager {
         }
     }
 
-    public static boolean isSaverShutdown() {
-        return isShutdown;
-    }
-
+    /**
+     * 坐标编码为一个 long 键
+     */
     public static long posToKey(BlockPos pos) {
         return pos.asLong();
     }
 
+    /**
+     * 坐标+面编码为 long 键（委托给 LogisticsNode 统一实现）
+     */
     public static long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << LogisticsConstants.Storage.FACE_BITS) | (face.get3DDataValue() & LogisticsConstants.Storage.FACE_MASK);
+        return LogisticsNode.posToKey(pos, face);
     }
 
+    /**
+     * 从 long 键反推出 LogisticsNode
+     */
     public LogisticsNode createNodeFromKey(long key) {
         return LogisticsNode.fromKey(key, level.dimension());
     }
 
+    /**
+     * 获取或创建面容配置，同时绑定脏回调
+     */
     public FaceConfigComposite getOrCreateFaceConfig(BlockPos pos, Direction face) {
         long key = posToKey(pos, face);
         FaceConfigComposite config = faceConfigService.getOrCreate(pos, face);
@@ -185,6 +238,9 @@ public class LinkManager {
         return config;
     }
 
+    /**
+     * 获取或创建容器配置，同时绑定脏回调
+     */
     public ContainerConfig getOrCreateContainerConfig(BlockPos pos) {
         ContainerConfig config = containerConfigService.getOrCreate(pos);
         config.setOnDirty(changeHandler::onContainerConfigChanged);
@@ -201,10 +257,9 @@ public class LinkManager {
         return faceConfigService.get(key);
     }
 
-    public CapabilityCache getCapabilityCache() {
-        return capabilityCache;
-    }
-
+    /**
+     * 双向移除两个节点之间的链接，清理反向链接和全局开关
+     */
     public void removeLink(LogisticsNode source, LogisticsNode target) {
         if (source == null || target == null) return;
 
@@ -215,6 +270,8 @@ public class LinkManager {
         boolean sourceRemoved = sourceCfg.getLinkedNodes().remove(target);
         boolean targetRemoved = targetCfg.getLinkedNodes().remove(source);
         if (!sourceRemoved && !targetRemoved) return;
+
+        GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
 
         if (sourceCfg.getLinkedNodes().isEmpty()) {
             sourceCfg.setGlobalOutputEnabled(false);
@@ -231,6 +288,9 @@ public class LinkManager {
         syncNodeToDimension(source);
         syncNodeToDimension(target);
 
+        markFaceDirty(source.toKey());
+        markFaceDirty(target.toKey());
+
         cleanUpFaceIfNeeded(source, sourceCfg);
         cleanUpFaceIfNeeded(target, targetCfg);
     }
@@ -241,10 +301,16 @@ public class LinkManager {
         }
     }
 
+    /**
+     * 删除面配置（含级联和网络同步）
+     */
     public void removeFaceConfig(long key) {
         removeFaceConfigInternal(key, true, true);
     }
 
+    /**
+     * 仅删除面数据（不含级联和网络同步）
+     */
     public void removeFaceConfigDataOnly(long key) {
         removeFaceConfigInternal(key, false, false);
     }
@@ -258,22 +324,34 @@ public class LinkManager {
             FaceConfigComposite config = faceConfigService.get(key);
             if (config == null) return;
             LogisticsNode selfNode = createNodeFromKey(key);
+            List<LogisticsNode> affectedNodes = doCascade ? List.copyOf(config.getLinkedNodes()) : List.of();
             if (doCascade) {
                 changeHandler.cascadeRemove(selfNode, config);
+            } else {
+                faceConfigService.remove(key);
+                cacheManager.remove(key);
+                GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
+                GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
+                LogisticsTicker.wakeup(level, key);
+                markFaceDirty(key);
             }
-            faceConfigService.remove(key);
-            cacheManager.remove(key);
-            GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
-            LogisticsTicker.wakeup(level, key);
             if (sendPacket) {
                 networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
             }
-            markDirty();
+            for (LogisticsNode node : affectedNodes) {
+                ServerLevel nodeLevel = level.getServer().getLevel(node.gPos().dimension());
+                if (nodeLevel != null) {
+                    LinkManager.get(nodeLevel).syncNodeToDimension(node);
+                }
+            }
         } finally {
             pendingRemovals.remove(key);
         }
     }
 
+    /**
+     * 刷新活跃提供者缓存：有分组且角色能发送就加入缓存，否则移除
+     */
     public void refreshLocalCache(long key, BlockPos pos, Direction face, FaceConfigComposite config) {
         if (config.faceConfig.hasGroup() && config.determineRole().canSend()) {
             cacheManager.add(key);
@@ -282,6 +360,9 @@ public class LinkManager {
         }
     }
 
+    /**
+     * 激活节点：刷新缓存并唤醒 ticker 开始工作
+     */
     public void activateNode(long key, BlockPos pos, Direction face, FaceConfigComposite config) {
         refreshLocalCache(key, pos, face, config);
         LogisticsTicker.wakeup(level, key);
@@ -291,6 +372,9 @@ public class LinkManager {
         return networkSyncManager;
     }
 
+    /**
+     * 把当前维度所有非默认配置批量同步给一个玩家（登录时用）
+     */
     public void syncToPlayer(ServerPlayer player) {
         List<Map.Entry<Long, FaceConfigComposite>> nonDefaultConfigs = new ArrayList<>();
         for (var entry : configRepository.getAllEntries()) {
@@ -311,10 +395,12 @@ public class LinkManager {
         }
     }
 
+    /**
+     * 把单个节点的配置同步给当前维度所有玩家
+     */
     public void syncNodeToDimension(LogisticsNode node) {
-        FaceConfigComposite cfg = getFaceConfig(node.toKey());
-        if (cfg != null) {
-            syncNodeToDimension(node);
+        for (ServerPlayer player : level.players()) {
+            syncNodeToPlayer(player, node);
         }
     }
 
@@ -330,14 +416,95 @@ public class LinkManager {
         return cacheManager.getActiveProviderKeys();
     }
 
+    /**
+     * 返回缓存的 long[]，只在集合变更时重建。ticker 高频路径用这个。
+     */
+    public long[] getActiveProviderKeysArray() {
+        return cacheManager.getActiveProviderKeysArray();
+    }
+
+    /**
+     * 快速检查是否有活跃提供者，避免在 ticker 空转时创建快照
+     */
+    public boolean hasActiveProviders() {
+        return cacheManager.hasProviders();
+    }
+
     public Set<Long> getAllConfigKeys() {
         return configRepository.keySet();
     }
 
+    /**
+     * 单个方块被破坏时：清理掉落物和配置
+     */
     public void onBlockRemoved(BlockPos pos) {
         onBlocksRemovedBulk(List.of(pos));
+        LinkOperationHelper.cleanStoredNodesForPos(level, pos);
     }
 
+    /**
+     * 返回该方块所有面上存在的面容配置数量（用于 debug）
+     */
+    // 事件驱动的全量孤儿扫描：只在有方块被拆后才激活，扫完自动停止
+    private boolean orphanScanNeeded;
+    private Long[] orphanKeys;
+    private int orphanScanCursor;
+    private static final int ORPHAN_SCAN_BATCH = 16;
+
+    public void markOrphanScanNeeded() {
+        orphanScanNeeded = true;
+    }
+
+    public boolean isOrphanScanNeeded() {
+        return orphanScanNeeded;
+    }
+
+    public void validateOrphanedConfigs() {
+        Set<Long> keys = getAllConfigKeys();
+        int size = keys.size();
+        if (size == 0) {
+            orphanScanNeeded = false;
+            orphanKeys = null;
+            orphanScanCursor = 0;
+            return;
+        }
+        if (orphanKeys == null || orphanKeys.length != size) {
+            orphanKeys = keys.toArray(new Long[0]);
+            orphanScanCursor = 0;
+        }
+        if (orphanScanCursor >= orphanKeys.length) {
+            // 扫完一圈，停止
+            orphanScanNeeded = false;
+            orphanScanCursor = 0;
+            return;
+        }
+        int end = Math.min(orphanScanCursor + ORPHAN_SCAN_BATCH, orphanKeys.length);
+        for (int i = orphanScanCursor; i < end; i++) {
+            long key = orphanKeys[i];
+            FaceConfigComposite cfg = faceConfigService.get(key);
+            if (cfg == null) continue;
+            LogisticsNode node = createNodeFromKey(key);
+            // 只有方块实体真的消失才清（Mek 等机器运行时能力暂时变化不误删）
+            if (level.getBlockEntity(node.gPos().pos()) == null) {
+                removeFaceConfigInternal(key, true, true);
+            } else {
+                // 清扫已失活的组ID
+                for (String gid : new java.util.ArrayList<>(cfg.faceConfig.getGroupIds())) {
+                    if (GlobalLogisticsManager.get(level.getServer()).getNodeGroupService()
+                        .getNodesInGroup(gid).isEmpty()) {
+                        cfg.faceConfig.removeGroupId(gid);
+                        cfg.markDirty();
+                        markFaceDirty(key);
+                    }
+                }
+            }
+        }
+        orphanScanCursor = end >= orphanKeys.length ? 0 : end;
+    }
+
+    /**
+     * 批量方块被破坏时：掉落升级卡、移除面容配置、广播同步
+     */
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
         if (positions.isEmpty()) return;
         List<BlockPos> list = new ArrayList<>(positions);
@@ -391,13 +558,7 @@ public class LinkManager {
             }
         }
 
-        try {
-            capabilityCache.clearForLevel(level.dimension());
-        } catch (Exception e) {
-            LOGGER.error("Failed to clear capability cache: {}", e.getMessage(), e);
-        }
-
-        markDirty();
+        scheduleSave();
 
         if (!failedDrops.isEmpty() || !failedConfigs.isEmpty() || !failedSync.isEmpty()) {
             logFailureSummary(failedDrops, failedConfigs, failedSync);

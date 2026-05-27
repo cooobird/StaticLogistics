@@ -19,6 +19,8 @@ public enum ClientLinkData {
 
     private final Map<ResourceKey<Level>, Map<Long, FaceConfigComposite>> dimensionConfigs = new ConcurrentHashMap<>();
     private final Map<Long, Integer> configVersions = new ConcurrentHashMap<>();
+    private final Map<UUID, Set<String>> knownGroupIds = new ConcurrentHashMap<>();
+    private final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
     private int dataVersion = 0;
 
     public int getDataVersion() {
@@ -30,24 +32,19 @@ public enum ClientLinkData {
     }
 
     private long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << 3) | (long) (face.get3DDataValue() & 0x7);
+        return LogisticsNode.posToKey(pos, face);
     }
 
     private BlockPos keyToPos(long key) {
-        return BlockPos.of(key >> 3);
+        return LogisticsNode.keyToPos(key);
     }
 
     private Direction keyToFace(long key) {
-        return Direction.from3DDataValue((int) (key & 0x7));
+        return LogisticsNode.keyToFace(key);
     }
 
     /**
      * 更新面配置，带版本号控制
-     *
-     * @param pos     全局位置
-     * @param face    方向
-     * @param config  配置对象
-     * @param version 配置的版本号（服务端自增）
      */
     public void setFaceConfig(GlobalPos pos, Direction face, FaceConfigComposite config, int version) {
         long key = posToKey(pos.pos(), face);
@@ -60,38 +57,10 @@ public enum ClientLinkData {
             return;
         }
         Integer currentVersion = configVersions.get(key);
-        if (currentVersion != null && version <= currentVersion) {
-            return;
-        }
+        if (currentVersion != null && version <= currentVersion) return;
         dimMap.put(key, config);
         dataVersion++;
         configVersions.put(key, version);
-    }
-
-    public FaceConfigComposite getFaceConfig(LogisticsNode node) {
-        return getFaceConfig(node.gPos(), node.face());
-    }
-
-    public FaceConfigComposite getFaceConfig(GlobalPos pos, Direction face) {
-        Map<Long, FaceConfigComposite> dimMap = dimensionConfigs.get(pos.dimension());
-        return dimMap == null ? null : dimMap.get(posToKey(pos.pos(), face));
-    }
-
-    public FaceConfigComposite getFaceConfig(BlockPos pos, Direction face, Level level) {
-        return getFaceConfig(GlobalPos.of(level.dimension(), pos), face);
-    }
-
-    public Map<LogisticsNode, FaceConfigComposite> getActiveNodesWithConfig(ResourceKey<Level> dimension) {
-        Map<Long, FaceConfigComposite> dimMap = dimensionConfigs.get(dimension);
-        if (dimMap == null || dimMap.isEmpty()) return Collections.emptyMap();
-
-        Map<LogisticsNode, FaceConfigComposite> result = new HashMap<>();
-        dimMap.forEach((key, config) -> {
-            BlockPos pos = keyToPos(key);
-            Direction face = keyToFace(key);
-            result.put(new LogisticsNode(GlobalPos.of(dimension, pos), face), config);
-        });
-        return result;
     }
 
     public void removeFaceConfig(GlobalPos pos, Direction face) {
@@ -106,58 +75,98 @@ public enum ClientLinkData {
     public void invalidate() {
         dimensionConfigs.clear();
         configVersions.clear();
+        knownGroupIds.clear();
+        knownOwnerNames.clear();
         dataVersion++;
     }
 
-    public List<LogisticsNode> getAllNodes() {
-        List<LogisticsNode> nodes = new ArrayList<>();
-        for (Map.Entry<ResourceKey<Level>, Map<Long, FaceConfigComposite>> dimEntry : dimensionConfigs.entrySet()) {
-            ResourceKey<Level> dim = dimEntry.getKey();
-            for (Map.Entry<Long, FaceConfigComposite> entry : dimEntry.getValue().entrySet()) {
-                long key = entry.getKey();
-                nodes.add(new LogisticsNode(GlobalPos.of(dim, keyToPos(key)), keyToFace(key)));
-            }
-        }
-        return nodes;
+    public Map<LogisticsNode, FaceConfigComposite> getActiveNodesWithConfig(ResourceKey<Level> dimension) {
+        Map<Long, FaceConfigComposite> dimMap = dimensionConfigs.get(dimension);
+        if (dimMap == null || dimMap.isEmpty()) return Collections.emptyMap();
+        Map<LogisticsNode, FaceConfigComposite> result = new HashMap<>();
+        dimMap.forEach((key, config) -> {
+            BlockPos pos = keyToPos(key);
+            Direction face = keyToFace(key);
+            result.put(new LogisticsNode(GlobalPos.of(dimension, pos), face), config);
+        });
+        return result;
     }
 
-    public void remove(LogisticsNode node) {
-        removeFaceConfig(node.gPos(), node.face());
-    }
-
-    public List<String> getGroupsByOwner(UUID owner) {
+    public List<String> getGroupsByOwners(Collection<UUID> owners) {
         Set<String> groups = new HashSet<>();
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {
-                if (owner.equals(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
-                    groups.add(cfg.faceConfig.getGroupId());
+                if (owners.contains(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
+                    groups.addAll(cfg.faceConfig.getGroupIds());
                 }
             }
+        }
+        for (UUID owner : owners) {
+            Set<String> known = knownGroupIds.get(owner);
+            if (known != null) groups.addAll(known);
         }
         return new ArrayList<>(groups);
     }
 
-    public List<LogisticsNode> getNodesInGroup(String groupId) {
-        List<LogisticsNode> nodes = new ArrayList<>();
-        dimensionConfigs.forEach((dim, dimMap) -> {
-            dimMap.forEach((key, config) -> {
-                if (groupId.equals(config.faceConfig.getGroupId())) {
-                    nodes.add(new LogisticsNode(GlobalPos.of(dim, keyToPos(key)), keyToFace(key)));
-                }
-            });
-        });
-        return nodes;
+    public void addKnownGroup(UUID owner, String ownerName, String groupId) {
+        if (groupId == null || groupId.isEmpty()) return;
+        knownGroupIds.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet()).add(groupId);
+        if (ownerName != null && !ownerName.isEmpty()) {
+            knownOwnerNames.putIfAbsent(owner, ownerName);
+        }
+        dataVersion++;
+    }
+
+    public void removeKnownGroup(UUID owner, String groupId) {
+        if (groupId == null || groupId.isEmpty()) return;
+        Set<String> set = knownGroupIds.get(owner);
+        if (set != null && set.remove(groupId)) dataVersion++;
     }
 
     public List<BlockPos> getPositionsForGroup(String groupId) {
         List<BlockPos> positions = new ArrayList<>();
         dimensionConfigs.values().forEach(dimMap -> {
             dimMap.forEach((key, config) -> {
-                if (groupId.equals(config.faceConfig.getGroupId())) {
+                if (config.faceConfig.getGroupIds().contains(groupId)) {
                     positions.add(keyToPos(key));
                 }
             });
         });
         return positions;
+    }
+
+    public String getOwnerNameForGroup(String groupId) {
+        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
+            for (FaceConfigComposite cfg : dimMap.values()) {
+                if (cfg.faceConfig.getGroupIds().contains(groupId)) {
+                    String name = cfg.faceConfig.getOwnerName();
+                    if (name != null && !name.isEmpty() && !"Unknown".equals(name)) return name;
+                }
+            }
+        }
+        for (var entry : knownGroupIds.entrySet()) {
+            if (entry.getValue().contains(groupId)) {
+                String name = knownOwnerNames.get(entry.getKey());
+                if (name != null && !name.isEmpty()) return name;
+                return entry.getKey().toString();
+            }
+        }
+        return "";
+    }
+
+    @org.jetbrains.annotations.Nullable
+    public UUID getOwnerUUIDForGroup(String groupId) {
+        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
+            for (FaceConfigComposite cfg : dimMap.values()) {
+                if (cfg.faceConfig.getGroupIds().contains(groupId)) {
+                    UUID owner = cfg.faceConfig.getOwner();
+                    if (owner != null) return owner;
+                }
+            }
+        }
+        for (var entry : knownGroupIds.entrySet()) {
+            if (entry.getValue().contains(groupId)) return entry.getKey();
+        }
+        return null;
     }
 }

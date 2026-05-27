@@ -4,7 +4,9 @@ import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.transfer.handler.StandardTransferHandlers;
+import com.coobird.staticlogistics.transfer.handler.impl.EnergyTransferHandler;
+import com.coobird.staticlogistics.transfer.handler.impl.FluidTransferHandler;
+import com.coobird.staticlogistics.transfer.handler.impl.ItemTransferHandler;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -19,6 +21,10 @@ import java.util.Map;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
+/**
+ * 传输类型和处理器的注册中心。
+ * 内置物品、流体、能量三种传输类型，也支持外部模组注册自定义类型。
+ */
 public class TransferRegistries {
     private static final Map<ResourceLocation, TransferType> TYPES = new LinkedHashMap<>();
     private static final Map<ResourceLocation, ITransferHandler> HANDLERS = new LinkedHashMap<>();
@@ -37,9 +43,9 @@ public class TransferRegistries {
         ENERGY = registerInternal("energy", 0xFFFFFF00, 2, Capabilities.EnergyStorage.BLOCK,
             SLConfig::getEnergyStack, () -> new ItemStack(Items.REDSTONE));
 
-        registerHandler(ITEM, StandardTransferHandlers.ITEM);
-        registerHandler(FLUID, StandardTransferHandlers.FLUID);
-        registerHandler(ENERGY, StandardTransferHandlers.ENERGY);
+        registerHandler(ITEM, ItemTransferHandler.INSTANCE);
+        registerHandler(FLUID, FluidTransferHandler.INSTANCE);
+        registerHandler(ENERGY, EnergyTransferHandler.INSTANCE);
     }
 
     private static TransferType registerInternal(String name, int color, int offset,
@@ -51,24 +57,29 @@ public class TransferRegistries {
         return type;
     }
 
+    // 根据 ID 获取传输类型
     @Nullable
     public static TransferType get(ResourceLocation id) {
         return TYPES.get(id);
     }
 
+    // 为已有传输类型注册处理器
     public static void registerHandler(TransferType type, ITransferHandler handler) {
         HANDLERS.put(type.id(), handler);
     }
 
+    // 外部模组注册自定义传输类型 + 处理器
     public static void registerExternal(TransferType type, ITransferHandler handler) {
         TYPES.put(type.id(), type);
         HANDLERS.put(type.id(), handler);
     }
 
+    // 获取所有已注册的传输类型
     public static Collection<TransferType> getAllActive() {
         return TYPES.values();
     }
 
+    // 获取某个传输类型对应的处理器
     @Nullable
     public static ITransferHandler getHandler(TransferType type) {
         return HANDLERS.get(type.id());

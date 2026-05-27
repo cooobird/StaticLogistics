@@ -1,5 +1,8 @@
 package com.coobird.staticlogistics.api.filter;
 
+/**
+ * 匹配策略——决定做比较时采用什么规则来比较两个物品/流体
+ */
 public enum MatchStrategy {
     /**
      * 目标必须与模板完全相等

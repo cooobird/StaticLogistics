@@ -20,11 +20,16 @@ public class NbtLogisticsFilter extends AbstractLogisticsFilter {
     private final NbtMatchMode mode;
     private final boolean ignoreDamage;
 
+    // 匹配结果缓存：传输时同种物品频繁被检查，缓存避免反复做 NBT 序列化
+    private int lastItemHash;
+    private boolean lastItemResult;
+
     public NbtLogisticsFilter(ItemStack template, NbtMatchMode mode, boolean hasUpgrade, boolean ignoreDamage) {
         super(hasUpgrade);
         this.template = template;
         this.mode = mode;
         this.ignoreDamage = ignoreDamage;
+        this.lastItemHash = 0;
     }
 
 
@@ -32,10 +37,16 @@ public class NbtLogisticsFilter extends AbstractLogisticsFilter {
     protected boolean testItem(ItemStack stack) {
         if (template.isEmpty()) return false;
         if (!ItemStack.isSameItem(stack, template)) return false;
-        return switch (mode) {
+        // 同 hash 说明同种同 NBT，命中缓存直接返回
+        int h = stack.hashCode();
+        if (h == lastItemHash) return lastItemResult;
+        boolean result = switch (mode) {
             case PARTIAL -> matchesPartialMode(stack, template, ignoreDamage);
             case FULL -> matchesFullMode(stack, template, ignoreDamage);
         };
+        lastItemHash = h;
+        lastItemResult = result;
+        return result;
     }
 
     private static DataComponentMap withoutDamage(DataComponentMap original) {

@@ -20,21 +20,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * 过滤器数据记录类，用于存储和管理物品与流体的过滤配置信息。
- * 该类包含物品过滤、流体过滤、标签过滤等多种过滤方式，支持黑白名单模式，
- * 并可以配置NBT匹配模式和耐久度忽略设置。
- *
- * @param items             物品过滤映射，键为槽位字符串，值为物品堆栈
- * @param fluids            流体过滤映射，键为槽位字符串，值为流体对象
- * @param isBlacklist       是否为黑名单模式，true表示黑名单，false表示白名单
- * @param nbtMatchMode      NBT匹配模式，决定物品NBT数据的匹配方式
- * @param tagSlots          物品标签过滤映射，键为槽位字符串，值为物品标签集合
- * @param excludedTagSlots  排除的物品标签过滤映射，键为槽位字符串，值为要排除的物品标签集合
- * @param fluidFilterTags   流体标签过滤映射，键为槽位字符串，值为流体标签集合
- * @param excludedFluidTags 排除的流体标签过滤映射，键为槽位字符串，值为要排除的流体标签集合
- * @param ignoreDamage      是否忽略物品耐久度，true表示忽略耐久度差异
- */
 public record FilterData(
     Map<String, ItemStack> items,
     Map<String, Fluid> fluids,
@@ -109,8 +94,7 @@ public record FilterData(
                 int size = buf.readVarInt();
                 Set<TagKey<Item>> tags = new HashSet<>();
                 for (int j = 0; j < size; j++) {
-                    ResourceLocation rl = buf.readResourceLocation();
-                    tags.add(TagKey.create(Registries.ITEM, rl));
+                    tags.add(TagKey.create(Registries.ITEM, buf.readResourceLocation()));
                 }
                 tagSlots.put(key, tags);
             }
@@ -122,8 +106,7 @@ public record FilterData(
                 int size = buf.readVarInt();
                 Set<TagKey<Item>> tags = new HashSet<>();
                 for (int j = 0; j < size; j++) {
-                    ResourceLocation rl = buf.readResourceLocation();
-                    tags.add(TagKey.create(Registries.ITEM, rl));
+                    tags.add(TagKey.create(Registries.ITEM, buf.readResourceLocation()));
                 }
                 excludedTagSlots.put(key, tags);
             }
@@ -135,8 +118,7 @@ public record FilterData(
                 int size = buf.readVarInt();
                 Set<TagKey<Fluid>> tags = new HashSet<>();
                 for (int j = 0; j < size; j++) {
-                    ResourceLocation rl = buf.readResourceLocation();
-                    tags.add(TagKey.create(Registries.FLUID, rl));
+                    tags.add(TagKey.create(Registries.FLUID, buf.readResourceLocation()));
                 }
                 fluidFilterTags.put(key, tags);
             }
@@ -148,8 +130,7 @@ public record FilterData(
                 int size = buf.readVarInt();
                 Set<TagKey<Fluid>> tags = new HashSet<>();
                 for (int j = 0; j < size; j++) {
-                    ResourceLocation rl = buf.readResourceLocation();
-                    tags.add(TagKey.create(Registries.FLUID, rl));
+                    tags.add(TagKey.create(Registries.FLUID, buf.readResourceLocation()));
                 }
                 excludedFluidTags.put(key, tags);
             }

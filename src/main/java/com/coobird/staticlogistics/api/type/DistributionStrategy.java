@@ -9,13 +9,15 @@ import net.minecraft.util.StringRepresentable;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 物品分发策略——决定物品按什么顺序分给多个目标节点
+ */
 public enum DistributionStrategy implements StringRepresentable {
-    SEQUENTIAL("sequential"),
-    ROUND_ROBIN("round_robin"),
-    NEAREST("nearest"),
-    FURTHEST("furthest"),
-    RANDOM("random"),
-    SLOT_ROUND_ROBIN("slot_round_robin");
+    SEQUENTIAL("sequential"),       // 顺序分发：按固定顺序一个个来
+    ROUND_ROBIN("round_robin"),     // 轮询分发：轮流分给每个目标
+    NEAREST("nearest"),             // 优先发给最近的
+    FURTHEST("furthest"),           // 优先发给最远的
+    RANDOM("random");               // 随机挑一个发
 
     private static final Map<String, DistributionStrategy> NAME_CACHE = new HashMap<>();
 

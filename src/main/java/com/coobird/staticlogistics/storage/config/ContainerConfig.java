@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.storage.config;
 
 import com.coobird.staticlogistics.api.type.UpgradeTier;
 import com.coobird.staticlogistics.api.type.UpgradeType;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -13,6 +14,10 @@ import org.slf4j.Logger;
 
 import java.util.function.Consumer;
 
+/**
+ * 容器升级配置 —— 管理速度/范围/堆叠三种升级的倍率计算和缓存。
+ * 也记录是否装了跨维度升级卡，以及该容器关联了哪些面。
+ */
 public class ContainerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -21,6 +26,7 @@ public class ContainerConfig {
     private int cachedStackMult = 1;
     private boolean cachedDimEffective = false;
     private boolean cacheDirty = true;
+    private long configGenAtCache = -1; // 追踪配置代数，重载时自动失效
     public static final int INFINITY_MARKER = Integer.MAX_VALUE;
     private BlockPos pos = BlockPos.ZERO;
 
@@ -91,8 +97,13 @@ public class ContainerConfig {
         return upgrades;
     }
 
+    /**
+     * 重新计算所有升级卡的倍率并更新缓存。
+     * cacheDirty 为 true，或配置已重载（configGeneration 变化）时重新计算。
+     */
     private void updateCache() {
-        if (!cacheDirty) return;
+        if (!cacheDirty && configGenAtCache == SLConfig.configGeneration) return;
+        configGenAtCache = SLConfig.configGeneration;
 
         long speed = 1L, range = 1L, stack = 1L;
         boolean dim = false;
@@ -107,6 +118,10 @@ public class ContainerConfig {
             if (tier != null) {
                 long multiplier = tier.getMultiplier();
                 long count = stackInSlot.getCount();
+                if (count <= 0) {
+                    LOGGER.warn("Upgrade item with count=0 in slot {}, skipping", i);
+                    continue;
+                }
                 long totalValue = multiplier * count;
 
                 switch (type) {
@@ -134,12 +149,17 @@ public class ContainerConfig {
         this.cachedDimEffective = dim;
         this.cacheDirty = false;
 
-        LOGGER.info("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
+        LOGGER.debug("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
             cachedSpeedMult, cachedRangeMult, cachedStackMult, cachedDimEffective);
     }
 
+    /**
+     * 带溢出检测的乘法：结果超过 INFINITY_MARKER 就返回 INFINITY_MARKER。
+     */
     private long multiplyWithOverflowCheck(long a, long b) {
-        if (a == 0 || b == 0) return 0;
+        if (a <= 0 || b <= 0) {
+            return Math.max(a, 1L);
+        }
         long result = a * b;
         if (result / b != a || result >= INFINITY_MARKER) {
             return INFINITY_MARKER;
@@ -147,6 +167,9 @@ public class ContainerConfig {
         return result;
     }
 
+    /**
+     * 标记缓存失效并触发变更回调
+     */
     public void markDirty() {
         this.cacheDirty = true;
         if (onDirty != null) onDirty.accept(this);
@@ -156,6 +179,9 @@ public class ContainerConfig {
         this.onDirty = onDirty;
     }
 
+    /**
+     * 没有任何升级卡就是默认（空）配置
+     */
     public boolean isDefault() {
         for (int i = 0; i < upgrades.getSlots(); i++) {
             if (!upgrades.getStackInSlot(i).isEmpty()) return false;

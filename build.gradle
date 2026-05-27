@@ -81,6 +81,7 @@ sourceSets {
 }
 
 repositories {
+    mavenLocal()
     maven { url = 'https://maven.minecraftforge.net/' }
     maven {
         name = "Jared's maven"
@@ -114,7 +115,13 @@ repositories {
     }
     maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
     maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
-    mavenLocal()
+    maven {
+        name = "Refined Storage"
+        url = uri("https://maven.creeperhost.net")
+        content {
+            includeGroup("com.refinedmods.refinedstorage")
+        }
+    }
 }
 
 dependencies {
@@ -128,9 +135,15 @@ dependencies {
     compileOnly "mekanism:Mekanism:${mekanism_version}:api"
     compileOnly "mekanism:Mekanism:${mekanism_version}"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}"
+    compileOnly "mekanism:Mekanism:${mekanism_version}:additions"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:additions"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:generators"
     runtimeOnly "mekanism:Mekanism:${mekanism_version}:tools"
+
+    runtimeOnly "curse.maven:mekanism-extras-1026040:7921191"
+
+    compileOnly "curse.maven:mekanism-more-machine-1275257:7919872"
+    runtimeOnly "curse.maven:mekanism-more-machine-1275257:7919872"
 
     compileOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
     runtimeOnly "com.hollingsworth.ars_nouveau:ars_nouveau-${minecraft_version}:${ars_nouveau_version}"
@@ -139,16 +152,20 @@ dependencies {
     compileOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
     runtimeOnly "dev.ftb.mods:ftb-teams-neoforge:${ftb_teams_version}"
 
-    runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}")
+    compileOnly ("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
+    runtimeOnly ("dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}")
+    compileOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
     runtimeOnly ("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
+    compileOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
     runtimeOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
-    runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+    compileOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
     runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
 
     compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
     runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
 
-    runtimeOnly "curse.maven:ars-additions-974408:7646325"
+    compileOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}:api"
+    runtimeOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}"
 
     runtimeOnly "curse.maven:titanium-287342:7951516"
     runtimeOnly "curse.maven:functional-storage-556861:7061714"
@@ -156,6 +173,15 @@ dependencies {
     runtimeOnly "curse.maven:mcjtylib-233105:7299488"
     runtimeOnly "curse.maven:rftools-base-326041:7263404"
     runtimeOnly "curse.maven:rftools-power-290209:7263410"
+
+    api("com.refinedmods.refinedstorage:refinedstorage-neoforge:${refinedstorageVersion}")
+    runtimeOnly "curse.maven:integrateddynamics-${integrateddynamics_version}"
+    runtimeOnly "curse.maven:commoncapabilites-${commoncapabilities_version}"
+    runtimeOnly "curse.maven:cyclopscore-${cyclopscore_version}"
+
+    runtimeOnly "curse.maven:immersive-engineering-231951:6733669"
+
+    runtimeOnly "curse.maven:compact-machines-224218:7621553"
 }
 
 tasks.named('processResources', ProcessResources) {

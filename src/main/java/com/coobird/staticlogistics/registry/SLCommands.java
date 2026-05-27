@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.registry;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
@@ -7,6 +8,10 @@ import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistr
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
+import com.coobird.staticlogistics.transfer.TransferLogManager.NodeStats;
+import com.coobird.staticlogistics.transfer.TransferLogManager.TransferEntry;
+import com.coobird.staticlogistics.transfer.TransferLogManager.TypeStats;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
@@ -40,7 +45,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * 注册模组的所有命令（/sl），包括信息查询、所有权转移、重命名、清理、策略列表和统计。
+ */
 public class SLCommands {
+    /**
+     * 注册 /sl 命令及其所有子命令
+     */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("sl")
             .requires(source -> source.hasPermission(2))
@@ -70,23 +81,40 @@ public class SLCommands {
                 .executes(ctx -> listStrategies(ctx, 1))
                 .then(Commands.argument("page", IntegerArgumentType.integer(1))
                     .executes(ctx -> listStrategies(ctx, IntegerArgumentType.getInteger(ctx, "page")))))
+            .then(Commands.literal("stats")
+                .executes(SLCommands::showStatsOverview)
+                .then(Commands.literal("recent")
+                    .executes(ctx -> showRecentTransfers(ctx, 20)))
+                .then(Commands.literal("top")
+                    .executes(ctx -> showTopNodes(ctx, 10)))
+                .then(Commands.literal("reset")
+                    .executes(SLCommands::resetStats)))
         );
     }
 
+    /**
+     * 为命令参数提供已有的分组名作为建议
+     */
     private static CompletableFuture<Suggestions> suggestGroups(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         MinecraftServer server = context.getSource().getServer();
         return SharedSuggestionProvider.suggest(GlobalLogisticsManager.get(server).getActiveGroups(), builder);
     }
 
+    /**
+     * 刷新单个节点的本地缓存并同步到客户端
+     */
     private static void refreshNode(LinkManager manager, long key, FaceConfigComposite config) {
-        BlockPos pos = BlockPos.of(key >> 3);
-        Direction face = Direction.from3DDataValue((int) (key & 0x7));
+        BlockPos pos = LogisticsNode.keyToPos(key);
+        Direction face = LogisticsNode.keyToFace(key);
         manager.refreshLocalCache(key, pos, face, config);
         manager.syncConfigToClients(pos);
         manager.markDirtyBatch(() -> {
         });
     }
 
+    /**
+     * 显示指定位置的容器配置和面配置信息
+     */
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
         ServerLevel level = source.getLevel();
         LinkManager manager = LinkManager.get(level);
@@ -147,6 +175,9 @@ public class SLCommands {
         return 1;
     }
 
+    /**
+     * /sl transfer <from> <to>：把某个玩家的所有节点所有权转移给另一个玩家
+     */
     private static int transferOwnership(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "from");
         GameProfile fromProfile = profiles.iterator().next();
@@ -172,6 +203,9 @@ public class SLCommands {
         return count;
     }
 
+    /**
+     * /sl transfer <from> group <groupId> <to>：转移某个分组下的节点所有权
+     */
     private static int transferGroupOwnership(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "from");
         GameProfile fromProfile = profiles.iterator().next();
@@ -198,6 +232,9 @@ public class SLCommands {
         return count;
     }
 
+    /**
+     * /sl rename <owner> <oldGroup> <newGroup>：重命名某个玩家的分组
+     */
     private static int renameGroup(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "owner");
         GameProfile profile = profiles.iterator().next();
@@ -216,6 +253,9 @@ public class SLCommands {
         return 1;
     }
 
+    /**
+     * /sl cleanup <owner>：删除某个玩家的所有节点配置
+     */
     private static int cleanupNodes(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "owner");
         GameProfile profile = profiles.iterator().next();
@@ -239,6 +279,9 @@ public class SLCommands {
         return count;
     }
 
+    /**
+     * /sl info：查询玩家正在看的那一面的物流配置详情
+     */
     private static int queryInfo(CommandContext<CommandSourceStack> context) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) return 0;
@@ -251,11 +294,17 @@ public class SLCommands {
         return 0;
     }
 
+    /**
+     * /sl info <pos>：查询指定坐标的物流配置详情
+     */
     private static int queryInfoWithPos(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         BlockPos pos = BlockPosArgument.getLoadedBlockPos(context, "pos");
         return handleInfo(context.getSource(), pos);
     }
 
+    /**
+     * /sl strategies [page]：分页列出所有注册的匹配策略
+     */
     private static int listStrategies(CommandContext<CommandSourceStack> ctx, int page) {
         Map<ResourceLocation, MatchStrategy> all = ComponentMatchStrategyRegistry.getAllStrategies();
         int totalPages = (all.size() + LogisticsConstants.UI.STRATEGIES_PER_PAGE - 1) / LogisticsConstants.UI.STRATEGIES_PER_PAGE;
@@ -291,6 +340,100 @@ public class SLCommands {
             ).withStyle(ChatFormatting.AQUA), false);
         }
 
+        return 1;
+    }
+
+    /**
+     * /sl stats：显示传输统计总览（总次数、总量、失败数、按类型分）
+     */
+    private static int showStatsOverview(CommandContext<CommandSourceStack> ctx) {
+        var mgr = TransferLogManager.get();
+        var source = ctx.getSource();
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.header").withStyle(ChatFormatting.GOLD), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.total", mgr.getTotalTransfers()).withStyle(ChatFormatting.WHITE), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.amount", mgr.getTotalAmount()).withStyle(ChatFormatting.WHITE), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.failed", mgr.getFailedTransfers()).withStyle(ChatFormatting.RED), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.log_size", mgr.getLogSize()).withStyle(ChatFormatting.GRAY), false);
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.by_type").withStyle(ChatFormatting.AQUA), false);
+        for (var entry : mgr.getPerTypeStats().entrySet()) {
+            TypeStats ts = entry.getValue();
+            String typeName = entry.getKey();
+            long count = ts.count;
+            long amount = ts.totalAmount;
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.type_line", typeName, count, amount)
+                .withStyle(ChatFormatting.GRAY), false);
+        }
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.sub_help").withStyle(ChatFormatting.DARK_GRAY), false);
+        return 1;
+    }
+
+    /**
+     * /sl stats recent：显示最近N条传输记录
+     */
+    private static int showRecentTransfers(CommandContext<CommandSourceStack> ctx, int count) {
+        var mgr = TransferLogManager.get();
+        var source = ctx.getSource();
+        var recent = mgr.getRecent(count);
+        int size = recent.size();
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.recent_header", size).withStyle(ChatFormatting.AQUA), false);
+        java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("HH:mm:ss");
+        for (TransferEntry e : recent) {
+            String time = fmt.format(new java.util.Date(e.timestamp()));
+            String srcStr = String.format("%d,%d,%d", e.sx(), e.sy(), e.sz());
+            String dstStr = String.format("%d,%d,%d", e.tx(), e.ty(), e.tz());
+            String mark = e.success() ? "\u2713" : "\u2717";
+            ChatFormatting style = e.success() ? ChatFormatting.GRAY : ChatFormatting.RED;
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.recent_line",
+                time, e.sourceFace(), srcStr, e.targetFace(), dstStr, e.typeName(), e.amount(), mark).withStyle(style), false);
+        }
+        return 1;
+    }
+
+    /**
+     * /sl stats top：显示发送/接收最多的前N个节点排行
+     */
+    private static int showTopNodes(CommandContext<CommandSourceStack> ctx, int count) {
+        var mgr = TransferLogManager.get();
+        var source = ctx.getSource();
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_send").withStyle(ChatFormatting.GOLD), false);
+        int[] rArr = {1};
+        for (var entry : mgr.getTopNodes(count, true)) {
+            NodeStats ns = entry.getValue();
+            int r = rArr[0];
+            String posStr = String.format("%d,%d,%d", ns.posX, ns.posY, ns.posZ);
+            long sc = ns.sentCount;
+            long sa = ns.sentAmount;
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_line", r, ns.face, posStr, sc, sa)
+                .withStyle(ChatFormatting.GRAY), false);
+            rArr[0]++;
+        }
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_recv").withStyle(ChatFormatting.GOLD), false);
+        rArr[0] = 1;
+        for (var entry : mgr.getTopNodes(count, false)) {
+            NodeStats ns = entry.getValue();
+            int r = rArr[0];
+            String posStr = String.format("%d,%d,%d", ns.posX, ns.posY, ns.posZ);
+            long rc = ns.receivedCount;
+            long ra = ns.receivedAmount;
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_recv_line", r, ns.face, posStr, rc, ra)
+                .withStyle(ChatFormatting.GRAY), false);
+            rArr[0]++;
+        }
+        return 1;
+    }
+
+    /**
+     * /sl stats reset：重置所有传输统计数据
+     */
+    private static int resetStats(CommandContext<CommandSourceStack> ctx) {
+        TransferLogManager.get().reset();
+        ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.reset").withStyle(ChatFormatting.GREEN), true);
         return 1;
     }
 }

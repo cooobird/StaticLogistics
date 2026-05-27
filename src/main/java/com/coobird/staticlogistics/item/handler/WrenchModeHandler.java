@@ -1,26 +1,27 @@
 package com.coobird.staticlogistics.item.handler;
 
+import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.transfer.handler.TransferUtils;
+import mekanism.additions.common.AdditionsTags;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.Container;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
+/**
+ * 扳手模式：旋转 + 拆卸 Mek 塑料方块。其他模组的拆卸由标签和自身逻辑处理。
+ */
 public class WrenchModeHandler implements ModeHandler {
 
     @Override
@@ -28,62 +29,68 @@ public class WrenchModeHandler implements ModeHandler {
         Level level = context.getLevel();
         Player player = context.getPlayer();
         if (player == null) return InteractionResult.PASS;
-
         BlockPos pos = context.getClickedPos();
         BlockState state = level.getBlockState(pos);
         if (state.isAir()) return InteractionResult.SUCCESS;
+        if (!level.isClientSide && player.isSecondaryUseActive()) return dismantle(level, player, pos, state);
+        if (!level.isClientSide && !player.isSecondaryUseActive()) return rotateBlock(level, pos, state);
+        return InteractionResult.SUCCESS;
+    }
 
-        if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
-            if (!player.isSecondaryUseActive()) {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.sneak_required"), true);
-                return InteractionResult.SUCCESS;
-            }
-            if (!player.mayBuild()) {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.no_permission"), true);
-                return InteractionResult.SUCCESS;
-            }
+    private InteractionResult rotateBlock(Level level, BlockPos pos, BlockState state) {
+        BlockState rotated = state.rotate(level, pos, Rotation.CLOCKWISE_90);
+        if (rotated != state) {
+            level.setBlock(pos, rotated, Block.UPDATE_ALL);
+            level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 1.0f);
+            return InteractionResult.SUCCESS;
+        }
+        if (state.hasProperty(BlockStateProperties.FACING)) {
+            level.setBlock(pos, state.setValue(BlockStateProperties.FACING, state.getValue(BlockStateProperties.FACING).getClockWise()), Block.UPDATE_ALL);
+            level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 1.0f);
+            return InteractionResult.SUCCESS;
+        }
+        if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+            level.setBlock(pos, state.setValue(BlockStateProperties.HORIZONTAL_FACING, state.getValue(BlockStateProperties.HORIZONTAL_FACING).getClockWise()), Block.UPDATE_ALL);
+            level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 1.0f);
+            return InteractionResult.SUCCESS;
+        }
+        return InteractionResult.PASS;
+    }
 
-            if (!TransferUtils.hasLogisticsCapability(level, pos, null)) {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.not_container"), true);
-                return InteractionResult.SUCCESS;
-            }
-
+    private InteractionResult dismantle(Level level, Player player, BlockPos pos, BlockState state) {
+        if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
+        if (!player.mayBuild()) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.no_permission"), true);
+            return InteractionResult.FAIL;
+        }
+        if (isMekanismPlastic(state)) {
             LinkManager mgr = LinkManager.get(serverLevel);
             mgr.onBlockRemoved(pos);
-
-            BlockEntity be = level.getBlockEntity(pos);
             ItemStack dropStack = new ItemStack(state.getBlock().asItem());
-
-            if (be != null) {
-                HolderLookup.Provider registries = level.registryAccess();
-                CompoundTag beTag = be.saveWithoutMetadata(registries);
-
-                beTag.remove("x");
-                beTag.remove("y");
-                beTag.remove("z");
-                beTag.remove("id");
-                beTag.remove("NeoForgeData");
-
-                if (be instanceof Container container) {
-                    container.clearContent();
-                }
-
-                if (!beTag.isEmpty()) {
-                    dropStack.set(SLDataComponents.STORED_BE_NBT.get(), CustomData.of(beTag));
-                }
-            }
-
-            // 移除方块
-            level.removeBlock(pos, false);
-
-            // 掉落物品
-            if (!player.addItem(dropStack)) {
-                player.drop(dropStack, false);
-            }
-
+            level.destroyBlock(pos, false);
+            if (!player.addItem(dropStack)) player.drop(dropStack, false);
             level.playSound(null, pos, SoundEvents.ITEM_PICKUP, SoundSource.BLOCKS, 0.5f, 1.5f);
-            player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.removed", state.getBlock().getName()), true);
+            return InteractionResult.SUCCESS;
         }
-        return InteractionResult.SUCCESS;
+        return InteractionResult.PASS;
+    }
+
+    private static boolean isMekanismPlastic(BlockState state) {
+        if (!ModCompat.isMekanismAdditionsLoaded()) return false;
+        return state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS)
+            || state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS_GLOW)
+            || state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS_PLASTIC)
+            || state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS_REINFORCED)
+            || state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS_ROAD)
+            || state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS_SLICK)
+            || state.is(AdditionsTags.Blocks.PLASTIC_BLOCKS_TRANSPARENT)
+            || state.is(AdditionsTags.Blocks.FENCES_PLASTIC)
+            || state.is(AdditionsTags.Blocks.FENCE_GATES_PLASTIC)
+            || state.is(AdditionsTags.Blocks.STAIRS_PLASTIC)
+            || state.is(AdditionsTags.Blocks.SLABS_PLASTIC)
+            || state.is(AdditionsTags.Blocks.STAIRS_PLASTIC_GLOW)
+            || state.is(AdditionsTags.Blocks.SLABS_PLASTIC_GLOW)
+            || state.is(AdditionsTags.Blocks.STAIRS_PLASTIC_TRANSPARENT)
+            || state.is(AdditionsTags.Blocks.SLABS_PLASTIC_TRANSPARENT);
     }
 }

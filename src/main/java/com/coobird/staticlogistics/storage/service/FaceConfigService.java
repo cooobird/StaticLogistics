@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.storage.service;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -27,7 +28,11 @@ public class FaceConfigService {
 
     @Nullable
     public FaceConfigComposite get(long key) {
-        return repository.get(key);
+        FaceConfigComposite config = repository.get(key);
+        if (config != null && config.sharedContainerConfig == null) {
+            config.sharedContainerConfig = containerConfigService.get(LogisticsNode.keyToPos(key));
+        }
+        return config;
     }
 
     public FaceConfigComposite getOrCreate(BlockPos pos, Direction face) {

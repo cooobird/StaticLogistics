@@ -1,12 +1,11 @@
 package com.coobird.staticlogistics.transfer.handler;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
-import com.coobird.staticlogistics.util.CapabilityCache;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -27,7 +26,7 @@ public class TransferUtils {
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
         int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
-        TransferContext context, CapabilityCache capabilityCache
+        TransferContext context
     ) {
         if (context != null && context.isDepthExceeded()) {
             LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
@@ -35,19 +34,17 @@ public class TransferUtils {
         }
         if (destinations.isEmpty() || limit <= 0) return false;
 
-        int maxAllowed = SLConfig.getMaxTransferLimit();
-        int safeLimit = Math.min(limit, maxAllowed);
-        if (safeLimit < limit) {
-            LOGGER.debug("Transfer limit clamped from {} to {}", limit, safeLimit);
-        }
-        int remaining = safeLimit;
+        int remaining = limit;
 
         LinkManager localMgr = LinkManager.get(localLevel);
         ContainerConfig localContainer = localMgr.getContainerConfig(localPos);
+        if (localContainer == null && context != null && context.sourceConfig() != null) {
+            localContainer = context.sourceConfig().sharedContainerConfig;
+        }
         if (localContainer == null) return false;
 
         boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
-        C localCap = capabilityCache.getOrCreateCache(localLevel, localPos, localFace, cap).getCapability();
+        C localCap = localLevel.getCapability(cap, localPos, localFace);
         if (localCap == null) return false;
 
         boolean movedAny = false;
@@ -68,7 +65,7 @@ public class TransferUtils {
                 remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4))
                 continue;
 
-            C remoteCap = capabilityCache.getOrCreateCache(remoteLevel, remoteNode.gPos().pos(), remoteNode.face(), cap).getCapability();
+            C remoteCap = remoteLevel.getCapability(cap, remoteNode.gPos().pos(), remoteNode.face());
             if (remoteCap == null) continue;
 
             C from = isPullMode ? remoteCap : localCap;
@@ -78,12 +75,20 @@ public class TransferUtils {
                 ExtractionResult<T> result = protocol.simulateExtract(from, remaining);
                 if (protocol.isEmpty(result)) break;
 
+                if (!protocol.canInsert(to, result.value(), remoteNode)) break;
+
                 int accepted = protocol.executeInsert(to, result.value());
                 if (accepted <= 0) break;
 
                 protocol.commitExtract(from, result, accepted);
                 remaining -= accepted;
                 movedAny = true;
+
+                if (context != null) {
+                    LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
+                    LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
+                    TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), accepted, true);
+                }
             }
             if (remaining <= 0) break;
         }
@@ -93,7 +98,9 @@ public class TransferUtils {
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
         return TransferRegistries.getAllActive().stream().anyMatch(type -> {
             var cap = type.capability();
-            return cap != null && level.getCapability(cap, pos, face) != null;
+            if (cap == null) return false;
+            return level.getCapability(cap, pos, face) != null
+                || level.getCapability(cap, pos, null) != null;
         });
     }
 
@@ -105,14 +112,27 @@ public class TransferUtils {
         void commitExtract(C source, ExtractionResult<T> result, int actual);
 
         boolean isEmpty(ExtractionResult<T> result);
+
+        /**
+         * 可选目标端过滤检查：false 则跳过插入
+         */
+        default boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
+            return true;
+        }
     }
 
     public record SimpleProtocol<C, T>(
         BiFunction<C, Integer, T> extractor,
         BiFunction<C, T, Integer> inserter,
         TriConsumer<C, T, Integer> committer,
-        Predicate<T> emptyChecker
+        Predicate<T> emptyChecker,
+        @javax.annotation.Nullable java.util.function.BiPredicate<T, LogisticsNode> targetFilter
     ) implements TransferProtocol<C, T> {
+        public SimpleProtocol(BiFunction<C, Integer, T> extractor, BiFunction<C, T, Integer> inserter,
+                              TriConsumer<C, T, Integer> committer, Predicate<T> emptyChecker) {
+            this(extractor, inserter, committer, emptyChecker, null);
+        }
+
         @Override
         public ExtractionResult<T> simulateExtract(C source, int max) {
             T value = extractor.apply(source, max);
@@ -132,6 +152,11 @@ public class TransferUtils {
         @Override
         public boolean isEmpty(ExtractionResult<T> result) {
             return emptyChecker.test(result.value());
+        }
+
+        @Override
+        public boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
+            return targetFilter == null || targetFilter.test(stack, targetNode);
         }
     }
 

@@ -1,13 +1,13 @@
 package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.item.handler.*;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
-import com.coobird.staticlogistics.item.util.ToolMode;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -28,6 +28,7 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.common.ItemAbility;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumMap;
@@ -40,8 +41,7 @@ public class LinkConfiguratorItem extends Item {
 
     static {
         HANDLERS.put(ToolMode.WRENCH, new WrenchModeHandler());
-        HANDLERS.put(ToolMode.FACE_CONFIG, new FaceConfigModeHandler());
-        HANDLERS.put(ToolMode.CONTAINER_CONFIG, new ContainerConfigModeHandler());
+        HANDLERS.put(ToolMode.NODE_CONFIG, new NodeConfigModeHandler());
         HANDLERS.put(ToolMode.REMOVE, new RemoveModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_INSERT, new LinkModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_EXTRACT, new LinkModeHandler());
@@ -79,19 +79,22 @@ public class LinkConfiguratorItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         ToolSettings settings = getSettings(stack);
+        tooltip.add(Component.translatable("tooltip.staticlogistics.scroll_hint").withStyle(ChatFormatting.GREEN));
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode().getDisplayName()));
         String types = settings.getSelectedTypes().stream().map(t -> Component.translatable(t.translationKey()).getString()).collect(Collectors.joining(", "));
         tooltip.add(Component.translatable("tooltip.staticlogistics.type", types.isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(types)));
         tooltip.add(Component.translatable("tooltip.staticlogistics.group", settings.group().isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(settings.group())));
         if (!settings.storedNodes().isEmpty() && settings.storedMode() != null) {
-            String nodesInfo = settings.storedNodes().stream().map(n -> n.gPos().pos().toShortString() + " " + n.face()).collect(Collectors.joining(", "));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_nodes", nodesInfo, settings.storedMode().getDisplayName()));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_mode", settings.storedMode().getDisplayName()).withStyle(ChatFormatting.GRAY));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.saved_list"));
+            for (LogisticsNode n : settings.storedNodes()) {
+                String nodeStr = n.gPos().pos().toShortString() + " " + n.face();
+                tooltip.add(Component.literal("  " + nodeStr).withStyle(ChatFormatting.WHITE));
+            }
         }
-        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint").withStyle(ChatFormatting.GRAY));
-        if (!SLConfig.shouldAutoCleanStoredNodes()) {
-            tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_disabled").withStyle(ChatFormatting.RED));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_enable_hint").withStyle(ChatFormatting.DARK_GRAY));
-        }
+        tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_info").withStyle(ChatFormatting.AQUA));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
+            SLKeyMappings.CLEAR_STORED_NODES.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);
     }
 
@@ -113,6 +116,17 @@ public class LinkConfiguratorItem extends Item {
         if (mc != null && mc.player != null) mc.setScreen(new LinkConfiguratorScreen(stack));
     }
 
+    /**
+     * 扳手模式门控：只在 WRENCH 模式放行 wrench_ 类 ItemAbility。
+     */
+    @Override
+    public boolean canPerformAction(ItemStack stack, ItemAbility action) {
+        if (getSettings(stack).mode() != ToolMode.WRENCH && action.name().startsWith("wrench_")) {
+            return false;
+        }
+        return super.canPerformAction(stack, action);
+    }
+
     @Override
     public InteractionResult useOn(UseOnContext context) {
         Level level = context.getLevel();
@@ -124,12 +138,13 @@ public class LinkConfiguratorItem extends Item {
         }
         ToolSettings settings = getSettings(stack);
 
-        if (!player.isSecondaryUseActive()) return InteractionResult.PASS;
-
         ModeHandler handler = HANDLERS.get(settings.mode());
-        if (handler != null) {
-            return handler.handle(this, context, stack, settings);
+        if (handler == null) return InteractionResult.PASS;
+
+        InteractionResult result = handler.handle(this, context, stack, settings);
+        if (result == InteractionResult.PASS && settings.mode() != ToolMode.WRENCH) {
+            return InteractionResult.SUCCESS;
         }
-        return InteractionResult.PASS;
+        return result;
     }
 }

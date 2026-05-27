@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.gui.menu;
 
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.api.type.UpgradeType;
 import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
@@ -46,8 +47,10 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     private final DataSlot inputChannelSlot = DataSlot.standalone();
     private final DataSlot outputChannelSlot = DataSlot.standalone();
     private final DataSlot strategySlot = DataSlot.standalone();
+    private final DataSlot extractionModeSlot = DataSlot.standalone();
     private final DataSlot prioritySlot = DataSlot.standalone();
     public final DataSlot selectedTypesMaskSlot = DataSlot.standalone();
+
 
     public FaceConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
         this(containerId, playerInventory, buf.readBlockPos(), buf.readEnum(Direction.class));
@@ -64,6 +67,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         this.addDataSlot(inputChannelSlot);
         this.addDataSlot(outputChannelSlot);
         this.addDataSlot(strategySlot);
+        this.addDataSlot(extractionModeSlot);
         this.addDataSlot(prioritySlot);
         this.addDataSlot(selectedTypesMaskSlot);
 
@@ -130,6 +134,12 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         return DistributionStrategy.values()[idx];
     }
 
+    public ExtractionMode getExtractionMode() {
+        int idx = extractionModeSlot.get();
+        if (idx < 0 || idx >= ExtractionMode.values().length) return ExtractionMode.SEQUENTIAL;
+        return ExtractionMode.values()[idx];
+    }
+
     public int getPriority() {
         return prioritySlot.get();
     }
@@ -153,6 +163,14 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public void setStrategy(DistributionStrategy strategy) {
         if (serverConfig != null && serverConfig.linkConfig.getStrategy() != strategy) {
             serverConfig.linkConfig.setStrategy(strategy);
+            serverConfig.markDirty();
+            syncToSlots();
+        }
+    }
+
+    public void setExtractionMode(ExtractionMode mode) {
+        if (serverConfig != null && serverConfig.linkConfig.getExtractionMode() != mode) {
+            serverConfig.linkConfig.setExtractionMode(mode);
             serverConfig.markDirty();
             syncToSlots();
         }
@@ -182,7 +200,6 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     public void toggleTypeSelection(TransferType type) {
         int current = getSelectedTypesMask();
         int newMask = current ^ type.getFlag();
-        if (newMask == 0) newMask = type.getFlag();
         setSelectedTypesMask(newMask);
     }
 
@@ -193,6 +210,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
             inputChannelSlot.set(serverConfig.linkConfig.getInputChannel());
             outputChannelSlot.set(serverConfig.linkConfig.getOutputChannel());
             strategySlot.set(serverConfig.linkConfig.getStrategy().ordinal());
+            extractionModeSlot.set(serverConfig.linkConfig.getExtractionMode().ordinal());
             prioritySlot.set(serverConfig.linkConfig.getPriority());
             selectedTypesMaskSlot.set(serverConfig.getSelectedTypesMask());
         }

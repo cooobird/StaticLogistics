@@ -8,7 +8,6 @@ import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
-import me.desht.pneumaticcraft.common.registry.ModBlocks;
 import mekanism.api.Action;
 import mekanism.api.chemical.ChemicalStack;
 import mekanism.common.registries.MekanismBlocks;
@@ -22,8 +21,6 @@ public class ExtendedTypeRegisterHandler {
     private static final ThreadLocal<Boolean> isInMekChemicalTransfer = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> isInMekHeatTransfer = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Boolean> isInArsSourceTransfer = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<Boolean> isInPncPressureTransfer = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<Boolean> isInPncHeatTransfer = ThreadLocal.withInitial(() -> false);
 
     public static void init() {
         if (ModCompat.isMekanismLoaded()) {
@@ -32,10 +29,6 @@ public class ExtendedTypeRegisterHandler {
         }
         if (ModCompat.isArsNouveauLoaded()) {
             registerArsNouveauSource();
-        }
-        if (ModCompat.isPneumaticcraftLoaded()) {
-            registerPneumaticcraftPressure();
-            registerPneumaticcraftHeat();
         }
     }
 
@@ -97,8 +90,7 @@ public class ExtendedTypeRegisterHandler {
                         ChemicalStack::isEmpty
                     ),
                     ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
+                    ctx
                 );
             } finally {
                 if (newContext != null) newContext.recycle();
@@ -183,8 +175,7 @@ public class ExtendedTypeRegisterHandler {
                         val -> val <= 0
                     ),
                     ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
+                    ctx
                 );
             } finally {
                 if (newContext != null) newContext.recycle();
@@ -254,8 +245,7 @@ public class ExtendedTypeRegisterHandler {
                         val -> val <= 0
                     ),
                     ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
+                    ctx
                 );
             } finally {
                 if (newContext != null) newContext.recycle();
@@ -265,151 +255,5 @@ public class ExtendedTypeRegisterHandler {
 
         TransferRegistries.registerExternal(arsType, arsHandler);
         LOGGER.info("Registered Ars Nouveau source transfer support");
-    }
-
-    private static void registerPneumaticcraftPressure() {
-        TransferType pncPressure = new TransferType(
-            Staticlogistics.asResource("pnc_pressure"),
-            0xFF66CCFF,
-            7,
-            "transfer_type.staticlogistics.pnc_pressure",
-            me.desht.pneumaticcraft.api.PNCCapabilities.AIR_HANDLER_MACHINE,
-            SLConfig::getPneumaticPressureStack,
-            () -> ModCompat.isPneumaticcraftLoaded()
-                ? new ItemStack(me.desht.pneumaticcraft.common.registry.ModBlocks.PRESSURE_TUBE.get())
-                : new ItemStack(Items.BARRIER)
-        );
-
-        ITransferHandler handler = (context, targets) -> {
-            if (isInPncPressureTransfer.get()) {
-                LOGGER.debug("Skipped reentrant pneumaticcraft pressure transfer for {}", context.sourceNode());
-                return false;
-            }
-
-            TransferContext newContext = null;
-            try {
-                isInPncPressureTransfer.set(true);
-                newContext = context.withIncrementedDepth();
-                final TransferContext ctx = newContext;
-                return TransferUtils.doTransferNodes(
-                    ctx.level(),
-                    ctx.sourceNode().gPos().pos(),
-                    ctx.sourceNode().face(),
-                    targets,
-                    me.desht.pneumaticcraft.api.PNCCapabilities.AIR_HANDLER_MACHINE,
-                    ctx.limit(),
-                    new TransferUtils.SimpleProtocol<>(
-                        (src, max) -> {
-                            try {
-                                return Math.min(max, src.getAir());
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to simulate extract pressure: {}", e.getMessage());
-                                return 0;
-                            }
-                        },
-                        (dst, val) -> {
-                            try {
-                                int maxAir = dst.getVolume();
-                                int accepted = Math.min(val, maxAir - dst.getAir());
-                                dst.addAir(accepted);
-                                return accepted;
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to insert pressure: {}", e.getMessage());
-                                return 0;
-                            }
-                        },
-                        (src, val, act) -> {
-                            try {
-                                src.addAir(-act);
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to commit extract pressure: {}", e.getMessage());
-                            }
-                        },
-                        val -> val <= 0
-                    ),
-                    ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
-                );
-            } finally {
-                if (newContext != null) newContext.recycle();
-                isInPncPressureTransfer.set(false);
-            }
-        };
-
-        TransferRegistries.registerExternal(pncPressure, handler);
-        LOGGER.info("Registered PneumaticCraft pressure transfer support");
-    }
-
-    private static void registerPneumaticcraftHeat() {
-        TransferType pncHeat = new TransferType(
-            Staticlogistics.asResource("pnc_heat"),
-            0xFFFF5500,
-            8,
-            "transfer_type.staticlogistics.pnc_heat",
-            me.desht.pneumaticcraft.api.PNCCapabilities.HEAT_EXCHANGER_BLOCK,
-            SLConfig::getPneumaticHeatStack,
-            () -> ModCompat.isPneumaticcraftLoaded()
-                ? new ItemStack(ModBlocks.HEAT_SINK)
-                : new ItemStack(Items.BARRIER)
-        );
-
-        ITransferHandler handler = (context, targets) -> {
-            if (isInPncHeatTransfer.get()) {
-                LOGGER.debug("Skipped reentrant pneumaticcraft heat transfer for {}", context.sourceNode());
-                return false;
-            }
-
-            TransferContext newContext = null;
-            try {
-                isInPncHeatTransfer.set(true);
-                newContext = context.withIncrementedDepth();
-                final TransferContext ctx = newContext;
-                return TransferUtils.doTransferNodes(
-                    ctx.level(),
-                    ctx.sourceNode().gPos().pos(),
-                    ctx.sourceNode().face(),
-                    targets,
-                    me.desht.pneumaticcraft.api.PNCCapabilities.HEAT_EXCHANGER_BLOCK,
-                    ctx.limit(),
-                    new TransferUtils.SimpleProtocol<>(
-                        (src, max) -> {
-                            try {
-                                return (int) Math.min(max, src.getTemperature());
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to simulate extract heat temperature: {}", e.getMessage());
-                                return 0;
-                            }
-                        },
-                        (dst, val) -> {
-                            try {
-                                dst.addHeat(val);
-                                return val;
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to insert heat temperature: {}", e.getMessage());
-                                return 0;
-                            }
-                        },
-                        (src, val, act) -> {
-                            try {
-                                src.addHeat(-act);
-                            } catch (Exception e) {
-                                LOGGER.error("Failed to commit extract heat temperature: {}", e.getMessage());
-                            }
-                        },
-                        val -> val <= 0
-                    ),
-                    ctx.isPullMode(),
-                    ctx,
-                    ctx.linkManager().getCapabilityCache()
-                );
-            } finally {
-                if (newContext != null) newContext.recycle();
-                isInPncHeatTransfer.set(false);
-            }
-        };
-
-        TransferRegistries.registerExternal(pncHeat, handler);
-        LOGGER.info("Registered PneumaticCraft heat transfer support");
     }
 }

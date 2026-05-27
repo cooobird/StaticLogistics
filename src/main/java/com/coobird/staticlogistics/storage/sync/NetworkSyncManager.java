@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.storage.sync;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPacket;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
@@ -44,8 +45,8 @@ public class NetworkSyncManager {
             long key = entry.getKey();
             FaceConfigComposite config = entry.getValue();
             if (config.isDefault()) continue;
-            BlockPos pos = BlockPos.of(key >> 3);
-            Direction face = Direction.from3DDataValue((int) (key & 0x7));
+            BlockPos pos = LogisticsNode.keyToPos(key);
+            Direction face = LogisticsNode.keyToFace(key);
             entries.add(new S2CSyncBulkFaceConfigPacket.Entry(
                 GlobalPos.of(level.dimension(), pos), face, config, config.getVersion()
             ));

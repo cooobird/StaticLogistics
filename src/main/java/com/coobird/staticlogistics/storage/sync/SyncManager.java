@@ -23,7 +23,9 @@ public class SyncManager {
         LogisticsNode node = new LogisticsNode(GlobalPos.of(dimension, pos), face);
         if (config.faceConfig.hasGroup()) {
             NodeRole role = config.determineRole();
-            globalManager.registerNode(config.faceConfig.getGroupId(), node, role);
+            for (String gid : config.faceConfig.getGroupIds()) {
+                globalManager.registerNode(gid, node, role);
+            }
         } else {
             globalManager.unregisterNode(node);
         }

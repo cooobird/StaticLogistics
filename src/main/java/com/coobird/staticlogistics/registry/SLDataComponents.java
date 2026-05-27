@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.api.BlueprintData;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.filter.data.FilterData;
 import com.mojang.serialization.Codec;
@@ -47,4 +48,24 @@ public class SLDataComponents {
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<CustomData>> STORED_BE_NBT = DATA_COMPONENT_TYPES.register("stored_block_entity",
         () -> DataComponentType.<CustomData>builder().persistent(CustomData.CODEC).build());
+
+    // 存节点的玩家 UUID，链接时校验防止别人捡到工具冒用
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> STORED_NODES_OWNER =
+        register("stored_nodes_owner", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+    // 物流蓝图数据
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<BlueprintData>> BLUEPRINT_DATA =
+        register("blueprint_data", builder -> builder.persistent(BlueprintData.CODEC).networkSynchronized(BlueprintData.STREAM_CODEC));
+
+    // 蓝图锚点选择（左键记录的坐标）
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> BLUEPRINT_ANCHOR =
+        register("blueprint_anchor", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+    // 蓝图粘贴预览锚点（贴之前先预览位置）
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> BLUEPRINT_PREVIEW_ANCHOR =
+        register("blueprint_preview_anchor", builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
+
+    // 蓝图预览旋转（0/1/2/3 = 0°/90°/180°/270° 绕Y轴）
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> BLUEPRINT_PREVIEW_ROTATION =
+        register("blueprint_preview_rotation", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 }

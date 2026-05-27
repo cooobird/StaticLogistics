@@ -83,14 +83,13 @@ public class CooldownManager {
     }
 
     /**
-     * 立即移除指定节点的冷却（唤醒）
+     * 移除指定源节点的所有类型冷却（冷却键 = sourceKey << 8 | bitOffset）
      */
-    public void removeCooldown(ResourceKey<Level> dimension, long key) {
+    public void removeAllForSourceKey(ResourceKey<Level> dimension, long sourceKey) {
         Long2LongMap map = dimensionCooldowns.get(dimension);
-        if (map != null) {
-            map.remove(key);
-            if (map.isEmpty()) dimensionCooldowns.remove(dimension);
-        }
+        if (map == null) return;
+        map.keySet().removeIf(cooldownKey -> (cooldownKey >> 8) == sourceKey);
+        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
     }
 
     /**

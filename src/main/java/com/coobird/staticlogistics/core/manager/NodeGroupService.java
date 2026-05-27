@@ -9,11 +9,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 维护节点到所属组的映射，以及组内节点角色。
- * 职责：节点的注册/注销，组 ID 查询，组内所有节点及角色。
+ * 支持一个节点属于多个组。
  * 线程安全：所有修改操作通过 synchronized 保证原子性。
  */
 public class NodeGroupService {
-    private final Map<LogisticsNode, String> nodeToGroup = new ConcurrentHashMap<>();
+    private final Map<LogisticsNode, Set<String>> nodeToGroups = new ConcurrentHashMap<>();
     private final GroupMemberService groupMemberService;
     private final Object lock = new Object();
 
@@ -22,41 +22,44 @@ public class NodeGroupService {
     }
 
     /**
-     * 注册节点到指定组，若已存在且组不同则先注销。
+     * 注册节点到指定组。支持多组——已存在其他组时不会移除，只追加。
      */
     public void register(String groupId, LogisticsNode node, NodeRole role) {
         synchronized (lock) {
-            if (groupId == null || groupId.isEmpty()) {
-                unregister(node);
-                return;
-            }
-            String currentGroup = nodeToGroup.get(node);
-            if (currentGroup != null && !currentGroup.equals(groupId)) {
-                groupMemberService.removeNode(currentGroup, node);
-                nodeToGroup.remove(node);
-            }
+            if (groupId == null || groupId.isEmpty()) return;
             groupMemberService.addNode(groupId, node, role);
-            nodeToGroup.put(node, groupId);
+            nodeToGroups.computeIfAbsent(node, k -> ConcurrentHashMap.newKeySet()).add(groupId);
         }
     }
 
     /**
-     * 注销节点（从原组中移除）
+     * 注销节点（从所有已注册的组中移除）
      */
     public void unregister(LogisticsNode node) {
         synchronized (lock) {
-            String groupId = nodeToGroup.remove(node);
-            if (groupId != null) {
-                groupMemberService.removeNode(groupId, node);
+            Set<String> groups = nodeToGroups.remove(node);
+            if (groups != null) {
+                for (String gid : groups) {
+                    groupMemberService.removeNode(gid, node);
+                }
             }
         }
     }
 
     /**
-     * 返回节点所属的组 ID，未注册则返回 null。
+     * 返回节点所属的第一个组 ID（向后兼容），未注册则返回 null。
      */
     public String getGroupId(LogisticsNode node) {
-        return nodeToGroup.get(node);
+        Set<String> groups = nodeToGroups.get(node);
+        return groups != null && !groups.isEmpty() ? groups.iterator().next() : null;
+    }
+
+    /**
+     * 返回节点所属的所有组 ID 副本，未注册则返回空集合。
+     */
+    public Set<String> getAllGroupIds(LogisticsNode node) {
+        Set<String> groups = nodeToGroups.get(node);
+        return groups != null ? Set.copyOf(groups) : Set.of();
     }
 
     /**
@@ -66,17 +69,4 @@ public class NodeGroupService {
         return groupMemberService.getNodesInGroup(groupId);
     }
 
-    /**
-     * 检查节点是否已注册。
-     */
-    public boolean containsNode(LogisticsNode node) {
-        return nodeToGroup.containsKey(node);
-    }
-
-    /**
-     * 获取所有已注册节点的集合（用于调试/清理）。
-     */
-    public Set<LogisticsNode> getAllNodes() {
-        return nodeToGroup.keySet();
-    }
 }

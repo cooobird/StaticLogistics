@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.storage.service;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.repository.ContainerRepository;
 import net.minecraft.core.BlockPos;
@@ -39,7 +40,7 @@ public class ContainerConfigService {
         long posKey = pos.asLong();
         boolean used = false;
         for (Direction face : Direction.values()) {
-            long faceKey = (posKey << 3) | (face.get3DDataValue() & 0x7);
+            long faceKey = LogisticsNode.posToKey(pos, face);
             if (faceConfigService != null && faceConfigService.exists(faceKey)) {
                 used = true;
                 break;
