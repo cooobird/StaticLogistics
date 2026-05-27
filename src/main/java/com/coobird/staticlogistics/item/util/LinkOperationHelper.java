@@ -72,13 +72,8 @@ public class LinkOperationHelper {
                 stack.remove(SLDataComponents.STORED_MODE.get());
             }
         } else {
-            // 第一个节点存入时：默认用默认组，除非玩家手动选了自定义组
+            // 第一个节点存入时记录所属玩家
             if (nodes.isEmpty()) {
-                String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
-                // 空 或 纯数字旧格式 → 用默认组
-                if (currentGroup.isEmpty() || currentGroup.matches("\\d+")) {
-                    stack.set(SLDataComponents.SELECTED_GROUP.get(), DEFAULT_GROUP_NAME);
-                }
                 stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
             }
             nodes.add(newNode);
