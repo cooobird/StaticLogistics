@@ -19,7 +19,6 @@ public enum DistributionStrategy implements StringRepresentable {
     FURTHEST("furthest"),           // 优先发给最远的
     RANDOM("random");               // 随机挑一个发
 
-    // 避免每次都遍历 values()
     private static final Map<String, DistributionStrategy> NAME_CACHE = new HashMap<>();
 
     static {
@@ -47,7 +46,6 @@ public enum DistributionStrategy implements StringRepresentable {
         return Component.translatable(getDescriptionId());
     }
 
-    // 根据名字查策略，找不到就返回预设的默认值
     public static DistributionStrategy byName(String name, DistributionStrategy fallback) {
         DistributionStrategy strategy = NAME_CACHE.get(name);
         return strategy != null ? strategy : fallback;

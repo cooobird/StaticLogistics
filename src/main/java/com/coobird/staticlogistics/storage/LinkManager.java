@@ -417,6 +417,13 @@ public class LinkManager {
     }
 
     /**
+     * 返回缓存的 long[]，只在集合变更时重建。ticker 高频路径用这个。
+     */
+    public long[] getActiveProviderKeysArray() {
+        return cacheManager.getActiveProviderKeysArray();
+    }
+
+    /**
      * 快速检查是否有活跃提供者，避免在 ticker 空转时创建快照
      */
     public boolean hasActiveProviders() {

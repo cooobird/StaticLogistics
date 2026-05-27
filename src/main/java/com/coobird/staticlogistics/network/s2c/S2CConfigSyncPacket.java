@@ -15,7 +15,7 @@ import java.util.ArrayList;
  * 在配置热重载时由服务端广播给所有在线玩家。
  */
 public record S2CConfigSyncPacket(
-    int defaultRadius, int defaultTickInterval, long maxTransferLimit,
+    int defaultRadius, int defaultTickInterval,
     int itemStack, int fluidStack, int energyStack,
     int mekChemicalStack, int mekHeatStack, int arsSourceStack,
     int ironMult, int goldMult, int diamondMult, int netheriteMult, int netherStarMult,
@@ -33,7 +33,7 @@ public record S2CConfigSyncPacket(
         @Override
         public S2CConfigSyncPacket decode(RegistryFriendlyByteBuf buf) {
             return new S2CConfigSyncPacket(
-                buf.readInt(), buf.readInt(), buf.readLong(),
+                buf.readInt(), buf.readInt(),
                 buf.readInt(), buf.readInt(), buf.readInt(),
                 buf.readInt(), buf.readInt(), buf.readInt(),
                 buf.readInt(), buf.readInt(), buf.readInt(), buf.readInt(), buf.readInt(),
@@ -50,7 +50,6 @@ public record S2CConfigSyncPacket(
         public void encode(RegistryFriendlyByteBuf buf, S2CConfigSyncPacket p) {
             buf.writeInt(p.defaultRadius);
             buf.writeInt(p.defaultTickInterval);
-            buf.writeLong(p.maxTransferLimit);
             buf.writeInt(p.itemStack);
             buf.writeInt(p.fluidStack);
             buf.writeInt(p.energyStack);

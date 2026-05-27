@@ -12,7 +12,6 @@ import com.coobird.staticlogistics.transfer.cooldown.CooldownManager;
 import com.coobird.staticlogistics.transfer.handler.TransferExecutor;
 import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
 import com.coobird.staticlogistics.util.LogisticsConstants;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -58,10 +57,9 @@ public class LogisticsTicker {
         }
 
         LinkManager manager = LinkManager.get(level);
-        if (!manager.hasActiveProviders()) return;
-        LongSet activeKeys = manager.getActiveProviderKeys();
+        long[] keys = manager.getActiveProviderKeysArray();
+        if (keys.length == 0) return;
 
-        long[] keys = activeKeys.toLongArray();
         int totalBatches = (keys.length + LogisticsConstants.Performance.getTickerBatchSize() - 1) / LogisticsConstants.Performance.getTickerBatchSize();
         int batchOffset = dimensionBatchOffsets.compute(dim, (k, v) -> (v == null) ? 0 : v);
 
@@ -112,13 +110,6 @@ public class LogisticsTicker {
 
     public static void wakeup(ServerLevel level, long sourceKey) {
         cooldownManager.removeAllForSourceKey(level.dimension(), sourceKey);
-    }
-
-    /**
-     * 方块/节点移除时批量清理冷却，防止已拆除节点的冷却记录残留
-     */
-    public static void cleanupCooldowns(ResourceKey<Level> dimension, long[] keys) {
-        for (long k : keys) cooldownManager.removeAllForSourceKey(dimension, k);
     }
 
     public static void wakeupGroup(MinecraftServer server, String groupId) {

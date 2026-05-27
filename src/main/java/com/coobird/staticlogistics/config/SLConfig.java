@@ -36,8 +36,6 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue DEFAULT_RADIUS;
     // 物流节点的默认工作间隔（tick）
     public static ModConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
-    // 每 tick 最大传输量上限
-    public static ModConfigSpec.LongValue MAX_TRANSFER_LIMIT;
 
     // ===== 核心资源每 tick 传输量 =====
     // 物品每 tick 传输堆叠数
@@ -104,7 +102,6 @@ public final class SLConfig {
     // 通用设置缓存值
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
-    private static volatile long MaxTransferLimit = 10_000_000L;
     // 核心资源传输量缓存值
     private static volatile int DefaultItemStack = 8;
     private static volatile int DefaultFluidStack = 250;
@@ -151,10 +148,6 @@ public final class SLConfig {
         DEFAULT_TICK_INTERVAL = builder
             .translation("config.staticlogistics.default_tick_interval")
             .defineInRange("default_tick_interval", DefaultTickInterval, 1, 1200);
-        MAX_TRANSFER_LIMIT = builder
-            .translation("config.staticlogistics.max_transfer_limit")
-            .comment("Maximum amount of items/fluids/energy transferred per tick. Large values may cause performance issues.")
-            .defineInRange("max_transfer_limit", MaxTransferLimit, 1L, Long.MAX_VALUE);
         AUTO_CLEAN_STORED_NODES = builder
             .translation("config.staticlogistics.auto_clean_stored_nodes")
             .comment("If true, stored node references in Link Configurator items will be automatically cleaned after batch linking or when a node is removed.")
@@ -289,7 +282,6 @@ public final class SLConfig {
         if (CONFIG_SPEC.isLoaded()) {
             DefaultRadius = DEFAULT_RADIUS.get();
             DefaultTickInterval = DEFAULT_TICK_INTERVAL.get();
-            MaxTransferLimit = MAX_TRANSFER_LIMIT.get();
             DefaultItemStack = DEFAULT_ITEM_STACK.get();
             DefaultFluidStack = DEFAULT_FLUID_STACK.get();
             DefaultEnergyStack = DEFAULT_ENERGY_STACK.get();
@@ -346,10 +338,6 @@ public final class SLConfig {
 
     public static int getDefaultTickInterval() {
         return DefaultTickInterval;
-    }
-
-    public static long getMaxTransferLimit() {
-        return MaxTransferLimit;
     }
 
     public static int getItemStack() {
@@ -447,7 +435,7 @@ public final class SLConfig {
      */
     private static S2CConfigSyncPacket buildSyncPayload() {
         return new S2CConfigSyncPacket(
-            DefaultRadius, DefaultTickInterval, MaxTransferLimit,
+            DefaultRadius, DefaultTickInterval,
             DefaultItemStack, DefaultFluidStack, DefaultEnergyStack,
             MekChemicalStack, MekHeatStack, ArsSourceStack,
             ironMultCache, goldMultCache, diamondMultCache, netheriteMultCache, netherStarMultCache,
@@ -470,7 +458,6 @@ public final class SLConfig {
         }
         DefaultRadius = p.defaultRadius();
         DefaultTickInterval = p.defaultTickInterval();
-        MaxTransferLimit = p.maxTransferLimit();
         DefaultItemStack = p.itemStack();
         DefaultFluidStack = p.fluidStack();
         DefaultEnergyStack = p.energyStack();

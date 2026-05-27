@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.storage.config;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.config.serializer.ConfigSerializer;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.util.LogisticsConstants;
@@ -128,16 +127,20 @@ public class FaceConfigComposite {
     }
 
     /**
-     * 计算考虑了容器升级（堆叠倍率）后的实际传输限制
+     * 计算考虑了容器升级（堆叠倍率）后的实际传输限制。
+     * 不做外部截断——上限由源/目标能力自然约束。
+     * 溢出防护：stackMult >= INFINITY_MARKER 时返回 Integer.MAX_VALUE。
      */
     public int getTransferLimit(TransferType type) {
         if (sharedContainerConfig == null) {
-            return (int) Math.min(type.getBaseStackSize(), SLConfig.getMaxTransferLimit());
+            return type.getBaseStackSize();
         }
         int stackMult = sharedContainerConfig.getStackMultiplier();
+        if (stackMult == ContainerConfig.INFINITY_MARKER) {
+            return Integer.MAX_VALUE;
+        }
         long limit = (long) type.getBaseStackSize() * stackMult;
-        long maxAllowed = SLConfig.getMaxTransferLimit();
-        return (int) Math.min(limit, maxAllowed);
+        return (int) Math.min(limit, Integer.MAX_VALUE);
     }
 
     public int getVersion() {
@@ -145,12 +148,13 @@ public class FaceConfigComposite {
     }
 
     /**
-     * 从缓存获取目标列表（版本匹配时命中），避免每次 tick 重建
+     * 从缓存获取目标列表（版本匹配时命中）。
+     * 返回内部引用——调用方只读遍历，不做修改。
      */
     @Nullable
     public List<LogisticsNode> getCachedTargets(int currentVersion) {
         if (cachedTargets != null && targetsCacheVersion == currentVersion) {
-            return new ArrayList<>(cachedTargets);
+            return cachedTargets;
         }
         return null;
     }

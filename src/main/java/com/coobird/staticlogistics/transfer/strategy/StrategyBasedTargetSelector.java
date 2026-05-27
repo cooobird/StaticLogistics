@@ -7,11 +7,18 @@ import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.transfer.strategy.distribute.GroupSorter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
 import java.util.*;
 
+/**
+ * 基于分发策略的目标选择器。
+ * <p>
+ * 目标收集 + 频道过滤在这里统一做，每个 priority 组内的排序
+ * 委托给 {@link GroupSorter}（每种分发策略独立实现）。
+ */
 public class StrategyBasedTargetSelector implements TargetSelector {
 
     @Override
@@ -23,7 +30,6 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
         FaceConfigComposite sourceConfig = context.sourceConfig();
         Set<LogisticsNode> targetSet = new HashSet<>();
-
         Map<LogisticsNode, FaceConfigComposite> targetConfigCache = new HashMap<>();
 
         for (LogisticsNode target : sourceConfig.getLinkedNodes()) {
@@ -36,8 +42,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
             int srcOut = sourceConfig.linkConfig.getOutputChannel();
             int dstIn = targetCfg.linkConfig.getInputChannel();
-            boolean channelMatch = (srcOut != 0 && dstIn != 0 && srcOut == dstIn);
-            if (!channelMatch) continue;
+            if (srcOut != 0 && dstIn != 0 && srcOut != dstIn) continue;
 
             targetSet.add(target);
             targetConfigCache.put(target, targetCfg);
@@ -52,46 +57,34 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
         List<LogisticsNode> allTargets = new ArrayList<>(targetSet);
 
-        // priority 凌驾于分发策略之上：始终按 priority 降序排列
-        // 复用前面的 targetConfigCache 避免重复 FaceConfig 查找
-        Map<LogisticsNode, Integer> priorityCache = new HashMap<>();
+        int configVersion = sourceConfig.getVersion();
+        DistributionStrategy strategy = sourceConfig.linkConfig.getStrategy();
+        if (strategy != DistributionStrategy.RANDOM) {
+            List<LogisticsNode> cached = sourceConfig.getCachedTargets(configVersion);
+            if (cached != null) return cached;
+        }
+
+        BlockPos sourcePos = sourceNode.gPos().pos();
+
+        TreeMap<Integer, List<LogisticsNode>> priorityGroups = new TreeMap<>(Comparator.reverseOrder());
         for (LogisticsNode node : allTargets) {
             FaceConfigComposite cfg = targetConfigCache.get(node);
             if (cfg == null) {
                 ServerLevel tl = globalManager.getLevel(node.gPos().dimension());
                 if (tl != null) cfg = LinkManager.get(tl).getFaceConfig(node.toKey());
             }
-            priorityCache.put(node, cfg != null ? cfg.linkConfig.getPriority() : 0);
-        }
-        allTargets.sort(Comparator.comparingInt((LogisticsNode n) -> priorityCache.getOrDefault(n, 0)).reversed());
-
-        int configVersion = sourceConfig.getVersion();
-        List<LogisticsNode> cached = sourceConfig.getCachedTargets(configVersion);
-
-        DistributionStrategy strategy = sourceConfig.linkConfig.getStrategy();
-        if (cached != null && strategy != DistributionStrategy.RANDOM) {
-            return cached;
+            int p = cfg != null ? cfg.linkConfig.getPriority() : 0;
+            priorityGroups.computeIfAbsent(p, k -> new ArrayList<>()).add(node);
         }
 
-        BlockPos sourcePos = sourceNode.gPos().pos();
-
-        // 按 priority 分组，每组内应用分发策略
-        List<LogisticsNode> sorted = new ArrayList<>();
-        List<LogisticsNode> currentGroup = new ArrayList<>();
-        int currentPriority = Integer.MAX_VALUE;
-        for (LogisticsNode node : allTargets) {
-            int p = priorityCache.getOrDefault(node, 0);
-            if (p != currentPriority) {
-                if (!currentGroup.isEmpty()) {
-                    sorted.addAll(applyStrategy(currentGroup, strategy, sourcePos, sourceNode, globalManager));
-                    currentGroup.clear();
-                }
-                currentPriority = p;
+        GroupSorter sorter = GroupSorter.forStrategy(strategy);
+        List<LogisticsNode> sorted = new ArrayList<>(allTargets.size());
+        for (List<LogisticsNode> group : priorityGroups.values()) {
+            if (group.size() <= 1) {
+                sorted.addAll(group);
+            } else {
+                sorted.addAll(sorter.sort(group, sourcePos, sourceNode, globalManager));
             }
-            currentGroup.add(node);
-        }
-        if (!currentGroup.isEmpty()) {
-            sorted.addAll(applyStrategy(currentGroup, strategy, sourcePos, sourceNode, globalManager));
         }
 
         if (strategy != DistributionStrategy.RANDOM) {
@@ -99,36 +92,5 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         }
 
         return sorted;
-    }
-
-    private List<LogisticsNode> applyStrategy(List<LogisticsNode> group, DistributionStrategy strategy,
-                                              BlockPos sourcePos, LogisticsNode sourceNode,
-                                              GlobalLogisticsManager globalManager) {
-        if (group.size() <= 1) return new ArrayList<>(group);
-        return switch (strategy) {
-            case SEQUENTIAL -> group.stream()
-                .sorted(Comparator.comparingDouble(n -> n.gPos().pos().distSqr(sourcePos)))
-                .toList();
-            case NEAREST -> group.stream()
-                .sorted(Comparator.comparingDouble(n -> n.gPos().pos().distSqr(sourcePos)))
-                .toList();
-            case FURTHEST -> group.stream()
-                .sorted(Comparator.<LogisticsNode>comparingDouble(n -> n.gPos().pos().distSqr(sourcePos)).reversed())
-                .toList();
-            case RANDOM -> {
-                List<LogisticsNode> shuffled = new ArrayList<>(group);
-                Collections.shuffle(shuffled);
-                yield shuffled;
-            }
-            case ROUND_ROBIN -> {
-                int index = globalManager.getNextRoundRobinIndex(sourceNode.toKey(), group.size());
-                List<LogisticsNode> result = new ArrayList<>();
-                for (int i = 0; i < group.size(); i++) {
-                    result.add(group.get((index + i) % group.size()));
-                }
-                yield result;
-            }
-            default -> new ArrayList<>(group);
-        };
     }
 }

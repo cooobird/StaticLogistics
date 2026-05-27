@@ -9,8 +9,8 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
- * 活跃提供者缓存管理器 —— 基于 LRU（最近最少使用）的线程安全缓存。
- * 只缓存有分组且角色为发送方的节点，ticker 从这里快速查找活跃提供者。
+ * 活跃节点缓存，ticker 从这里拿当前在跑的节点列表。
+ * 缓存了一份数组，只有增删节点时才重建，平时直接返回引用。
  */
 public class CacheManager {
     private final Long2ObjectLinkedOpenHashMap<Boolean> activeProviderCache;
@@ -18,34 +18,47 @@ public class CacheManager {
     private final java.util.concurrent.locks.Lock readLock = rwLock.readLock();
     private final java.util.concurrent.locks.Lock writeLock = rwLock.writeLock();
 
+    /**
+     * 缓存的 key 数组，只在 add/remove/evict 时重建
+     */
+    private volatile long[] cachedActiveKeys;
+    private volatile boolean keysDirty = true;
+
     public CacheManager() {
         this.activeProviderCache = new Long2ObjectLinkedOpenHashMap<>(16, LogisticsConstants.Cache.getCacheLoadFactor());
     }
 
     /**
-     * 添加 key 到缓存（移到最后），超出上限时淘汰最旧的
+     * 添加 key 到缓存，超出上限时淘汰最旧的。
+     * 标记数组缓存失效。
      */
     public void add(long key) {
         writeLock.lock();
         try {
             activeProviderCache.putAndMoveToLast(key, true);
             evictIfNeeded();
-        } finally {
-            writeLock.unlock();
-        }
-    }
-
-    public void remove(long key) {
-        writeLock.lock();
-        try {
-            activeProviderCache.remove(key);
+            keysDirty = true;
         } finally {
             writeLock.unlock();
         }
     }
 
     /**
-     * 返回当前活跃提供者 key 的快照副本，防止遍历时并发写入导致异常
+     * 移除 key，标记数组缓存失效。
+     */
+    public void remove(long key) {
+        writeLock.lock();
+        try {
+            activeProviderCache.remove(key);
+            keysDirty = true;
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    /**
+     * 返回当前活跃提供者 key 的快照副本（Set 视图），其他调用方使用。
+     * ticker 高频路径请用 {@link #getActiveProviderKeysArray()}。
      */
     public LongSet getActiveProviderKeys() {
         readLock.lock();
@@ -57,7 +70,30 @@ public class CacheManager {
     }
 
     /**
-     * 快速判空，不创建快照 — ticker 空跑时避免内存分配
+     * 返回缓存的 {@code long[]}，只在集合变更时重建。
+     * ticker 高频路径用这个，避免每 tick 分配两份拷贝。
+     */
+    public long[] getActiveProviderKeysArray() {
+        if (keysDirty) {
+            rebuildArray();
+        }
+        return cachedActiveKeys;
+    }
+
+    private void rebuildArray() {
+        writeLock.lock();
+        try {
+            if (keysDirty) { // 双重检查
+                cachedActiveKeys = activeProviderCache.keySet().toLongArray();
+                keysDirty = false;
+            }
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    /**
+     * 快速判空，不创建快照 —— ticker 空跑时避免所有分配。
      */
     public boolean hasProviders() {
         readLock.lock();

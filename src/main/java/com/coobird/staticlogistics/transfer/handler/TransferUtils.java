@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.transfer.handler;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
@@ -35,15 +34,13 @@ public class TransferUtils {
         }
         if (destinations.isEmpty() || limit <= 0) return false;
 
-        long maxAllowed = SLConfig.getMaxTransferLimit();
-        int safeLimit = (int) Math.min(limit, maxAllowed);
-        if (safeLimit < limit) {
-            LOGGER.debug("Transfer limit clamped from {} to {}", limit, safeLimit);
-        }
-        int remaining = safeLimit;
+        int remaining = limit;
 
         LinkManager localMgr = LinkManager.get(localLevel);
         ContainerConfig localContainer = localMgr.getContainerConfig(localPos);
+        if (localContainer == null && context != null && context.sourceConfig() != null) {
+            localContainer = context.sourceConfig().sharedContainerConfig;
+        }
         if (localContainer == null) return false;
 
         boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
@@ -87,7 +84,6 @@ public class TransferUtils {
                 remaining -= accepted;
                 movedAny = true;
 
-                // 传输日志记录
                 if (context != null) {
                     LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
                     LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;

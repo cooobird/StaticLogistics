@@ -4,7 +4,9 @@ import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.transfer.handler.StandardTransferHandlers;
+import com.coobird.staticlogistics.transfer.handler.impl.EnergyTransferHandler;
+import com.coobird.staticlogistics.transfer.handler.impl.FluidTransferHandler;
+import com.coobird.staticlogistics.transfer.handler.impl.ItemTransferHandler;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -27,12 +29,10 @@ public class TransferRegistries {
     private static final Map<ResourceLocation, TransferType> TYPES = new LinkedHashMap<>();
     private static final Map<ResourceLocation, ITransferHandler> HANDLERS = new LinkedHashMap<>();
 
-    // 三种内置传输类型
     public static TransferType ITEM;
     public static TransferType FLUID;
     public static TransferType ENERGY;
 
-    // 初始化内置的三种传输类型及其处理器
     public static void init() {
         ITEM = registerInternal("item", 0xFFFFFFFF, 0, Capabilities.ItemHandler.BLOCK,
             SLConfig::getItemStack, () -> new ItemStack(Items.IRON_INGOT));
@@ -43,9 +43,9 @@ public class TransferRegistries {
         ENERGY = registerInternal("energy", 0xFFFFFF00, 2, Capabilities.EnergyStorage.BLOCK,
             SLConfig::getEnergyStack, () -> new ItemStack(Items.REDSTONE));
 
-        registerHandler(ITEM, StandardTransferHandlers.ITEM);
-        registerHandler(FLUID, StandardTransferHandlers.FLUID);
-        registerHandler(ENERGY, StandardTransferHandlers.ENERGY);
+        registerHandler(ITEM, ItemTransferHandler.INSTANCE);
+        registerHandler(FLUID, FluidTransferHandler.INSTANCE);
+        registerHandler(ENERGY, EnergyTransferHandler.INSTANCE);
     }
 
     private static TransferType registerInternal(String name, int color, int offset,

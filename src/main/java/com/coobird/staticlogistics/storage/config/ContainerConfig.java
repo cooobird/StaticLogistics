@@ -118,6 +118,10 @@ public class ContainerConfig {
             if (tier != null) {
                 long multiplier = tier.getMultiplier();
                 long count = stackInSlot.getCount();
+                if (count <= 0) {
+                    LOGGER.warn("Upgrade item with count=0 in slot {}, skipping", i);
+                    continue;
+                }
                 long totalValue = multiplier * count;
 
                 switch (type) {
@@ -150,10 +154,12 @@ public class ContainerConfig {
     }
 
     /**
-     * 带溢出检测的乘法：结果超过 INFINITY_MARKER 就返回 INFINITY_MARKER
+     * 带溢出检测的乘法：结果超过 INFINITY_MARKER 就返回 INFINITY_MARKER。
      */
     private long multiplyWithOverflowCheck(long a, long b) {
-        if (a == 0 || b == 0) return 0;
+        if (a <= 0 || b <= 0) {
+            return Math.max(a, 1L);
+        }
         long result = a * b;
         if (result / b != a || result >= INFINITY_MARKER) {
             return INFINITY_MARKER;
