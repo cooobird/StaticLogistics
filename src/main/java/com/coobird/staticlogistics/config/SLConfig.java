@@ -22,8 +22,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntConsumer;
+import java.util.function.IntSupplier;
 
-// 模组主配置文件：定义所有可配置项，注册到 NeoForge 配置系统，并在加载/重载时把值缓存到 volatile 字段中
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public final class SLConfig {
 
@@ -273,7 +274,6 @@ public final class SLConfig {
         }
     }
 
-    // 配置加载/重载回调：把 ModConfigSpec 的当前值同步到 volatile 缓存字段
     public static void onLoad() {
         if (CONFIG_SPEC.isLoaded()) {
             DefaultRadius = DEFAULT_RADIUS.get();
@@ -296,6 +296,34 @@ public final class SLConfig {
             loadPerformanceConfig();
         }
     }
+
+    private record IntEntry(String key, IntSupplier get, IntConsumer set) {
+    }
+
+    private static final IntEntry[] INT_ENTRIES = {
+        new IntEntry("defaultRadius", () -> DefaultRadius, v -> DefaultRadius = v),
+        new IntEntry("defaultTickInterval", () -> DefaultTickInterval, v -> DefaultTickInterval = v),
+        new IntEntry("itemStack", () -> DefaultItemStack, v -> DefaultItemStack = v),
+        new IntEntry("fluidStack", () -> DefaultFluidStack, v -> DefaultFluidStack = v),
+        new IntEntry("energyStack", () -> DefaultEnergyStack, v -> DefaultEnergyStack = v),
+        new IntEntry("mekChemicalStack", () -> MekChemicalStack, v -> MekChemicalStack = v),
+        new IntEntry("mekHeatStack", () -> MekHeatStack, v -> MekHeatStack = v),
+        new IntEntry("arsSourceStack", () -> ArsSourceStack, v -> ArsSourceStack = v),
+        new IntEntry("ironMult", () -> ironMultCache, v -> ironMultCache = v),
+        new IntEntry("goldMult", () -> goldMultCache, v -> goldMultCache = v),
+        new IntEntry("diamondMult", () -> diamondMultCache, v -> diamondMultCache = v),
+        new IntEntry("netheriteMult", () -> netheriteMultCache, v -> netheriteMultCache = v),
+        new IntEntry("netherStarMult", () -> netherStarMultCache, v -> netherStarMultCache = v),
+        new IntEntry("cacheProviderSize", () -> cacheProviderSize, v -> cacheProviderSize = v),
+        new IntEntry("cacheTargetSize", () -> cacheTargetSize, v -> cacheTargetSize = v),
+        new IntEntry("networkMaxBulkEntries", () -> networkMaxBulkEntries, v -> networkMaxBulkEntries = v),
+        new IntEntry("tickerBatchSize", () -> perfTickerBatchSize, v -> perfTickerBatchSize = v),
+        new IntEntry("cleanInterval", () -> perfCleanInterval, v -> perfCleanInterval = v),
+        new IntEntry("defaultCooldown", () -> perfDefaultCooldown, v -> perfDefaultCooldown = v),
+        new IntEntry("batchCleanThreshold", () -> perfBatchCleanThreshold, v -> perfBatchCleanThreshold = v),
+        new IntEntry("batchCleanSize", () -> perfBatchCleanSize, v -> perfBatchCleanSize = v),
+        new IntEntry("contextPoolSize", () -> perfContextPoolSize, v -> perfContextPoolSize = v),
+    };
 
     // 解析数据组件匹配策略覆盖列表，写入 ComponentMatchStrategyRegistry
     private static void loadComponentStrategyOverrides() {
@@ -414,10 +442,6 @@ public final class SLConfig {
         return perfContextPoolSize;
     }
 
-    /**
-     * 将当前服务端配置广播给所有在线玩家。
-     * 仅在逻辑服务端调用有效（客户端调用无操作）。
-     */
     private static void syncConfigToPlayers() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) return;
@@ -425,10 +449,6 @@ public final class SLConfig {
         PacketDistributor.sendToAllPlayers(payload);
     }
 
-    /**
-     * 从当前 volatile 缓存值构建 NBT 同步标签。
-     * 新增配置项只需在这里加一行 putInt/putDouble/putBoolean。
-     */
     private static CompoundTag buildConfigTag() {
         CompoundTag tag = new CompoundTag();
         // general
@@ -467,10 +487,6 @@ public final class SLConfig {
         return tag;
     }
 
-    /**
-     * 客户端收到配置标签后写入 volatile 缓存。
-     * 新增配置项只需在这里加对应的读取逻辑。
-     */
     public static void applyServerConfig(CompoundTag tag) {
         if (tag == null || tag.isEmpty()) {
             onLoad();
@@ -500,7 +516,6 @@ public final class SLConfig {
         perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");
         perfBatchCleanSize = tag.getInt("batchCleanSize");
         perfContextPoolSize = tag.getInt("contextPoolSize");
-        // filter overrides
         ListTag list = tag.getList("componentStrategyOverrides", Tag.TAG_STRING);
         Map<String, String> map = new HashMap<>();
         for (Tag t : list) {

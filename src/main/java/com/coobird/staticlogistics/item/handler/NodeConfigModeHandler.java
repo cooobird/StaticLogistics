@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -29,6 +30,13 @@ public class NodeConfigModeHandler implements ModeHandler {
         if (!level.isClientSide && player instanceof ServerPlayer serverPlayer && level instanceof ServerLevel serverLevel) {
             BlockPos pos = context.getClickedPos();
             Direction face = context.getClickedFace();
+
+            if (serverLevel.getBlockEntity(pos) == null || !TransferUtils.hasLogisticsCapability(serverLevel, pos, face)) {
+                player.displayClientMessage(
+                    Component.translatable("msg.staticlogistics.no_capability").withStyle(ChatFormatting.RED), true);
+                return InteractionResult.SUCCESS;
+            }
+
             LinkManager mgr = LinkManager.get(serverLevel);
             FaceConfigComposite config = mgr.getOrCreateFaceConfig(pos, face);
 

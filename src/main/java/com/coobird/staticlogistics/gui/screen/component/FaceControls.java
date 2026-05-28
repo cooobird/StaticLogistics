@@ -14,8 +14,6 @@ public class FaceControls {
 
     public static final int BTN_SIZE = 12;
 
-    // 开关按钮
-
     public static void renderToggle(GuiGraphics g, Font font, int leftPos, int topPos,
                                     int x, int y, boolean enabled, ResourceLocation atlas) {
         int bx = leftPos + x;
@@ -35,8 +33,6 @@ public class FaceControls {
             && my >= by && my < by + SLGuiTextures.Button.Push.HEIGHT;
     }
 
-    // 颜色按钮
-
     public static void renderColor(GuiGraphics g, int leftPos, int topPos,
                                    int x, int y, int channel) {
         int bx = leftPos + x;
@@ -54,8 +50,6 @@ public class FaceControls {
         return mx >= bx && mx < bx + 14 && my >= by && my < by + 14;
     }
 
-    // 操作按钮（+/-）
-
     public static void renderOperator(GuiGraphics g, int x, int y,
                                       int iconU, int iconV, int mx, int my,
                                       ResourceLocation atlas) {
@@ -72,8 +66,6 @@ public class FaceControls {
             g.fill(x, y, x + BTN_SIZE, y + BTN_SIZE, 0x22FFFFFF);
         }
     }
-
-    // 策略/模式按钮
 
     public static void renderChoiceButton(GuiGraphics g, Font font,
                                           int leftPos, int topPos,
@@ -110,8 +102,6 @@ public class FaceControls {
         return mx >= bx && mx < bx + totalWidth
             && my >= by && my < by + height;
     }
-
-    // 过滤配置按钮
 
     public static void renderFilterConfigBtn(GuiGraphics g, int leftPos, int topPos,
                                              int slotX, int slotY, boolean hover,
@@ -156,8 +146,6 @@ public class FaceControls {
         return mx >= btnX && mx < btnX + btnWidth
             && my >= btnY && my < btnY + btnHeight;
     }
-
-    // 通用按钮
 
     public static void renderTextButton(GuiGraphics g, Font font,
                                         int leftPos, int topPos, int x, int y,

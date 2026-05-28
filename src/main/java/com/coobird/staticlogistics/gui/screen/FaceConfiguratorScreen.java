@@ -1,5 +1,7 @@
 package com.coobird.staticlogistics.gui.screen;
 
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
@@ -19,35 +21,23 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.IntSupplier;
 
-/**
- * Face 配置界面 — 使用 {@link FaceControls} 组件化。
- */
 public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfiguratorMenu> {
 
-    private EditBox priorityBox;
-    private EditBox keepStockBox;
-    private int plusX, plusY, minusX, minusY;
+    private static final int EDIT_BOX_W = 36, BTN = FaceControls.BTN_SIZE;
 
-    private static final int LEFT_X = 10;
-    private static final int IN_BTN_X = LEFT_X, IN_BTN_Y = 20;
-    private static final int IN_COLOR_X = LEFT_X + 20, IN_COLOR_Y = 18;
-    private static final int PRIORITY_Y = 65, PRIORITY_TEXT_Y = 80;
-    private static final int PRIORITY_BOX_X = 10, PRIORITY_BOX_WIDTH = 36;
-    private static final int STOCK_Y = 92, STOCK_TEXT_Y = 106;
-    private static final int STOCK_BOX_X = 10, STOCK_BOX_WIDTH = 36;
+    private static final int INPUT_X = 10;
+    private static final int IN_TOGGLE_Y = 20, IN_COLOR_Y = 18;
+    private static final int PRIORITY_Y = 65, STOCK_Y = 92;
+    private static final int OP_Y_OFFSET = -1; // +/- 按钮相对 EditBox 的 Y 偏移
 
-    private static final int RIGHT_X = 90;
-    private static final int OUT_BTN_X = RIGHT_X, OUT_BTN_Y = 20;
-    private static final int OUT_COLOR_X = RIGHT_X + 20, OUT_COLOR_Y = 18;
-    private static final int STRAT_X = 138, STRAT_Y = 18;
-    private static final int EXTRACT_X = 138, EXTRACT_Y = 38;
-    private static final int UPGRADE_BTN_X = 138, UPGRADE_BTN_Y = 60;
+    private static final int OUTPUT_X = 90;
+    private static final int OUT_TOGGLE_Y = 20, OUT_COLOR_Y = 18;
+    private static final int CHOICE_X = 138;
+    private static final int STRAT_Y = 18, EXTRACT_Y = 38, UPGRADE_Y = 60;
 
-    private static final int INPUT_FILTER_X = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X;
-    private static final int INPUT_FILTER_Y = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
-    private static final int OUTPUT_FILTER_X = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_X;
-    private static final int OUTPUT_FILTER_Y = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_Y;
+    private EditBox priorityBox, keepStockBox;
 
     public FaceConfiguratorScreen(FaceConfiguratorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -63,53 +53,38 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         this.titleLabelY = 6;
         this.inventoryLabelY = 1000;
 
-        int px = leftPos + PRIORITY_BOX_X, py = topPos + PRIORITY_Y;
-        this.priorityBox = new EditBox(this.font, px, py, PRIORITY_BOX_WIDTH,
-            FaceControls.BTN_SIZE, Component.translatable("gui.staticlogistics.label.priority"));
-        this.priorityBox.setBordered(true);
-        this.priorityBox.setMaxLength(10);
-        this.priorityBox.setFilter(s -> s.isEmpty() || s.matches("-?[0-9]*"));
-        this.priorityBox.setValue(String.valueOf(menu.getPriority()));
-        this.priorityBox.setResponder(s -> {
-            try {
-                int p = Integer.parseInt(s);
-                if (p != menu.getPriority()) sendConfigUpdate("priority", p);
-            } catch (NumberFormatException ignored) {
-            }
-        });
-        this.addRenderableWidget(this.priorityBox);
+        priorityBox = makeIntBox(INPUT_X, PRIORITY_Y, EDIT_BOX_W,
+            "gui.staticlogistics.label.priority", "priority", menu::getPriority);
+        keepStockBox = makeIntBox(INPUT_X, STOCK_Y, EDIT_BOX_W,
+            "gui.staticlogistics.label.keep_stock", "keep_stock", menu::getKeepStock);
 
-        int spx = leftPos + STOCK_BOX_X, spy = topPos + STOCK_Y;
-        this.keepStockBox = new EditBox(this.font, spx, spy, STOCK_BOX_WIDTH,
-            FaceControls.BTN_SIZE, Component.translatable("gui.staticlogistics.label.keep_stock"));
-        this.keepStockBox.setBordered(true);
-        this.keepStockBox.setMaxLength(6);
-        this.keepStockBox.setFilter(s -> s.isEmpty() || s.matches("[0-9]*"));
-        this.keepStockBox.setValue(String.valueOf(menu.getKeepStock()));
-        this.keepStockBox.setResponder(s -> {
-            try {
-                int ks = s.isEmpty() ? 0 : Integer.parseInt(s);
-                if (ks != menu.getKeepStock()) sendConfigUpdate("keep_stock", ks);
-            } catch (NumberFormatException ignored) {
-            }
-        });
-        this.addRenderableWidget(this.keepStockBox);
-
-        this.plusX = px + PRIORITY_BOX_WIDTH + 2;
-        this.plusY = py;
-        this.minusX = plusX + FaceControls.BTN_SIZE + 2;
-        this.minusY = plusY;
-
+        addRenderableWidget(priorityBox);
+        addRenderableWidget(keepStockBox);
         updateWidgetVisibility();
+    }
+
+    private EditBox makeIntBox(int x, int y, int w, String labelKey, String cfgKey, IntSupplier getter) {
+        int ax = leftPos + x, ay = topPos + y;
+        EditBox box = new EditBox(this.font, ax, ay, w, BTN, Component.translatable(labelKey));
+        box.setBordered(true);
+        box.setMaxLength(cfgKey.equals("priority") ? 10 : 6);
+        box.setFilter(s -> s.isEmpty() || s.matches(cfgKey.equals("priority") ? "-?[0-9]*" : "[0-9]*"));
+        box.setValue(String.valueOf(getter.getAsInt()));
+        box.setResponder(s -> {
+            try {
+                int v = s.isEmpty() ? 0 : Integer.parseInt(s);
+                if (v != getter.getAsInt()) sendConfigUpdate(cfgKey, v);
+            } catch (NumberFormatException ignored) {
+            }
+        });
+        return box;
     }
 
     @Override
     protected void updateWidgetVisibility() {
         super.updateWidgetVisibility();
-        if (this.priorityBox != null)
-            this.priorityBox.setVisible(menu.isGlobalInputEnabled());
-        if (this.keepStockBox != null)
-            this.keepStockBox.setVisible(menu.isGlobalInputEnabled());
+        priorityBox.setVisible(menu.isGlobalInputEnabled());
+        keepStockBox.setVisible(menu.isGlobalInputEnabled());
     }
 
     @Override
@@ -139,31 +114,24 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
 
     @Override
     protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
-        ItemStack icon = type.getIcon();
         g.pose().pushPose();
         g.pose().translate(x + 4, y + 2, 0);
         g.pose().scale(0.75f, 0.75f, 1.0f);
-        g.renderFakeItem(icon, 0, 0);
+        g.renderFakeItem(type.getIcon(), 0, 0);
         g.pose().popPose();
-        String name = font.plainSubstrByWidth(
-            Component.translatable(type.translationKey()).getString(), 55);
-        g.drawString(this.font, name, x + 18, y + 5,
-            isSelected ? 0x98FB98 : 0xCCCCCC, false);
+        String name = font.plainSubstrByWidth(Component.translatable(type.translationKey()).getString(), 55);
+        g.drawString(font, name, x + 18, y + 5, isSelected ? 0x98FB98 : 0xCCCCCC, false);
     }
 
     @Override
     protected void renderHoveredTypeTooltip(GuiGraphics g, int mx, int my) {
-        if (this.hoveredType == null) return;
-        TransferType t = this.hoveredType;
-        List<Component> tooltip = new ArrayList<>();
-        tooltip.add(Component.translatable(t.translationKey())
-            .withStyle(s -> s.withColor(t.color() | 0xFF000000)));
-        tooltip.add(Component.translatable(t.translationKey() + ".desc")
-            .withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.empty());
-        tooltip.add(Component.translatable("gui.staticlogistics.tooltip.toggle_type")
-            .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
-        g.renderComponentTooltip(this.font, tooltip, mx, my);
+        if (hoveredType == null) return;
+        List<Component> t = new ArrayList<>();
+        t.add(Component.translatable(hoveredType.translationKey()).withStyle(s -> s.withColor(hoveredType.color() | 0xFF000000)));
+        t.add(Component.translatable(hoveredType.translationKey() + ".desc").withStyle(ChatFormatting.GRAY));
+        t.add(Component.empty());
+        t.add(Component.translatable("gui.staticlogistics.tooltip.toggle_type").withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        g.renderComponentTooltip(font, t, mx, my);
     }
 
     @Override
@@ -177,98 +145,108 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     public void containerTick() {
         super.containerTick();
         updateWidgetVisibility();
-        if (this.priorityBox != null && this.priorityBox.isVisible()
-            && !this.priorityBox.isFocused()) {
-            String v = String.valueOf(menu.getPriority());
-            if (!Objects.equals(this.priorityBox.getValue(), v))
-                this.priorityBox.setValue(v);
-        }
-        if (this.keepStockBox != null && this.keepStockBox.isVisible()
-            && !this.keepStockBox.isFocused()) {
-            String v = String.valueOf(menu.getKeepStock());
-            if (!Objects.equals(this.keepStockBox.getValue(), v))
-                this.keepStockBox.setValue(v);
-        }
+        syncBoxValue(priorityBox, menu.getPriority());
+        syncBoxValue(keepStockBox, menu.getKeepStock());
+    }
+
+    private void syncBoxValue(EditBox box, int expected) {
+        if (box == null || !box.isVisible() || box.isFocused()) return;
+        String v = String.valueOf(expected);
+        if (!Objects.equals(box.getValue(), v)) box.setValue(v);
     }
 
     @Override
     protected void renderCustomContent(GuiGraphics g, int mx, int my) {
         renderFilterSlots(g);
         renderFilterHints(g);
+        renderInputSection(g, mx, my);
+        renderOutputSection(g, mx, my);
+        renderFilterButtons(g, mx, my);
+    }
 
-        FaceControls.renderToggle(g, this.font, leftPos, topPos,
-            IN_BTN_X, IN_BTN_Y, menu.isGlobalInputEnabled(), GUI_TEXTURE);
-        FaceControls.renderColor(g, leftPos, topPos,
-            IN_COLOR_X, IN_COLOR_Y, menu.getInputChannel());
+    private void renderInputSection(GuiGraphics g, int mx, int my) {
+        FaceControls.renderToggle(g, font, leftPos, topPos, INPUT_X, IN_TOGGLE_Y, menu.isGlobalInputEnabled(), GUI_TEXTURE);
+        FaceControls.renderColor(g, leftPos, topPos, INPUT_X + 20, IN_COLOR_Y, menu.getInputChannel());
 
-        if (menu.isGlobalInputEnabled()) {
-            g.drawString(this.font,
-                Component.translatable("gui.staticlogistics.label.priority"),
-                leftPos + PRIORITY_BOX_X, topPos + PRIORITY_TEXT_Y,
-                0xFFFFFFFF, false);
-            g.drawString(this.font,
-                Component.translatable("gui.staticlogistics.label.keep_stock"),
-                leftPos + STOCK_BOX_X, topPos + STOCK_TEXT_Y,
-                0xFFFFFFFF, false);
-            FaceControls.renderOperator(g, plusX, plusY,
-                SLGuiTextures.Operator.ADD_U, SLGuiTextures.Operator.ADD_V,
-                mx, my, GUI_TEXTURE);
-            FaceControls.renderOperator(g, minusX, minusY,
-                SLGuiTextures.Operator.REDUCE_U, SLGuiTextures.Operator.REDUCE_V,
-                mx, my, GUI_TEXTURE);
-            if (mx >= plusX && mx < plusX + FaceControls.BTN_SIZE
-                && my >= plusY && my < plusY + FaceControls.BTN_SIZE) {
-                g.renderTooltip(font,
-                    Component.translatable("gui.staticlogistics.priority.tooltip"), mx, my);
-            } else if (mx >= minusX && mx < minusX + FaceControls.BTN_SIZE
-                && my >= minusY && my < minusY + FaceControls.BTN_SIZE) {
-                g.renderTooltip(font,
-                    Component.translatable("gui.staticlogistics.priority.tooltip"), mx, my);
-            }
-            if (this.keepStockBox != null && this.keepStockBox.isVisible()
-                && this.keepStockBox.isMouseOver(mx, my)) {
-                g.renderTooltip(font,
-                    Component.translatable("gui.staticlogistics.keep_stock.tooltip"), mx, my);
-            }
+        if (!menu.isGlobalInputEnabled()) return;
+
+        int labelColor = 0xFFFFFFFF;
+        g.drawString(font, Component.translatable("gui.staticlogistics.label.priority"),
+            leftPos + INPUT_X, topPos + PRIORITY_Y + BTN + 1, labelColor, false);
+        g.drawString(font, Component.translatable("gui.staticlogistics.label.keep_stock"),
+            leftPos + INPUT_X, topPos + STOCK_Y + BTN + 1, labelColor, false);
+
+        int px = leftPos + INPUT_X + EDIT_BOX_W + 2, py = topPos + PRIORITY_Y + OP_Y_OFFSET;
+        renderOpButton(g, mx, my, px, py, true);
+        renderOpButton(g, mx, my, px + BTN + 2, py, false);
+
+        if (this.keepStockBox != null && this.keepStockBox.isVisible() && this.keepStockBox.isMouseOver(mx, my))
+            g.renderTooltip(font, Component.translatable("gui.staticlogistics.keep_stock.tooltip"), mx, my);
+    }
+
+    private void renderOpButton(GuiGraphics g, int mx, int my, int x, int y, boolean isPlus) {
+        FaceControls.renderOperator(g, x, y,
+            isPlus ? SLGuiTextures.Operator.ADD_U : SLGuiTextures.Operator.REDUCE_U,
+            isPlus ? SLGuiTextures.Operator.ADD_V : SLGuiTextures.Operator.REDUCE_V,
+            mx, my, GUI_TEXTURE);
+        if (mx >= x && mx < x + BTN && my >= y && my < y + BTN)
+            g.renderTooltip(font, Component.translatable("gui.staticlogistics.priority.tooltip"), mx, my);
+    }
+
+    private void renderOutputSection(GuiGraphics g, int mx, int my) {
+        FaceControls.renderToggle(g, font, leftPos, topPos, OUTPUT_X, OUT_TOGGLE_Y, menu.isGlobalOutputEnabled(), GUI_TEXTURE);
+        FaceControls.renderColor(g, leftPos, topPos, OUTPUT_X + 20, OUT_COLOR_Y, menu.getOutputChannel());
+
+        if (!menu.isGlobalOutputEnabled()) return;
+
+        FaceControls.renderChoiceButton(g, font, leftPos, topPos, CHOICE_X, STRAT_Y,
+            menu.getStrategy().getDisplayName(), mx, my, GUI_TEXTURE);
+        FaceControls.renderChoiceButton(g, font, leftPos, topPos, CHOICE_X, EXTRACT_Y,
+            menu.getExtractionMode().getDisplayName(), mx, my, GUI_TEXTURE);
+
+        Component lbl = Component.translatable("gui.staticlogistics.upgrade_config");
+        boolean hover = FaceControls.isTextButtonHovered(mx, my, leftPos, topPos, CHOICE_X, UPGRADE_Y, lbl, font);
+        FaceControls.renderTextButton(g, font, leftPos, topPos, CHOICE_X, UPGRADE_Y, lbl, hover, GUI_TEXTURE);
+    }
+
+    private void renderFilterButtons(GuiGraphics g, int mx, int my) {
+        int ix = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X, iy = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
+        int ox = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_X, oy = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_Y;
+        if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty()) {
+            FaceControls.renderFilterConfigBtn(g, leftPos, topPos, ix, iy,
+                FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos, ix, iy), GUI_TEXTURE);
         }
-
-        // 输出开关 + 颜色
-        FaceControls.renderToggle(g, this.font, leftPos, topPos,
-            OUT_BTN_X, OUT_BTN_Y, menu.isGlobalOutputEnabled(), GUI_TEXTURE);
-        FaceControls.renderColor(g, leftPos, topPos,
-            OUT_COLOR_X, OUT_COLOR_Y, menu.getOutputChannel());
-
-        if (menu.isGlobalOutputEnabled()) {
-            FaceControls.renderChoiceButton(g, this.font, leftPos, topPos,
-                STRAT_X, STRAT_Y, menu.getStrategy().getDisplayName(),
-                mx, my, GUI_TEXTURE);
-            FaceControls.renderChoiceButton(g, this.font, leftPos, topPos,
-                EXTRACT_X, EXTRACT_Y, menu.getExtractionMode().getDisplayName(),
-                mx, my, GUI_TEXTURE);
-
-            Component upgradeLabel = Component.translatable("gui.staticlogistics.upgrade_config");
-            boolean upgradeHover = FaceControls.isTextButtonHovered(mx, my,
-                leftPos, topPos, UPGRADE_BTN_X, UPGRADE_BTN_Y,
-                upgradeLabel, this.font);
-            FaceControls.renderTextButton(g, this.font, leftPos, topPos,
-                UPGRADE_BTN_X, UPGRADE_BTN_Y, upgradeLabel, upgradeHover, GUI_TEXTURE);
+        if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty()) {
+            FaceControls.renderFilterConfigBtn(g, leftPos, topPos, ox, oy,
+                FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos, ox, oy), GUI_TEXTURE);
         }
+    }
 
-        // 过滤配置按钮
-        if (menu.isGlobalInputEnabled()
-            && !menu.getSlot(0).getItem().isEmpty()) {
-            boolean hover = FaceControls.isFilterConfigBtnHovered(mx, my,
-                leftPos, topPos, INPUT_FILTER_X, INPUT_FILTER_Y);
-            FaceControls.renderFilterConfigBtn(g, leftPos, topPos,
-                INPUT_FILTER_X, INPUT_FILTER_Y, hover, GUI_TEXTURE);
-        }
-        if (menu.isGlobalOutputEnabled()
-            && !menu.getSlot(1).getItem().isEmpty()) {
-            boolean hover = FaceControls.isFilterConfigBtnHovered(mx, my,
-                leftPos, topPos, OUTPUT_FILTER_X, OUTPUT_FILTER_Y);
-            FaceControls.renderFilterConfigBtn(g, leftPos, topPos,
-                OUTPUT_FILTER_X, OUTPUT_FILTER_Y, hover, GUI_TEXTURE);
-        }
+    private void renderFilterSlots(GuiGraphics g) {
+        int ix = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X, iy = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
+        int ox = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_X, oy = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_Y;
+        if (menu.isGlobalInputEnabled())
+            g.blit(GUI_TEXTURE, leftPos + ix, topPos + iy, 16, 16,
+                SLGuiTextures.Upgrade.U, SLGuiTextures.Upgrade.V,
+                SLGuiTextures.Upgrade.WIDTH, SLGuiTextures.Upgrade.HEIGHT, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        if (menu.isGlobalOutputEnabled())
+            g.blit(GUI_TEXTURE, leftPos + ox, topPos + oy, 16, 16,
+                SLGuiTextures.Upgrade.U, SLGuiTextures.Upgrade.V,
+                SLGuiTextures.Upgrade.WIDTH, SLGuiTextures.Upgrade.HEIGHT, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+    }
+
+    private void renderFilterHints(GuiGraphics g) {
+        int ix = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X, iy = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
+        int ox = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_X, oy = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_Y;
+        if (menu.isGlobalInputEnabled()) renderFilterHint(g, ix, iy, "gui.staticlogistics.hint.input_filter");
+        if (menu.isGlobalOutputEnabled()) renderFilterHint(g, ox, oy, "gui.staticlogistics.hint.output_filter");
+    }
+
+    private void renderFilterHint(GuiGraphics g, int x, int y, String key) {
+        g.pose().pushPose();
+        g.pose().scale(0.8f, 0.8f, 0.8f);
+        g.drawString(font, Component.translatable(key), (int) ((leftPos + x - 2) / 0.8f), (int) ((topPos + y + 18) / 0.8f), 0x88FFFFFF, false);
+        g.pose().popPose();
     }
 
     @Override
@@ -278,204 +256,136 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         this.renderTooltip(g, mx, my);
     }
 
-    private void renderFilterSlots(GuiGraphics g) {
-        if (menu.isGlobalInputEnabled())
-            g.blit(GUI_TEXTURE, leftPos + INPUT_FILTER_X, topPos + INPUT_FILTER_Y,
-                16, 16, SLGuiTextures.Upgrade.U, SLGuiTextures.Upgrade.V,
-                SLGuiTextures.Upgrade.WIDTH, SLGuiTextures.Upgrade.HEIGHT,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        if (menu.isGlobalOutputEnabled())
-            g.blit(GUI_TEXTURE, leftPos + OUTPUT_FILTER_X, topPos + OUTPUT_FILTER_Y,
-                16, 16, SLGuiTextures.Upgrade.U, SLGuiTextures.Upgrade.V,
-                SLGuiTextures.Upgrade.WIDTH, SLGuiTextures.Upgrade.HEIGHT,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+    private void renderCustomTooltips(GuiGraphics g, int mx, int my) {
+        if (FaceControls.isToggleHovered(mx, my, leftPos, topPos, INPUT_X, IN_TOGGLE_Y))
+            g.renderTooltip(font, Component.translatable("gui.mode.staticlogistics.input"), mx, my);
+        if (FaceControls.isToggleHovered(mx, my, leftPos, topPos, OUTPUT_X, OUT_TOGGLE_Y))
+            g.renderTooltip(font, Component.translatable("gui.mode.staticlogistics.output"), mx, my);
+
+        if (menu.isGlobalOutputEnabled() && FaceControls.isChoiceHovered(mx, my, leftPos, topPos, CHOICE_X, STRAT_Y,
+            menu.getStrategy().getDisplayName(), font))
+            g.renderComponentTooltip(font, List.of(Component.translatable("gui.staticlogistics.strategy"),
+                menu.getStrategy().getDisplayName().copy().withStyle(ChatFormatting.AQUA)), mx, my);
+        if (menu.isGlobalOutputEnabled() && FaceControls.isChoiceHovered(mx, my, leftPos, topPos, CHOICE_X, EXTRACT_Y,
+            menu.getExtractionMode().getDisplayName(), font))
+            g.renderComponentTooltip(font, List.of(Component.translatable("gui.staticlogistics.extraction_mode"),
+                menu.getExtractionMode().getDisplayName().copy().withStyle(ChatFormatting.AQUA)), mx, my);
+
+        int ix = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X, iy = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
+        int ox = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_X, oy = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_Y;
+        slotTooltip(g, mx, my, menu.isGlobalInputEnabled(), 0, ix, iy);
+        slotTooltip(g, mx, my, menu.isGlobalOutputEnabled(), 1, ox, oy);
+        if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty() && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos, ix, iy))
+            g.renderTooltip(font, Component.translatable("gui.staticlogistics.open_filter"), mx, my);
+        if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty() && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos, ox, oy))
+            g.renderTooltip(font, Component.translatable("gui.staticlogistics.open_filter"), mx, my);
     }
 
-    private void renderFilterHints(GuiGraphics g) {
-        if (menu.isGlobalInputEnabled()) {
-            Component h = Component.translatable("gui.staticlogistics.hint.input_filter");
-            g.pose().pushPose();
-            g.pose().scale(0.8f, 0.8f, 0.8f);
-            g.drawString(this.font, h,
-                (int) ((leftPos + INPUT_FILTER_X - 2) / 0.8f),
-                (int) ((topPos + INPUT_FILTER_Y + 18) / 0.8f),
-                0x88FFFFFF, false);
-            g.pose().popPose();
-        }
-        if (menu.isGlobalOutputEnabled()) {
-            Component h = Component.translatable("gui.staticlogistics.hint.output_filter");
-            g.pose().pushPose();
-            g.pose().scale(0.8f, 0.8f, 0.8f);
-            g.drawString(this.font, h,
-                (int) ((leftPos + OUTPUT_FILTER_X - 2) / 0.8f),
-                (int) ((topPos + OUTPUT_FILTER_Y + 18) / 0.8f),
-                0x88FFFFFF, false);
-            g.pose().popPose();
-        }
+    private void slotTooltip(GuiGraphics g, int mx, int my, boolean visible, int slotIdx, int sx, int sy) {
+        if (!visible) return;
+        if (mx < leftPos + sx || mx >= leftPos + sx + 16 || my < topPos + sy || my >= topPos + sy + 16) return;
+        ItemStack st = menu.getSlot(slotIdx).getItem();
+        if (!st.isEmpty()) g.renderTooltip(font, st, mx, my);
     }
+
+    // ── mouse / key ──
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        boolean handled = false;
-
-        if (menu.isGlobalInputEnabled()) {
-            if (mx >= plusX && mx < plusX + FaceControls.BTN_SIZE
-                && my >= plusY && my < plusY + FaceControls.BTN_SIZE) {
-                adjustPriority(1);
-                playClickSound();
-                return true;
-            }
-            if (mx >= minusX && mx < minusX + FaceControls.BTN_SIZE
-                && my >= minusY && my < minusY + FaceControls.BTN_SIZE) {
-                adjustPriority(-1);
-                playClickSound();
-                return true;
-            }
+        // +/- 按钮
+        int px = leftPos + INPUT_X + EDIT_BOX_W + 2, py = topPos + PRIORITY_Y + OP_Y_OFFSET;
+        if (menu.isGlobalInputEnabled() && inRect(mx, my, px, py, BTN, BTN)) {
+            adjustPriority(1);
+            playClickSound();
+            return true;
+        }
+        if (menu.isGlobalInputEnabled() && inRect(mx, my, px + BTN + 2, py, BTN, BTN)) {
+            adjustPriority(-1);
+            playClickSound();
+            return true;
         }
 
-        // 过滤配置按钮
+        int ix = FaceConfiguratorMenu.INPUT_FILTER_SLOT_X, iy = FaceConfiguratorMenu.INPUT_FILTER_SLOT_Y;
+        int ox = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_X, oy = FaceConfiguratorMenu.OUTPUT_FILTER_SLOT_Y;
+
         if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty()
-            && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos,
-            INPUT_FILTER_X, INPUT_FILTER_Y)) {
+            && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos, ix, iy)) {
             sendConfigUpdate("open_filter", "input");
             playClickSound();
-            handled = true;
-        } else if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty()
-            && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos,
-            OUTPUT_FILTER_X, OUTPUT_FILTER_Y)) {
+            return true;
+        }
+        if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty()
+            && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos, ox, oy)) {
             sendConfigUpdate("open_filter", "output");
             playClickSound();
-            handled = true;
-        } else if (FaceControls.isToggleHovered(mx, my, leftPos, topPos,
-            IN_BTN_X, IN_BTN_Y)) {
+            return true;
+        }
+
+        if (FaceControls.isToggleHovered(mx, my, leftPos, topPos, INPUT_X, IN_TOGGLE_Y)) {
             sendConfigUpdate("globalInput", !menu.isGlobalInputEnabled());
             playClickSound();
-            handled = true;
-        } else if (FaceControls.isToggleHovered(mx, my, leftPos, topPos,
-            OUT_BTN_X, OUT_BTN_Y)) {
+            return true;
+        }
+        if (FaceControls.isToggleHovered(mx, my, leftPos, topPos, OUTPUT_X, OUT_TOGGLE_Y)) {
             sendConfigUpdate("globalOutput", !menu.isGlobalOutputEnabled());
             playClickSound();
-            handled = true;
-        } else if (FaceControls.isColorHovered(mx, my, leftPos, topPos,
-            IN_COLOR_X, IN_COLOR_Y)) {
-            int cur = menu.getInputChannel();
-            int next = button == 1
-                ? (cur - 1 < 1 ? 16 : cur - 1)
-                : (cur + 1 > 16 ? 1 : cur + 1);
-            sendConfigUpdate("inputChannel", next);
-            playClickSound();
-            handled = true;
-        } else if (FaceControls.isColorHovered(mx, my, leftPos, topPos,
-            OUT_COLOR_X, OUT_COLOR_Y)) {
-            int cur = menu.getOutputChannel();
-            int next = button == 1
-                ? (cur - 1 < 1 ? 16 : cur - 1)
-                : (cur + 1 > 16 ? 1 : cur + 1);
-            sendConfigUpdate("outputChannel", next);
-            playClickSound();
-            handled = true;
-        } else if (menu.isGlobalOutputEnabled()
-            && FaceControls.isChoiceHovered(mx, my, leftPos, topPos,
-            STRAT_X, STRAT_Y, menu.getStrategy().getDisplayName(), this.font)) {
-            var vals = com.coobird.staticlogistics.api.type.DistributionStrategy.values();
+            return true;
+        }
+
+        if (FaceControls.isColorHovered(mx, my, leftPos, topPos, INPUT_X + 20, IN_COLOR_Y)) {
+            cycleChannel("inputChannel", menu.getInputChannel(), button);
+            return true;
+        }
+        if (FaceControls.isColorHovered(mx, my, leftPos, topPos, OUTPUT_X + 20, OUT_COLOR_Y)) {
+            cycleChannel("outputChannel", menu.getOutputChannel(), button);
+            return true;
+        }
+
+        if (menu.isGlobalOutputEnabled() && FaceControls.isChoiceHovered(mx, my, leftPos, topPos, CHOICE_X, STRAT_Y,
+            menu.getStrategy().getDisplayName(), font)) {
+            var vals = DistributionStrategy.values();
             int ord = menu.getStrategy().ordinal();
-            int next = button == 1
-                ? (ord - 1 + vals.length) % vals.length
-                : (ord + 1) % vals.length;
+            int next = button == 1 ? (ord - 1 + vals.length) % vals.length : (ord + 1) % vals.length;
             sendConfigUpdate("strategy", vals[next].getSerializedName());
             playClickSound();
-            handled = true;
-        } else if (menu.isGlobalOutputEnabled()
-            && FaceControls.isChoiceHovered(mx, my, leftPos, topPos,
-            EXTRACT_X, EXTRACT_Y,
-            menu.getExtractionMode().getDisplayName(), this.font)) {
-            var vals = com.coobird.staticlogistics.api.type.ExtractionMode.values();
+            return true;
+        }
+        if (menu.isGlobalOutputEnabled() && FaceControls.isChoiceHovered(mx, my, leftPos, topPos, CHOICE_X, EXTRACT_Y,
+            menu.getExtractionMode().getDisplayName(), font)) {
+            var vals = ExtractionMode.values();
             int ord = menu.getExtractionMode().ordinal();
-            int next = button == 1
-                ? (ord - 1 + vals.length) % vals.length
-                : (ord + 1) % vals.length;
+            int next = button == 1 ? (ord - 1 + vals.length) % vals.length : (ord + 1) % vals.length;
             sendConfigUpdate("extractionMode", vals[next].getSerializedName());
             playClickSound();
-            handled = true;
+            return true;
         }
 
-        if (!handled && menu.isGlobalOutputEnabled()) {
-            Component label = Component.translatable("gui.staticlogistics.upgrade_config");
-            if (FaceControls.isTextButtonHovered(mx, my, leftPos, topPos,
-                UPGRADE_BTN_X, UPGRADE_BTN_Y, label, this.font)) {
-                PacketDistributor.sendToServer(new C2SOpenContainerConfigPayload(
-                    menu.getPos(), menu.getFace()));
-                playClickSound();
-                handled = true;
-            }
+        if (menu.isGlobalOutputEnabled() && FaceControls.isTextButtonHovered(mx, my, leftPos, topPos, CHOICE_X, UPGRADE_Y,
+            Component.translatable("gui.staticlogistics.upgrade_config"), font)) {
+            PacketDistributor.sendToServer(new C2SOpenContainerConfigPayload(menu.getPos(), menu.getFace()));
+            playClickSound();
+            return true;
         }
 
-        if (!handled) handled = super.mouseClicked(mx, my, button);
+        boolean handled = super.mouseClicked(mx, my, button);
 
-        if (this.priorityBox != null
-            && !this.priorityBox.isMouseOver(mx, my)
-            && this.priorityBox.isFocused()) {
-            this.priorityBox.setFocused(false);
-        }
-        if (this.keepStockBox != null
-            && !this.keepStockBox.isMouseOver(mx, my)
-            && this.keepStockBox.isFocused()) {
-            this.keepStockBox.setFocused(false);
-        }
+        unfocusIfOutside(priorityBox, mx, my);
+        unfocusIfOutside(keepStockBox, mx, my);
         return handled;
     }
 
-    private void renderCustomTooltips(GuiGraphics g, int mx, int my) {
-        if (FaceControls.isToggleHovered(mx, my, leftPos, topPos,
-            IN_BTN_X, IN_BTN_Y))
-            g.renderTooltip(this.font,
-                Component.translatable("gui.mode.staticlogistics.input"), mx, my);
-        if (FaceControls.isToggleHovered(mx, my, leftPos, topPos,
-            OUT_BTN_X, OUT_BTN_Y))
-            g.renderTooltip(this.font,
-                Component.translatable("gui.mode.staticlogistics.output"), mx, my);
-        if (menu.isGlobalOutputEnabled()
-            && FaceControls.isChoiceHovered(mx, my, leftPos, topPos,
-            STRAT_X, STRAT_Y, menu.getStrategy().getDisplayName(), this.font))
-            g.renderComponentTooltip(this.font, List.of(
-                    Component.translatable("gui.staticlogistics.strategy"),
-                    menu.getStrategy().getDisplayName().copy().withStyle(ChatFormatting.AQUA)),
-                mx, my);
-        if (menu.isGlobalOutputEnabled()
-            && FaceControls.isChoiceHovered(mx, my, leftPos, topPos,
-            EXTRACT_X, EXTRACT_Y,
-            menu.getExtractionMode().getDisplayName(), this.font))
-            g.renderComponentTooltip(this.font, List.of(
-                Component.translatable("gui.staticlogistics.extraction_mode"),
-                menu.getExtractionMode().getDisplayName().copy()
-                    .withStyle(ChatFormatting.AQUA)), mx, my);
+    private static boolean inRect(double mx, double my, int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
 
-        // 槽位 tooltip
-        if (menu.isGlobalInputEnabled()) {
-            int sx = leftPos + INPUT_FILTER_X, sy = topPos + INPUT_FILTER_Y;
-            if (mx >= sx && mx < sx + 16 && my >= sy && my < sy + 16) {
-                ItemStack st = menu.getSlot(0).getItem();
-                if (!st.isEmpty()) g.renderTooltip(font, st, mx, my);
-            }
-        }
-        if (menu.isGlobalOutputEnabled()) {
-            int sx = leftPos + OUTPUT_FILTER_X, sy = topPos + OUTPUT_FILTER_Y;
-            if (mx >= sx && mx < sx + 16 && my >= sy && my < sy + 16) {
-                ItemStack st = menu.getSlot(1).getItem();
-                if (!st.isEmpty()) g.renderTooltip(font, st, mx, my);
-            }
-        }
+    private void cycleChannel(String key, int cur, int button) {
+        int next = button == 1 ? (cur - 1 < 1 ? 16 : cur - 1) : (cur + 1 > 16 ? 1 : cur + 1);
+        sendConfigUpdate(key, next);
+        playClickSound();
+    }
 
-        if (menu.isGlobalInputEnabled() && !menu.getSlot(0).getItem().isEmpty()
-            && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos,
-            INPUT_FILTER_X, INPUT_FILTER_Y))
-            g.renderTooltip(this.font,
-                Component.translatable("gui.staticlogistics.open_filter"), mx, my);
-        if (menu.isGlobalOutputEnabled() && !menu.getSlot(1).getItem().isEmpty()
-            && FaceControls.isFilterConfigBtnHovered(mx, my, leftPos, topPos,
-            OUTPUT_FILTER_X, OUTPUT_FILTER_Y))
-            g.renderTooltip(this.font,
-                Component.translatable("gui.staticlogistics.open_filter"), mx, my);
+    private void unfocusIfOutside(EditBox box, double mx, double my) {
+        if (box != null && !box.isMouseOver(mx, my) && box.isFocused()) box.setFocused(false);
     }
 
     private void adjustPriority(int delta) {
@@ -486,6 +396,21 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         sendConfigUpdate("priority", menu.getPriority() + delta);
     }
 
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if ((keyCode == 257 || keyCode == 335) && priorityBox.isFocused()) {
+            priorityBox.setFocused(false);
+            return true;
+        }
+        if ((keyCode == 257 || keyCode == 335) && keepStockBox != null && keepStockBox.isFocused()) {
+            keepStockBox.setFocused(false);
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    // ── network ──
+
     private void sendConfigUpdate(String key, Object value) {
         CompoundTag tag = new CompoundTag();
         switch (value) {
@@ -495,27 +420,12 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             default -> {
             }
         }
-        PacketDistributor.sendToServer(
-            new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
+        PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
     }
 
     private void syncTypeSelection() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("selected_types_mask", menu.getSelectedTypesMask());
-        PacketDistributor.sendToServer(
-            new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if ((keyCode == 257 || keyCode == 335) && this.priorityBox.isFocused()) {
-            this.priorityBox.setFocused(false);
-            return true;
-        }
-        if ((keyCode == 257 || keyCode == 335) && this.keepStockBox != null && this.keepStockBox.isFocused()) {
-            this.keepStockBox.setFocused(false);
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), tag));
     }
 }

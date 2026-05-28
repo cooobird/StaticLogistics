@@ -12,6 +12,7 @@ import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.config.LinkConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Inventory;
@@ -330,5 +331,94 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
 
     public FaceConfigComposite getFaceConfig() {
         return serverConfig;
+    }
+
+
+    public boolean applyFromTag(CompoundTag tag) {
+        boolean changed = false;
+        for (String key : tag.getAllKeys()) {
+            changed |= switch (key) {
+                case "globalInput" -> {
+                    boolean v = tag.getBoolean(key);
+                    if (v != isGlobalInputEnabled()) {
+                        setGlobalInputEnabled(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "globalOutput" -> {
+                    boolean v = tag.getBoolean(key);
+                    if (v != isGlobalOutputEnabled()) {
+                        setGlobalOutputEnabled(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "inputChannel" -> {
+                    int v = Math.clamp(tag.getInt(key), 1, 16);
+                    if (v != getInputChannel()) {
+                        setInputChannel(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "outputChannel" -> {
+                    int v = Math.clamp(tag.getInt(key), 1, 16);
+                    if (v != getOutputChannel()) {
+                        setOutputChannel(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "priority" -> {
+                    int v = tag.getInt(key);
+                    if (v != getPriority()) {
+                        setPriority(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "keep_stock" -> {
+                    int v = tag.getInt(key);
+                    if (v != getKeepStock()) {
+                        setKeepStock(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "strategy" -> {
+                    DistributionStrategy v = DistributionStrategy.byName(
+                        tag.getString(key), DistributionStrategy.SEQUENTIAL);
+                    if (v != getStrategy()) {
+                        setStrategy(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "extractionMode" -> {
+                    ExtractionMode v = ExtractionMode.byName(
+                        tag.getString(key), ExtractionMode.SEQUENTIAL);
+                    if (v != getExtractionMode()) {
+                        setExtractionMode(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case "selected_types_mask" -> {
+                    int v = tag.getInt(key);
+                    if (getSelectedTypesMask() != v) {
+                        setSelectedTypesMask(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                default -> false;
+            };
+        }
+        if (changed) {
+            syncToSlots();
+            broadcastChanges();
+        }
+        return changed;
     }
 }

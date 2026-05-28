@@ -127,7 +127,12 @@ public class ItemTransferHandler implements ITransferHandler {
 
             IItemHandler to = remoteLevel.getCapability(
                 Capabilities.ItemHandler.BLOCK, remoteNode.gPos().pos(), remoteNode.face());
-            if (to == null) continue;
+            if (to == null) {
+                if (isChunkLoadedAndBEGone(remoteLevel, remoteNode.gPos().pos())) {
+                    removeStaleTarget(sourceCfg, remoteNode, ctx);
+                }
+                continue;
+            }
 
             FaceConfigComposite targetCfg = LinkManager.get(remoteLevel).getFaceConfig(remoteNode.toKey());
 
@@ -202,6 +207,12 @@ public class ItemTransferHandler implements ITransferHandler {
 
             IItemHandler from = remoteLevel.getCapability(
                 Capabilities.ItemHandler.BLOCK, remoteNode.gPos().pos(), remoteNode.face());
+            if (from == null) {
+                if (isChunkLoadedAndBEGone(remoteLevel, remoteNode.gPos().pos())) {
+                    removeStaleTarget(sourceCfg, remoteNode, ctx);
+                }
+                continue;
+            }
             if (from == null) continue;
 
             List<SlotItem> available = new ArrayList<>();
@@ -243,5 +254,29 @@ public class ItemTransferHandler implements ITransferHandler {
     }
 
     private record SlotItem(ItemStack stack, int slot) {
+    }
+
+    // ==== 虚空链接自动清理 ====
+
+    private static boolean isChunkLoadedAndBEGone(ServerLevel level, BlockPos pos) {
+        return level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
+            && level.getBlockEntity(pos) == null;
+    }
+
+    private static void removeStaleTarget(FaceConfigComposite sourceCfg, LogisticsNode remoteNode,
+                                          TransferContext ctx) {
+        sourceCfg.getLinkedNodes().remove(remoteNode);
+        LinkManager mgr = ctx.linkManager();
+        FaceConfigComposite targetCfg = mgr.getFaceConfig(remoteNode.toKey());
+        if (targetCfg != null) {
+            targetCfg.getLinkedNodes().remove(ctx.sourceNode());
+            targetCfg.markDirty();
+        }
+        if (sourceCfg.getLinkedNodes().isEmpty()) {
+            sourceCfg.setGlobalOutputEnabled(false);
+            sourceCfg.setGlobalInputEnabled(false);
+        }
+        sourceCfg.markDirty();
+        LOGGER.debug("Auto-cleaned stale link: {} -> {}", ctx.sourceNode().gPos(), remoteNode.gPos());
     }
 }

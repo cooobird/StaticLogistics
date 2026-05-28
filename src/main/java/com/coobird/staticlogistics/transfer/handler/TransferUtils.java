@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferLogManager;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
@@ -66,7 +67,13 @@ public class TransferUtils {
                 continue;
 
             C remoteCap = remoteLevel.getCapability(cap, remoteNode.gPos().pos(), remoteNode.face());
-            if (remoteCap == null) continue;
+            if (remoteCap == null) {
+                if (context != null && context.sourceConfig() != null
+                    && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
+                    cleanStaleTarget(context.sourceConfig(), remoteNode, context);
+                }
+                continue;
+            }
 
             C from = isPullMode ? remoteCap : localCap;
             C to = isPullMode ? localCap : remoteCap;
@@ -163,5 +170,21 @@ public class TransferUtils {
     @FunctionalInterface
     public interface TriConsumer<A, B, C> {
         void accept(A a, B b, C c);
+    }
+
+    private static void cleanStaleTarget(FaceConfigComposite sourceCfg, LogisticsNode remoteNode,
+                                         TransferContext ctx) {
+        sourceCfg.getLinkedNodes().remove(remoteNode);
+        LinkManager mgr = ctx.linkManager();
+        FaceConfigComposite targetCfg = mgr.getFaceConfig(remoteNode.toKey());
+        if (targetCfg != null) {
+            targetCfg.getLinkedNodes().remove(ctx.sourceNode());
+            targetCfg.markDirty();
+        }
+        if (sourceCfg.getLinkedNodes().isEmpty()) {
+            sourceCfg.setGlobalOutputEnabled(false);
+            sourceCfg.setGlobalInputEnabled(false);
+        }
+        sourceCfg.markDirty();
     }
 }

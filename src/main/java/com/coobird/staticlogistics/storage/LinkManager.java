@@ -24,6 +24,7 @@ import net.minecraft.core.GlobalPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
@@ -265,7 +266,11 @@ public class LinkManager {
         if (source == null || target == null) return;
 
         FaceConfigComposite sourceCfg = getFaceConfig(source.toKey());
-        FaceConfigComposite targetCfg = getFaceConfig(target.toKey());
+        if (sourceCfg == null) return;
+        ServerLevel targetLevel = target.isInSameDimension(level.dimension())
+            ? level : level.getServer().getLevel(target.gPos().dimension());
+        FaceConfigComposite targetCfg = targetLevel != null
+            ? LinkManager.get(targetLevel).getFaceConfig(target.toKey()) : null;
         if (sourceCfg == null || targetCfg == null) return;
 
         boolean sourceRemoved = sourceCfg.getLinkedNodes().remove(target);
@@ -490,36 +495,6 @@ public class LinkManager {
             if (level.getBlockEntity(node.gPos().pos()) == null) {
                 removeFaceConfigInternal(key, true, true);
             } else {
-                // 检查已链接的目标节点是否还有效
-                List<LogisticsNode> staleTargets = new ArrayList<>();
-                for (LogisticsNode target : cfg.getLinkedNodes()) {
-                    ServerLevel targetLevel = target.isInSameDimension(level.dimension())
-                        ? level : server.getLevel(target.gPos().dimension());
-                    if (targetLevel == null || targetLevel.getBlockEntity(target.gPos().pos()) == null) {
-                        staleTargets.add(target);
-                    }
-                }
-                if (!staleTargets.isEmpty()) {
-                    for (LogisticsNode target : staleTargets) {
-                        cfg.getLinkedNodes().remove(target);
-                        ServerLevel targetLevel = target.isInSameDimension(level.dimension())
-                            ? level : server.getLevel(target.gPos().dimension());
-                        if (targetLevel != null) {
-                            FaceConfigComposite targetCfg = LinkManager.get(targetLevel).getFaceConfig(target.toKey());
-                            if (targetCfg != null) {
-                                targetCfg.getLinkedNodes().remove(node);
-                                targetCfg.markDirty();
-                            }
-                        }
-                    }
-                    GlobalLogisticsManager.get(server).markReverseLinksStale();
-                    if (cfg.getLinkedNodes().isEmpty()) {
-                        cfg.setGlobalOutputEnabled(false);
-                        cfg.setGlobalInputEnabled(false);
-                    }
-                    cfg.markDirty();
-                    markFaceDirty(key);
-                }
                 // 清扫已失活的组ID
                 for (String gid : new java.util.ArrayList<>(cfg.faceConfig.getGroupIds())) {
                     if (GlobalLogisticsManager.get(level.getServer()).getNodeGroupService()
@@ -540,6 +515,22 @@ public class LinkManager {
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
         if (positions.isEmpty()) return;
         List<BlockPos> list = new ArrayList<>(positions);
+        if (list.size() > 100) {
+            List<BlockPos> deferred = new ArrayList<>(list.subList(100, list.size()));
+            list = new ArrayList<>(list.subList(0, 100));
+            try {
+                dropHandler.handleBulkDrops(deferred);
+            } catch (Exception e) {
+                LOGGER.error("Failed to handle bulk drops for deferred positions", e);
+            }
+            for (BlockPos pos : deferred) {
+                try {
+                    containerConfigService.removeIfUnused(pos);
+                } catch (Exception ignored) {
+                }
+            }
+            markOrphanScanNeeded();
+        }
         List<BlockPos> failedDrops = new ArrayList<>();
         List<BlockPos> failedConfigs = new ArrayList<>();
         List<BlockPos> failedSync = new ArrayList<>();
@@ -611,7 +602,7 @@ public class LinkManager {
 
     public static LinkManager get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(
-            new net.minecraft.world.level.saveddata.SavedData.Factory<>(
+            new SavedData.Factory<>(
                 () -> {
                     LinkManager mgr = new LinkManager(level);
                     LinkManagerStorage stor = new LinkManagerStorage(level, mgr);
@@ -629,76 +620,4 @@ public class LinkManager {
         ).linkManager;
     }
 
-    /**
-     * 启动时全局校验所有链接：清除回档/崩溃后产生的虚空链接。
-     * 玩家首次进入世界时调用一次，遍历所有维度和配置。
-     *
-     * @return 清理的无效链接数量
-     */
-    public static int validateAllLinksOnStartup(MinecraftServer server) {
-        int removedLinks = 0;
-        for (ServerLevel dimension : server.getAllLevels()) {
-            LinkManager mgr = get(dimension);
-            Set<Long> keys = mgr.getAllConfigKeys();
-            if (keys.isEmpty()) continue;
-
-            List<Long> toRemove = new ArrayList<>();
-            for (long key : keys) {
-                FaceConfigComposite cfg = mgr.getFaceConfig(key);
-                if (cfg == null) continue;
-
-                LogisticsNode sourceNode = mgr.createNodeFromKey(key);
-                if (dimension.getBlockEntity(sourceNode.gPos().pos()) == null) {
-                    toRemove.add(key);
-                    removedLinks += cfg.getLinkedNodes().size();
-                    LOGGER.debug("Startup cleanup: removing config at {} (block entity gone)",
-                        sourceNode.gPos().pos());
-                    continue;
-                }
-
-                List<LogisticsNode> invalidTargets = new ArrayList<>();
-                for (LogisticsNode target : cfg.getLinkedNodes()) {
-                    ServerLevel targetLevel = target.isInSameDimension(dimension.dimension())
-                        ? dimension : server.getLevel(target.gPos().dimension());
-                    if (targetLevel == null
-                        || targetLevel.getBlockEntity(target.gPos().pos()) == null) {
-                        invalidTargets.add(target);
-                    }
-                }
-                if (!invalidTargets.isEmpty()) {
-                    for (LogisticsNode target : invalidTargets) {
-                        cfg.getLinkedNodes().remove(target);
-                        ServerLevel targetDim = target.isInSameDimension(dimension.dimension())
-                            ? dimension : server.getLevel(target.gPos().dimension());
-                        if (targetDim != null) {
-                            FaceConfigComposite targetCfg = LinkManager.get(targetDim)
-                                .getFaceConfig(target.toKey());
-                            if (targetCfg != null) {
-                                targetCfg.getLinkedNodes().remove(sourceNode);
-                                targetCfg.markDirty();
-                            }
-                        }
-                        removedLinks++;
-                    }
-                    GlobalLogisticsManager.get(server).markReverseLinksStale();
-                    if (cfg.getLinkedNodes().isEmpty()) {
-                        cfg.setGlobalOutputEnabled(false);
-                        cfg.setGlobalInputEnabled(false);
-                    }
-                    cfg.markDirty();
-                    mgr.markFaceDirty(key);
-                }
-            }
-            for (long key : toRemove) {
-                mgr.removeFaceConfigInternal(key, false, false);
-            }
-            if (!toRemove.isEmpty() || removedLinks > 0) {
-                mgr.scheduleSave();
-            }
-        }
-        if (removedLinks > 0) {
-            LOGGER.info("StaticLogistics startup validation: removed {} invalid links", removedLinks);
-        }
-        return removedLinks;
-    }
 }

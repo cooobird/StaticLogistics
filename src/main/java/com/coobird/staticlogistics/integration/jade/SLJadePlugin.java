@@ -5,8 +5,6 @@ import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-
-import net.minecraft.ChatFormatting;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -17,9 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
-
 import snownee.jade.api.*;
-import snownee.jade.api.BlockAccessor;
 import snownee.jade.api.config.IPluginConfig;
 import snownee.jade.api.ui.BoxStyle;
 import snownee.jade.api.ui.IElementHelper;
@@ -45,9 +41,6 @@ public class SLJadePlugin implements IWailaPlugin {
         registration.registerBlockComponent(new LogisticsComponentProvider(), Block.class);
     }
 
-    /**
-     * 服务端数据提供者：将面配置打包为 NBT 发送给客户端。
-     */
     private static class LogisticsDataProvider implements IServerDataProvider<BlockAccessor> {
         @Override
         public ResourceLocation getUid() {
@@ -102,9 +95,6 @@ public class SLJadePlugin implements IWailaPlugin {
         }
     }
 
-    /**
-     * 客户端渲染：解析 NBT 并显示面数据。
-     */
     private static class LogisticsComponentProvider implements IBlockComponentProvider {
         private static final Component TITLE = Component.translatable("jade.staticlogistics.title").withStyle(ChatFormatting.GOLD);
 

@@ -2,8 +2,6 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.DistributionStrategy;
-import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
@@ -96,75 +94,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
             boolean[] changed = {false};
 
             if (player.containerMenu instanceof FaceConfiguratorMenu menu) {
-                if (tag.contains("globalInput")) {
-                    boolean newGlobalInput = tag.getBoolean("globalInput");
-                    if (newGlobalInput != menu.isGlobalInputEnabled()) {
-                        menu.setGlobalInputEnabled(newGlobalInput);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("globalOutput")) {
-                    boolean newGlobalOutput = tag.getBoolean("globalOutput");
-                    if (newGlobalOutput != menu.isGlobalOutputEnabled()) {
-                        menu.setGlobalOutputEnabled(newGlobalOutput);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("inputChannel")) {
-                    int newVal = tag.getInt("inputChannel");
-                    if (newVal < 1) newVal = 1;
-                    if (newVal > 16) newVal = 16;
-                    if (newVal != menu.getInputChannel()) {
-                        menu.setInputChannel(newVal);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("outputChannel")) {
-                    int newVal = tag.getInt("outputChannel");
-                    if (newVal < 1) newVal = 1;
-                    if (newVal > 16) newVal = 16;
-                    if (newVal != menu.getOutputChannel()) {
-                        menu.setOutputChannel(newVal);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("priority")) {
-                    int newVal = tag.getInt("priority");
-                    if (newVal != menu.getPriority()) {
-                        menu.setPriority(newVal);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("keep_stock")) {
-                    int newVal = tag.getInt("keep_stock");
-                    if (newVal != menu.getKeepStock()) {
-                        menu.setKeepStock(newVal);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("strategy")) {
-                    DistributionStrategy newVal = DistributionStrategy.byName(tag.getString("strategy"), DistributionStrategy.SEQUENTIAL);
-                    if (newVal != menu.getStrategy()) {
-                        menu.setStrategy(newVal);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("extractionMode")) {
-                    ExtractionMode newVal = ExtractionMode.byName(tag.getString("extractionMode"), ExtractionMode.SEQUENTIAL);
-                    if (newVal != menu.getExtractionMode()) {
-                        menu.setExtractionMode(newVal);
-                        changed[0] = true;
-                    }
-                }
-                if (tag.contains("selected_types_mask")) {
-                    int mask = tag.getInt("selected_types_mask");
-                    if (menu.getSelectedTypesMask() != mask) {
-                        menu.setSelectedTypesMask(mask);
-                        changed[0] = true;
-                    }
-                }
-                menu.syncToSlots();
-                menu.broadcastChanges();
+                changed[0] = menu.applyFromTag(tag);
             }
 
             if (changed[0]) {

@@ -20,7 +20,9 @@ public class PlayerEvents {
         if (event.getEntity() instanceof ServerPlayer sp) {
             syncAllDimensionsToPlayer(sp);
             if (startupValidationDone.compareAndSet(false, true)) {
-                LinkManager.validateAllLinksOnStartup(sp.server);
+                for (ServerLevel level : sp.server.getAllLevels()) {
+                    LinkManager.get(level).markOrphanScanNeeded();
+                }
             }
         }
     }

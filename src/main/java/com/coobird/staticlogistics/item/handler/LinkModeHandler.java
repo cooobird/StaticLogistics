@@ -26,6 +26,7 @@ public class LinkModeHandler implements ModeHandler {
             Direction face = context.getClickedFace();
 
             if (settings.storedMode() != null && settings.storedMode() != settings.mode()) {
+                LinkOperationHelper.validateStoredNodes(stack, serverLevel);
                 String groupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
                 if (groupId.isEmpty() || groupId.matches("\\d+")) {
                     groupId = LinkOperationHelper.DEFAULT_GROUP_NAME;

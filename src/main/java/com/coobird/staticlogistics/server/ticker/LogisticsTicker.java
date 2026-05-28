@@ -78,6 +78,7 @@ public class LogisticsTicker {
                 boolean isEnergy = type.capability() != null && type.capability() == net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK;
                 long typeCooldownKey = (sourceKey << 8) | type.bitOffset();
                 if (!isEnergy && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
+                if (!isEnergy && config.getLinkedNodes().isEmpty()) continue;
 
                 int limit = config.getTransferLimit(type);
                 TransferContext context = TransferContext.obtain(

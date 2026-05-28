@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -21,12 +22,11 @@ public enum FurthestGroupSorter implements GroupSorter {
         if (n <= 1) return new ArrayList<>(group);
 
         double[] dists = new double[n];
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < n; i++)
             dists[i] = group.get(i).gPos().pos().distSqr(sourcePos);
-        }
         Integer[] idx = new Integer[n];
         for (int i = 0; i < n; i++) idx[i] = i;
-        Arrays.sort(idx, (a, b) -> Double.compare(dists[b], dists[a]));
+        Arrays.sort(idx, Comparator.comparingDouble((Integer a) -> dists[a]).reversed());
 
         List<LogisticsNode> result = new ArrayList<>(n);
         for (int i = 0; i < n; i++) result.add(group.get(idx[i]));

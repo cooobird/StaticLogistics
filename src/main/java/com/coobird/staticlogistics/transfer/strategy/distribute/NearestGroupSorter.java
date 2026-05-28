@@ -22,9 +22,8 @@ public enum NearestGroupSorter implements GroupSorter {
         if (n <= 1) return new ArrayList<>(group);
 
         double[] dists = new double[n];
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < n; i++)
             dists[i] = group.get(i).gPos().pos().distSqr(sourcePos);
-        }
         Integer[] idx = new Integer[n];
         for (int i = 0; i < n; i++) idx[i] = i;
         Arrays.sort(idx, Comparator.comparingDouble(a -> dists[a]));
