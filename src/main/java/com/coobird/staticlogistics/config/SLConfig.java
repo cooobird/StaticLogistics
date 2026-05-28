@@ -22,21 +22,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntConsumer;
-import java.util.function.IntSupplier;
+import java.util.concurrent.atomic.AtomicLong;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public final class SLConfig {
 
-    /**
-     * 配置代数计数器，每次重载递增。ContainerConfig 用它判断缓存是否失效。
-     */
-    public static volatile long configGeneration = 0;
+    public static final AtomicLong configGeneration = new AtomicLong(0);
 
-    // 构造出的 ModConfigSpec 对象，注册和事件匹配时用
     private static ModConfigSpec CONFIG_SPEC;
 
-    // ===== 通用设置 =====
+    // 通用设置
     // 物流节点的默认搜索半径（格）
     public static ModConfigSpec.IntValue DEFAULT_RADIUS;
     // 物流节点的默认工作间隔（tick）
@@ -134,7 +129,6 @@ public final class SLConfig {
     private static volatile int perfBatchCleanSize = 200;
     private static volatile int perfContextPoolSize = 100;
 
-    // 注册配置文件：构建 ModConfigSpec 并注册到 NeoForge 配置系统（SERVER 类型）
     public static void register(ModContainer container) {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
@@ -268,7 +262,7 @@ public final class SLConfig {
     @SubscribeEvent
     public static void onConfigEvent(ModConfigEvent event) {
         if (event.getConfig().getSpec() == CONFIG_SPEC) {
-            configGeneration++;
+            configGeneration.incrementAndGet();
             onLoad();
             syncConfigToPlayers();
         }
@@ -297,35 +291,6 @@ public final class SLConfig {
         }
     }
 
-    private record IntEntry(String key, IntSupplier get, IntConsumer set) {
-    }
-
-    private static final IntEntry[] INT_ENTRIES = {
-        new IntEntry("defaultRadius", () -> DefaultRadius, v -> DefaultRadius = v),
-        new IntEntry("defaultTickInterval", () -> DefaultTickInterval, v -> DefaultTickInterval = v),
-        new IntEntry("itemStack", () -> DefaultItemStack, v -> DefaultItemStack = v),
-        new IntEntry("fluidStack", () -> DefaultFluidStack, v -> DefaultFluidStack = v),
-        new IntEntry("energyStack", () -> DefaultEnergyStack, v -> DefaultEnergyStack = v),
-        new IntEntry("mekChemicalStack", () -> MekChemicalStack, v -> MekChemicalStack = v),
-        new IntEntry("mekHeatStack", () -> MekHeatStack, v -> MekHeatStack = v),
-        new IntEntry("arsSourceStack", () -> ArsSourceStack, v -> ArsSourceStack = v),
-        new IntEntry("ironMult", () -> ironMultCache, v -> ironMultCache = v),
-        new IntEntry("goldMult", () -> goldMultCache, v -> goldMultCache = v),
-        new IntEntry("diamondMult", () -> diamondMultCache, v -> diamondMultCache = v),
-        new IntEntry("netheriteMult", () -> netheriteMultCache, v -> netheriteMultCache = v),
-        new IntEntry("netherStarMult", () -> netherStarMultCache, v -> netherStarMultCache = v),
-        new IntEntry("cacheProviderSize", () -> cacheProviderSize, v -> cacheProviderSize = v),
-        new IntEntry("cacheTargetSize", () -> cacheTargetSize, v -> cacheTargetSize = v),
-        new IntEntry("networkMaxBulkEntries", () -> networkMaxBulkEntries, v -> networkMaxBulkEntries = v),
-        new IntEntry("tickerBatchSize", () -> perfTickerBatchSize, v -> perfTickerBatchSize = v),
-        new IntEntry("cleanInterval", () -> perfCleanInterval, v -> perfCleanInterval = v),
-        new IntEntry("defaultCooldown", () -> perfDefaultCooldown, v -> perfDefaultCooldown = v),
-        new IntEntry("batchCleanThreshold", () -> perfBatchCleanThreshold, v -> perfBatchCleanThreshold = v),
-        new IntEntry("batchCleanSize", () -> perfBatchCleanSize, v -> perfBatchCleanSize = v),
-        new IntEntry("contextPoolSize", () -> perfContextPoolSize, v -> perfContextPoolSize = v),
-    };
-
-    // 解析数据组件匹配策略覆盖列表，写入 ComponentMatchStrategyRegistry
     private static void loadComponentStrategyOverrides() {
         List<? extends String> list = COMPONENT_STRATEGY_OVERRIDES.get();
         if (list == null || list.isEmpty()) return;

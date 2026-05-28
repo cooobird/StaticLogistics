@@ -102,8 +102,8 @@ public class ContainerConfig {
      * cacheDirty 为 true，或配置已重载（configGeneration 变化）时重新计算。
      */
     private void updateCache() {
-        if (!cacheDirty && configGenAtCache == SLConfig.configGeneration) return;
-        configGenAtCache = SLConfig.configGeneration;
+        if (!cacheDirty && configGenAtCache == SLConfig.configGeneration.get()) return;
+        configGenAtCache = SLConfig.configGeneration.get();
 
         long speed = 1L, range = 1L, stack = 1L;
         boolean dim = false;

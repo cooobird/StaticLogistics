@@ -5,7 +5,6 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
-import com.coobird.staticlogistics.client.util.RenderConstants;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -29,30 +28,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
-
-    /**
-     * 计算最大渲染距离的平方值。
-     * 基于玩家设置的区块渲染距离，转换为方块距离后乘以安全系数0.4，
-     * 避免在渲染边界处出现闪烁或裁剪问题。返回平方值用于距离比较优化。
-     *
-     * @return 最大渲染距离的平方值，用于避免在距离比较时进行开方运算
-     */
-    private static double getMaxRenderDistSq() {
-        int chunkDist = Minecraft.getInstance().options.renderDistance().get();
-        double dist = chunkDist * 16 * 0.4;
-        return dist * dist;
-    }
-
-    private static final double NEAR_DIST_SQ = 32.0 * 32.0;
-    private static final double MID_DIST_SQ = 64.0 * 64.0;
-    private static final float BOX_EXPAND = 0.005f;
-    private static final float TUBE_RADIUS = 0.015f;
 
     public static final RenderType PIPE_XRAY = RenderType.create(
         "pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
@@ -66,6 +45,11 @@ public class LinkWorldRenderer {
             .createCompositeState(false)
     );
 
+    private static double maxRenderDistSq() {
+        double d = Minecraft.getInstance().options.renderDistance().get() * 16 * 0.4;
+        return d * d;
+    }
+
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
@@ -76,294 +60,118 @@ public class LinkWorldRenderer {
         if (stack.isEmpty()) return;
 
         SelectionContext.syncFromItem(stack);
-        String currentGroupId = SelectionContext.getSelectedGroupId();
+        String groupId = SelectionContext.getSelectedGroupId();
 
-        PoseStack poseStack = event.getPoseStack();
+        PoseStack ps = event.getPoseStack();
         Vec3 cam = event.getCamera().getPosition();
-        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
-        VertexConsumer builder = bufferSource.getBuffer(PIPE_XRAY);
-        ResourceKey<Level> currentDim = mc.level.dimension();
+        MultiBufferSource.BufferSource buf = mc.renderBuffers().bufferSource();
+        VertexConsumer b = buf.getBuffer(PIPE_XRAY);
+        ResourceKey<Level> dim = mc.level.dimension();
 
-        poseStack.pushPose();
-        poseStack.translate(-cam.x, -cam.y, -cam.z);
-        Matrix4f mat = poseStack.last().pose();
-
-        double maxDistSq = getMaxRenderDistSq();
+        ps.pushPose();
+        ps.translate(-cam.x, -cam.y, -cam.z);
+        Matrix4f mat = ps.last().pose();
+        double maxD2 = maxRenderDistSq();
         float pulse = (float) Math.sin(System.currentTimeMillis() / 200.0) * 0.03f;
+
+        // 存点预览
         LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
             ? lci.getSettings(stack) : null;
+        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
+            renderStoredNodes(settings, dim, mat, b, cam, maxD2, pulse);
 
-        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null) {
-            for (LogisticsNode node : settings.storedNodes()) {
-                if (node.gPos().dimension().equals(currentDim)) {
-                    BlockPos p = node.gPos().pos();
-                    if (p.distToCenterSqr(cam.x, cam.y, cam.z) <= maxDistSq) {
-                        drawFrame(builder, mat, p, 0.8f, 0.8f, 0.8f, 0.4f);
-                        boolean isIn = settings.storedMode() == ToolMode.LINK_AS_INSERT;
-                        float r = isIn ? 0.2f : 1.0f, g = isIn ? 0.5f : 0.6f, b = isIn ? 1.0f : 0.0f;
-                        double px = p.getX() + 0.5 + node.face().getStepX() * 0.51;
-                        double py = p.getY() + 0.5 + node.face().getStepY() * 0.51;
-                        double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.51;
-                        drawSimpleFace(builder, mat, px, py, pz, node.face(), r, g, b, 0.6f, 0.4f + pulse);
-                    }
-                }
-            }
-        }
+        // 选中分组的所有链接
+        if (!groupId.isEmpty())
+            renderGroupLinks(groupId, dim, mat, b, cam, maxD2, pulse);
 
-        if (!currentGroupId.isEmpty()) {
-            Set<BlockPos> renderedFrames = new HashSet<>();
-            var activeNodes = ClientLinkData.INSTANCE.getActiveNodesWithConfig(currentDim);
-            for (var entry : activeNodes.entrySet()) {
-                LogisticsNode node = entry.getKey();
-                FaceConfigComposite cfg = entry.getValue();
-                if (cfg.isDefault() || !cfg.faceConfig.getGroupIds().contains(currentGroupId)) continue;
-
-                BlockPos p = node.gPos().pos();
-                double distSq = p.distToCenterSqr(cam.x, cam.y, cam.z);
-                boolean srcVisible = distSq <= maxDistSq;
-
-                if (srcVisible && renderedFrames.add(p)) {
-                    drawFrame(builder, mat, p, 1.0f, 1.0f, 1.0f, 0.25f);
-                }
-                if (srcVisible) {
-                    renderNodeFaceStatus(node, cfg, builder, mat, pulse);
-                }
-                renderFlows(node, cfg, activeNodes, currentDim, currentGroupId, builder, mat, cam, distSq, srcVisible, maxDistSq);
-            }
-        }
-
-        poseStack.popPose();
-        bufferSource.endBatch(PIPE_XRAY);
+        ps.popPose();
+        buf.endBatch(PIPE_XRAY);
     }
 
-    private static int getParticleFactor(double distSq) {
-        if (distSq <= NEAR_DIST_SQ) return 4;
-        if (distSq <= MID_DIST_SQ) return 2;
-        return 1;
+    private static void renderStoredNodes(LinkConfiguratorItem.ToolSettings settings,
+                                          ResourceKey<Level> dim, Matrix4f mat, VertexConsumer b,
+                                          Vec3 cam, double maxD2, float pulse) {
+        boolean isIn = settings.storedMode() == ToolMode.LINK_AS_INSERT;
+        float r = isIn ? 0.2f : 1f, g = isIn ? 0.5f : 0.6f, bl = isIn ? 1f : 0f;
+
+        for (LogisticsNode node : settings.storedNodes()) {
+            if (!node.gPos().dimension().equals(dim)) continue;
+            BlockPos p = node.gPos().pos();
+            if (p.distToCenterSqr(cam.x, cam.y, cam.z) > maxD2) continue;
+
+            LogisticsRenderHelper.drawFrame(b, mat, p, 0.8f, 0.8f, 0.8f, 0.4f);
+            double px = p.getX() + 0.5 + node.face().getStepX() * 0.51;
+            double py = p.getY() + 0.5 + node.face().getStepY() * 0.51;
+            double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.51;
+            LogisticsRenderHelper.drawFaceQuad(b, mat, px, py, pz, node.face(), 0, 0.6f, 0.4f + pulse, 0, 1f);
+        }
     }
 
-    private static void renderFlows(LogisticsNode src, FaceConfigComposite srcCfg,
-                                    Map<LogisticsNode, FaceConfigComposite> activeNodes,
-                                    ResourceKey<Level> currentDim, String currentGroupId,
-                                    VertexConsumer builder, Matrix4f mat, Vec3 camPos, double srcDistSq,
-                                    boolean srcVisible, double maxDistSq) {
-        int particleFactor = getParticleFactor(srcDistSq);
-        particleFactor = switch (Minecraft.getInstance().options.particles().get()) {
-            case ALL -> particleFactor;
-            case DECREASED -> Math.max(1, particleFactor / 2);
-            case MINIMAL -> 1;
-        };
+    private static void renderGroupLinks(String groupId, ResourceKey<Level> dim,
+                                         Matrix4f mat, VertexConsumer b,
+                                         Vec3 cam, double maxD2, float pulse) {
+        Set<BlockPos> renderedFrames = new HashSet<>();
+        var nodes = ClientLinkData.INSTANCE.getActiveNodesWithConfig(dim);
+
+        for (var entry : nodes.entrySet()) {
+            LogisticsNode node = entry.getKey();
+            FaceConfigComposite cfg = entry.getValue();
+            if (cfg.isDefault() || !cfg.faceConfig.getGroupIds().contains(groupId)) continue;
+
+            BlockPos p = node.gPos().pos();
+            double d2 = p.distToCenterSqr(cam.x, cam.y, cam.z);
+            boolean vis = d2 <= maxD2;
+
+            if (vis && renderedFrames.add(p))
+                LogisticsRenderHelper.drawFrame(b, mat, p, 1f, 1f, 1f, 0.25f);
+            if (vis)
+                LogisticsRenderHelper.drawFaceStatus(b, mat, p, node.face(),
+                    cfg.isGlobalInputEnabled() ? cfg.linkConfig.getInputChannel() : 0,
+                    cfg.isGlobalOutputEnabled() ? cfg.linkConfig.getOutputChannel() : 0,
+                    cfg.isGlobalInputEnabled(), cfg.isGlobalOutputEnabled(), pulse);
+            renderNodeFlows(node, cfg, nodes, dim, groupId, mat, b, cam, d2, vis, maxD2);
+        }
+    }
+
+    private static void renderNodeFlows(LogisticsNode src, FaceConfigComposite srcCfg,
+                                        Map<LogisticsNode, FaceConfigComposite> all,
+                                        ResourceKey<Level> dim, String groupId,
+                                        Matrix4f mat, VertexConsumer b, Vec3 cam,
+                                        double srcD2, boolean srcVis, double maxD2) {
         if (!srcCfg.isGlobalOutputEnabled()) return;
+        int outCh = srcCfg.linkConfig.getOutputChannel();
+        if (outCh < 1 || outCh > 16) return;
 
-        int srcOut = srcCfg.linkConfig.getOutputChannel();
-        if (srcOut < 1 || srcOut > 16) return;
-        int colorIndex = (srcOut - 1) % RenderConstants.DYE_COLORS.length;
-
-        BlockPos srcPos = src.gPos().pos();
+        BlockPos sp = src.gPos().pos();
+        double time = System.currentTimeMillis() / 1000.0;
 
         for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
-            if (!dst.gPos().dimension().equals(currentDim)) continue;
-            FaceConfigComposite dstCfg = activeNodes.get(dst);
-            if (dstCfg == null) continue;
-            if (!dstCfg.faceConfig.getGroupIds().contains(currentGroupId)) continue;
-            if (!dstCfg.isGlobalInputEnabled()) continue;
+            if (!dst.gPos().dimension().equals(dim)) continue;
+            FaceConfigComposite dstCfg = all.get(dst);
+            if (dstCfg == null || !dstCfg.faceConfig.getGroupIds().contains(groupId) || !dstCfg.isGlobalInputEnabled())
+                continue;
+            if (dstCfg.linkConfig.getInputChannel() != outCh) continue;
 
-            int dstIn = dstCfg.linkConfig.getInputChannel();
-            if (dstIn < 1 || dstIn > 16 || dstIn != srcOut) continue;
+            BlockPos dp = dst.gPos().pos();
+            double dstD2 = dp.distToCenterSqr(cam.x, cam.y, cam.z);
+            if (!srcVis && dstD2 > maxD2) continue;
 
-            // 只有两端都不在视野内才隐藏线
-            BlockPos dstPos = dst.gPos().pos();
-            double dstDistSq = dstPos.distToCenterSqr(camPos.x, camPos.y, camPos.z);
-            boolean dstVisible = dstDistSq <= maxDistSq;
-            if (!srcVisible && !dstVisible) continue;
+            Vec3 s = Vec3.atCenterOf(sp).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
+            Vec3 t = Vec3.atCenterOf(dp).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
 
-            Vec3 sPos = Vec3.atCenterOf(srcPos).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
-            Vec3 dPos = Vec3.atCenterOf(dstPos).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
-            float offset = (srcCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled()) ? 0.15f : 0.0f;
-            drawDirectedLineOptimized(builder, mat, sPos, dPos, src.face(), colorIndex, offset, particleFactor);
+            LogisticsRenderHelper.drawFlowParticles(b, mat, s, t, outCh, time);
         }
-    }
-
-    private static void drawDirectedLineOptimized(VertexConsumer b, Matrix4f mat, Vec3 start, Vec3 end, Direction face,
-                                                  int colorIdx, float offset, int particleFactor) {
-        Vec3 diff = end.subtract(start);
-        double dist = diff.length();
-        if (dist < 0.1 || Double.isNaN(dist) || Double.isInfinite(dist)) return;
-
-        int baseCount = (int) Math.min(60, Math.max(3, dist * 3.5));
-        int particleCount = Math.min(40, baseCount * particleFactor);
-        if (particleCount <= 0) return;
-
-        Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
-        Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
-        Vec3 lateralVec = n.cross(a1).normalize();
-
-        Vec3 offsetStart = start.add(lateralVec.scale(offset));
-        Vec3 offsetEnd = end.add(lateralVec.scale(offset));
-        Vec3 offsetDiff = offsetEnd.subtract(offsetStart);
-
-        int idx = colorIdx % RenderConstants.DYE_COLORS.length;
-        int color = RenderConstants.DYE_COLORS[idx];
-        float r = ((color >> 16) & 0xFF) / 255f;
-        float g = ((color >> 8) & 0xFF) / 255f;
-        float bl = (color & 0xFF) / 255f;
-
-        double time = System.currentTimeMillis() / 1000.0;
-        float speed = 1.2f;
-
-        for (int i = 0; i < particleCount; i++) {
-            double spacing = (double) i / particleCount;
-            float progress = (float) ((time * speed + spacing * dist) % dist) / (float) dist;
-            Vec3 pos = offsetStart.add(offsetDiff.scale(progress));
-            float size = 0.025f;
-            renderBox(b, mat, (float) pos.x - size, (float) pos.y - size, (float) pos.z - size,
-                (float) pos.x + size, (float) pos.y + size, (float) pos.z + size, r, g, bl, 0.9f);
-        }
-    }
-
-    private static void renderNodeFaceStatus(LogisticsNode node, FaceConfigComposite cfg, VertexConsumer b, Matrix4f m, float pulse) {
-        BlockPos p = node.gPos().pos();
-        Direction f = node.face();
-        double px = p.getX() + 0.5 + f.getStepX() * 0.508;
-        double py = p.getY() + 0.5 + f.getStepY() * 0.508;
-        double pz = p.getZ() + 0.5 + f.getStepZ() * 0.508;
-
-        boolean hasIn = cfg.isGlobalInputEnabled();
-        boolean hasOut = cfg.isGlobalOutputEnabled();
-
-        int inChannel = hasIn ? cfg.linkConfig.getInputChannel() : 0;
-        int outChannel = hasOut ? cfg.linkConfig.getOutputChannel() : 0;
-
-        float size = 0.4f + pulse;
-
-        int inColorIdx = (inChannel >= 1 && inChannel <= 16) ? (inChannel - 1) % RenderConstants.DYE_COLORS.length : 0;
-        int outColorIdx = (outChannel >= 1 && outChannel <= 16) ? (outChannel - 1) % RenderConstants.DYE_COLORS.length : 0;
-
-        if (hasIn && hasOut) {
-            drawFaceByChannel(b, m, px, py, pz, f, inColorIdx, 0.85f, size, -0.5f, 0.45f);
-            drawFaceByChannel(b, m, px, py, pz, f, outColorIdx, 0.85f, size, 0.5f, 0.45f);
-        } else if (hasIn) {
-            drawFaceByChannel(b, m, px, py, pz, f, inColorIdx, 0.85f, size, 0, 1.0f);
-        } else if (hasOut) {
-            drawFaceByChannel(b, m, px, py, pz, f, outColorIdx, 0.85f, size, 0, 1.0f);
-        }
-    }
-
-    private static void drawFaceByChannel(VertexConsumer b, Matrix4f mat, double x, double y, double z, Direction face, int colorIdx, float a, float s, float offset, float widthMult) {
-        int color = RenderConstants.DYE_COLORS[colorIdx % RenderConstants.DYE_COLORS.length];
-        float r = ((color >> 16) & 0xFF) / 255f, g = ((color >> 8) & 0xFF) / 255f, bl = (color & 0xFF) / 255f;
-        int ir = (int) (r * 255), ig = (int) (g * 255), ib = (int) (bl * 255), ia = (int) (a * 255);
-
-        Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
-        Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
-        Vec3 a2 = n.cross(a1).normalize();
-        a1 = n.cross(a2).normalize();
-
-        double ox = a2.x * offset * s;
-        double oy = a2.y * offset * s;
-        double oz = a2.z * offset * s;
-
-        float x1 = (float) (a1.x * s), y1 = (float) (a1.y * s), z1 = (float) (a1.z * s);
-        float x2 = (float) (a2.x * s * widthMult), y2 = (float) (a2.y * s * widthMult), z2 = (float) (a2.z * s * widthMult);
-
-        b.addVertex(mat, (float) (x + ox - x1 - x2), (float) (y + oy - y1 - y2), (float) (z + oz - z1 - z2)).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, (float) (x + ox + x1 - x2), (float) (y + oy + y1 - y2), (float) (z + oz + z1 - z2)).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, (float) (x + ox + x1 + x2), (float) (y + oy + y1 + y2), (float) (z + oz + z1 + z2)).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, (float) (x + ox - x1 + x2), (float) (y + oy - y1 + y2), (float) (z + oz - z1 + z2)).setColor(ir, ig, ib, ia);
-    }
-
-    private static void drawFrame(VertexConsumer b, Matrix4f mat, BlockPos pos, float r, float g, float bl, float a) {
-        float x1 = pos.getX() - BOX_EXPAND, y1 = pos.getY() - BOX_EXPAND, z1 = pos.getZ() - BOX_EXPAND;
-        float x2 = pos.getX() + 1 + BOX_EXPAND, y2 = pos.getY() + 1 + BOX_EXPAND, z2 = pos.getZ() + 1 + BOX_EXPAND;
-        drawEdge(b, mat, x1, y1, z1, x2, y1, z1, r, g, bl, a);
-        drawEdge(b, mat, x1, y1, z2, x2, y1, z2, r, g, bl, a);
-        drawEdge(b, mat, x1, y2, z1, x2, y2, z1, r, g, bl, a);
-        drawEdge(b, mat, x1, y2, z2, x2, y2, z2, r, g, bl, a);
-        drawEdge(b, mat, x1, y1, z1, x1, y2, z1, r, g, bl, a);
-        drawEdge(b, mat, x2, y1, z1, x2, y2, z1, r, g, bl, a);
-        drawEdge(b, mat, x1, y1, z2, x1, y2, z2, r, g, bl, a);
-        drawEdge(b, mat, x2, y1, z2, x2, y2, z2, r, g, bl, a);
-        drawEdge(b, mat, x1, y1, z1, x1, y1, z2, r, g, bl, a);
-        drawEdge(b, mat, x2, y1, z1, x2, y1, z2, r, g, bl, a);
-        drawEdge(b, mat, x1, y2, z1, x1, y2, z2, r, g, bl, a);
-        drawEdge(b, mat, x2, y2, z1, x2, y2, z2, r, g, bl, a);
-    }
-
-    private static void drawEdge(VertexConsumer b, Matrix4f mat, float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float bl, float a) {
-        float dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
-        float minX = x1, minY = y1, minZ = z1, maxX = x2, maxY = y2, maxZ = z2;
-        if (dx > 0.1f) {
-            minY -= TUBE_RADIUS;
-            maxY += TUBE_RADIUS;
-            minZ -= TUBE_RADIUS;
-            maxZ += TUBE_RADIUS;
-        } else if (dy > 0.1f) {
-            minX -= TUBE_RADIUS;
-            maxX += TUBE_RADIUS;
-            minZ -= TUBE_RADIUS;
-            maxZ += TUBE_RADIUS;
-        } else {
-            minX -= TUBE_RADIUS;
-            maxX += TUBE_RADIUS;
-            minY -= TUBE_RADIUS;
-            maxY += TUBE_RADIUS;
-        }
-        renderBox(b, mat, minX, minY, minZ, maxX, maxY, maxZ, r, g, bl, a);
-    }
-
-    private static void renderBox(VertexConsumer b, Matrix4f mat, float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float bl, float a) {
-        int ir = (int) (r * 255), ig = (int) (g * 255), ib = (int) (bl * 255), ia = (int) (a * 255);
-        b.addVertex(mat, x1, y1, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y1, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y2, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y2, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y1, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y2, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y2, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y1, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y1, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y2, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y2, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y1, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y1, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y1, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y2, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y2, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y1, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y1, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y1, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y1, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y2, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y2, z1).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x2, y2, z2).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, x1, y2, z2).setColor(ir, ig, ib, ia);
-    }
-
-    private static void drawSimpleFace(VertexConsumer b, Matrix4f mat, double x, double y, double z, Direction face, float r, float g, float bl, float a, float s) {
-        int ir = (int) (r * 255), ig = (int) (g * 255), ib = (int) (bl * 255), ia = (int) (a * 255);
-        Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
-        Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
-        Vec3 a2 = n.cross(a1).normalize();
-        a1 = n.cross(a2).normalize();
-        float x1 = (float) (a1.x * s), y1 = (float) (a1.y * s), z1 = (float) (a1.z * s);
-        float x2 = (float) (a2.x * s), y2 = (float) (a2.y * s), z2 = (float) (a2.z * s);
-        b.addVertex(mat, (float) (x - x1 - x2), (float) (y - y1 - y2), (float) (z - z1 - z2)).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, (float) (x + x1 - x2), (float) (y + y1 - y2), (float) (z + z1 - z2)).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, (float) (x + x1 + x2), (float) (y + y1 + y2), (float) (z + z1 + z2)).setColor(ir, ig, ib, ia);
-        b.addVertex(mat, (float) (x - x1 + x2), (float) (y - y1 + y2), (float) (z - z1 + z2)).setColor(ir, ig, ib, ia);
     }
 
     private static ItemStack getActiveConfigurator(Minecraft mc) {
         if (mc.player == null) return ItemStack.EMPTY;
         ItemStack m = mc.player.getMainHandItem();
-        if (isValidLinkTool(m)) return m;
+        if (isLinkTool(m)) return m;
         ItemStack o = mc.player.getOffhandItem();
-        return (isValidLinkTool(o)) ? o : ItemStack.EMPTY;
+        return isLinkTool(o) ? o : ItemStack.EMPTY;
     }
 
-    private static boolean isValidLinkTool(ItemStack stack) {
-        if (stack.isEmpty()) return false;
-        var item = stack.getItem();
-        return item instanceof LinkConfiguratorItem || item instanceof BlueprintItem;
+    private static boolean isLinkTool(ItemStack s) {
+        return !s.isEmpty() && (s.getItem() instanceof LinkConfiguratorItem || s.getItem() instanceof BlueprintItem);
     }
 }
