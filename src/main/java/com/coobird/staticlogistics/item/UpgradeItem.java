@@ -56,17 +56,10 @@ public class UpgradeItem extends Item {
         if (type == UpgradeType.DIMENSION) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.dimension_feature")
                 .withStyle(ChatFormatting.GOLD));
-        } else if (type == UpgradeType.TAG_FILTER) {
-            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.tag_filter_feature")
-                .withStyle(ChatFormatting.YELLOW));
-        } else if (type == UpgradeType.NBT_FILTER) {
-            tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.nbt_filter_feature")
-                .withStyle(ChatFormatting.LIGHT_PURPLE));
         } else if (tier != null) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.tier_display", tier.getDisplayName()));
             int multiplier = tier.getMultiplier();
             if (type == UpgradeType.SPEED) {
-                // 速度升级显示实际 tick 间隔（最少 1 tick）
                 int baseInterval = SLConfig.getDefaultTickInterval();
                 int effectiveInterval = Math.max(1, (int) (baseInterval / Math.sqrt(multiplier)));
                 String valueDisplay = effectiveInterval + " tick" + (effectiveInterval != 1 ? "s" : "");

@@ -14,10 +14,17 @@ public class ContainerStats {
     public static void render(GuiGraphics g, Font font, int leftPos, int topPos,
                               long speedMult, long rangeMult, long stackMult,
                               boolean hasDimension) {
-        int infoX = leftPos + 75;
+        int infoX = leftPos + 122;
         int infoY = topPos + 16;
-        int spacing = 15;
-        int columnWidth = 66;
+        int spacing = 14;
+
+        // 速度
+        int baseInterval = SLConfig.getDefaultTickInterval();
+        int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
+        String speedText = actualInterval + Component.translatable("gui.staticlogistics.unit.ticks").getString();
+        int speedColor = speedMult > 1 ? 0x55FF55 : 0xCCCCCC;
+        drawStat(g, font, Component.translatable("gui.staticlogistics.stat.speed"),
+            speedText, infoX, infoY + spacing, 0xFFFFFF, speedColor);
 
         // 范围
         int baseRange = SLConfig.getDefaultRadius();
@@ -29,21 +36,13 @@ public class ContainerStats {
         drawStat(g, font, Component.translatable("gui.staticlogistics.stat.range"),
             rangeText, infoX, infoY, 0xFFFFFF, rangeColor);
 
-        // 速度
-        int baseInterval = SLConfig.getDefaultTickInterval();
-        int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(speedMult));
-        String speedText = actualInterval + Component.translatable("gui.staticlogistics.unit.ticks").getString();
-        int speedColor = speedMult > 1 ? 0x55FF55 : 0xCCCCCC;
-        drawStat(g, font, Component.translatable("gui.staticlogistics.stat.speed"),
-            speedText, infoX + columnWidth, infoY, 0xFFFFFF, speedColor);
-
         // 维度
         String dimensionText = hasDimension
             ? Component.translatable("gui.staticlogistics.true").getString()
             : Component.translatable("gui.staticlogistics.false").getString();
         int dimensionColor = hasDimension ? 0x55FF55 : 0xCCCCCC;
         drawStat(g, font, Component.translatable("gui.staticlogistics.stat.dimension"),
-            dimensionText, infoX, infoY + spacing, 0xFFFFFF, dimensionColor);
+            dimensionText, infoX, infoY + spacing * 2, 0xFFFFFF, dimensionColor);
 
         // 堆叠
         String stackText;
@@ -56,7 +55,7 @@ public class ContainerStats {
             stackColor = stackMult > 1 ? 0x55FF55 : 0xCCCCCC;
         }
         drawStat(g, font, Component.translatable("gui.staticlogistics.stat.stack"),
-            stackText, infoX + columnWidth, infoY + spacing, 0xFFFFFF, stackColor);
+            stackText, infoX, infoY + spacing * 3, 0xFFFFFF, stackColor);
     }
 
     private static void drawStat(GuiGraphics g, Font font, Component label,

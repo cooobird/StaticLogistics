@@ -18,7 +18,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     protected static final ResourceLocation GUI_TEXTURE = SLGuiTextures.GUI_ATLAS;
 
     private static final int SIDE_PANEL_X = SLGuiTextures.Background.WIDTH + 2;
-    private static final int BAR_W = 52, BAR_X = 11, BAR_Y = 13;
+    private static final int BAR_W = 70, BAR_X = 11, BAR_Y = 13;
     private static final int LIST_OFFSET_X = 6;
     private static final int LIST_OFFSET_Y = 32;
     private static final int LIST_HEIGHT = SLGuiTextures.List.HEIGHT;
@@ -177,6 +177,12 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
                 }
             }
         }
+
+        if (this.typeSearchBox != null && this.typeSearchBox.isFocused()
+            && !this.typeSearchBox.isMouseOver(mx, my)) {
+            this.typeSearchBox.setFocused(false);
+        }
+
         return super.mouseClicked(mx, my, button);
     }
 

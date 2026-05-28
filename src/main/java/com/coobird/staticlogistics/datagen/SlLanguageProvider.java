@@ -42,10 +42,10 @@ public class SlLanguageProvider extends LanguageProvider {
 
         add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置器");
         add("gui.staticlogistics.new_group", "+ New Group", "＋ 新建分组");
-        add("gui.staticlogistics.search_hint", "Search groups...", "搜索分组...");
+        add("gui.staticlogistics.search_hint", "Search...", "搜索分组...");
         add("gui.staticlogistics.add_group", "Add Group", "添加分组");
-        add("gui.staticlogistics.search_types", "Search Types", "搜索类型");
-        add("gui.staticlogistics.search_for_values_by_type", "Search for values by type", "按类型搜索值");
+        add("gui.staticlogistics.search_types", "Search...", "搜索类型");
+        add("gui.staticlogistics.search_for_values_by_type", "Search...", "按类型搜索值");
         add("gui.staticlogistics.tooltip.toggle_type", "Click to enable/disable types", "点击以启用/禁用类型");
         add("gui.staticlogistics.tooltip.group_id", "Group #%s", "分组 #%s");
         add("gui.staticlogistics.tooltip.shift_export", "Shift + Click to export coordinates", "Shift + 点击导出坐标");
@@ -76,7 +76,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.stat.stack", "Stack:", "堆叠:");
         add("gui.staticlogistics.stat.interval", "Interval:", "间隔:");
         add("gui.staticlogistics.unit.kelvin", "K", "开尔文");
-        add("gui.staticlogistics.stat.dimension", "Cross-Dim:", "跨维度:");
+        add("gui.staticlogistics.stat.dimension", "Cross-D:", "跨维度:");
         add("gui.staticlogistics.infinite", "infinite", "无限");
         add("gui.staticlogistics.unit.meters", "m", "米");
         add("gui.staticlogistics.unit.ticks", "t", "t");
@@ -91,9 +91,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.blacklist_button", "Blacklist", "黑名单");
         add("gui.staticlogistics.whitelist_button", "Whitelist", "白名单");
         add("gui.staticlogistics.open_filter", "Configure Filter", "配置过滤器");
-        add("gui.staticlogistics.face_config", "Face Configuration", "面配置");
-        add("gui.staticlogistics.container_config", "Container", "容器");
-        add("gui.staticlogistics.upgrade_config", "Transfer Params", "容器传输参数");
+        add("gui.staticlogistics.face_config", "Face", "面配置");
+        add("gui.staticlogistics.upgrade_config", "Container", "容器传输参数");
         add("gui.staticlogistics.clear_tags", "Clear the label for this line", "清除这一行的标签");
         add("gui.staticlogistics.tag_dropdown.help", "Scroll to select tags", "滚动选择标签");
         add("gui.staticlogistics.tag_dropdown.help2", "Click the tab to select it, and then tap the selected tab again to uncheck it.", "点击标签选中，再次点击已选中的标签即可取消选中。");
@@ -213,7 +212,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.stored_nodes", "Stored nodes (%s):", "待连接节点（%s）：");
         add("tooltip.staticlogistics.stored_mode", "Mode: %s", "模式：%s");
         add("tooltip.staticlogistics.scroll_hint", "Shift+Scroll: switch mode", "Shift+滚轮：切换工具模式");
-        add("tooltip.staticlogistics.clear_stored_hint", "Sneak + Right-click to clear stored nodes", "潜行+右键清除已存储的节点");
+        add("tooltip.staticlogistics.clear_stored_hint", "Press Shift + %s to clear stored nodes", "按 Shift + %s 清除已存储节点");
         add("tooltip.staticlogistics.auto_clean_disabled", "Auto clean disabled", "自动清理已禁用");
         add("tooltip.staticlogistics.auto_clean_enabled", "Auto clean enabled", "自动清理已启用");
         add("tooltip.staticlogistics.auto_clean_info", "Auto-clears stored nodes after each link (configurable)", "每次建立连接后自动清空存储节点（配置文件可关闭）");
@@ -222,8 +221,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.upgrade.value", "Multiplier: %s", "效果倍率：%s");
         add("tooltip.staticlogistics.upgrade.dimension_feature", "Enables interdimensional logistics.", "解锁跨维度物流传输。");
         add("tooltip.staticlogistics.upgrade.install_hint", "Install into nodes to enhance capabilities.", "安装至节点以增强其传输属性。");
-        add("tooltip.staticlogistics.upgrade.tag_filter_feature", "Enables filtering of resources based on tags.", "支持基于标签过滤资源。");
-        add("tooltip.staticlogistics.upgrade.nbt_filter_feature", "Enables filtering of resources based on NBT data.", "支持基于NBT数据过滤资源。");
 
         add("commands.staticlogistics.info.header", "--- Logistics Info at %s ---", "--- 位置 %s 的物流信息 ---");
         add("commands.staticlogistics.info.no_links", "No active source links on this block face.", "该方块表面没有活动的源链路。");
@@ -240,7 +237,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.info.speed", "Speed Multiplier: x%s", "速度倍率：x%s");
         add("commands.staticlogistics.info.range", "Range Multiplier: %s", "范围倍率：%s");
         add("commands.staticlogistics.info.stack", "Stack Multiplier: %s", "堆叠倍率：%s");
-        add("commands.staticlogistics.info.dimension", "Cross-Dimension: %s", "跨维度：%s");
+        add("commands.staticlogistics.info.dimension", "X-Dim: %s", "跨维度：%s");
         add("commands.staticlogistics.info.upgrades_title", "Upgrades:", "升级插件：");
         add("commands.staticlogistics.info.slot_format", "  Slot %s: %s x%s", "  槽位 %s：%s x%s");
         add("commands.staticlogistics.info.no_container_config", "No container config found.", "未找到容器配置。");
@@ -457,7 +454,7 @@ public class SlLanguageProvider extends LanguageProvider {
                 case DIMENSION -> "Enables logistics across different dimensions.";
                 case BASIC_FILTER -> "Enables basic filtering of resources.";
                 case TAG_FILTER -> "Enables filtering of resources based on tags.";
-                case NBT_FILTER -> "Enables filtering of resources based on NBT tags.";
+                case NBT_FILTER -> "Enables filtering of resources based on NBT data.";
             };
             String zhDesc = switch (type) {
                 case SPEED -> "缩短传输间隔时间。";
@@ -465,8 +462,8 @@ public class SlLanguageProvider extends LanguageProvider {
                 case STACK -> "增加单次传输的数量限制。";
                 case DIMENSION -> "无视维度进行传输。";
                 case BASIC_FILTER -> "基础过滤器。";
-                case TAG_FILTER -> "标签过滤器。";
-                case NBT_FILTER -> "NBT过滤器。";
+                case TAG_FILTER -> "支持基于标签过滤资源。";
+                case NBT_FILTER -> "支持基于NBT数据过滤资源。";
             };
             add(key, enDesc, zhDesc);
             add("upgrade_type.staticlogistics." + type.getName(), toTitleCase(type.getName()) + " Upgrade", zhDesc.replaceAll("[。，]", "").replace("缩短", "").replace("增加", "").replace("无视", ""));
