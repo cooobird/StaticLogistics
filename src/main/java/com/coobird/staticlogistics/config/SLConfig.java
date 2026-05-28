@@ -4,6 +4,10 @@ import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistry;
 import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPacket;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -37,7 +41,6 @@ public final class SLConfig {
     // 物流节点的默认工作间隔（tick）
     public static ModConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
 
-    // ===== 核心资源每 tick 传输量 =====
     // 物品每 tick 传输堆叠数
     public static ModConfigSpec.IntValue DEFAULT_ITEM_STACK;
     // 流体每 tick 传输量（mB）
@@ -45,7 +48,6 @@ public final class SLConfig {
     // 能量每 tick 传输量（FE）
     public static ModConfigSpec.IntValue DEFAULT_ENERGY_STACK;
 
-    // ===== 联动模组资源传输量 =====
     // Mekanism 化学品每 tick 传输量
     public static ModConfigSpec.IntValue MEK_CHEMICAL_STACK;
     // Mekanism 热量每 tick 传输量
@@ -53,7 +55,6 @@ public final class SLConfig {
     // Ars Nouveau 魔源每 tick 传输量
     public static ModConfigSpec.IntValue ARS_SOURCE_STACK;
 
-    // ===== 升级倍率（按材料等级） =====
     // 铁升级的倍率
     public static ModConfigSpec.IntValue IRON_MULTIPLIER;
     // 金升级的倍率
@@ -65,11 +66,9 @@ public final class SLConfig {
     // 下界之星升级的倍率
     public static ModConfigSpec.IntValue NETHER_STAR_MULTIPLIER;
 
-    // ===== 过滤器相关 =====
     // 数据组件匹配策略覆盖列表（格式："命名空间:组件ID=策略"）
     public static ModConfigSpec.ConfigValue<List<? extends String>> COMPONENT_STRATEGY_OVERRIDES;
 
-    // ===== 杂项 =====
     // 是否在物流节点被拆除时自动清理玩家物品中存储的节点引用
     public static ModConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
 
@@ -80,11 +79,9 @@ public final class SLConfig {
     // 每个面缓存的目标最大数量
     public static ModConfigSpec.IntValue CACHE_TARGET_SIZE;
 
-    // ===== 网络设置 =====
     // 批量同步数据包每包最大条目数
     public static ModConfigSpec.IntValue NETWORK_MAX_BULK_ENTRIES;
 
-    // ===== 性能设置 =====
     // 每 tick 处理的节点数量
     public static ModConfigSpec.IntValue PERF_TICKER_BATCH_SIZE;
     // 冷却清理间隔（tick）
@@ -98,7 +95,6 @@ public final class SLConfig {
     // 传输上下文对象池大小
     public static ModConfigSpec.IntValue PERF_CONTEXT_POOL_SIZE;
 
-    // ----- 运行时缓存值（volatile 保证多线程可见性） -----
     // 通用设置缓存值
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
@@ -316,7 +312,6 @@ public final class SLConfig {
         ComponentMatchStrategyRegistry.loadConfigOverrides(map);
     }
 
-    // 把缓存、网络、性能相关配置项同步到 volatile 缓存字段
     private static void loadPerformanceConfig() {
         cacheProviderSize = CACHE_PROVIDER_SIZE.get();
         cacheLoadFactor = CACHE_LOAD_FACTOR.get();
@@ -426,62 +421,90 @@ public final class SLConfig {
     private static void syncConfigToPlayers() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) return;
-        S2CConfigSyncPacket payload = buildSyncPayload();
+        S2CConfigSyncPacket payload = new S2CConfigSyncPacket(buildConfigTag());
         PacketDistributor.sendToAllPlayers(payload);
     }
 
     /**
-     * 从当前 volatile 缓存值构建同步包。
+     * 从当前 volatile 缓存值构建 NBT 同步标签。
+     * 新增配置项只需在这里加一行 putInt/putDouble/putBoolean。
      */
-    private static S2CConfigSyncPacket buildSyncPayload() {
-        return new S2CConfigSyncPacket(
-            DefaultRadius, DefaultTickInterval,
-            DefaultItemStack, DefaultFluidStack, DefaultEnergyStack,
-            MekChemicalStack, MekHeatStack, ArsSourceStack,
-            ironMultCache, goldMultCache, diamondMultCache, netheriteMultCache, netherStarMultCache,
-            autoCleanStoredNodes,
-            cacheProviderSize, cacheLoadFactor, cacheTargetSize,
-            networkMaxBulkEntries,
-            perfTickerBatchSize, perfCleanInterval, perfDefaultCooldown,
-            perfBatchCleanThreshold, perfBatchCleanSize, perfContextPoolSize,
-            new ArrayList<>(COMPONENT_STRATEGY_OVERRIDES.get())
-        );
+    private static CompoundTag buildConfigTag() {
+        CompoundTag tag = new CompoundTag();
+        // general
+        tag.putInt("defaultRadius", DefaultRadius);
+        tag.putInt("defaultTickInterval", DefaultTickInterval);
+        tag.putInt("itemStack", DefaultItemStack);
+        tag.putInt("fluidStack", DefaultFluidStack);
+        tag.putInt("energyStack", DefaultEnergyStack);
+        tag.putInt("mekChemicalStack", MekChemicalStack);
+        tag.putInt("mekHeatStack", MekHeatStack);
+        tag.putInt("arsSourceStack", ArsSourceStack);
+        tag.putBoolean("autoCleanStoredNodes", autoCleanStoredNodes);
+        // upgrades
+        tag.putInt("ironMult", ironMultCache);
+        tag.putInt("goldMult", goldMultCache);
+        tag.putInt("diamondMult", diamondMultCache);
+        tag.putInt("netheriteMult", netheriteMultCache);
+        tag.putInt("netherStarMult", netherStarMultCache);
+        // performance
+        tag.putInt("cacheProviderSize", cacheProviderSize);
+        tag.putDouble("cacheLoadFactor", cacheLoadFactor);
+        tag.putInt("cacheTargetSize", cacheTargetSize);
+        tag.putInt("networkMaxBulkEntries", networkMaxBulkEntries);
+        tag.putInt("tickerBatchSize", perfTickerBatchSize);
+        tag.putInt("cleanInterval", perfCleanInterval);
+        tag.putInt("defaultCooldown", perfDefaultCooldown);
+        tag.putInt("batchCleanThreshold", perfBatchCleanThreshold);
+        tag.putInt("batchCleanSize", perfBatchCleanSize);
+        tag.putInt("contextPoolSize", perfContextPoolSize);
+        // filter overrides
+        ListTag list = new ListTag();
+        for (String entry : COMPONENT_STRATEGY_OVERRIDES.get()) {
+            list.add(StringTag.valueOf(entry));
+        }
+        tag.put("componentStrategyOverrides", list);
+        return tag;
     }
 
     /**
-     * 客户端收到服务端同步的配置后，写入 volatile 缓存。
+     * 客户端收到配置标签后写入 volatile 缓存。
+     * 新增配置项只需在这里加对应的读取逻辑。
      */
-    public static void applyServerConfig(S2CConfigSyncPacket p) {
-        if (p == null) {
+    public static void applyServerConfig(CompoundTag tag) {
+        if (tag == null || tag.isEmpty()) {
             onLoad();
             return;
         }
-        DefaultRadius = p.defaultRadius();
-        DefaultTickInterval = p.defaultTickInterval();
-        DefaultItemStack = p.itemStack();
-        DefaultFluidStack = p.fluidStack();
-        DefaultEnergyStack = p.energyStack();
-        MekChemicalStack = p.mekChemicalStack();
-        MekHeatStack = p.mekHeatStack();
-        ArsSourceStack = p.arsSourceStack();
-        ironMultCache = p.ironMult();
-        goldMultCache = p.goldMult();
-        diamondMultCache = p.diamondMult();
-        netheriteMultCache = p.netheriteMult();
-        netherStarMultCache = p.netherStarMult();
-        autoCleanStoredNodes = p.autoCleanStoredNodes();
-        cacheProviderSize = p.cacheProviderSize();
-        cacheLoadFactor = p.cacheLoadFactor();
-        cacheTargetSize = p.cacheTargetSize();
-        networkMaxBulkEntries = p.networkMaxBulkEntries();
-        perfTickerBatchSize = p.tickerBatchSize();
-        perfCleanInterval = p.cleanInterval();
-        perfDefaultCooldown = p.defaultCooldown();
-        perfBatchCleanThreshold = p.batchCleanThreshold();
-        perfBatchCleanSize = p.batchCleanSize();
-        perfContextPoolSize = p.contextPoolSize();
+        DefaultRadius = tag.getInt("defaultRadius");
+        DefaultTickInterval = tag.getInt("defaultTickInterval");
+        DefaultItemStack = tag.getInt("itemStack");
+        DefaultFluidStack = tag.getInt("fluidStack");
+        DefaultEnergyStack = tag.getInt("energyStack");
+        MekChemicalStack = tag.getInt("mekChemicalStack");
+        MekHeatStack = tag.getInt("mekHeatStack");
+        ArsSourceStack = tag.getInt("arsSourceStack");
+        autoCleanStoredNodes = tag.getBoolean("autoCleanStoredNodes");
+        ironMultCache = tag.getInt("ironMult");
+        goldMultCache = tag.getInt("goldMult");
+        diamondMultCache = tag.getInt("diamondMult");
+        netheriteMultCache = tag.getInt("netheriteMult");
+        netherStarMultCache = tag.getInt("netherStarMult");
+        cacheProviderSize = tag.getInt("cacheProviderSize");
+        cacheLoadFactor = tag.getDouble("cacheLoadFactor");
+        cacheTargetSize = tag.getInt("cacheTargetSize");
+        networkMaxBulkEntries = tag.getInt("networkMaxBulkEntries");
+        perfTickerBatchSize = tag.getInt("tickerBatchSize");
+        perfCleanInterval = tag.getInt("cleanInterval");
+        perfDefaultCooldown = tag.getInt("defaultCooldown");
+        perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");
+        perfBatchCleanSize = tag.getInt("batchCleanSize");
+        perfContextPoolSize = tag.getInt("contextPoolSize");
+        // filter overrides
+        ListTag list = tag.getList("componentStrategyOverrides", Tag.TAG_STRING);
         Map<String, String> map = new HashMap<>();
-        for (String entry : p.componentStrategyOverrides()) {
+        for (Tag t : list) {
+            String entry = t.getAsString();
             String[] parts = entry.split("=", 2);
             if (parts.length == 2) map.put(parts[0], parts[1].toUpperCase());
         }

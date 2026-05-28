@@ -12,7 +12,6 @@ import mekanism.api.Action;
 import mekanism.api.chemical.ChemicalStack;
 import mekanism.common.registries.MekanismBlocks;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import org.slf4j.Logger;
 
 public class ExtendedTypeRegisterHandler {
@@ -40,9 +39,7 @@ public class ExtendedTypeRegisterHandler {
             "transfer_type.staticlogistics.mek_chemicals",
             mekanism.common.capabilities.Capabilities.CHEMICAL.block(),
             SLConfig::getMekChemicalStack,
-            () -> ModCompat.isMekanismLoaded()
-                ? new ItemStack(mekanism.common.registries.MekanismBlocks.BASIC_CHEMICAL_TANK.get())
-                : new ItemStack(Items.BARRIER)
+            () -> new ItemStack(mekanism.common.registries.MekanismBlocks.BASIC_CHEMICAL_TANK.get())
         );
 
         ITransferHandler handler = (context, targets) -> {
@@ -110,9 +107,7 @@ public class ExtendedTypeRegisterHandler {
             "transfer_type.staticlogistics.mek_heat",
             mekanism.common.capabilities.Capabilities.HEAT,
             SLConfig::getMekHeatStack,
-            () -> ModCompat.isMekanismLoaded()
-                ? new ItemStack(MekanismBlocks.RESISTIVE_HEATER.get())
-                : new ItemStack(Items.BARRIER)
+            () -> new ItemStack(MekanismBlocks.RESISTIVE_HEATER.get())
         );
 
         ITransferHandler handler = (context, targets) -> {
@@ -195,9 +190,7 @@ public class ExtendedTypeRegisterHandler {
             "transfer_type.staticlogistics.ars_source",
             com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry.SOURCE_CAPABILITY,
             SLConfig::getArsSourceStack,
-            () -> ModCompat.isArsNouveauLoaded()
-                ? new ItemStack(com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry.SOURCE_GEM)
-                : new ItemStack(Items.BARRIER)
+            () -> new ItemStack(com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry.SOURCE_GEM)
         );
 
         ITransferHandler arsHandler = (context, targets) -> {

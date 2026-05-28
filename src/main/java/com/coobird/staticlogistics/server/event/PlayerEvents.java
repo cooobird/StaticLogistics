@@ -8,13 +8,20 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 @EventBusSubscriber(modid = Staticlogistics.MODID)
 public class PlayerEvents {
+
+    private static final AtomicBoolean startupValidationDone = new AtomicBoolean(false);
 
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp) {
             syncAllDimensionsToPlayer(sp);
+            if (startupValidationDone.compareAndSet(false, true)) {
+                LinkManager.validateAllLinksOnStartup(sp.server);
+            }
         }
     }
 

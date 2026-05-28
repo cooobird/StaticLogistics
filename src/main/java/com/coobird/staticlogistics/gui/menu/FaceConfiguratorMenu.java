@@ -49,6 +49,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
     private final DataSlot strategySlot = DataSlot.standalone();
     private final DataSlot extractionModeSlot = DataSlot.standalone();
     private final DataSlot prioritySlot = DataSlot.standalone();
+    private final DataSlot keepStockSlot = DataSlot.standalone();
     public final DataSlot selectedTypesMaskSlot = DataSlot.standalone();
 
 
@@ -69,6 +70,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         this.addDataSlot(strategySlot);
         this.addDataSlot(extractionModeSlot);
         this.addDataSlot(prioritySlot);
+        this.addDataSlot(keepStockSlot);
         this.addDataSlot(selectedTypesMaskSlot);
 
         IItemHandler upgradeHandler = null;
@@ -184,6 +186,18 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
         }
     }
 
+    public int getKeepStock() {
+        return keepStockSlot.get();
+    }
+
+    public void setKeepStock(int val) {
+        if (serverConfig != null && serverConfig.linkConfig.getKeepStock() != val) {
+            serverConfig.linkConfig.setKeepStock(val);
+            serverConfig.markDirty();
+            syncToSlots();
+        }
+    }
+
     public int getSelectedTypesMask() {
         return selectedTypesMaskSlot.get();
     }
@@ -212,6 +226,7 @@ public class FaceConfiguratorMenu extends AbstractContainerMenu {
             strategySlot.set(serverConfig.linkConfig.getStrategy().ordinal());
             extractionModeSlot.set(serverConfig.linkConfig.getExtractionMode().ordinal());
             prioritySlot.set(serverConfig.linkConfig.getPriority());
+            keepStockSlot.set(serverConfig.linkConfig.getKeepStock());
             selectedTypesMaskSlot.set(serverConfig.getSelectedTypesMask());
         }
     }

@@ -139,6 +139,21 @@ public class ItemTransferHandler implements ITransferHandler {
                 if (targetCfg != null && !ConfigFilterManager.isItemInputAllowed(sim, targetCfg))
                     continue;
 
+                // 存量维持：如果目标配置了 keepStock，检查目标已有数量
+                int stockLimit = targetCfg != null ? targetCfg.linkConfig.getKeepStock() : 0;
+                if (stockLimit > 0) {
+                    int alreadyHas = 0;
+                    for (int i = 0; i < to.getSlots(); i++) {
+                        ItemStack targetStack = to.getStackInSlot(i);
+                        if (ItemStack.isSameItemSameComponents(sim, targetStack)) {
+                            alreadyHas += targetStack.getCount();
+                        }
+                    }
+                    int needed = stockLimit - alreadyHas;
+                    if (needed <= 0) continue; // 已达存量，跳过
+                    sim = sim.copyWithCount(Math.min(sim.getCount(), needed));
+                }
+
                 ItemStack remain = sim.copy();
                 for (int i = 0; i < to.getSlots(); i++) {
                     remain = to.insertItem(i, remain, false);

@@ -135,6 +135,13 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                         changed[0] = true;
                     }
                 }
+                if (tag.contains("keep_stock")) {
+                    int newVal = tag.getInt("keep_stock");
+                    if (newVal != menu.getKeepStock()) {
+                        menu.setKeepStock(newVal);
+                        changed[0] = true;
+                    }
+                }
                 if (tag.contains("strategy")) {
                     DistributionStrategy newVal = DistributionStrategy.byName(tag.getString("strategy"), DistributionStrategy.SEQUENTIAL);
                     if (newVal != menu.getStrategy()) {

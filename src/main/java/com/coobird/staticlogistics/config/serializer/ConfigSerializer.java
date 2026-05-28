@@ -31,6 +31,7 @@ public class ConfigSerializer {
         nbt.putString("strategy", config.linkConfig.getStrategy().name());
         nbt.putString("extraction_mode", config.linkConfig.getExtractionMode().name());
         nbt.putInt("priority", config.linkConfig.getPriority());
+        nbt.putInt("keep_stock", config.linkConfig.getKeepStock());
 
         try {
             nbt.put("filter_upgrades", config.filterConfig.getUpgrades().serializeNBT(p));
@@ -80,6 +81,7 @@ public class ConfigSerializer {
             }
         }
         config.linkConfig.setPriority(nbt.getInt("priority"));
+        config.linkConfig.setKeepStock(nbt.getInt("keep_stock"));
 
         if (nbt.contains("filter_upgrades")) {
             config.filterConfig.getUpgrades().deserializeNBT(p, nbt.getCompound("filter_upgrades"));

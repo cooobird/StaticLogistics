@@ -59,6 +59,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.mode.staticlogistics.input", "Insert", "存入");
         add("gui.mode.staticlogistics.output", "Extract", "提取");
         add("gui.staticlogistics.label.priority", "Priority", "优先级");
+        add("gui.staticlogistics.label.keep_stock", "Keep Stock", "存量维持");
+        add("gui.staticlogistics.keep_stock.tooltip", "0=Disabled. Set N to keep at least N of each item at the target.", "0=禁用。设为N会在目标维持至少N个每种物品。");
         add("gui.staticlogistics.priority.tooltip", "Hold Shift: ×10, Hold Ctrl: ×5, Hold Shift+Ctrl: ×64", "按住shift点击: ×10, 按住ctrl点击: ×5, 同时按住shift+ctrl点击: ×64");
         add("gui.staticlogistics.strategy", "Distribution Strategy", "分发策略");
         add("gui.staticlogistics.extraction_mode", "Extraction Mode", "提取模式");
@@ -117,6 +119,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.target_count", "Targets: %s", "目的地：%s");
         add("msg.staticlogistics.owner_display", "Owner: %s", "所有者：%s");
         add("msg.staticlogistics.node_added", "Node recorded. Total: %s", "节点已记录，当前共计：%s");
+        add("msg.staticlogistics.no_capability", "This block has no logistics capability.", "此方块无物流能力。");
         add("msg.staticlogistics.node_removed", "Node unrecorded. Remaining: %s", "节点记录已移除，剩余：%s");
         add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
         add("msg.staticlogistics.batch_linked", "Successfully linked %s nodes!", "成功建立了 %s 条链路！");
@@ -200,6 +203,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.blueprint_preview_rotate", "Blueprint Preview Rotate", "蓝图预览旋转");
         add("key.staticlogistics.blueprint_preview_move_y", "Blueprint Preview Move Y", "蓝图预览升降");
         add("key.staticlogistics.toggle_multi_select", "Toggle Point Mode", "切换选点模式");
+        add("key.staticlogistics.clear_stored_nodes", "Clear Stored Nodes", "清除已存储节点");
 
         add("tooltip.staticlogistics.mode", "Mode: %s", "工具模式：%s");
         add("tooltip.staticlogistics.type", "Transfer Type: %s", "传输类型：%s");

@@ -26,6 +26,7 @@ import java.util.Objects;
 public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfiguratorMenu> {
 
     private EditBox priorityBox;
+    private EditBox keepStockBox;
     private int plusX, plusY, minusX, minusY;
 
     private static final int LEFT_X = 10;
@@ -33,6 +34,8 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     private static final int IN_COLOR_X = LEFT_X + 20, IN_COLOR_Y = 18;
     private static final int PRIORITY_Y = 65, PRIORITY_TEXT_Y = 80;
     private static final int PRIORITY_BOX_X = 10, PRIORITY_BOX_WIDTH = 36;
+    private static final int STOCK_Y = 92, STOCK_TEXT_Y = 106;
+    private static final int STOCK_BOX_X = 10, STOCK_BOX_WIDTH = 36;
 
     private static final int RIGHT_X = 90;
     private static final int OUT_BTN_X = RIGHT_X, OUT_BTN_Y = 20;
@@ -76,6 +79,22 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         });
         this.addRenderableWidget(this.priorityBox);
 
+        int spx = leftPos + STOCK_BOX_X, spy = topPos + STOCK_Y;
+        this.keepStockBox = new EditBox(this.font, spx, spy, STOCK_BOX_WIDTH,
+            FaceControls.BTN_SIZE, Component.translatable("gui.staticlogistics.label.keep_stock"));
+        this.keepStockBox.setBordered(true);
+        this.keepStockBox.setMaxLength(6);
+        this.keepStockBox.setFilter(s -> s.isEmpty() || s.matches("[0-9]*"));
+        this.keepStockBox.setValue(String.valueOf(menu.getKeepStock()));
+        this.keepStockBox.setResponder(s -> {
+            try {
+                int ks = s.isEmpty() ? 0 : Integer.parseInt(s);
+                if (ks != menu.getKeepStock()) sendConfigUpdate("keep_stock", ks);
+            } catch (NumberFormatException ignored) {
+            }
+        });
+        this.addRenderableWidget(this.keepStockBox);
+
         this.plusX = px + PRIORITY_BOX_WIDTH + 2;
         this.plusY = py;
         this.minusX = plusX + FaceControls.BTN_SIZE + 2;
@@ -89,6 +108,8 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         super.updateWidgetVisibility();
         if (this.priorityBox != null)
             this.priorityBox.setVisible(menu.isGlobalInputEnabled());
+        if (this.keepStockBox != null)
+            this.keepStockBox.setVisible(menu.isGlobalInputEnabled());
     }
 
     @Override
@@ -162,6 +183,12 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             if (!Objects.equals(this.priorityBox.getValue(), v))
                 this.priorityBox.setValue(v);
         }
+        if (this.keepStockBox != null && this.keepStockBox.isVisible()
+            && !this.keepStockBox.isFocused()) {
+            String v = String.valueOf(menu.getKeepStock());
+            if (!Objects.equals(this.keepStockBox.getValue(), v))
+                this.keepStockBox.setValue(v);
+        }
     }
 
     @Override
@@ -179,6 +206,10 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
                 Component.translatable("gui.staticlogistics.label.priority"),
                 leftPos + PRIORITY_BOX_X, topPos + PRIORITY_TEXT_Y,
                 0xFFFFFFFF, false);
+            g.drawString(this.font,
+                Component.translatable("gui.staticlogistics.label.keep_stock"),
+                leftPos + STOCK_BOX_X, topPos + STOCK_TEXT_Y,
+                0xFFFFFFFF, false);
             FaceControls.renderOperator(g, plusX, plusY,
                 SLGuiTextures.Operator.ADD_U, SLGuiTextures.Operator.ADD_V,
                 mx, my, GUI_TEXTURE);
@@ -193,6 +224,11 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
                 && my >= minusY && my < minusY + FaceControls.BTN_SIZE) {
                 g.renderTooltip(font,
                     Component.translatable("gui.staticlogistics.priority.tooltip"), mx, my);
+            }
+            if (this.keepStockBox != null && this.keepStockBox.isVisible()
+                && this.keepStockBox.isMouseOver(mx, my)) {
+                g.renderTooltip(font,
+                    Component.translatable("gui.staticlogistics.keep_stock.tooltip"), mx, my);
             }
         }
 
@@ -381,6 +417,11 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
             && this.priorityBox.isFocused()) {
             this.priorityBox.setFocused(false);
         }
+        if (this.keepStockBox != null
+            && !this.keepStockBox.isMouseOver(mx, my)
+            && this.keepStockBox.isFocused()) {
+            this.keepStockBox.setFocused(false);
+        }
         return handled;
     }
 
@@ -469,6 +510,10 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if ((keyCode == 257 || keyCode == 335) && this.priorityBox.isFocused()) {
             this.priorityBox.setFocused(false);
+            return true;
+        }
+        if ((keyCode == 257 || keyCode == 335) && this.keepStockBox != null && this.keepStockBox.isFocused()) {
+            this.keepStockBox.setFocused(false);
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);

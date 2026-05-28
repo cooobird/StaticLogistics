@@ -21,6 +21,7 @@ public class LinkConfig {
     private DistributionStrategy strategy = DistributionStrategy.SEQUENTIAL;
     private ExtractionMode extractionMode = ExtractionMode.SEQUENTIAL;
     private int priority = 0;
+    private int keepStock = 0;
 
     public int getInputChannel() {
         return inputChannel;
@@ -68,6 +69,15 @@ public class LinkConfig {
         markDirty();
     }
 
+    public int getKeepStock() {
+        return keepStock;
+    }
+
+    public void setKeepStock(int val) {
+        this.keepStock = Math.max(0, val);
+        markDirty();
+    }
+
     private void markDirty() {
         if (onDirty != null) onDirty.accept(this);
     }
@@ -81,7 +91,7 @@ public class LinkConfig {
      */
     public boolean isDefault() {
         return inputChannel == 0 && outputChannel == 0 && strategy == DistributionStrategy.SEQUENTIAL
-            && extractionMode == ExtractionMode.SEQUENTIAL && priority == 0;
+            && extractionMode == ExtractionMode.SEQUENTIAL && priority == 0 && keepStock == 0;
     }
 
     /**
