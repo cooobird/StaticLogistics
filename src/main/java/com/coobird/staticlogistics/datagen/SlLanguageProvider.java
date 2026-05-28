@@ -204,6 +204,14 @@ public class SlLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.toggle_multi_select", "Toggle Point Mode", "切换选点模式");
         add("key.staticlogistics.clear_stored_nodes", "Clear Stored Nodes", "清除已存储节点");
 
+        add("jade.staticlogistics.title", "Static Logistics", "静态物流");
+        add("jade.staticlogistics.input", "[In]", "[输入]");
+        add("jade.staticlogistics.output", "[Out]", "[输出]");
+        add("jade.staticlogistics.both", "[I/O]", "[双向]");
+        add("jade.staticlogistics.face_info", "%s %s Group:%s%s%s", "%s %s 组:%s%s%s");
+        add("jade.staticlogistics.linked", " | %s nodes", " | %s节点");
+        add("jade.staticlogistics.keep_stock", " | Keep >= %s", " | 存量维持 >= %s");
+
         add("tooltip.staticlogistics.mode", "Mode: %s", "工具模式：%s");
         add("tooltip.staticlogistics.type", "Transfer Type: %s", "传输类型：%s");
         add("tooltip.staticlogistics.group", "Group Id: %s", "分组 ID：%s");
