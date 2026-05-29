@@ -21,6 +21,7 @@ gradle-app.setting
 # 忽略所有层级下的 src/generated 文件夹及其内容
 **/src/generated/**
 /generated/
+/note/
 
 # --- Minecraft Runtime Data ---
 run/

@@ -52,7 +52,6 @@ public class FaceConfigService {
     public void remove(long key) {
         FaceConfigComposite config = repository.get(key);
         if (config == null) return;
-        dropHandler.dropFilterUpgrades(config.faceConfig.getPos(), config.filterConfig.getUpgrades());
         if (config.sharedContainerConfig != null) {
             config.sharedContainerConfig.unlinkFace(key);
         }

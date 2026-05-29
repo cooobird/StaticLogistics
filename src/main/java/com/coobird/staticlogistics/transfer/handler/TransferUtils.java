@@ -14,6 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -23,9 +24,26 @@ import java.util.function.Predicate;
 public class TransferUtils {
     private static final Logger LOGGER = LogUtils.getLogger();
 
+    // 能力获取抽象，让非 Forge Capability 体系也能走标准管线
+    @FunctionalInterface
+    public interface CapGetter<C> {
+        @Nullable C get(ServerLevel level, BlockPos pos, Direction face);
+    }
+
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
+        int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
+        TransferContext context
+    ) {
+        return doTransferNodes(localLevel, localPos, localFace, destinations,
+            (level, pos, face) -> level.getCapability(cap, pos, face),
+            limit, protocol, isPullMode, context);
+    }
+
+    public static <C, T> boolean doTransferNodes(
+        ServerLevel localLevel, BlockPos localPos, Direction localFace,
+        List<LogisticsNode> destinations, CapGetter<C> capGetter,
         int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
         TransferContext context
     ) {
@@ -45,7 +63,7 @@ public class TransferUtils {
         if (localContainer == null) return false;
 
         boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
-        C localCap = localLevel.getCapability(cap, localPos, localFace);
+        C localCap = capGetter.get(localLevel, localPos, localFace);
         if (localCap == null) return false;
 
         boolean movedAny = false;
@@ -66,7 +84,7 @@ public class TransferUtils {
                 remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4))
                 continue;
 
-            C remoteCap = remoteLevel.getCapability(cap, remoteNode.gPos().pos(), remoteNode.face());
+            C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
             if (remoteCap == null) {
                 if (context != null && context.sourceConfig() != null
                     && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
@@ -104,10 +122,9 @@ public class TransferUtils {
 
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
         return TransferRegistries.getAllActive().stream().anyMatch(type -> {
+            if (type.customCapCheck() != null) return type.customCapCheck().test(level, pos);
             var cap = type.capability();
-            if (cap == null) return false;
-            return level.getCapability(cap, pos, face) != null
-                || level.getCapability(cap, pos, null) != null;
+            return cap != null && (level.getCapability(cap, pos, face) != null || level.getCapability(cap, pos, null) != null);
         });
     }
 
@@ -120,9 +137,6 @@ public class TransferUtils {
 
         boolean isEmpty(ExtractionResult<T> result);
 
-        /**
-         * 可选目标端过滤检查：false 则跳过插入
-         */
         default boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
             return true;
         }

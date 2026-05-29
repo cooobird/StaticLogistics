@@ -50,6 +50,8 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue MEK_HEAT_STACK;
     // Ars Nouveau 魔源每 tick 传输量
     public static ModConfigSpec.IntValue ARS_SOURCE_STACK;
+    // Botania 魔力每 tick 传输量
+    public static ModConfigSpec.IntValue BOTANIA_MANA_STACK;
 
     // 铁升级的倍率
     public static ModConfigSpec.IntValue IRON_MULTIPLIER;
@@ -103,6 +105,7 @@ public final class SLConfig {
     private static volatile int MekChemicalStack = 250;
     private static volatile int MekHeatStack = 1000;
     private static volatile int ArsSourceStack = 100;
+    private static volatile int BotaniaManaStack = 1000;
 
     // 升级倍率缓存值
     private static volatile int ironMultCache = 2;
@@ -161,6 +164,9 @@ public final class SLConfig {
         ARS_SOURCE_STACK = builder
             .translation("config.staticlogistics.ars_source_stack_size")
             .defineInRange("ars_source_stack_size", ArsSourceStack, 1, Integer.MAX_VALUE);
+        BOTANIA_MANA_STACK = builder
+            .translation("config.staticlogistics.botania_mana_stack_size")
+            .defineInRange("botania_mana_stack_size", BotaniaManaStack, 1, Integer.MAX_VALUE);
         builder.pop();
 
         builder.push("performance");
@@ -279,6 +285,7 @@ public final class SLConfig {
             MekChemicalStack = MEK_CHEMICAL_STACK.get();
             MekHeatStack = MEK_HEAT_STACK.get();
             ArsSourceStack = ARS_SOURCE_STACK.get();
+            BotaniaManaStack = BOTANIA_MANA_STACK.get();
             ironMultCache = IRON_MULTIPLIER.get();
             goldMultCache = GOLD_MULTIPLIER.get();
             diamondMultCache = DIAMOND_MULTIPLIER.get();
@@ -350,6 +357,10 @@ public final class SLConfig {
 
     public static int getArsSourceStack() {
         return ArsSourceStack;
+    }
+
+    public static int getBotaniaManaStack() {
+        return BotaniaManaStack;
     }
 
     public static int getMultiplierForTier(String tier) {
@@ -425,6 +436,7 @@ public final class SLConfig {
         tag.putInt("mekChemicalStack", MekChemicalStack);
         tag.putInt("mekHeatStack", MekHeatStack);
         tag.putInt("arsSourceStack", ArsSourceStack);
+        tag.putInt("botaniaManaStack", BotaniaManaStack);
         tag.putBoolean("autoCleanStoredNodes", autoCleanStoredNodes);
         // upgrades
         tag.putInt("ironMult", ironMultCache);
@@ -465,6 +477,7 @@ public final class SLConfig {
         MekChemicalStack = tag.getInt("mekChemicalStack");
         MekHeatStack = tag.getInt("mekHeatStack");
         ArsSourceStack = tag.getInt("arsSourceStack");
+        BotaniaManaStack = tag.getInt("botaniaManaStack");
         autoCleanStoredNodes = tag.getBoolean("autoCleanStoredNodes");
         ironMultCache = tag.getInt("ironMult");
         goldMultCache = tag.getInt("goldMult");

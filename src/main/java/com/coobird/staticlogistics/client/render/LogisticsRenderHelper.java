@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.client.render;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.client.util.RenderConstants;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.core.BlockPos;
@@ -143,9 +142,22 @@ public class LogisticsRenderHelper {
                                 float radius, float r, float g, float bl, float a) {
         float dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
         float mx1 = x1, my1 = y1, mz1 = z1, mx2 = x2, my2 = y2, mz2 = z2;
-        if (dx > 0.1f) { my1 -= radius; my2 += radius; mz1 -= radius; mz2 += radius; }
-        else if (dy > 0.1f) { mx1 -= radius; mx2 += radius; mz1 -= radius; mz2 += radius; }
-        else { mx1 -= radius; mx2 += radius; my1 -= radius; my2 += radius; }
+        if (dx > 0.1f) {
+            my1 -= radius;
+            my2 += radius;
+            mz1 -= radius;
+            mz2 += radius;
+        } else if (dy > 0.1f) {
+            mx1 -= radius;
+            mx2 += radius;
+            mz1 -= radius;
+            mz2 += radius;
+        } else {
+            mx1 -= radius;
+            mx2 += radius;
+            my1 -= radius;
+            my2 += radius;
+        }
         renderBox(b, mat, mx1, my1, mz1, mx2, my2, mz2, r, g, bl, a);
     }
 

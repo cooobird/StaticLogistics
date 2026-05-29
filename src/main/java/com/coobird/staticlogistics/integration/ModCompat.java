@@ -19,8 +19,8 @@ public class ModCompat {
         return ModList.get().isLoaded("ars_nouveau");
     }
 
-    public static boolean isPneumaticcraftLoaded() {
-        return ModList.get().isLoaded("pneumaticcraft");
+    public static boolean isBotaniaLoaded() {
+        return ModList.get().isLoaded("botania");
     }
 
     public static boolean isCreateLoaded() {

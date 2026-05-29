@@ -3,7 +3,7 @@ package com.coobird.staticlogistics;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.datagen.SlLanguageProvider;
-import com.coobird.staticlogistics.integration.ExtendedTypeRegisterHandler;
+import com.coobird.staticlogistics.integration.handler.ExtendedTypeRegisterHandler;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;

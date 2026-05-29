@@ -17,7 +17,6 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -28,7 +27,9 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
@@ -148,8 +149,9 @@ public class LinkWorldRenderer {
         for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
             if (!dst.gPos().dimension().equals(dim)) continue;
             FaceConfigComposite dstCfg = all.get(dst);
-            if (dstCfg == null || !dstCfg.faceConfig.getGroupIds().contains(groupId) || !dstCfg.isGlobalInputEnabled())
-                continue;
+            if (dstCfg == null) continue;
+            if (!dstCfg.faceConfig.getGroupIds().contains(groupId)) continue;
+            if (!dstCfg.isGlobalInputEnabled()) continue;
             if (dstCfg.linkConfig.getInputChannel() != outCh) continue;
 
             BlockPos dp = dst.gPos().pos();

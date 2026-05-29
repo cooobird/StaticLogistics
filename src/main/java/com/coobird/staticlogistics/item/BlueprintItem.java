@@ -240,6 +240,31 @@ public class BlueprintItem extends Item {
         int count = 0;
         int skipped = 0;
 
+        int invalidCount = 0;
+        for (BlueprintData.BlockEntry entry : data.blocks()) {
+            BlockPos absPos = rotateRelToAbs(entry.relativePos(), newAnchor, rotation);
+            if (level.getBlockEntity(absPos) == null) {
+                invalidCount++;
+                continue;
+            }
+            boolean anyValid = false;
+            for (var faceEntry : entry.faces().entrySet()) {
+                Direction rotatedFace = rotateDirection(faceEntry.getKey(), rotation);
+                if (com.coobird.staticlogistics.transfer.handler.TransferUtils
+                    .hasLogisticsCapability(level, absPos, rotatedFace)) {
+                    anyValid = true;
+                    break;
+                }
+            }
+            if (!anyValid) invalidCount++;
+        }
+        if (invalidCount > 0) {
+            player.displayClientMessage(
+                Component.translatable("msg.staticlogistics.blueprint.skipped_no_cap", invalidCount)
+                    .withStyle(ChatFormatting.RED), true);
+            return;
+        }
+
         if (!player.isCreative()) {
             Map<String, Integer> needed = tallyUpgrades(data);
             if (!needed.isEmpty()) {

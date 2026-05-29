@@ -30,7 +30,7 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     private static final int INPUT_X = 10;
     private static final int IN_TOGGLE_Y = 20, IN_COLOR_Y = 18;
     private static final int PRIORITY_Y = 65, STOCK_Y = 92;
-    private static final int OP_Y_OFFSET = -1; // +/- 按钮相对 EditBox 的 Y 偏移
+    private static final int OP_Y_OFFSET = -1;
 
     private static final int OUTPUT_X = 90;
     private static final int OUT_TOGGLE_Y = 20, OUT_COLOR_Y = 18;
@@ -83,8 +83,8 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
     @Override
     protected void updateWidgetVisibility() {
         super.updateWidgetVisibility();
-        priorityBox.setVisible(menu.isGlobalInputEnabled());
-        keepStockBox.setVisible(menu.isGlobalInputEnabled());
+        if (priorityBox != null) priorityBox.setVisible(menu.isGlobalInputEnabled());
+        if (keepStockBox != null) keepStockBox.setVisible(menu.isGlobalInputEnabled());
     }
 
     @Override
@@ -408,8 +408,6 @@ public class FaceConfiguratorScreen extends AbstractConfiguratorScreen<FaceConfi
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
-
-    // ── network ──
 
     private void sendConfigUpdate(String key, Object value) {
         CompoundTag tag = new CompoundTag();

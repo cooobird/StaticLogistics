@@ -420,6 +420,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.mek_chemical_stack_size", "Base Mek-Chemical Amount", "基础 Mek 化学品传输量");
         add("config.staticlogistics.mek_heat_stack_size", "Base Mek Heat Amount", "基础热量传输量");
         add("config.staticlogistics.ars_source_stack_size", "Base Ars Source Amount", "基础魔源传输量");
+        add("config.staticlogistics.botania_mana_stack_size", "Base Mana Amount", "基础魔力传输量");
 
         add("config.staticlogistics.iron_multiplier", "Iron Tier Multiplier", "铁等级倍率");
         add("config.staticlogistics.gold_multiplier", "Gold Tier Multiplier", "金等级倍率");
@@ -513,6 +514,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("transfer_type.staticlogistics.mek_heat.desc", "Transport Mekanism Heat", "传输热量。");
         add("transfer_type.staticlogistics.ars_source", "Ars Source", "魔源");
         add("transfer_type.staticlogistics.ars_source.desc", "Transport Ars Source", "传输魔源。");
+        add("transfer_type.staticlogistics.botania_mana", "Mana", "魔力");
+        add("transfer_type.staticlogistics.botania_mana.desc", "Transport Mana", "传输魔力。");
 
         for (DistributionStrategy strategy : DistributionStrategy.values()) {
             String zh = switch (strategy) {

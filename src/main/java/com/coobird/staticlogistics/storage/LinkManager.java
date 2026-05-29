@@ -260,7 +260,8 @@ public class LinkManager {
     }
 
     /**
-     * 双向移除两个节点之间的链接，清理反向链接和全局开关
+     * 双向移除两个节点之间的链接，清理反向链接和全局开关。
+     * 跨维度时 target 端清理委托给 target 维度的 LinkManager。
      */
     public void removeLink(LogisticsNode source, LogisticsNode target) {
         if (source == null || target == null) return;
@@ -269,9 +270,10 @@ public class LinkManager {
         if (sourceCfg == null) return;
         ServerLevel targetLevel = target.isInSameDimension(level.dimension())
             ? level : level.getServer().getLevel(target.gPos().dimension());
-        FaceConfigComposite targetCfg = targetLevel != null
-            ? LinkManager.get(targetLevel).getFaceConfig(target.toKey()) : null;
-        if (sourceCfg == null || targetCfg == null) return;
+        if (targetLevel == null) return;
+        LinkManager targetMgr = LinkManager.get(targetLevel);
+        FaceConfigComposite targetCfg = targetMgr.getFaceConfig(target.toKey());
+        if (targetCfg == null) return;
 
         boolean sourceRemoved = sourceCfg.getLinkedNodes().remove(target);
         boolean targetRemoved = targetCfg.getLinkedNodes().remove(source);
@@ -292,17 +294,22 @@ public class LinkManager {
         targetCfg.markDirty();
 
         syncNodeToDimension(source);
-        syncNodeToDimension(target);
+        targetMgr.syncNodeToDimension(target);
 
         markFaceDirty(source.toKey());
-        markFaceDirty(target.toKey());
+        targetMgr.markFaceDirty(target.toKey());
 
+        // source 端由本维度处理
         cleanUpFaceIfNeeded(source, sourceCfg);
-        cleanUpFaceIfNeeded(target, targetCfg);
+        // target 端委托给 target 维度处理（跨维度时本 LinkManager 找不到 target 的配置）
+        targetMgr.cleanUpFaceIfNeeded(target, targetCfg);
     }
 
     private void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
-        if (cfg.getLinkedNodes().isEmpty() && !cfg.isGlobalInputEnabled() && !cfg.isGlobalOutputEnabled()) {
+        if (cfg.getLinkedNodes().isEmpty()
+            && !cfg.isGlobalInputEnabled()
+            && !cfg.isGlobalOutputEnabled()
+            && cfg.faceConfig.getGroupIds().isEmpty()) {
             removeFaceConfigInternal(node.toKey(), false, true);
         }
     }
@@ -332,15 +339,18 @@ public class LinkManager {
             LogisticsNode selfNode = createNodeFromKey(key);
             List<LogisticsNode> affectedNodes = doCascade ? List.copyOf(config.getLinkedNodes()) : List.of();
             if (doCascade) {
+                // 级联只断开远程链接；自身面数据的移除由下方统一处理
                 changeHandler.cascadeRemove(selfNode, config);
-            } else {
-                faceConfigService.remove(key);
-                cacheManager.remove(key);
-                GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
-                GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
-                LogisticsTicker.wakeup(level, key);
-                markFaceDirty(key);
             }
+            // 统一清理自身面数据（级联路径的 inner removeFaceConfigDataOnly 会被 pendingRemovals 拦截）
+            BlockPos selfPos = selfNode.gPos().pos();
+            dropHandler.dropFilterUpgrades(selfPos, config.filterConfig.getUpgrades());
+            faceConfigService.remove(key);
+            cacheManager.remove(key);
+            GlobalLogisticsManager.get(level.getServer()).notifyNodeRemoved(level, selfNode);
+            GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
+            LogisticsTicker.wakeup(level, key);
+            markFaceDirty(key);
             if (sendPacket) {
                 networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
             }
@@ -531,6 +541,7 @@ public class LinkManager {
             }
             markOrphanScanNeeded();
         }
+        // 容器升级由 handleBulkDrops 掉落，filter 升级由 removeFaceConfigInternal 统一处理，避免重复
         List<BlockPos> failedDrops = new ArrayList<>();
         List<BlockPos> failedConfigs = new ArrayList<>();
         List<BlockPos> failedSync = new ArrayList<>();

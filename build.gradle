@@ -164,6 +164,9 @@ dependencies {
     compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
     runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
 
+    compileOnly "vazkii.botania:botania-neoforge-1.21.1:${botania_version}"
+    runtimeOnly "vazkii.botania:botania-neoforge-1.21.1:${botania_version}"
+
     compileOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}:api"
     runtimeOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}"
 
