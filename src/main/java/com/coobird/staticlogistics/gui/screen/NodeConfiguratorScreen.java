@@ -30,8 +30,8 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
 
     static final int INPUT_TOGGLE_X = 30, OUTPUT_TOGGLE_X = 116, ROW1_Y = 12;
     static final int CHANNEL_Y = 24, INPUT_CHANNEL_X = 32, OUTPUT_CHANNEL_X = 118;
-    static final int ROW3_Y = 52, RARITY_BOX_X = 10, RARITY_OP_X = 48, STRATEGY_X = 96, STRATEGY_Y = ROW3_Y - 2;
-    static final int ROW4_Y = 80, STOCK_BOX_X = 10, STOCK_OP_X = 48, EXTRACTION_X = 96, EXTRACTION_Y = ROW4_Y - 2;
+    static final int ROW3_Y = 62, RARITY_BOX_X = 10, RARITY_OP_X = 48, STRATEGY_X = 96, STRATEGY_Y = ROW3_Y - 2;
+    static final int ROW4_Y = 92, STOCK_BOX_X = 10, STOCK_OP_X = 48, EXTRACTION_X = 96, EXTRACTION_Y = ROW4_Y - 2;
 
     private EditBox priorityBox, keepStockBox;
 
