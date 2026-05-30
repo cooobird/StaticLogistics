@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
+import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -48,7 +48,7 @@ public class NodeConfigModeHandler implements ModeHandler {
                     .append(Component.literal(String.format(" [%d, %d, %d]", pos.getX(), pos.getY(), pos.getZ()))
                         .withStyle(ChatFormatting.GRAY));
                 serverPlayer.openMenu(new SimpleMenuProvider(
-                        (id, inv, p) -> new FaceConfiguratorMenu(id, inv, pos, face), title),
+                        (id, inv, p) -> new NodeConfiguratorMenu(id, inv, pos, face), title),
                     buf -> {
                         buf.writeBlockPos(pos);
                         buf.writeEnum(face);

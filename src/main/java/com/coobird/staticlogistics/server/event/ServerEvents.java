@@ -76,8 +76,7 @@ public class ServerEvents {
         registrar.playToServer(C2SUpdateFilterOnHandPayload.TYPE, C2SUpdateFilterOnHandPayload.STREAM_CODEC, C2SUpdateFilterOnHandPayload::handle);
         registrar.playToServer(C2SOpenHandFilterPayload.TYPE, C2SOpenHandFilterPayload.STREAM_CODEC, C2SOpenHandFilterPayload::handle);
         registrar.playToServer(C2SUpdateBlueprintPreviewPayload.TYPE, C2SUpdateBlueprintPreviewPayload.STREAM_CODEC, C2SUpdateBlueprintPreviewPayload::handle);
-        registrar.playToServer(C2SOpenContainerConfigPayload.TYPE, C2SOpenContainerConfigPayload.STREAM_CODEC, C2SOpenContainerConfigPayload::handle);
-        registrar.playToServer(C2SOpenFaceConfigPayload.TYPE, C2SOpenFaceConfigPayload.STREAM_CODEC, C2SOpenFaceConfigPayload::handle);
+        registrar.playToServer(C2SOpenNodeConfigPayload.TYPE, C2SOpenNodeConfigPayload.STREAM_CODEC, C2SOpenNodeConfigPayload::handle);
         registrar.playToServer(C2SClearStoredNodesPayload.TYPE, C2SClearStoredNodesPayload.STREAM_CODEC, C2SClearStoredNodesPayload::handle);
         registrar.playToServer(C2SDeleteGroupPayload.TYPE, C2SDeleteGroupPayload.STREAM_CODEC, C2SDeleteGroupPayload::handle);
     }

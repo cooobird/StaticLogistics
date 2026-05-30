@@ -1,10 +1,9 @@
 package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.gui.menu.ContainerConfiguratorMenu;
-import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.HandFilterMenu;
+import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
@@ -22,16 +21,10 @@ public class SLMenuTypes {
     public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(BuiltInRegistries.MENU, Staticlogistics.MODID);
 
     /**
-     * 面配置器菜单：配置物流节点某一面的连接参数
+     * 节点配置器菜单：统一管理某一面的连接参数和容器升级插件
      */
-    public static final DeferredHolder<MenuType<?>, MenuType<FaceConfiguratorMenu>> FACE_CONFIGURATOR_MENU =
-        TYPES.register("face_configurator_menu", () -> IMenuTypeExtension.create(FaceConfiguratorMenu::new));
-
-    /**
-     * 容器配置器菜单：配置容器级别的升级插件和参数
-     */
-    public static final DeferredHolder<MenuType<?>, MenuType<ContainerConfiguratorMenu>> CONTAINER_CONFIGURATOR_MENU =
-        TYPES.register("container_configurator_menu", () -> IMenuTypeExtension.create(ContainerConfiguratorMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<NodeConfiguratorMenu>> NODE_CONFIGURATOR_MENU =
+        TYPES.register("node_configurator_menu", () -> IMenuTypeExtension.create(NodeConfiguratorMenu::new));
 
     /**
      * 过滤器配置菜单：配置物品过滤规则

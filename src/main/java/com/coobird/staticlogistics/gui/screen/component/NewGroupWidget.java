@@ -11,10 +11,8 @@ import net.minecraft.network.chat.Component;
  * 玩家输入名称，点击加号或 Enter 提交。
  */
 public class NewGroupWidget {
-    public static final int ADD_BTN_SIZE = 12;
-    public static final int ADD_BTN_X = 74, ADD_BTN_Y = 135;
-    public static final int NEW_GROUP_X = 12, NEW_GROUP_Y = 130, NEW_GROUP_W = 77;
-    private static final int SX_OFFSET = 202;
+    public static final int NEW_GROUP_X = 12, NEW_GROUP_Y = 130, NEW_GROUP_W = 75;
+    private static final int SX_OFFSET = 199;
     private static final int LIST_OFFSET_X = GroupPanel.LIST_OFFSET_X;
 
     private final EditBox editBox;
@@ -53,7 +51,7 @@ public class NewGroupWidget {
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
         int ngX = sx + NEW_GROUP_X;
-        int ngW = NEW_GROUP_W + 4;
+        int ngW = NEW_GROUP_W;
         this.editBox.setX(ngX + 3);
         this.editBox.setY(ngY + 8);
         this.editBox.setWidth(ngW - 4);
@@ -63,19 +61,6 @@ public class NewGroupWidget {
             String hint = Component.translatable("gui.staticlogistics.add_group").getString();
             g.drawString(font, hint, ngX + 3, ngY + 8, 0x666666, false);
         }
-
-        int addX = sx + ADD_BTN_X + 21;
-        int addY = topPos + ADD_BTN_Y;
-        g.blit(SLGuiTextures.GUI_ATLAS, addX, addY, ADD_BTN_SIZE, ADD_BTN_SIZE,
-            SLGuiTextures.Button.Middle.DISABLED_U,
-            SLGuiTextures.Button.Middle.DISABLED_V,
-            SLGuiTextures.Button.Middle.DISABLED_WIDTH,
-            SLGuiTextures.Button.Middle.DISABLED_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        g.blit(SLGuiTextures.GUI_ATLAS, addX, addY,
-            SLGuiTextures.Operator.ADD_U, SLGuiTextures.Operator.ADD_V,
-            ADD_BTN_SIZE, ADD_BTN_SIZE,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
     }
 
     public void beginEdit() {
@@ -101,10 +86,11 @@ public class NewGroupWidget {
 
     public boolean isAddButtonHit(double mx, double my, int leftPos, int topPos) {
         int sx = sx(leftPos);
-        int addX = sx + ADD_BTN_X + 21;
-        int addY = topPos + ADD_BTN_Y;
-        return mx >= addX && mx < addX + ADD_BTN_SIZE
-            && my >= addY && my < addY + ADD_BTN_SIZE;
+        int texX = sx + LIST_OFFSET_X;
+        int btnRX = texX + SLGuiTextures.NewGroupEditBox.WIDTH - 11;
+        int texY = topPos + NEW_GROUP_Y - 2;
+        return mx >= btnRX && mx < btnRX + 11
+            && my >= texY && my < texY + SLGuiTextures.NewGroupEditBox.HEIGHT;
     }
 
     public boolean isTextBoxHit(double mx, double my, int leftPos, int topPos) {

@@ -66,7 +66,12 @@ public class UpgradeItem extends Item {
                 tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
                     .withStyle(ChatFormatting.GREEN));
             } else {
-                String valueDisplay = (multiplier >= Integer.MAX_VALUE) ? "∞" : "x" + multiplier;
+                String valueDisplay;
+                if (multiplier >= Integer.MAX_VALUE) {
+                    valueDisplay = Component.translatable("gui.staticlogistics.infinite").getString();
+                } else {
+                    valueDisplay = "x" + multiplier;
+                }
                 tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
                     .withStyle(ChatFormatting.GREEN));
             }

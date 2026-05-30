@@ -66,12 +66,7 @@ public class BlueprintRegionRenderer {
         if (!data.isEmpty()) {
             green = data.anchor();
             a = green;
-            b = green;
-            for (BlueprintData.BlockEntry e : data.blocks()) {
-                BlockPos abs = green.offset(e.relativePos());
-                a = new BlockPos(Math.min(a.getX(), abs.getX()), Math.min(a.getY(), abs.getY()), Math.min(a.getZ(), abs.getZ()));
-                b = new BlockPos(Math.max(b.getX(), abs.getX()), Math.max(b.getY(), abs.getY()), Math.max(b.getZ(), abs.getZ()));
-            }
+            b = data.corner2();
         } else if (!anchorS.isEmpty()) {
             a = parsePos(anchorS);
             green = a;
@@ -112,20 +107,15 @@ public class BlueprintRegionRenderer {
     }
 
     private static void renderPreview(RenderLevelStageEvent event, BlueprintData data, BlockPos anchor, int rot) {
-        // 计算选区包围盒
-        int cx1 = Integer.MAX_VALUE, cy1 = Integer.MAX_VALUE, cz1 = Integer.MAX_VALUE;
-        int cx2 = Integer.MIN_VALUE, cy2 = Integer.MIN_VALUE, cz2 = Integer.MIN_VALUE;
+        BlockPos c2 = BlueprintItem.rotateRelToAbs(data.corner2().subtract(data.anchor()), anchor, rot);
+        int cx1 = Math.min(anchor.getX(), c2.getX()), cy1 = Math.min(anchor.getY(), c2.getY()), cz1 = Math.min(anchor.getZ(), c2.getZ());
+        int cx2 = Math.max(anchor.getX(), c2.getX()), cy2 = Math.max(anchor.getY(), c2.getY()), cz2 = Math.max(anchor.getZ(), c2.getZ());
+
         // 构建绝对坐标 → BlockEntry 的快速查找表
         var entryMap = new java.util.HashMap<BlockPos, BlueprintData.BlockEntry>();
         for (BlueprintData.BlockEntry e : data.blocks()) {
             BlockPos abs = BlueprintItem.rotateRelToAbs(e.relativePos(), anchor, rot);
             entryMap.put(abs, e);
-            if (abs.getX() < cx1) cx1 = abs.getX();
-            if (abs.getY() < cy1) cy1 = abs.getY();
-            if (abs.getZ() < cz1) cz1 = abs.getZ();
-            if (abs.getX() > cx2) cx2 = abs.getX();
-            if (abs.getY() > cy2) cy2 = abs.getY();
-            if (abs.getZ() > cz2) cz2 = abs.getZ();
         }
 
         PoseStack ps = event.getPoseStack();

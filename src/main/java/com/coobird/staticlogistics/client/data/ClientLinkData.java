@@ -61,6 +61,13 @@ public enum ClientLinkData {
         dimMap.put(key, config);
         dataVersion++;
         configVersions.put(key, version);
+
+        UUID owner = config.faceConfig.getOwner();
+        if (owner != null && config.faceConfig.hasGroup()) {
+            for (String gid : config.faceConfig.getGroupIds()) {
+                addKnownGroup(owner, config.faceConfig.getOwnerName(), gid);
+            }
+        }
     }
 
     public void removeFaceConfig(GlobalPos pos, Direction face) {

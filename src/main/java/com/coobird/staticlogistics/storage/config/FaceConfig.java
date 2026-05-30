@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.storage.config;
 
 import net.minecraft.core.BlockPos;
 
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -47,10 +46,10 @@ public class FaceConfig {
     }
 
     /**
-     * 所有组ID（不可变视图）
+     * 所有组ID
      */
     public Set<String> getGroupIds() {
-        return Collections.unmodifiableSet(groupIds);
+        return new LinkedHashSet<>(groupIds);
     }
 
     /**

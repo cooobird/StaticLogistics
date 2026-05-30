@@ -97,21 +97,21 @@ public class BlueprintGroupScreen extends Screen {
         // 滚动条
         boolean showActive = maxScroll > 0
             && ((mx >= leftPos + SCROLLBAR_X
-            && mx <= leftPos + SCROLLBAR_X + SLGuiTextures.Scrollbar.ENABLED_WIDTH
+            && mx <= leftPos + SCROLLBAR_X + SLGuiTextures.Scrollbar.WIDTH
             && my >= topPos + SCROLLBAR_Y
             && my <= topPos + SCROLLBAR_Y + SLGuiTextures.Scrollbar.TRACK_HEIGHT)
             || this.isScrolling);
         int knobY = maxScroll > 0
             ? (int) (scrollOffset / maxScroll
-            * (SLGuiTextures.Scrollbar.TRACK_HEIGHT - SLGuiTextures.Scrollbar.ENABLED_HEIGHT))
+            * (SLGuiTextures.Scrollbar.TRACK_HEIGHT - SLGuiTextures.Scrollbar.HEIGHT))
             : 0;
         g.blit(SLGuiTextures.GUI_ATLAS, leftPos + SCROLLBAR_X,
             topPos + SCROLLBAR_Y + knobY,
             showActive ? SLGuiTextures.Scrollbar.ENABLED_U
                 : SLGuiTextures.Scrollbar.DISABLED_U,
-            SLGuiTextures.Scrollbar.ENABLED_V,
-            SLGuiTextures.Scrollbar.ENABLED_WIDTH,
-            SLGuiTextures.Scrollbar.ENABLED_HEIGHT,
+            SLGuiTextures.Scrollbar.DISABLED_V,
+            SLGuiTextures.Scrollbar.WIDTH,
+            SLGuiTextures.Scrollbar.HEIGHT,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
         g.enableScissor(listX - 2, listY,
@@ -260,7 +260,7 @@ public class BlueprintGroupScreen extends Screen {
         }
 
         int sx = leftPos + SCROLLBAR_X, sy = topPos + SCROLLBAR_Y;
-        if (mx >= sx && mx <= sx + SLGuiTextures.Scrollbar.ENABLED_WIDTH
+        if (mx >= sx && mx <= sx + SLGuiTextures.Scrollbar.WIDTH
             && my >= sy && my <= sy + SLGuiTextures.Scrollbar.TRACK_HEIGHT) {
             if (getMaxScroll() > 0) {
                 this.isScrolling = true;

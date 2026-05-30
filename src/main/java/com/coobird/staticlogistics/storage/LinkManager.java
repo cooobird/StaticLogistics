@@ -299,17 +299,14 @@ public class LinkManager {
         markFaceDirty(source.toKey());
         targetMgr.markFaceDirty(target.toKey());
 
-        // source 端由本维度处理
         cleanUpFaceIfNeeded(source, sourceCfg);
-        // target 端委托给 target 维度处理（跨维度时本 LinkManager 找不到 target 的配置）
         targetMgr.cleanUpFaceIfNeeded(target, targetCfg);
     }
 
-    private void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
+    public void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
         if (cfg.getLinkedNodes().isEmpty()
             && !cfg.isGlobalInputEnabled()
-            && !cfg.isGlobalOutputEnabled()
-            && cfg.faceConfig.getGroupIds().isEmpty()) {
+            && !cfg.isGlobalOutputEnabled()) {
             removeFaceConfigInternal(node.toKey(), false, true);
         }
     }
@@ -421,6 +418,7 @@ public class LinkManager {
     }
 
     public void syncNodeToPlayer(ServerPlayer player, LogisticsNode node) {
+        if (pendingRemovals.containsKey(node.toKey())) return;
         FaceConfigComposite cfg = getFaceConfig(node.toKey());
         if (cfg != null) {
             networkSyncManager.syncToPlayer(player, node.gPos().pos(), node.face(), cfg);

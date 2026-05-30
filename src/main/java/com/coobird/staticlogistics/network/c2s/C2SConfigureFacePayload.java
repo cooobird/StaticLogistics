@@ -4,8 +4,8 @@ import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
-import com.coobird.staticlogistics.gui.menu.FaceConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
+import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -52,7 +52,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
             CompoundTag tag = payload.data();
 
             if (tag.contains("open_filter")) {
-                if (player.containerMenu instanceof FaceConfiguratorMenu faceMenu) {
+                if (player.containerMenu instanceof NodeConfiguratorMenu faceMenu) {
                     BlockPos pos = faceMenu.getPos();
                     Direction face = faceMenu.getFace();
                     boolean isInput = tag.getBoolean("is_input");
@@ -80,7 +80,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                     BlockPos pos = filterMenu.getPos();
                     Direction face = filterMenu.getFace();
                     player.openMenu(
-                        new SimpleMenuProvider((id, inv, p) -> new FaceConfiguratorMenu(id, inv, pos, face),
+                        new SimpleMenuProvider((id, inv, p) -> new NodeConfiguratorMenu(id, inv, pos, face),
                             Component.translatable("gui.staticlogistics.face_config")),
                         buf -> {
                             buf.writeBlockPos(pos);
@@ -93,7 +93,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
 
             boolean[] changed = {false};
 
-            if (player.containerMenu instanceof FaceConfiguratorMenu menu) {
+            if (player.containerMenu instanceof NodeConfiguratorMenu menu) {
                 changed[0] = menu.applyFromTag(tag);
             }
 

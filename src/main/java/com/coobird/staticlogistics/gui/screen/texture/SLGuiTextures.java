@@ -47,8 +47,8 @@ public class SLGuiTextures {
     }
 
     public static final class Scrollbar {
-        public static final int DISABLED_U = 113, DISABLED_V = 170;
-        public static final int ENABLED_U = 102, ENABLED_V = 170, ENABLED_WIDTH = 8, ENABLED_HEIGHT = 15;
+        public static final int DISABLED_U = 112, DISABLED_V = 170;
+        public static final int ENABLED_U = 101, ENABLED_V = 170, WIDTH = 8, HEIGHT = 15;
         public static final int TRACK_HEIGHT = 95;
     }
 

@@ -218,6 +218,12 @@ public class LinkConfiguratorScreen extends Screen {
         stack.set(SLDataComponents.TOOL_MODE.get(), modeIdx);
         int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, typeMask));
+
+        var player = Minecraft.getInstance().player;
+        if (player != null && !groupId.isEmpty()) {
+            ClientLinkData.INSTANCE.addKnownGroup(player.getUUID(), player.getGameProfile().getName(), groupId);
+        }
+
         if (playSound) playClickSound();
     }
 

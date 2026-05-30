@@ -28,8 +28,11 @@ public class LinkConfig {
     }
 
     public void setInputChannel(int ch) {
-        this.inputChannel = clampChannel(ch);
-        markDirty();
+        int clamped = clampChannel(ch);
+        if (this.inputChannel != clamped) {
+            this.inputChannel = clamped;
+            markDirty();
+        }
     }
 
     public int getOutputChannel() {
@@ -37,8 +40,11 @@ public class LinkConfig {
     }
 
     public void setOutputChannel(int ch) {
-        this.outputChannel = clampChannel(ch);
-        markDirty();
+        int clamped = clampChannel(ch);
+        if (this.outputChannel != clamped) {
+            this.outputChannel = clamped;
+            markDirty();
+        }
     }
 
     public DistributionStrategy getStrategy() {
@@ -46,9 +52,11 @@ public class LinkConfig {
     }
 
     public void setStrategy(DistributionStrategy s) {
-        // 迁移旧 SLOT_ROUND_ROBIN → ROUND_ROBIN
-        this.strategy = (s == null) ? DistributionStrategy.SEQUENTIAL : s;
-        markDirty();
+        var v = (s == null) ? DistributionStrategy.SEQUENTIAL : s;
+        if (this.strategy != v) {
+            this.strategy = v;
+            markDirty();
+        }
     }
 
     public ExtractionMode getExtractionMode() {
@@ -56,8 +64,11 @@ public class LinkConfig {
     }
 
     public void setExtractionMode(ExtractionMode mode) {
-        this.extractionMode = mode != null ? mode : ExtractionMode.SEQUENTIAL;
-        markDirty();
+        var v = mode != null ? mode : ExtractionMode.SEQUENTIAL;
+        if (this.extractionMode != v) {
+            this.extractionMode = v;
+            markDirty();
+        }
     }
 
     public int getPriority() {
@@ -65,8 +76,10 @@ public class LinkConfig {
     }
 
     public void setPriority(int p) {
-        this.priority = p;
-        markDirty();
+        if (this.priority != p) {
+            this.priority = p;
+            markDirty();
+        }
     }
 
     public int getKeepStock() {
@@ -74,8 +87,11 @@ public class LinkConfig {
     }
 
     public void setKeepStock(int val) {
-        this.keepStock = Math.max(0, val);
-        markDirty();
+        int v = Math.max(0, val);
+        if (this.keepStock != v) {
+            this.keepStock = v;
+            markDirty();
+        }
     }
 
     private void markDirty() {

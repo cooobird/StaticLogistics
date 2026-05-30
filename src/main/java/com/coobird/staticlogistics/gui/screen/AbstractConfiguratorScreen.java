@@ -17,7 +17,7 @@ import java.util.List;
 public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu> extends AbstractContainerScreen<T> {
     protected static final ResourceLocation GUI_TEXTURE = SLGuiTextures.GUI_ATLAS;
 
-    private static final int SIDE_PANEL_X = SLGuiTextures.Background.WIDTH + 2;
+    private static final int SIDE_PANEL_X = SLGuiTextures.Background.WIDTH;
     private static final int BAR_W = 70, BAR_X = 11, BAR_Y = 13;
     private static final int LIST_OFFSET_X = 6;
     private static final int LIST_OFFSET_Y = 32;
@@ -134,13 +134,13 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     private void renderTypeScrollBar(GuiGraphics g, int x, int y, int mx, int my, int maxScroll) {
         if (maxScroll <= 0) return;
 
-        boolean showActive = mx >= x && mx <= x + SLGuiTextures.Scrollbar.ENABLED_WIDTH &&
+        boolean showActive = mx >= x && mx <= x + SLGuiTextures.Scrollbar.WIDTH &&
             my >= y && my <= y + SLGuiTextures.Scrollbar.TRACK_HEIGHT || this.isScrollingTypes;
-        int knobY = (int) (typeScrollOffset / maxScroll * (SLGuiTextures.Scrollbar.TRACK_HEIGHT - SLGuiTextures.Scrollbar.ENABLED_HEIGHT));
+        int knobY = (int) (typeScrollOffset / maxScroll * (SLGuiTextures.Scrollbar.TRACK_HEIGHT - SLGuiTextures.Scrollbar.HEIGHT));
         g.blit(SLGuiTextures.GUI_ATLAS, x, y + knobY,
             showActive ? SLGuiTextures.Scrollbar.ENABLED_U : SLGuiTextures.Scrollbar.DISABLED_U,
-            SLGuiTextures.Scrollbar.ENABLED_V,
-            SLGuiTextures.Scrollbar.ENABLED_WIDTH, SLGuiTextures.Scrollbar.ENABLED_HEIGHT,
+            SLGuiTextures.Scrollbar.DISABLED_V,
+            SLGuiTextures.Scrollbar.WIDTH, SLGuiTextures.Scrollbar.HEIGHT,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
     }
 
@@ -151,7 +151,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
             int maxScroll = Math.max(0, getTypeList().size() * this.itemHeight - LIST_HEIGHT);
             int scrollX = sx + SCROLLBAR_X;
             int scrollY = topPos + SCROLLBAR_Y;
-            if (mx >= scrollX && mx <= scrollX + SLGuiTextures.Scrollbar.ENABLED_WIDTH &&
+            if (mx >= scrollX && mx <= scrollX + SLGuiTextures.Scrollbar.WIDTH &&
                 my >= scrollY && my <= scrollY + SLGuiTextures.Scrollbar.TRACK_HEIGHT) {
                 if (maxScroll > 0) {
                     this.isScrollingTypes = true;
@@ -244,16 +244,6 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     }
 
     protected abstract void renderCustomContent(GuiGraphics graphics, int mouseX, int mouseY);
-
-    protected void drawStat(GuiGraphics g, Component label, String value, int x, int y, int labelColor, int valueColor) {
-        g.drawString(this.font, label, x, y, labelColor, false);
-        int labelWidth = this.font.width(label);
-        g.drawString(this.font, value, x + labelWidth + 4, y, valueColor, false);
-    }
-
-    protected boolean isMouseOver(double mx, double my, int x, int y, int w, int h) {
-        return mx >= leftPos + x && mx < leftPos + x + w && my >= topPos + y && my < topPos + y + h;
-    }
 
     protected void playClickSound() {
         com.coobird.staticlogistics.util.SoundUtil.playClickSound();

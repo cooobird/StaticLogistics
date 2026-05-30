@@ -4,10 +4,9 @@ import com.coobird.staticlogistics.Staticlogistics;
 import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.gui.screen.ContainerConfiguratorScreen;
-import com.coobird.staticlogistics.gui.screen.FaceConfiguratorScreen;
 import com.coobird.staticlogistics.gui.screen.FilterConfiguratorScreen;
 import com.coobird.staticlogistics.gui.screen.HandFilterScreen;
+import com.coobird.staticlogistics.gui.screen.NodeConfiguratorScreen;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
@@ -149,8 +148,7 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void registerMenuScreens(RegisterMenuScreensEvent event) {
-        event.register(SLMenuTypes.FACE_CONFIGURATOR_MENU.get(), FaceConfiguratorScreen::new);
-        event.register(SLMenuTypes.CONTAINER_CONFIGURATOR_MENU.get(), ContainerConfiguratorScreen::new);
+        event.register(SLMenuTypes.NODE_CONFIGURATOR_MENU.get(), NodeConfiguratorScreen::new);
         event.register(SLMenuTypes.FILTER_CONFIG.get(), FilterConfiguratorScreen::new);
         event.register(SLMenuTypes.HAND_FILTER.get(), HandFilterScreen::new);
     }

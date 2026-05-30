@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
  */
 public class GroupPanel {
 
-    public static final int SIDE_PANEL_X = SLGuiTextures.Background.WIDTH + 2;
+    public static final int SIDE_PANEL_X = SLGuiTextures.Background.WIDTH;
     public static final int BAR_W = 39, BAR_X = 11, BAR_Y = 13;
     public static final int LIST_OFFSET_X = 10, LIST_OFFSET_Y = 32;
     public static final int SCROLLBAR_X = 87, SCROLLBAR_Y = 25;
@@ -135,26 +135,26 @@ public class GroupPanel {
                 || itemY > listY + SLGuiTextures.List.HEIGHT) continue;
 
             boolean isSelected = Objects.equals(currentGroupId, gn);
-            boolean isHovered = mx >= sx + 10 && mx <= sx + 10 + SELECTION_WIDTH
+            boolean isHovered = mx >= sx + 8 && mx <= sx + 8 + SELECTION_WIDTH
                 && my >= itemY && my < itemY + SLGuiTextures.List.ITEM_H;
             if (isHovered) this.hoveredGroupId = gn;
 
             if (isSelected) {
-                g.fill(sx + 10, itemY, sx + 10 + SELECTION_WIDTH,
+                g.fill(sx + 8, itemY, sx + 8 + SELECTION_WIDTH,
                     itemY + SLGuiTextures.List.ITEM_H, 0x4498FB98);
             } else if (isHovered) {
-                g.fill(sx + 10, itemY, sx + 10 + SELECTION_WIDTH,
+                g.fill(sx + 8, itemY, sx + 8 + SELECTION_WIDTH,
                     itemY + SLGuiTextures.List.ITEM_H, 0x22FFFFFF);
             }
 
             if (Objects.equals(editingGroupId, gn)) {
-                renameBox.setX(sx + 12);
+                renameBox.setX(sx + 8);
                 renameBox.setY(itemY + 1);
                 renameBox.setVisible(true);
             } else {
                 String display = "#" + gn;
                 int color = isSelected ? 0x98FB98 : 0xCCCCCC;
-                int textX = sx + 12;
+                int textX = sx + 8;
 
                 // 渲染所有者头像
                 UUID ownerUUID = ClientLinkData.INSTANCE.getOwnerUUIDForGroup(gn);
@@ -173,7 +173,7 @@ public class GroupPanel {
                     g.renderFakeItem(headStack, 0, 0);
                     g.pose().popPose();
                     textX += headSize + 3;
-                    if (mx >= sx + 12 && mx < sx + 12 + headSize
+                    if (mx >= sx + 8 && mx < sx + 8 + headSize
                         && my >= itemY + 1 && my < itemY + 1 + headSize) {
                         this.hoveredGroupId = gn;
                     }
@@ -186,16 +186,16 @@ public class GroupPanel {
 
     private void renderScrollBar(GuiGraphics g, int x, int y, int mx, int my, int maxScroll) {
         boolean showActive = maxScroll > 0
-            && ((mx >= x && mx <= x + SLGuiTextures.Scrollbar.ENABLED_WIDTH
+            && ((mx >= x && mx <= x + SLGuiTextures.Scrollbar.WIDTH
             && my >= y && my <= y + SLGuiTextures.Scrollbar.TRACK_HEIGHT) || this.isScrolling);
         int knobY = maxScroll > 0
             ? (int) (scrollOffset / maxScroll * (SLGuiTextures.Scrollbar.TRACK_HEIGHT
-            - SLGuiTextures.Scrollbar.ENABLED_HEIGHT))
+            - SLGuiTextures.Scrollbar.HEIGHT))
             : 0;
         g.blit(SLGuiTextures.GUI_ATLAS, x, y + knobY,
             showActive ? SLGuiTextures.Scrollbar.ENABLED_U : SLGuiTextures.Scrollbar.DISABLED_U,
             SLGuiTextures.Scrollbar.ENABLED_V,
-            SLGuiTextures.Scrollbar.ENABLED_WIDTH, SLGuiTextures.Scrollbar.ENABLED_HEIGHT,
+            SLGuiTextures.Scrollbar.WIDTH, SLGuiTextures.Scrollbar.HEIGHT,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
     }
 
@@ -233,7 +233,7 @@ public class GroupPanel {
 
     public void startRename(String groupId, int leftPos, int topPos) {
         int sx = leftPos + SIDE_PANEL_X;
-        this.renameBox.setX(sx + 10);
+        this.renameBox.setX(sx + 8);
         this.renameBox.setY(topPos + 25);
         this.editingGroupId = groupId;
         this.renameBox.setValue(groupId);
@@ -265,7 +265,7 @@ public class GroupPanel {
         int sx = leftPos + SIDE_PANEL_X;
         List<String> groups = getFilteredGroups(stack);
         int listY = topPos + LIST_OFFSET_Y;
-        if (!(mx >= sx + 10 && mx <= sx + 10 + SELECTION_WIDTH
+        if (!(mx >= sx + 8 && mx <= sx + 8 + SELECTION_WIDTH
             && my >= listY && my < listY + SLGuiTextures.List.HEIGHT))
             return null;
 
@@ -294,7 +294,7 @@ public class GroupPanel {
         int sx = leftPos + SIDE_PANEL_X;
         int scrollX = sx + SCROLLBAR_X;
         int scrollY = topPos + SCROLLBAR_Y;
-        if (mx >= scrollX && mx <= scrollX + SLGuiTextures.Scrollbar.ENABLED_WIDTH
+        if (mx >= scrollX && mx <= scrollX + SLGuiTextures.Scrollbar.WIDTH
             && my >= scrollY && my <= scrollY + SLGuiTextures.Scrollbar.TRACK_HEIGHT) {
             if (getMaxScroll() > 0) {
                 this.isScrolling = true;
@@ -342,8 +342,8 @@ public class GroupPanel {
     }
 
     private List<String> getFilteredGroups(ItemStack stack) {
-        int currentVersion = ClientLinkData.INSTANCE.getDataVersion();
-        if (currentVersion == lastSeenVersion && !cachedGroupList.isEmpty())
+        int version = ClientLinkData.INSTANCE.getDataVersion();
+        if (version == lastSeenVersion && !cachedGroupList.isEmpty())
             return cachedGroupList;
 
         Player p = Minecraft.getInstance().player;
@@ -381,7 +381,7 @@ public class GroupPanel {
                 return aNum ? -1 : (bNum ? 1 : a.compareToIgnoreCase(b));
             }).collect(Collectors.toList());
 
-        this.lastSeenVersion = currentVersion;
+        this.lastSeenVersion = version;
         return cachedGroupList;
     }
 

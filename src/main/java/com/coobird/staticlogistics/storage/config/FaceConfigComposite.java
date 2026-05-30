@@ -48,13 +48,35 @@ public class FaceConfigComposite {
         setupDirtyCallback();
     }
 
+    private boolean bulkEditing = false;
+
     private void setupDirtyCallback() {
         this.faceConfig.setOnDirty(c -> markDirty());
         this.linkConfig.setOnDirty(c -> markDirty());
         this.filterConfig.setOnDirty(c -> markDirty());
     }
 
+    public BulkEdit beginBulkEdit() {
+        this.bulkEditing = true;
+        return new BulkEdit(this);
+    }
+
+    private void endBulkEdit() {
+        this.bulkEditing = false;
+        version++;
+        targetsCacheVersion = -1;
+        if (onDirty != null) onDirty.accept(this);
+    }
+
+    public record BulkEdit(FaceConfigComposite owner) implements AutoCloseable {
+        @Override
+        public void close() {
+            owner.endBulkEdit();
+        }
+    }
+
     public void markDirty() {
+        if (bulkEditing) return;
         version++;
         targetsCacheVersion = -1;
         if (onDirty != null) onDirty.accept(this);
@@ -228,8 +250,10 @@ public class FaceConfigComposite {
     }
 
     public void setSelectedTypesMask(int mask) {
-        this.selectedTypesMask = mask;
-        markDirty();
+        if (this.selectedTypesMask != mask) {
+            this.selectedTypesMask = mask;
+            markDirty();
+        }
     }
 
     public boolean isTypeSelected(TransferType type) {

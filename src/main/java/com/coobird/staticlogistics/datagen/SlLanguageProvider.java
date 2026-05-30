@@ -74,9 +74,7 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.stat.range", "Range:", "范围:");
         add("gui.staticlogistics.stat.speed", "Speed:", "速度:");
         add("gui.staticlogistics.stat.stack", "Stack:", "堆叠:");
-        add("gui.staticlogistics.stat.interval", "Interval:", "间隔:");
-        add("gui.staticlogistics.unit.kelvin", "K", "开尔文");
-        add("gui.staticlogistics.stat.dimension", "Cross-D:", "跨维度:");
+        add("gui.staticlogistics.stat.dimension", "Cross-dimensional:", "跨维度:");
         add("gui.staticlogistics.infinite", "infinite", "无限");
         add("gui.staticlogistics.unit.meters", "m", "米");
         add("gui.staticlogistics.unit.ticks", "t", "t");
@@ -91,8 +89,6 @@ public class SlLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.blacklist_button", "Blacklist", "黑名单");
         add("gui.staticlogistics.whitelist_button", "Whitelist", "白名单");
         add("gui.staticlogistics.open_filter", "Configure Filter", "配置过滤器");
-        add("gui.staticlogistics.face_config", "Face", "面配置");
-        add("gui.staticlogistics.upgrade_config", "Container", "容器传输参数");
         add("gui.staticlogistics.clear_tags", "Clear the label for this line", "清除这一行的标签");
         add("gui.staticlogistics.tag_dropdown.help", "Scroll to select tags", "滚动选择标签");
         add("gui.staticlogistics.tag_dropdown.help2", "Click the tab to select it, and then tap the selected tab again to uncheck it.", "点击标签选中，再次点击已选中的标签即可取消选中。");

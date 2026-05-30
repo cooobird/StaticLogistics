@@ -294,40 +294,54 @@ public class BlueprintItem extends Item {
                 BlueprintData.FaceEntry fe = faceEntry.getValue();
                 FaceConfigComposite cfg = mgr.getOrCreateFaceConfig(absPos, rotatedFace);
 
-                CompoundTag ft = fe.faceConfig();
-                cfg.linkConfig.setInputChannel(ft.getInt("input_channel"));
-                cfg.linkConfig.setOutputChannel(ft.getInt("output_channel"));
-                String stratName = ft.getString("strategy");
-                if (!stratName.isEmpty()) {
-                    try {
-                        cfg.linkConfig.setStrategy(
-                            com.coobird.staticlogistics.api.type.DistributionStrategy.valueOf(stratName));
-                    } catch (Exception ignored) {
+                try (var ignored = cfg.beginBulkEdit()) {
+                    CompoundTag ft = fe.faceConfig();
+                    cfg.linkConfig.setInputChannel(ft.getInt("input_channel"));
+                    cfg.linkConfig.setOutputChannel(ft.getInt("output_channel"));
+                    String stratName = ft.getString("strategy");
+                    if (!stratName.isEmpty()) {
+                        try {
+                            cfg.linkConfig.setStrategy(
+                                com.coobird.staticlogistics.api.type.DistributionStrategy.valueOf(stratName));
+                        } catch (Exception ignored2) {
+                        }
                     }
-                }
-                String extName = ft.getString("extraction_mode");
-                if (!extName.isEmpty()) {
-                    try {
-                        cfg.linkConfig.setExtractionMode(
-                            com.coobird.staticlogistics.api.type.ExtractionMode.valueOf(extName));
-                    } catch (Exception ignored) {
+                    String extName = ft.getString("extraction_mode");
+                    if (!extName.isEmpty()) {
+                        try {
+                            cfg.linkConfig.setExtractionMode(
+                                com.coobird.staticlogistics.api.type.ExtractionMode.valueOf(extName));
+                        } catch (Exception ignored2) {
+                        }
                     }
-                }
-                cfg.linkConfig.setPriority(ft.getInt("priority"));
-                cfg.setGlobalInputEnabled(ft.getBoolean("global_input"));
-                cfg.setGlobalOutputEnabled(ft.getBoolean("global_output"));
-                cfg.setSelectedTypesMask(ft.getInt("selected_types_mask"));
+                    cfg.linkConfig.setPriority(ft.getInt("priority"));
+                    cfg.setGlobalInputEnabled(ft.getBoolean("global_input"));
+                    cfg.setGlobalOutputEnabled(ft.getBoolean("global_output"));
+                    cfg.setSelectedTypesMask(ft.getInt("selected_types_mask"));
 
-                if (!fe.filterUpgrades().isEmpty()) {
-                    cfg.filterConfig.getUpgrades().deserializeNBT(level.registryAccess(), fe.filterUpgrades());
+                    if (!fe.filterUpgrades().isEmpty()) {
+                        cfg.filterConfig.getUpgrades().deserializeNBT(level.registryAccess(), fe.filterUpgrades());
+                    }
+
+                    cfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
                 }
 
-                cfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
-                cfg.markDirty();
                 mgr.markFaceDirty(LinkManager.posToKey(absPos, rotatedFace));
                 mgr.refreshLocalCache(LinkManager.posToKey(absPos, rotatedFace), absPos, rotatedFace, cfg);
                 mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), rotatedFace));
                 count++;
+            }
+        }
+
+        for (BlueprintData.BlockEntry entry : data.blocks()) {
+            BlockPos absPos = rotateRelToAbs(entry.relativePos(), newAnchor, rotation);
+            for (Direction face : entry.faces().keySet()) {
+                Direction rotatedFace = rotateDirection(face, rotation);
+                FaceConfigComposite cfg = mgr.getFaceConfig(LinkManager.posToKey(absPos, rotatedFace));
+                if (cfg != null) {
+                    cfg.faceConfig.addGroupId(data.groupId());
+                    mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), rotatedFace));
+                }
             }
         }
 
@@ -363,22 +377,7 @@ public class BlueprintItem extends Item {
         mgr.markDirtyBatch(() -> {
         });
 
-        for (BlueprintData.BlockEntry entry : data.blocks()) {
-            BlockPos absPos = rotateRelToAbs(entry.relativePos(), newAnchor, rotation);
-            for (Direction face : entry.faces().keySet()) {
-                Direction rotatedFace = rotateDirection(face, rotation);
-                FaceConfigComposite cfg = mgr.getFaceConfig(LinkManager.posToKey(absPos, rotatedFace));
-                if (cfg != null) {
-                    cfg.faceConfig.addGroupId(data.groupId());
-                    cfg.markDirty();
-                    mgr.syncNodeToDimension(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), rotatedFace));
-                }
-            }
-        }
-
-        player.displayClientMessage(
-            Component.translatable("msg.staticlogistics.blueprint.pasted", count, newAnchor.toShortString())
-                .withStyle(ChatFormatting.GREEN), true);
+        player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.pasted", count, newAnchor.toShortString()).withStyle(ChatFormatting.GREEN), true);
         level.playSound(null, newAnchor, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.0f);
     }
 
