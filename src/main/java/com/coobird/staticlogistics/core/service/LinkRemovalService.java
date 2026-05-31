@@ -46,7 +46,7 @@ public class LinkRemovalService {
                 targetMgr.cleanUpFaceIfNeeded(target, targetCfg);
             }
         }
-        
+
         Set<LogisticsNode> sources = globalManager.getSourcesLinkedTo(selfNode);
         for (LogisticsNode source : sources) {
             ServerLevel sourceLevel = server.getLevel(source.gPos().dimension());

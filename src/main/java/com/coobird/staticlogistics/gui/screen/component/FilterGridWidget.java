@@ -22,6 +22,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -249,6 +250,7 @@ public class FilterGridWidget {
     /**
      * 处理网格区域鼠标点击，返回点击结果或 null
      */
+    @Nullable
     public static GridClickResult handleClick(int leftPos, int topPos, double mx, double my,
                                               int button, FilterSlotProvider provider,
                                               boolean tagMode, ItemStack carried) {

@@ -12,12 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class CooldownManager {
     private final Map<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new ConcurrentHashMap<>();
+    private final Map<ResourceKey<Level>, Integer> dimCleanCounters = new ConcurrentHashMap<>();
 
-    private int tickCounter = 0;
-
-    /**
-     * 设置冷却
-     */
     public void setCooldown(ResourceKey<Level> dimension, long key, int durationTicks, long currentTick) {
         long nextAllowedTick = currentTick + durationTicks;
         Long2LongMap map = dimensionCooldowns.computeIfAbsent(dimension, k -> {
@@ -28,9 +24,6 @@ public class CooldownManager {
         map.put(key, nextAllowedTick);
     }
 
-    /**
-     * 检查是否处于冷却中
-     */
     public boolean hasCooldown(ResourceKey<Level> dimension, long key, long currentTick) {
         Long2LongMap map = dimensionCooldowns.get(dimension);
         if (map == null) return false;
@@ -38,16 +31,13 @@ public class CooldownManager {
         return nextAllowed > currentTick;
     }
 
-    /**
-     * 每 tick 调用，执行清理策略
-     */
     public void tick(ResourceKey<Level> dimension, long currentTick) {
-        tickCounter++;
-        if (tickCounter >= LogisticsConstants.Performance.getFullCleanIntervalTicks()) {
-            tickCounter = 0;
-            for (ResourceKey<Level> dim : dimensionCooldowns.keySet()) {
-                cleanExpiredAll(dim, currentTick);
-            }
+        int counter = dimCleanCounters.getOrDefault(dimension, 0) + 1;
+        dimCleanCounters.put(dimension, counter);
+        int fullCleanInterval = LogisticsConstants.Performance.getFullCleanIntervalTicks();
+        if (counter >= fullCleanInterval) {
+            dimCleanCounters.put(dimension, 0);
+            cleanExpiredAll(dimension, currentTick);
         } else {
             Long2LongMap map = dimensionCooldowns.get(dimension);
             if (map != null && map.size() > LogisticsConstants.Performance.getBatchCleanThreshold()) {
@@ -59,10 +49,8 @@ public class CooldownManager {
     private void cleanExpiredAll(ResourceKey<Level> dimension, long currentTick) {
         Long2LongMap map = dimensionCooldowns.get(dimension);
         if (map == null) return;
-        map.values().removeIf(nextTick -> nextTick <= currentTick);
-        if (map.isEmpty()) {
-            dimensionCooldowns.remove(dimension);
-        }
+        map.long2LongEntrySet().removeIf(entry -> entry.getLongValue() <= currentTick);
+        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
     }
 
     private void cleanExpiredBatched(ResourceKey<Level> dimension, long currentTick) {
@@ -72,30 +60,24 @@ public class CooldownManager {
         int processed = 0;
         while (it.hasNext() && processed < LogisticsConstants.Performance.getBatchCleanSize()) {
             Long2LongMap.Entry entry = it.next();
-            if (entry.getLongValue() <= currentTick) {
-                it.remove();
-            }
+            if (entry.getLongValue() <= currentTick) it.remove();
             processed++;
         }
-        if (map.isEmpty()) {
-            dimensionCooldowns.remove(dimension);
-        }
-    }
-
-    /**
-     * 移除指定源节点的所有类型冷却（冷却键 = sourceKey << 8 | bitOffset）
-     */
-    public void removeAllForSourceKey(ResourceKey<Level> dimension, long sourceKey) {
-        Long2LongMap map = dimensionCooldowns.get(dimension);
-        if (map == null) return;
-        map.keySet().removeIf(cooldownKey -> (cooldownKey >> 8) == sourceKey);
         if (map.isEmpty()) dimensionCooldowns.remove(dimension);
     }
 
-    /**
-     * 清理整个维度的冷却数据（维度卸载时调用）
-     */
+    public void removeAllForSourceKey(ResourceKey<Level> dimension, long sourceKey) {
+        Long2LongMap map = dimensionCooldowns.get(dimension);
+        if (map == null) return;
+        var it = map.long2LongEntrySet().iterator();
+        while (it.hasNext()) {
+            if ((it.next().getLongKey() >> 8) == sourceKey) it.remove();
+        }
+        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
+    }
+
     public void clearForDimension(ResourceKey<Level> dimension) {
         dimensionCooldowns.remove(dimension);
+        dimCleanCounters.remove(dimension);
     }
 }

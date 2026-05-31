@@ -25,6 +25,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ResolvableProfile;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -260,6 +261,7 @@ public class GroupPanel {
      *
      * @return 点击结果：null=未命中，ClickResult=命中
      */
+    @Nullable
     public ClickResult handleListClick(double mx, double my, int button, int leftPos, int topPos,
                                        ItemStack stack, boolean shiftDown) {
         int sx = leftPos + SIDE_PANEL_X;

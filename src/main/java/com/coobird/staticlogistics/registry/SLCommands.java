@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
@@ -38,6 +39,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+
+import java.util.Map;
+import java.util.Set;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -89,6 +93,8 @@ public class SLCommands {
                     .executes(ctx -> showTopNodes(ctx, 10)))
                 .then(Commands.literal("reset")
                     .executes(SLCommands::resetStats)))
+            .then(Commands.literal("list")
+                .executes(SLCommands::listNodes))
         );
     }
 
@@ -436,4 +442,35 @@ public class SLCommands {
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.reset").withStyle(ChatFormatting.GREEN), true);
         return 1;
     }
+
+    private static int listNodes(CommandContext<CommandSourceStack> ctx) {
+        var source = ctx.getSource();
+        var server = source.getServer();
+        var manager = GlobalLogisticsManager.get(server);
+        Set<String> groups = manager.getActiveGroups();
+        if (groups.isEmpty()) {
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.no_groups")
+                .withStyle(ChatFormatting.RED), false);
+            return 0;
+        }
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.header")
+            .withStyle(ChatFormatting.GOLD), false);
+        for (String groupId : groups) {
+            Map<LogisticsNode, NodeRole> nodes = manager.getNodesInGroup(groupId);
+            if (nodes.isEmpty()) continue;
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.group_entry",
+                groupId, nodes.size()).withStyle(ChatFormatting.AQUA), false);
+            for (var entry : nodes.entrySet()) {
+                LogisticsNode node = entry.getKey();
+                NodeRole role = entry.getValue();
+                String posStr = String.format("%d %d %d",
+                    node.gPos().pos().getX(), node.gPos().pos().getY(), node.gPos().pos().getZ());
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.node_entry",
+                    posStr, node.face().getName(), role.name().toLowerCase())
+                    .withStyle(ChatFormatting.GRAY), false);
+            }
+        }
+        return 1;
+    }
+
 }

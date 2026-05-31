@@ -50,7 +50,9 @@ public class LogisticsTicker {
         ResourceKey<Level> dim = level.dimension();
         long currentTick = level.getGameTime();
 
-        int counter = dimensionCleanCounters.compute(dim, (k, v) -> (v == null) ? 1 : v + 1);
+        Integer c = dimensionCleanCounters.get(dim);
+        int counter = (c == null) ? 1 : c + 1;
+        dimensionCleanCounters.put(dim, counter);
         if (counter >= LogisticsConstants.Performance.getCleanIntervalTicks()) {
             cooldownManager.tick(dim, currentTick);
             dimensionCleanCounters.put(dim, 0);
@@ -61,7 +63,8 @@ public class LogisticsTicker {
         if (keys.length == 0) return;
 
         int totalBatches = (keys.length + LogisticsConstants.Performance.getTickerBatchSize() - 1) / LogisticsConstants.Performance.getTickerBatchSize();
-        int batchOffset = dimensionBatchOffsets.compute(dim, (k, v) -> (v == null) ? 0 : v);
+        Integer b = dimensionBatchOffsets.get(dim);
+        int batchOffset = (b == null) ? 0 : b;
 
         int startIdx = (batchOffset % totalBatches) * LogisticsConstants.Performance.getTickerBatchSize();
         int endIdx = Math.min(startIdx + LogisticsConstants.Performance.getTickerBatchSize(), keys.length);
@@ -75,10 +78,10 @@ public class LogisticsTicker {
             for (var type : TransferRegistries.getAllActive()) {
                 if (!config.isTypeSelected(type)) continue;
 
-                boolean isEnergy = type.capability() != null && type.capability() == net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK;
+                boolean needsCooldown = type.requiresCooldown();
                 long typeCooldownKey = (sourceKey << 8) | type.bitOffset();
-                if (!isEnergy && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
-                if (!isEnergy && config.getLinkedNodes().isEmpty()) continue;
+                if (needsCooldown && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
+                if (type.requiresValidLinks() && config.getLinkedNodes().isEmpty()) continue;
 
                 int limit = config.getTransferLimit(type);
                 TransferContext context = TransferContext.obtain(
@@ -92,7 +95,7 @@ public class LogisticsTicker {
                     context.recycle();
                 }
 
-                if (!isEnergy) {
+                if (needsCooldown) {
                     int baseInterval = SLConfig.getDefaultTickInterval();
                     int speedMult = config.sharedContainerConfig != null
                         ? config.sharedContainerConfig.getSpeedMultiplier() : 1;

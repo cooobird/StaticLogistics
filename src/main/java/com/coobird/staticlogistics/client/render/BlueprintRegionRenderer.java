@@ -23,6 +23,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 
 import java.util.HashSet;
@@ -194,6 +195,7 @@ public class BlueprintRegionRenderer {
         buf.endBatch(BP_BOX);
     }
 
+    @Nullable
     private static ItemStack getBlueprint(Minecraft mc) {
         if (mc.player == null) return null;
         ItemStack m = mc.player.getMainHandItem();

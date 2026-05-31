@@ -28,7 +28,7 @@ public abstract class AbstractLogisticsFilter implements ILogisticsFilter {
     protected abstract boolean testItem(ItemStack stack);
 
     protected boolean testFluid(FluidStack stack) {
-        return false;
+        return true;
     }
 
     @Override

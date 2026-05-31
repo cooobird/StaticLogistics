@@ -8,61 +8,31 @@ import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.server.level.ServerLevel;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
-/**
- * 传输上下文类，用于管理物流传输过程中的状态信息
- * 采用对象池模式复用对象实例，减少GC压力
- */
 public final class TransferContext {
-    // 最大递归深度限制，防止无限递归
     public static final int MAX_DEPTH = 3;
 
-    // 对象池，使用双端队列存储可复用的TransferContext实例
-    private static final Deque<TransferContext> POOL = new ArrayDeque<>();
-    private static final ReentrantLock POOL_LOCK = new ReentrantLock();
-    private static final int HARD_MAX_POOL_SIZE = 200;
+    private static final ConcurrentLinkedDeque<TransferContext> POOL = new ConcurrentLinkedDeque<>();
 
-    private ServerLevel level;                // 服务器世界实例
-    private LogisticsNode sourceNode;         // 源物流节点
-    private FaceConfigComposite sourceConfig; // 源面配置组合
-    private TransferType type;                // 传输类型
-    private int limit;                        // 传输数量限制
-    private boolean isPullMode;               // 是否为拉取模式
-    private long currentTick;                 // 当前游戏刻数
-    private int depth;                        // 当前递归深度
-    private LinkManager linkManager;          // 链接管理器
+    private ServerLevel level;
+    private LogisticsNode sourceNode;
+    private FaceConfigComposite sourceConfig;
+    private TransferType type;
+    private int limit;
+    private boolean isPullMode;
+    private long currentTick;
+    private int depth;
+    private LinkManager linkManager;
 
     private TransferContext() {
     }
 
-    /**
-     * 从对象池获取或创建新的传输上下文实例
-     *
-     * @param level        服务器世界实例
-     * @param sourceNode   源物流节点
-     * @param sourceConfig 源面配置组合
-     * @param type         传输类型
-     * @param limit        传输数量限制
-     * @param isPullMode   是否为拉取模式
-     * @param currentTick  当前游戏刻数
-     * @param linkManager  链接管理器
-     * @return 初始化后的传输上下文实例
-     */
     public static TransferContext obtain(ServerLevel level, LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
-                                         TransferType type, int limit, boolean isPullMode, long currentTick, LinkManager linkManager) {
-        POOL_LOCK.lock();
-        TransferContext ctx;
-        try {
-            ctx = POOL.poll();
-        } finally {
-            POOL_LOCK.unlock();
-        }
-        if (ctx == null) {
-            ctx = new TransferContext();
-        }
+                                         TransferType type, int limit, boolean isPullMode, long currentTick,
+                                         LinkManager linkManager) {
+        TransferContext ctx = POOL.poll();
+        if (ctx == null) ctx = new TransferContext();
         ctx.level = level;
         ctx.sourceNode = sourceNode;
         ctx.sourceConfig = sourceConfig;
@@ -70,15 +40,11 @@ public final class TransferContext {
         ctx.limit = limit;
         ctx.isPullMode = isPullMode;
         ctx.currentTick = currentTick;
-        ctx.depth = 0;  // 新实例深度初始化为0
+        ctx.depth = 0;
         ctx.linkManager = linkManager;
         return ctx;
     }
 
-    /**
-     * 回收当前上下文实例到对象池
-     * 如果对象池已满则丢弃该实例
-     */
     public void recycle() {
         this.level = null;
         this.sourceNode = null;
@@ -89,43 +55,21 @@ public final class TransferContext {
         this.currentTick = 0;
         this.depth = 0;
         this.linkManager = null;
-        POOL_LOCK.lock();
-        try {
-            if (POOL.size() < Math.min(LogisticsConstants.Performance.getTransferContextPoolSize(), HARD_MAX_POOL_SIZE)) {
-                POOL.offer(this);
-            }
-        } finally {
-            POOL_LOCK.unlock();
+        if (POOL.size() < Math.min(LogisticsConstants.Performance.getTransferContextPoolSize(), 200)) {
+            POOL.offer(this);
         }
     }
 
-    /**
-     * 创建深度加1的新上下文实例
-     * 用于递归调用时传递上下文
-     *
-     * @return 深度增加后的新上下文实例
-     */
     public TransferContext withIncrementedDepth() {
         TransferContext newCtx = obtain(level, sourceNode, sourceConfig, type, limit, isPullMode, currentTick, linkManager);
         newCtx.depth = this.depth + 1;
         return newCtx;
     }
 
-    /**
-     * 检查当前深度是否超过最大限制
-     *
-     * @return 如果深度超过MAX_DEPTH则返回true
-     */
     public boolean isDepthExceeded() {
         return depth >= MAX_DEPTH;
     }
 
-    /**
-     * 获取当前槽位游标
-     * 用于记录上次传输的槽位位置，实现轮询调度
-     *
-     * @return 槽位游标数组
-     */
     public int[] getSlotCursor() {
         return GlobalLogisticsManager.get(level.getServer()).getCursor(sourceNode.toKey(), type);
     }
@@ -166,11 +110,6 @@ public final class TransferContext {
         return linkManager;
     }
 
-    /**
-     * 设置当前深度
-     *
-     * @param depth 要设置的深度值
-     */
     public void setDepth(int depth) {
         this.depth = depth;
     }

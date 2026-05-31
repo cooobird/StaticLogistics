@@ -9,6 +9,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +60,7 @@ public class TransferTypeGrid {
         }
     }
 
+    @Nullable
     public static TransferType getHoveredType(double mx, double my, ItemStack stack,
                                               int leftPos, int topPos) {
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
@@ -88,6 +90,7 @@ public class TransferTypeGrid {
     /**
      * 处理类型按钮点击。返回被点击的 TransferType（已 toggle），未命中返回 null。
      */
+    @Nullable
     public static TransferType handleClick(double mx, double my, ItemStack stack,
                                            int leftPos, int topPos) {
         List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());

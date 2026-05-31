@@ -9,6 +9,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -142,6 +143,7 @@ public enum ClientLinkData {
         return positions;
     }
 
+    @Nullable
     public String getOwnerNameForGroup(String groupId) {
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {
@@ -161,7 +163,7 @@ public enum ClientLinkData {
         return "";
     }
 
-    @org.jetbrains.annotations.Nullable
+    @Nullable
     public UUID getOwnerUUIDForGroup(String groupId) {
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {

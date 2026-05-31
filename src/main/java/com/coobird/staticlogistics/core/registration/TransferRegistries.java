@@ -21,10 +21,6 @@ import java.util.Map;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-/**
- * 传输类型和处理器的注册中心。
- * 内置物品、流体、能量三种传输类型，也支持外部模组注册自定义类型。
- */
 public class TransferRegistries {
     private static final Map<ResourceLocation, TransferType> TYPES = new LinkedHashMap<>();
     private static final Map<ResourceLocation, ITransferHandler> HANDLERS = new LinkedHashMap<>();
@@ -41,7 +37,7 @@ public class TransferRegistries {
             SLConfig::getFluidStack, () -> new ItemStack(Items.WATER_BUCKET));
 
         ENERGY = registerInternal("energy", 0xFFFFFF00, 2, Capabilities.EnergyStorage.BLOCK,
-            SLConfig::getEnergyStack, () -> new ItemStack(Items.REDSTONE));
+            SLConfig::getEnergyStack, () -> new ItemStack(Items.REDSTONE), false, false);
 
         registerHandler(ITEM, ItemTransferHandler.INSTANCE);
         registerHandler(FLUID, FluidTransferHandler.INSTANCE);
@@ -51,35 +47,38 @@ public class TransferRegistries {
     private static TransferType registerInternal(String name, int color, int offset,
                                                  BlockCapability<?, Direction> cap,
                                                  IntSupplier sizeSupplier, Supplier<ItemStack> icon) {
+        return registerInternal(name, color, offset, cap, sizeSupplier, icon, true, true);
+    }
+
+    private static TransferType registerInternal(String name, int color, int offset,
+                                                 BlockCapability<?, Direction> cap,
+                                                 IntSupplier sizeSupplier, Supplier<ItemStack> icon,
+                                                 boolean requiresCooldown, boolean requiresValidLinks) {
         ResourceLocation id = Staticlogistics.asResource(name);
-        TransferType type = new TransferType(id, color, offset, "transfer_type.staticlogistics." + name, cap, sizeSupplier, icon);
+        TransferType type = new TransferType(id, color, offset, "transfer_type.staticlogistics." + name,
+            cap, sizeSupplier, icon, null, requiresCooldown, requiresValidLinks);
         TYPES.put(id, type);
         return type;
     }
 
-    // 根据 ID 获取传输类型
     @Nullable
     public static TransferType get(ResourceLocation id) {
         return TYPES.get(id);
     }
 
-    // 为已有传输类型注册处理器
     public static void registerHandler(TransferType type, ITransferHandler handler) {
         HANDLERS.put(type.id(), handler);
     }
 
-    // 外部模组注册自定义传输类型 + 处理器
     public static void registerExternal(TransferType type, ITransferHandler handler) {
         TYPES.put(type.id(), type);
         HANDLERS.put(type.id(), handler);
     }
 
-    // 获取所有已注册的传输类型
     public static Collection<TransferType> getAllActive() {
         return TYPES.values();
     }
 
-    // 获取某个传输类型对应的处理器
     @Nullable
     public static ITransferHandler getHandler(TransferType type) {
         return HANDLERS.get(type.id());

@@ -14,7 +14,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * 传输类型定义——物品、流体、能量等，每种类型有自己的图标、颜色、位标记等元数据
+ * 浼犺緭绫诲瀷瀹氫箟鈥斺€旂墿鍝併€佹祦浣撱€佽兘閲忕瓑锛屾瘡绉嶇被鍨嬫湁鑷繁鐨勫浘鏍囥€侀鑹层€佷綅鏍囪绛夊厓鏁版嵁
  */
 public record TransferType(
     ResourceLocation id,
@@ -24,22 +24,32 @@ public record TransferType(
     @Nullable BlockCapability<?, Direction> capability,
     IntSupplier baseStackSizeSupplier,
     Supplier<ItemStack> iconSupplier,
-    @Nullable BiPredicate<Level, BlockPos> customCapCheck
+    @Nullable BiPredicate<Level, BlockPos> customCapCheck,
+    boolean requiresCooldown,
+    boolean requiresValidLinks
 ) {
     public TransferType(ResourceLocation id, int color, int bitOffset, String translationKey,
                         @Nullable BlockCapability<?, Direction> capability, IntSupplier baseStackSizeSupplier) {
-        this(id, color, bitOffset, translationKey, capability, baseStackSizeSupplier, () -> new ItemStack(Items.PAPER), null);
+        this(id, color, bitOffset, translationKey, capability, baseStackSizeSupplier,
+            () -> new ItemStack(Items.PAPER), null, true, true);
     }
 
     public TransferType(ResourceLocation id, int color, int bitOffset, String translationKey,
                         @Nullable BlockCapability<?, Direction> capability, IntSupplier baseStackSizeSupplier,
                         Supplier<ItemStack> iconSupplier) {
-        this(id, color, bitOffset, translationKey, capability, baseStackSizeSupplier, iconSupplier, null);
+        this(id, color, bitOffset, translationKey, capability, baseStackSizeSupplier, iconSupplier, null, true, true);
     }
 
     public TransferType(ResourceLocation id, int color, int bitOffset, String translationKey,
                         @Nullable BlockCapability<?, Direction> capability, IntSupplier baseStackSizeSupplier,
                         Supplier<ItemStack> iconSupplier, @Nullable BiPredicate<Level, BlockPos> customCapCheck) {
+        this(id, color, bitOffset, translationKey, capability, baseStackSizeSupplier, iconSupplier, customCapCheck, true, true);
+    }
+
+    public TransferType(ResourceLocation id, int color, int bitOffset, String translationKey,
+                        @Nullable BlockCapability<?, Direction> capability, IntSupplier baseStackSizeSupplier,
+                        Supplier<ItemStack> iconSupplier, @Nullable BiPredicate<Level, BlockPos> customCapCheck,
+                        boolean requiresCooldown, boolean requiresValidLinks) {
         this.id = id;
         this.color = color;
         this.bitOffset = bitOffset;
@@ -48,6 +58,8 @@ public record TransferType(
         this.baseStackSizeSupplier = baseStackSizeSupplier;
         this.iconSupplier = iconSupplier;
         this.customCapCheck = customCapCheck;
+        this.requiresCooldown = requiresCooldown;
+        this.requiresValidLinks = requiresValidLinks;
     }
 
     public int getFlag() {
