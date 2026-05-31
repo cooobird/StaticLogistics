@@ -57,6 +57,8 @@ public class ConfigSerializer {
 
         UUID ownerUuid = nbt.hasUUID("owner") ? nbt.getUUID("owner") : null;
         String ownerName = nbt.contains("owner_name") ? nbt.getString("owner_name") : "Unknown";
+        if (nbt.contains("owner_profile"))
+            config.faceConfig.setOwnerProfileTag(nbt.getCompound("owner_profile"));
         if (ownerUuid != null) config.faceConfig.setOwner(ownerUuid, ownerName);
 
         config.linkConfig.setInputChannel(nbt.getInt("input_channel"));

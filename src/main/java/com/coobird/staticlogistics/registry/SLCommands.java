@@ -40,13 +40,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
-import java.util.Map;
-import java.util.Set;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -196,7 +190,7 @@ public class SLCommands {
             for (long key : manager.getAllConfigKeys()) {
                 FaceConfigComposite config = manager.getFaceConfig(key);
                 if (config != null && fromProfile.getId().equals(config.faceConfig.getOwner())) {
-                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName());
+                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName(), toPlayer.getGameProfile());
                     refreshNode(manager, key, config);
                     count++;
                 }
@@ -225,7 +219,7 @@ public class SLCommands {
             for (long key : manager.getAllConfigKeys()) {
                 FaceConfigComposite config = manager.getFaceConfig(key);
                 if (config != null && fromProfile.getId().equals(config.faceConfig.getOwner()) && groupId.equals(config.faceConfig.getGroupId())) {
-                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName());
+                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName(), toPlayer.getGameProfile());
                     refreshNode(manager, key, config);
                     count++;
                 }
@@ -466,7 +460,7 @@ public class SLCommands {
                 String posStr = String.format("%d %d %d",
                     node.gPos().pos().getX(), node.gPos().pos().getY(), node.gPos().pos().getZ());
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.node_entry",
-                    posStr, node.face().getName(), role.name().toLowerCase())
+                        posStr, node.face().getName(), role.name().toLowerCase())
                     .withStyle(ChatFormatting.GRAY), false);
             }
         }

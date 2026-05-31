@@ -323,7 +323,7 @@ public class BlueprintItem extends Item {
                         cfg.filterConfig.getUpgrades().deserializeNBT(level.registryAccess(), fe.filterUpgrades());
                     }
 
-                    cfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
+                    cfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName(), player.getGameProfile());
                 }
 
                 mgr.markFaceDirty(LinkManager.posToKey(absPos, rotatedFace));

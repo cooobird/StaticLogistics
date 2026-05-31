@@ -18,10 +18,25 @@ public class PlayerEvents {
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer sp) {
+            refreshPlayerProfile(sp);
             syncAllDimensionsToPlayer(sp);
             if (startupValidationDone.compareAndSet(false, true)) {
                 for (ServerLevel level : sp.server.getAllLevels()) {
                     LinkManager.get(level).markOrphanScanNeeded();
+                }
+            }
+        }
+    }
+
+    private static void refreshPlayerProfile(ServerPlayer player) {
+        var profile = player.getGameProfile();
+        var uuid = player.getUUID();
+        for (ServerLevel level : player.server.getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            for (long key : mgr.getAllConfigKeys()) {
+                var cfg = mgr.getFaceConfig(key);
+                if (cfg != null && uuid.equals(cfg.faceConfig.getOwner())) {
+                    cfg.faceConfig.setOwner(uuid, profile.getName(), profile);
                 }
             }
         }

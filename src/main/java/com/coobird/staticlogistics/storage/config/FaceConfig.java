@@ -1,6 +1,9 @@
 package com.coobird.staticlogistics.storage.config;
 
+import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -8,17 +11,15 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * 面容基础配置 —— 记录分组ID集合（支持多组）、所有者信息、坐标。
- * <p>
- * 只有 groupIds 一份真相，不再有独立的 groupId 字段。
- * getGroupId() 返回第一个组ID以保持向后兼容。
+ * 面配置类，用于管理物流系统中某个面的配置信息
+ * 包括所属组、所有者信息、位置等
  */
 public class FaceConfig {
     private final Set<String> groupIds = new LinkedHashSet<>();
     private UUID owner = null;
     private String ownerName = "Unknown";
+    private CompoundTag ownerProfileTag = new CompoundTag();
     private BlockPos pos = BlockPos.ZERO;
-
     private Consumer<FaceConfig> onDirty = (c) -> {
     };
 
@@ -37,42 +38,24 @@ public class FaceConfig {
         this.pos = pos;
     }
 
-    /**
-     * 返回第一个组ID，空集合时返回 ""。
-     * 向后兼容旧代码：旧逻辑只认单组，这里永远返回排第一的那个。
-     */
     public String getGroupId() {
         return groupIds.isEmpty() ? "" : groupIds.iterator().next();
     }
 
-    /**
-     * 所有组ID
-     */
     public Set<String> getGroupIds() {
         return new LinkedHashSet<>(groupIds);
     }
 
-    /**
-     * 设组：清空已有组然后只保留这一个。
-     * 适合重命名、从多组改回单组等场景。
-     */
     public void setGroupId(String groupId) {
         groupIds.clear();
         if (groupId != null && !groupId.isEmpty()) groupIds.add(groupId);
         markDirty();
     }
 
-    /**
-     * 添加一个组，已存在则忽略
-     */
     public void addGroupId(String gid) {
-        if (gid == null || gid.isEmpty()) return;
-        if (groupIds.add(gid)) markDirty();
+        if (gid != null && !gid.isEmpty() && groupIds.add(gid)) markDirty();
     }
 
-    /**
-     * 移除一个组
-     */
     public void removeGroupId(String gid) {
         if (gid != null && groupIds.remove(gid)) markDirty();
     }
@@ -86,13 +69,53 @@ public class FaceConfig {
     }
 
     public void setOwner(UUID owner, String ownerName) {
+        setOwner(owner, ownerName, null);
+    }
+
+    public void setOwner(UUID owner, String ownerName, @Nullable GameProfile profile) {
         this.owner = owner;
         this.ownerName = ownerName != null ? ownerName : "Unknown";
+        this.ownerProfileTag = new CompoundTag();
+        if (profile != null) {
+            ownerProfileTag.putUUID("Id", profile.getId());
+            ownerProfileTag.putString("Name", profile.getName());
+            CompoundTag props = new CompoundTag();
+            profile.getProperties().forEach((key, prop) -> {
+                CompoundTag pt = new CompoundTag();
+                pt.putString("Value", prop.value());
+                if (prop.signature() != null) pt.putString("Signature", prop.signature());
+                props.put(key, pt);
+            });
+            if (!props.isEmpty()) ownerProfileTag.put("Properties", props);
+        }
         markDirty();
     }
 
     public UUID getOwner() {
         return owner;
+    }
+
+    @Nullable
+    public GameProfile getOwnerProfile() {
+        if (ownerProfileTag.isEmpty()) return null;
+        UUID id = ownerProfileTag.hasUUID("Id") ? ownerProfileTag.getUUID("Id") : owner;
+        String name = ownerProfileTag.getString("Name");
+        GameProfile profile = new GameProfile(id, name.isEmpty() ? ownerName : name);
+        CompoundTag props = ownerProfileTag.getCompound("Properties");
+        props.getAllKeys().forEach(key -> {
+            CompoundTag pt = props.getCompound(key);
+            profile.getProperties().put(key,
+                new com.mojang.authlib.properties.Property(key, pt.getString("Value"), pt.contains("Signature") ? pt.getString("Signature") : null));
+        });
+        return profile;
+    }
+
+    public CompoundTag getOwnerProfileTag() {
+        return ownerProfileTag;
+    }
+
+    public void setOwnerProfileTag(CompoundTag tag) {
+        this.ownerProfileTag = tag != null ? tag : new CompoundTag();
     }
 
     public String getOwnerName() {

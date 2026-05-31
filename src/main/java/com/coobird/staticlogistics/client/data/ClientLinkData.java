@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
@@ -22,6 +23,7 @@ public enum ClientLinkData {
     private final Map<Long, Integer> configVersions = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> knownGroupIds = new ConcurrentHashMap<>();
     private final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
+    private final Map<UUID, CompoundTag> knownOwnerProfiles = new ConcurrentHashMap<>();
     private int dataVersion = 0;
 
     public int getDataVersion() {
@@ -67,6 +69,8 @@ public enum ClientLinkData {
         if (owner != null && config.faceConfig.hasGroup()) {
             for (String gid : config.faceConfig.getGroupIds()) {
                 addKnownGroup(owner, config.faceConfig.getOwnerName(), gid);
+                if (!config.faceConfig.getOwnerProfileTag().isEmpty())
+                    knownOwnerProfiles.put(owner, config.faceConfig.getOwnerProfileTag());
             }
         }
     }
@@ -85,6 +89,7 @@ public enum ClientLinkData {
         configVersions.clear();
         knownGroupIds.clear();
         knownOwnerNames.clear();
+        knownOwnerProfiles.clear();
         dataVersion++;
     }
 
@@ -144,6 +149,11 @@ public enum ClientLinkData {
     }
 
     @Nullable
+    public CompoundTag getOwnerProfileForGroup(String groupId) {
+        UUID uuid = getOwnerUUIDForGroup(groupId);
+        return uuid != null ? knownOwnerProfiles.get(uuid) : null;
+    }
+
     public String getOwnerNameForGroup(String groupId) {
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {
