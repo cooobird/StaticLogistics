@@ -17,14 +17,61 @@ import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
+/**
+ * 传输工具类 —— 核心传输管线 + 按维度缓存的 capability 查询
+ * <p>
+ * 缓存机制：
+ * <ul>
+ *   <li>每个 IItemHandler / IFluidHandler / IEnergyStorage 实例的生命周期
+ *       等于其 BlockEntity 的生命周期</li>
+ *   <li>用 WeakReference 持有缓存引用 —— BlockEntity 被 GC 时缓存自动清除</li>
+ *   <li>按维度分桶 —— 维度卸载时整桶清空</li>
+ * </ul>
+ */
 public class TransferUtils {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    // 能力获取抽象，让非 Forge Capability 体系也能走标准管线
+    private static final Map<Level, Map<Long, WeakReference<Object>>> CAP_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * 获取缓存的 capability，缓存未命中时查询一次并缓存。
+     */
+    @SuppressWarnings("unchecked")
+    private static <C> C getCachedCapability(ServerLevel level, BlockPos pos, Direction face,
+                                             BlockCapability<C, Direction> cap) {
+        Map<Long, WeakReference<Object>> dimCache = CAP_CACHE.computeIfAbsent(level, k -> new ConcurrentHashMap<>());
+        long key = (pos.asLong() << 4) | face.ordinal();
+
+        WeakReference<Object> ref = dimCache.get(key);
+        if (ref != null) {
+            Object cached = ref.get();
+            if (cached != null) return (C) cached;
+            // BlockEntity 已被 GC → 清理过期条目
+            dimCache.remove(key);
+        }
+
+        // Cache miss → 真实查询
+        C fresh = level.getCapability(cap, pos, face);
+        if (fresh != null) {
+            dimCache.put(key, new WeakReference<>((Object) fresh));
+        }
+        return fresh;
+    }
+
+    /**
+     * 维度卸载时调用 —— 清空该维度的全部缓存
+     */
+    public static void clearDimCache(Level level) {
+        CAP_CACHE.remove(level);
+    }
+
     @FunctionalInterface
     public interface CapGetter<C> {
         @Nullable C get(ServerLevel level, BlockPos pos, Direction face);
@@ -37,7 +84,7 @@ public class TransferUtils {
         TransferContext context
     ) {
         return doTransferNodes(localLevel, localPos, localFace, destinations,
-            (level, pos, face) -> level.getCapability(cap, pos, face),
+            (level, pos, face) -> getCachedCapability(level, pos, face, cap),
             limit, protocol, isPullMode, context);
     }
 

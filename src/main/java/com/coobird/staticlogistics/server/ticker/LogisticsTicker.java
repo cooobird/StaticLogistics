@@ -10,6 +10,7 @@ import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.transfer.cooldown.CooldownManager;
 import com.coobird.staticlogistics.transfer.handler.TransferExecutor;
+import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.resources.ResourceKey;
@@ -43,6 +44,7 @@ public class LogisticsTicker {
         if (event.getLevel() instanceof ServerLevel level) {
             cooldownManager.clearForDimension(level.dimension());
             dimensionCleanCounters.remove(level.dimension());
+            TransferUtils.clearDimCache(level);
         }
     }
 
