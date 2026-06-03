@@ -1,13 +1,8 @@
 package com.coobird.staticlogistics.config;
 
 import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.filter.MatchStrategy;
-import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistry;
 import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPacket;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.StringTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -18,10 +13,6 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 @EventBusSubscriber(modid = Staticlogistics.MODID)
@@ -63,9 +54,6 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue NETHERITE_MULTIPLIER;
     // 下界之星升级的倍率
     public static ModConfigSpec.IntValue NETHER_STAR_MULTIPLIER;
-
-    // 数据组件匹配策略覆盖列表（格式："命名空间:组件ID=策略"）
-    public static ModConfigSpec.ConfigValue<List<? extends String>> COMPONENT_STRATEGY_OVERRIDES;
 
     // 是否在物流节点被拆除时自动清理玩家物品中存储的节点引用
     public static ModConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
@@ -230,37 +218,6 @@ public final class SLConfig {
             .defineInRange("nether_star_multiplier", netherStarMultCache, 1, 10_000);
         builder.pop();
 
-        builder.push("filter");
-        COMPONENT_STRATEGY_OVERRIDES = builder
-            .comment(
-                "Default: Empty",
-                "Override partial match strategy for specific data components.",
-                "Format: \"namespace:component_id=STRATEGY\" (e.g., \"minecraft:damage=IGNORE\").",
-                "Valid strategies: EXACT, CONTAINS, SMART_CONTAINS, IGNORE.",
-                "These entries override the built-in defaults.",
-                "Note: minecraft:damage is IGNORE by default."
-            )
-            .translation("config.staticlogistics.filter.component_strategy_overrides")
-            .defineListAllowEmpty(
-                "component_strategy_overrides",
-                ArrayList::new,
-                () -> "",
-                entry -> {
-                    if (entry instanceof String s) {
-                        String[] parts = s.split("=", 2);
-                        if (parts.length == 2) {
-                            try {
-                                MatchStrategy.valueOf(parts[1].toUpperCase());
-                                return true;
-                            } catch (IllegalArgumentException ignored) {
-                            }
-                        }
-                    }
-                    return false;
-                }
-            );
-        builder.pop();
-
         CONFIG_SPEC = builder.build();
         container.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "staticlogistics.toml");
     }
@@ -293,23 +250,8 @@ public final class SLConfig {
             netherStarMultCache = NETHER_STAR_MULTIPLIER.get();
 
             autoCleanStoredNodes = AUTO_CLEAN_STORED_NODES.get();
-            loadComponentStrategyOverrides();
             loadPerformanceConfig();
         }
-    }
-
-    private static void loadComponentStrategyOverrides() {
-        List<? extends String> list = COMPONENT_STRATEGY_OVERRIDES.get();
-        if (list == null || list.isEmpty()) return;
-
-        Map<String, String> map = new HashMap<>();
-        for (String entry : list) {
-            String[] parts = entry.split("=", 2);
-            if (parts.length == 2) {
-                map.put(parts[0], parts[1].toUpperCase());
-            }
-        }
-        ComponentMatchStrategyRegistry.loadConfigOverrides(map);
     }
 
     private static void loadPerformanceConfig() {
@@ -455,12 +397,6 @@ public final class SLConfig {
         tag.putInt("batchCleanThreshold", perfBatchCleanThreshold);
         tag.putInt("batchCleanSize", perfBatchCleanSize);
         tag.putInt("contextPoolSize", perfContextPoolSize);
-        // filter overrides
-        ListTag list = new ListTag();
-        for (String entry : COMPONENT_STRATEGY_OVERRIDES.get()) {
-            list.add(StringTag.valueOf(entry));
-        }
-        tag.put("componentStrategyOverrides", list);
         return tag;
     }
 
@@ -494,13 +430,5 @@ public final class SLConfig {
         perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");
         perfBatchCleanSize = tag.getInt("batchCleanSize");
         perfContextPoolSize = tag.getInt("contextPoolSize");
-        ListTag list = tag.getList("componentStrategyOverrides", Tag.TAG_STRING);
-        Map<String, String> map = new HashMap<>();
-        for (Tag t : list) {
-            String entry = t.getAsString();
-            String[] parts = entry.split("=", 2);
-            if (parts.length == 2) map.put(parts[0], parts[1].toUpperCase());
-        }
-        ComponentMatchStrategyRegistry.loadConfigOverrides(map);
     }
 }

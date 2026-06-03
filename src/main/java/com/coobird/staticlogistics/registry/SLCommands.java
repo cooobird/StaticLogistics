@@ -2,10 +2,8 @@ package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.api.filter.MatchStrategy;
 import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.core.service.GroupService;
-import com.coobird.staticlogistics.filter.registry.ComponentMatchStrategyRegistry;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.ContainerConfig;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
@@ -13,10 +11,8 @@ import com.coobird.staticlogistics.transfer.TransferLogManager;
 import com.coobird.staticlogistics.transfer.TransferLogManager.NodeStats;
 import com.coobird.staticlogistics.transfer.TransferLogManager.TransferEntry;
 import com.coobird.staticlogistics.transfer.TransferLogManager.TypeStats;
-import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -32,7 +28,6 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -75,10 +70,6 @@ public class SLCommands {
             .then(Commands.literal("cleanup")
                 .then(Commands.argument("owner", GameProfileArgument.gameProfile())
                     .executes(SLCommands::cleanupNodes)))
-            .then(Commands.literal("strategies")
-                .executes(ctx -> listStrategies(ctx, 1))
-                .then(Commands.argument("page", IntegerArgumentType.integer(1))
-                    .executes(ctx -> listStrategies(ctx, IntegerArgumentType.getInteger(ctx, "page")))))
             .then(Commands.literal("stats")
                 .executes(SLCommands::showStatsOverview)
                 .then(Commands.literal("recent")
@@ -300,47 +291,6 @@ public class SLCommands {
     private static int queryInfoWithPos(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         BlockPos pos = BlockPosArgument.getLoadedBlockPos(context, "pos");
         return handleInfo(context.getSource(), pos);
-    }
-
-    /**
-     * /sl strategies [page]：分页列出所有注册的匹配策略
-     */
-    private static int listStrategies(CommandContext<CommandSourceStack> ctx, int page) {
-        Map<ResourceLocation, MatchStrategy> all = ComponentMatchStrategyRegistry.getAllStrategies();
-        int totalPages = (all.size() + LogisticsConstants.UI.STRATEGIES_PER_PAGE - 1) / LogisticsConstants.UI.STRATEGIES_PER_PAGE;
-
-        if (page < 1) page = 1;
-        if (page > totalPages) page = totalPages;
-        final int currentPage = page;
-
-        CommandSourceStack source = ctx.getSource();
-        source.sendSuccess(() -> Component.translatable(
-            "commands.staticlogistics.strategies.header", currentPage, totalPages
-        ).withStyle(ChatFormatting.GOLD), false);
-
-        int start = (currentPage - 1) * LogisticsConstants.UI.STRATEGIES_PER_PAGE;
-        int end = Math.min(start + LogisticsConstants.UI.STRATEGIES_PER_PAGE, all.size());
-        int i = 0;
-        for (var entry : all.entrySet()) {
-            if (i >= start && i < end) {
-                ResourceLocation id = entry.getKey();
-                MatchStrategy strategy = entry.getValue();
-                source.sendSuccess(() -> Component.translatable(
-                    "commands.staticlogistics.strategies.line",
-                    id.toString(),
-                    Component.translatable("match_strategy.staticlogistics." + strategy.name().toLowerCase())
-                ).withStyle(ChatFormatting.GRAY), false);
-            }
-            i++;
-        }
-
-        if (currentPage < totalPages) {
-            source.sendSuccess(() -> Component.translatable(
-                "commands.staticlogistics.strategies.next_page", currentPage + 1
-            ).withStyle(ChatFormatting.AQUA), false);
-        }
-
-        return 1;
     }
 
     /**

@@ -187,10 +187,5 @@ public final class LogisticsConstants {
          * 两次点击的时间间隔小于此值时，判定为双击
          */
         public static final long DOUBLE_CLICK_THRESHOLD_MS = 250L;
-
-        /**
-         * 每页显示的策略数量
-         */
-        public static final int STRATEGIES_PER_PAGE = 8;
     }
 }
