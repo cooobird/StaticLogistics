@@ -221,7 +221,7 @@ public class BlueprintItem extends Item {
         CompoundTag faceTag = new CompoundTag();
         faceTag.putInt("input_channel", cfg.linkConfig.getInputChannel());
         faceTag.putInt("output_channel", cfg.linkConfig.getOutputChannel());
-        faceTag.putString("strategy", cfg.linkConfig.getStrategy().name());
+        faceTag.putString("strategy", cfg.linkConfig.getStrategy().getId().toString());
         faceTag.putString("extraction_mode", cfg.linkConfig.getExtractionMode().name());
         faceTag.putInt("priority", cfg.linkConfig.getPriority());
         faceTag.putBoolean("global_input", cfg.isGlobalInputEnabled());
@@ -300,11 +300,8 @@ public class BlueprintItem extends Item {
                     cfg.linkConfig.setOutputChannel(ft.getInt("output_channel"));
                     String stratName = ft.getString("strategy");
                     if (!stratName.isEmpty()) {
-                        try {
-                            cfg.linkConfig.setStrategy(
-                                com.coobird.staticlogistics.api.type.DistributionStrategy.valueOf(stratName));
-                        } catch (Exception ignored2) {
-                        }
+                        cfg.linkConfig.setStrategy(
+                            com.coobird.staticlogistics.api.type.DistributionStrategy.byName(stratName));
                     }
                     String extName = ft.getString("extraction_mode");
                     if (!extName.isEmpty()) {

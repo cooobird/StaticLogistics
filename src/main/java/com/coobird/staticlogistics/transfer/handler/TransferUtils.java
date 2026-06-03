@@ -53,14 +53,12 @@ public class TransferUtils {
         if (ref != null) {
             Object cached = ref.get();
             if (cached != null) return (C) cached;
-            // BlockEntity 已被 GC → 清理过期条目
             dimCache.remove(key);
         }
 
-        // Cache miss → 真实查询
         C fresh = level.getCapability(cap, pos, face);
         if (fresh != null) {
-            dimCache.put(key, new WeakReference<>((Object) fresh));
+            dimCache.put(key, new WeakReference<>(fresh));
         }
         return fresh;
     }

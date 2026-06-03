@@ -7,7 +7,6 @@ import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.context.TransferContext;
-import com.coobird.staticlogistics.transfer.strategy.distribute.GroupSorter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
@@ -77,7 +76,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
             priorityGroups.computeIfAbsent(p, k -> new ArrayList<>()).add(node);
         }
 
-        GroupSorter sorter = GroupSorter.forStrategy(strategy);
+        var sorter = strategy.getSorter();
         List<LogisticsNode> sorted = new ArrayList<>(allTargets.size());
         for (List<LogisticsNode> group : priorityGroups.values()) {
             if (group.size() <= 1) {

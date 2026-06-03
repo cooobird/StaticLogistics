@@ -151,8 +151,8 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
 
     public DistributionStrategy getStrategy() {
         int idx = strategySlot.get();
-        var vals = DistributionStrategy.values();
-        return idx >= 0 && idx < vals.length ? vals[idx] : DistributionStrategy.SEQUENTIAL;
+        var vals = DistributionStrategy.getValues();
+        return idx >= 0 && idx < vals.size() ? vals.get(idx) : DistributionStrategy.SEQUENTIAL;
     }
 
     public ExtractionMode getExtractionMode() {
@@ -278,7 +278,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
         globalOutputSlot.set(faceConfig.isGlobalOutputEnabled() ? 1 : 0);
         inputChannelSlot.set(faceConfig.linkConfig.getInputChannel());
         outputChannelSlot.set(faceConfig.linkConfig.getOutputChannel());
-        strategySlot.set(faceConfig.linkConfig.getStrategy().ordinal());
+        strategySlot.set(DistributionStrategy.getValues().indexOf(faceConfig.linkConfig.getStrategy()));
         extractionModeSlot.set(faceConfig.linkConfig.getExtractionMode().ordinal());
         prioritySlot.set(faceConfig.linkConfig.getPriority());
         keepStockSlot.set(faceConfig.linkConfig.getKeepStock());
@@ -370,8 +370,8 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     yield false;
                 }
                 case "strategy" -> {
-                    DistributionStrategy v = DistributionStrategy.byName(tag.getString(key), DistributionStrategy.SEQUENTIAL);
-                    if (v != getStrategy()) {
+                    DistributionStrategy v = DistributionStrategy.byName(tag.getString(key));
+                    if (!v.equals(getStrategy())) {
                         setStrategy(v);
                         yield true;
                     }

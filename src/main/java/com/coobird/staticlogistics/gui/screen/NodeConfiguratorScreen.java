@@ -402,9 +402,11 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         }
         if (menu.isGlobalOutputEnabled()) {
             if (NodeConfigControls.hitCycleBtn(mx, my, lx + STRATEGY_X, ty + STRATEGY_Y, menu.getStrategy().getDisplayName(), font)) {
-                DistributionStrategy[] vs = DistributionStrategy.values();
-                int n = button == 1 ? (menu.getStrategy().ordinal() - 1 + vs.length) % vs.length : (menu.getStrategy().ordinal() + 1) % vs.length;
-                send("strategy", vs[n].getSerializedName());
+                var vs = DistributionStrategy.getValues();
+                int curIdx = vs.indexOf(menu.getStrategy());
+                if (curIdx < 0) curIdx = 0;
+                int n = button == 1 ? (curIdx - 1 + vs.size()) % vs.size() : (curIdx + 1) % vs.size();
+                send("strategy", vs.get(n).getSerializedName());
                 playClickSound();
                 return true;
             }

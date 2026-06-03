@@ -513,15 +513,16 @@ public class SlLanguageProvider extends LanguageProvider {
         add("transfer_type.staticlogistics.botania_mana", "Mana", "魔力");
         add("transfer_type.staticlogistics.botania_mana.desc", "Transport Mana", "传输魔力。");
 
-        for (DistributionStrategy strategy : DistributionStrategy.values()) {
-            String zh = switch (strategy) {
-                case SEQUENTIAL -> "顺序优先";
-                case ROUND_ROBIN -> "轮询分发";
-                case NEAREST -> "最近优先";
-                case FURTHEST -> "最远优先";
-                case RANDOM -> "随机分发";
+        for (DistributionStrategy strategy : DistributionStrategy.getValues()) {
+            String zh = switch (strategy.getId().getPath()) {
+                case "sequential" -> "顺序优先";
+                case "round_robin" -> "轮询分发";
+                case "nearest" -> "最近优先";
+                case "furthest" -> "最远优先";
+                case "random" -> "随机分发";
+                default -> toTitleCase(strategy.getId().getPath());
             };
-            add(strategy.getDescriptionId(), toTitleCase(strategy.getSerializedName()), zh);
+            add(strategy.getDescriptionId(), toTitleCase(strategy.getId().getPath()), zh);
         }
 
         for (ExtractionMode mode : ExtractionMode.values()) {

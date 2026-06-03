@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.config.serializer;
 
-import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
 import com.mojang.logging.LogUtils;
@@ -28,7 +27,7 @@ public class ConfigSerializer {
 
         nbt.putInt("input_channel", config.linkConfig.getInputChannel());
         nbt.putInt("output_channel", config.linkConfig.getOutputChannel());
-        nbt.putString("strategy", config.linkConfig.getStrategy().name());
+        nbt.putString("strategy", config.linkConfig.getStrategy().getId().toString());
         nbt.putString("extraction_mode", config.linkConfig.getExtractionMode().name());
         nbt.putInt("priority", config.linkConfig.getPriority());
         nbt.putInt("keep_stock", config.linkConfig.getKeepStock());
@@ -67,13 +66,16 @@ public class ConfigSerializer {
             String stratName = nbt.getString("strategy");
             // 迁移旧 SLOT_ROUND_ROBIN → ROUND_ROBIN
             if ("SLOT_ROUND_ROBIN".equals(stratName)) {
-                config.linkConfig.setStrategy(DistributionStrategy.ROUND_ROBIN);
+                config.linkConfig.setStrategy(
+                    com.coobird.staticlogistics.api.type.DistributionStrategy.ROUND_ROBIN);
                 config.linkConfig.setExtractionMode(ExtractionMode.SLOT_ROUND_ROBIN);
             } else {
-                config.linkConfig.setStrategy(DistributionStrategy.valueOf(stratName));
+                config.linkConfig.setStrategy(
+                    com.coobird.staticlogistics.api.type.DistributionStrategy.byName(stratName));
             }
         } catch (Exception e) {
-            config.linkConfig.setStrategy(DistributionStrategy.SEQUENTIAL);
+            config.linkConfig.setStrategy(
+                com.coobird.staticlogistics.api.type.DistributionStrategy.SEQUENTIAL);
         }
         if (nbt.contains("extraction_mode")) {
             try {
