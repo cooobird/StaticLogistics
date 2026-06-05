@@ -46,11 +46,9 @@ public class SLLanguageProvider extends LanguageProvider {
         addCreativeTab(SLCreativeTabs.TAB_STATIC_LOGISTICS, "Static Logistics", "静态物流");
 
         add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置器");
-        add("gui.staticlogistics.new_group", "+ New Group", "＋ 新建分组");
         add("gui.staticlogistics.search_hint", "Search...", "搜索分组...");
         add("gui.staticlogistics.add_group", "Add Group", "添加分组");
         add("gui.staticlogistics.search_types", "Search...", "搜索类型");
-        add("gui.staticlogistics.search_for_values_by_type", "Search...", "按类型搜索值");
         add("gui.staticlogistics.tooltip.toggle_type", "Click to enable/disable types", "点击以启用/禁用类型");
         add("gui.staticlogistics.tooltip.group_id", "Group #%s", "分组 #%s");
         add("gui.staticlogistics.tooltip.shift_export", "Shift + Click to export coordinates", "Shift + 点击导出坐标");
@@ -115,37 +113,22 @@ public class SLLanguageProvider extends LanguageProvider {
 
         add("msg.staticlogistics.export.header", "--- Coordinates for Group #%s ---", "--- 分组 #%s 的坐标列表 ---");
         add("msg.staticlogistics.export.tp_hover", "Click to suggest teleport command", "点击以补全传送指令");
-        add("msg.staticlogistics.group_display", "Group Id: %s", "分组 ID：%s");
-        add("msg.staticlogistics.target_count", "Targets: %s", "目的地：%s");
         add("msg.staticlogistics.owner_display", "Owner: %s", "所有者：%s");
         add("msg.staticlogistics.node_added", "Node recorded. Total: %s", "节点已记录，当前共计：%s");
         add("msg.staticlogistics.no_capability", "This block has no logistics capability.", "此方块无物流能力。");
         add("msg.staticlogistics.node_removed", "Node unrecorded. Remaining: %s", "节点记录已移除，剩余：%s");
         add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
-        add("msg.staticlogistics.batch_linked", "Successfully linked %s nodes!", "成功建立了 %s 条链路！");
         add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
-        add("msg.staticlogistics.point_mode_single", "Point mode: Single", "选点模式：单选");
-        add("msg.staticlogistics.point_mode_multi", "Point mode: Multi", "选点模式：多选");
-        add("tooltip.staticlogistics.point_mode", "Point Mode: %s", "选点模式：%s");
         add("msg.staticlogistics.no_nodes_stored", "No nodes are stored in the configurator!", "配置器中未存储任何节点！");
-        add("msg.staticlogistics.link_failed", "Failed to create links. Check connection rules.", "建立连接失败。请检查连接规则。");
-        add("msg.staticlogistics.links_created", "Created %s new link(s)", "建立了 %s 条新链路");
-        add("msg.staticlogistics.links_merged", "Merged %s link(s) with %s", "合并了 %s 条链路的 %s 传输");
         add("msg.staticlogistics.out_of_range", "Out of Range", "超出范围");
         add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
         add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
-        add("msg.staticlogistics.links_removed", "Successfully removed %s logistics links", "已成功移除 %s 条物流链接");
-        add("msg.staticlogistics.no_links_found", "No links found or access denied", "未发现可操作的链路或访问被拒绝");
-        add("msg.staticlogistics.links_cleaned_at", "Cleared all authorized links at %s", "已清除位置 %s 处所有你有权管理的链路");
         add("msg.staticlogistics.no_links_on_face", "No removable links found on face: %s", "在 %s 面上未发现属于你或你团队的链路");
         add("msg.staticlogistics.no_permission", "Access Denied: Insufficient permissions.", "访问拒绝：权限不足。");
         add("msg.staticlogistics.no_permission_to_remove", "Cannot remove: You must be the owner or a Team Officer.", "无法移除：你必须是所有者 or 具备团队管理员权限。");
-        add("msg.staticlogistics.links_removed_partial", "Cleaned %s links; %s others were skipped (Protected).", "清理了 %s 条链路；另有 %s 条受保护无法移除。");
-        add("msg.staticlogistics.no_types_selected", "No transfer type selected. Cannot create link.", "§c未选择任何传输类型，无法建立链接");
         add("msg.staticlogistics.self_link_error", "Cannot link a node to itself.", "无法将节点连接到自身。");
         add("msg.staticlogistics.group_removed_from_face", "Removed group %s from this face.", "已从该面移除组 %s。");
         add("msg.staticlogistics.select_group_to_remove", "Select a group first to remove.", "请先选取组再移除。");
-        add("msg.staticlogistics.links_removed_smart", "Links removed successfully.", "链接已成功移除。");
         add("msg.staticlogistics.no_dimension_upgrade", "No dimension upgrade installed!", "未安装跨维度升级！");
         add("msg.staticlogistics.unknown_owner", "Unknown", "未知");
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
@@ -171,6 +154,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.blueprint.clear", "Shift+Right-click air: clear all", "Shift+右键空气：清空全部");
         add("tooltip.staticlogistics.blueprint.open_ui", "Right-click to open UI and select group to copy", "右键打开UI选定你想复制的组ID");
         add("tooltip.staticlogistics.blueprint.scroll", "%s+Scroll: move / %s+Scroll: rotate / %s+Scroll: Y-axis", "%s+滚轮：平移 / %s+滚轮：旋转 / %s+滚轮：升降");
+        add("tooltip.staticlogistics.blueprint.undo", "Press Ctrl + %s to undo last paste", "按 Ctrl + %s 撤销上次粘贴");
         add("msg.staticlogistics.blueprint.missing_upgrades", "Missing %s upgrade(s) — check your inventory.", "缺少 %s 张升级卡 — 请检查背包。");
         add("msg.staticlogistics.blueprint.preview_enter", "Preview at %s — right-click to confirm, scroll to adjust.", "预览贴在 %s — 右键确认粘贴，滚轮调整位置。");
         add("msg.staticlogistics.blueprint.preview_moved", "Preview moved to %s.", "预览已移至 %s。");
@@ -204,9 +188,8 @@ public class SLLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.blueprint_preview_move", "Blueprint Preview Move", "蓝图预览移动");
         add("key.staticlogistics.blueprint_preview_rotate", "Blueprint Preview Rotate", "蓝图预览旋转");
         add("key.staticlogistics.blueprint_preview_move_y", "Blueprint Preview Move Y", "蓝图预览升降");
-        add("key.staticlogistics.toggle_multi_select", "Toggle Point Mode", "切换选点模式");
         add("key.staticlogistics.clear_stored_nodes", "Clear Stored Nodes", "清除已存储节点");
-        add("key.staticlogistics.blueprint_undo", "Undo Blueprint Paste (Ctrl+Z)", "撤销蓝图粘贴 (Ctrl+Z)");
+        add("key.staticlogistics.blueprint_undo", "Undo Blueprint Paste", "撤销蓝图粘贴");
 
         add("jade.staticlogistics.title", "Static Logistics", "静态物流");
         add("jade.staticlogistics.input", "[Input]", "[输入]");

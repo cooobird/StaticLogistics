@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.gui.screen.component.*;
+import com.coobird.staticlogistics.network.c2s.C2SCreateEmptyGroupPayload;
 import com.coobird.staticlogistics.network.c2s.C2SDeleteGroupPayload;
 import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
@@ -132,8 +133,10 @@ public class LinkConfiguratorScreen extends Screen {
                 case DELETE -> {
                     PacketDistributor.sendToServer(new C2SDeleteGroupPayload(listResult.getGroupId()));
                     var player = Minecraft.getInstance().player;
-                    if (player != null)
+                    if (player != null) {
                         com.coobird.staticlogistics.client.data.ClientLinkData.INSTANCE.removeKnownGroup(player.getUUID(), listResult.getGroupId());
+                        com.coobird.staticlogistics.client.data.ClientLinkData.INSTANCE.removeServerEmptyGroup(player.getUUID(), listResult.getGroupId());
+                    }
                     syncSettings("", true);
                 }
             }
@@ -199,6 +202,7 @@ public class LinkConfiguratorScreen extends Screen {
         var player = Minecraft.getInstance().player;
         if (player != null) {
             ClientLinkData.INSTANCE.addKnownGroup(player.getUUID(), player.getGameProfile().getName(), name);
+            PacketDistributor.sendToServer(new C2SCreateEmptyGroupPayload(name));
         }
         this.setFocused(null);
     }

@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * 链接级联删除服务——删除一个节点的同时清除所有指向它和它指向的链接。
@@ -70,11 +71,30 @@ public class LinkRemovalService {
 
     /**
      * 检查面配置是否完全无用（无组 或 无链接），如果是则发送 removal 包并删除。
+     * 保留属于玩家空分组（playerEmptyGroups）的配置。
      */
     private void cleanupOrRemove(LinkManager mgr, LogisticsNode node, FaceConfigComposite cfg) {
-        if (!cfg.faceConfig.hasGroup() || cfg.getLinkedNodes().isEmpty()) {
+        if (!cfg.faceConfig.hasGroup()) {
+            // 无分组，直接删除
             mgr.syncRemovalToDimension(node.gPos().pos(), node.face());
             mgr.removeFaceConfig(node.toKey());
+        } else if (cfg.getLinkedNodes().isEmpty()) {
+            // 链接为空，检查是否属于玩家手动创建的空分组
+            UUID owner = cfg.faceConfig.getOwner();
+            boolean belongsToPreservedGroup = false;
+            if (owner != null) {
+                Set<String> preservedGroups = globalManager.getGroups(owner);
+                for (String gid : cfg.faceConfig.getGroupIds()) {
+                    if (preservedGroups.contains(gid)) {
+                        belongsToPreservedGroup = true;
+                        break;
+                    }
+                }
+            }
+            if (!belongsToPreservedGroup) {
+                mgr.syncRemovalToDimension(node.gPos().pos(), node.face());
+                mgr.removeFaceConfig(node.toKey());
+            }
         }
     }
 }

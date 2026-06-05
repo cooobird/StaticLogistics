@@ -12,7 +12,6 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -35,7 +34,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     private final GroupMemberService groupMemberService;
     private final TransferCursorService cursorService;
     private final GroupSyncScheduler syncScheduler;
-    private final Map<UUID, Integer> playerNextGroupCounter = new ConcurrentHashMap<>();
 
     /**
      * 反向链接索引：target 的 nodeKey → 所有指向它的 source nodeKey 集合。
@@ -299,50 +297,17 @@ public class GlobalLogisticsManager implements ILogisticsManager {
 
     // 为玩家自动分配下一个未使用的数字组 ID（单调递增，不复用）
     public synchronized String getNextGroupIdForPlayer(UUID playerId) {
-        Set<Integer> used = getNumericGroupIdsForPlayer(playerId);
-
-        // 没有任何数字组 → 重置计数器，从1开始
-        if (used.isEmpty()) {
-            playerNextGroupCounter.put(playerId, 1);
-            return "1";
-        }
-
-        // 有已有组 → 从记录的最大值往上找，不回落复用
-        int counter = Math.max(
-            playerNextGroupCounter.getOrDefault(playerId, 0),
-            used.stream().max(Integer::compareTo).orElse(0));
-        int next = counter + 1;
-        while (used.contains(next)) {
-            next++;
-        }
-        playerNextGroupCounter.put(playerId, next);
-        return Integer.toString(next);
-    }
-
-    private Set<Integer> getNumericGroupIdsForPlayer(UUID playerId) {
-        Set<Integer> ids = new HashSet<>();
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager mgr = LinkManager.get(level);
-            for (long key : mgr.getAllConfigKeys()) {
-                FaceConfigComposite cfg = mgr.getFaceConfig(key);
-                if (cfg != null && playerId.equals(cfg.faceConfig.getOwner())) {
-                    for (String gid : cfg.faceConfig.getGroupIds()) {
-                        if (gid != null && gid.matches("\\d+")) {
-                            ids.add(Integer.parseInt(gid));
-                        }
-                    }
-                }
-            }
-        }
-        return ids;
+        return PlayerGroupStore.get(server).getNextGroupIdForPlayer(playerId);
     }
 
     /**
      * 根源清理：遍历所有维度的玩家面配置，移除已无活跃节点的组ID（空组清零）。
      * 调用时机：删除链路/组操作后。
+     * 注意：保留玩家手动创建的空分组（playerGroups 中的分组）。
      */
     public void cleanupOrphanedGroupIds(@Nullable UUID playerId) {
         if (playerId == null) return;
+        Set<String> playerAllGroups = getGroups(playerId);
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
             List<Long> toRemove = new ArrayList<>();
@@ -351,9 +316,9 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                 if (cfg == null) continue;
                 UUID owner = cfg.faceConfig.getOwner();
                 if (!playerId.equals(owner)) continue;
-                // 移除无节点的组 ID
+                // 移除无节点的组 ID（但保留玩家手动创建的空分组）
                 for (String gid : new java.util.ArrayList<>(cfg.faceConfig.getGroupIds())) {
-                    if (nodeGroupService.getNodesInGroup(gid).isEmpty()) {
+                    if (nodeGroupService.getNodesInGroup(gid).isEmpty() && !playerAllGroups.contains(gid)) {
                         cfg.faceConfig.removeGroupId(gid);
                         cfg.markDirty();
                         mgr.markFaceDirty(key);
@@ -373,14 +338,21 @@ public class GlobalLogisticsManager implements ILogisticsManager {
 
     /**
      * 删除指定分组及其所有关联节点。
+     * 统一处理空分组和有内容的分组。
      */
-    public void removeGroup(String groupId) {
+    public void removeGroup(UUID playerId, String groupId) {
         if (groupId == null || groupId.isEmpty()) return;
+
+        // 1. 从 PlayerGroupStore 移除（触发持久化）
+        PlayerGroupStore.get(server).removeGroup(playerId, groupId);
+
+        // 2. 从 nodeGroupService 注销所有节点
         Map<LogisticsNode, NodeRole> nodes = nodeGroupService.getNodesInGroup(groupId);
         for (LogisticsNode node : new ArrayList<>(nodes.keySet())) {
             nodeGroupService.unregister(node);
         }
-        // 清理面配置中的组引用
+
+        // 3. 清理面配置中的组引用（只移除组ID，不删除FaceConfig）
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
             for (long key : mgr.getAllConfigKeys()) {
@@ -392,6 +364,9 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                 }
             }
         }
+
+        // 4. 清理无组的面配置（通过cleanupOrphanedGroupIds统一处理）
+        cleanupOrphanedGroupIds(playerId);
         markReverseLinksStale();
     }
 
@@ -418,20 +393,17 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     public record FaceEntry(GlobalPos pos, Direction face) {
     }
 
-    // 持久化保存计数器到 NBT
-    public void save(CompoundTag tag) {
-        CompoundTag counterTag = new CompoundTag();
-        playerNextGroupCounter.forEach((uuid, counter) -> counterTag.putInt(uuid.toString(), counter));
-        tag.put("player_group_counter", counterTag);
+    /**
+     * 添加分组（玩家创建的分组，不管有没有链接）
+     */
+    public void addGroup(UUID playerId, String groupId) {
+        PlayerGroupStore.get(server).addGroup(playerId, groupId);
     }
 
-    // 从 NBT 恢复计数器数据
-    public void load(CompoundTag tag) {
-        if (tag.contains("player_group_counter")) {
-            CompoundTag counterTag = tag.getCompound("player_group_counter");
-            for (String key : counterTag.getAllKeys()) {
-                playerNextGroupCounter.put(UUID.fromString(key), counterTag.getInt(key));
-            }
-        }
+    /**
+     * 获取玩家的所有分组
+     */
+    public Set<String> getGroups(UUID playerId) {
+        return PlayerGroupStore.get(server).getGroups(playerId);
     }
 }

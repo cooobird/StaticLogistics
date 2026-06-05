@@ -8,10 +8,7 @@ import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logic.ToolMode;
 import com.coobird.staticlogistics.network.c2s.*;
-import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
-import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPayload;
-import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPayload;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
+import com.coobird.staticlogistics.network.s2c.*;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
 import net.minecraft.ChatFormatting;
@@ -66,6 +63,7 @@ public class ServerEvents {
         registrar.playToClient(S2CSyncBulkFaceConfigPayload.TYPE, S2CSyncBulkFaceConfigPayload.STREAM_CODEC, S2CSyncBulkFaceConfigPayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
         registrar.playToClient(S2CRemoveBulkFaceConfigPayload.TYPE, S2CRemoveBulkFaceConfigPayload.STREAM_CODEC, S2CRemoveBulkFaceConfigPayload::handle);
+        registrar.playToClient(S2CSyncEmptyGroupsPayload.TYPE, S2CSyncEmptyGroupsPayload.STREAM_CODEC, S2CSyncEmptyGroupsPayload::handle);
 
         registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
@@ -79,6 +77,7 @@ public class ServerEvents {
         registrar.playToServer(C2SClearStoredNodesPayload.TYPE, C2SClearStoredNodesPayload.STREAM_CODEC, C2SClearStoredNodesPayload::handle);
         registrar.playToServer(C2SDeleteGroupPayload.TYPE, C2SDeleteGroupPayload.STREAM_CODEC, C2SDeleteGroupPayload::handle);
         registrar.playToServer(C2SBlueprintUndoPayload.TYPE, C2SBlueprintUndoPayload.STREAM_CODEC, C2SBlueprintUndoPayload::handle);
+        registrar.playToServer(C2SCreateEmptyGroupPayload.TYPE, C2SCreateEmptyGroupPayload.STREAM_CODEC, C2SCreateEmptyGroupPayload::handle);
     }
 
     @SubscribeEvent

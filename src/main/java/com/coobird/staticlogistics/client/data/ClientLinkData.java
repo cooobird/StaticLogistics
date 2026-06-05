@@ -23,6 +23,7 @@ public enum ClientLinkData {
     private final Map<UUID, Set<String>> knownGroupIds = new ConcurrentHashMap<>();
     private final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
     private final Map<UUID, CompoundTag> knownOwnerProfiles = new ConcurrentHashMap<>();
+    private final Map<UUID, Set<String>> serverEmptyGroups = new ConcurrentHashMap<>();
     private int dataVersion = 0;
 
     public int getDataVersion() {
@@ -107,6 +108,19 @@ public enum ClientLinkData {
         knownGroupIds.clear();
         knownOwnerNames.clear();
         knownOwnerProfiles.clear();
+        serverEmptyGroups.clear();
+        dataVersion++;
+    }
+
+    /**
+     * 从服务端同步空分组数据
+     */
+    public void setEmptyGroups(UUID playerId, Set<String> emptyGroups) {
+        if (emptyGroups.isEmpty()) {
+            serverEmptyGroups.remove(playerId);
+        } else {
+            serverEmptyGroups.put(playerId, new HashSet<>(emptyGroups));
+        }
         dataVersion++;
     }
 
@@ -138,6 +152,11 @@ public enum ClientLinkData {
             Set<String> known = knownGroupIds.get(owner);
             if (known != null) groups.addAll(known);
         }
+        // 补充服务端同步的空分组（持久化的）
+        for (UUID owner : owners) {
+            Set<String> empty = serverEmptyGroups.get(owner);
+            if (empty != null) groups.addAll(empty);
+        }
         return new ArrayList<>(groups);
     }
 
@@ -168,6 +187,18 @@ public enum ClientLinkData {
         if (groupId == null || groupId.isEmpty()) return;
         Set<String> set = knownGroupIds.get(owner);
         if (set != null && set.remove(groupId)) dataVersion++;
+    }
+
+    /**
+     * 从服务端同步的空分组中移除指定分组
+     */
+    public void removeServerEmptyGroup(UUID owner, String groupId) {
+        if (groupId == null || groupId.isEmpty()) return;
+        Set<String> set = serverEmptyGroups.get(owner);
+        if (set != null && set.remove(groupId)) {
+            if (set.isEmpty()) serverEmptyGroups.remove(owner);
+            dataVersion++;
+        }
     }
 
     public List<BlockPos> getPositionsForGroup(String groupId) {
@@ -218,6 +249,10 @@ public enum ClientLinkData {
             }
         }
         for (var entry : knownGroupIds.entrySet()) {
+            if (entry.getValue().contains(groupId)) return entry.getKey();
+        }
+        // 检查服务端同步的空分组
+        for (var entry : serverEmptyGroups.entrySet()) {
             if (entry.getValue().contains(groupId)) return entry.getKey();
         }
         return null;

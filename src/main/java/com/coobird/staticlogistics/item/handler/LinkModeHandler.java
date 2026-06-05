@@ -28,7 +28,7 @@ public class LinkModeHandler implements ModeHandler {
             if (settings.storedMode() != null && settings.storedMode() != settings.mode()) {
                 LinkOperationHelper.validateStoredNodes(stack, serverLevel);
                 String groupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
-                if (groupId.isEmpty() || groupId.matches("\\d+")) {
+                if (groupId.isEmpty()) {
                     groupId = LinkOperationHelper.DEFAULT_GROUP_NAME;
                 }
                 LinkOperationHelper.executeBatchLink(stack, groupId, settings, pos, face, serverLevel, player);

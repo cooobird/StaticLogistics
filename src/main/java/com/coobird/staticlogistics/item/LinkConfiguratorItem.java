@@ -90,8 +90,13 @@ public class LinkConfiguratorItem extends Item {
             }
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_info").withStyle(ChatFormatting.AQUA));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
-            Component.translatable("key.staticlogistics.clear_stored_nodes")).withStyle(ChatFormatting.GRAY));
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
+                com.coobird.staticlogistics.client.key.SLKeyMappings.CLEAR_STORED_NODES.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
+        } else {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
+                Component.literal("C")).withStyle(ChatFormatting.GRAY));
+        }
         super.appendHoverText(stack, context, tooltip, flag);
     }
 
@@ -135,6 +140,11 @@ public class LinkConfiguratorItem extends Item {
             LinkOperationHelper.validateStoredNodes(stack, serverLevel);
         }
         ToolSettings settings = getSettings(stack);
+
+        if (!player.isSecondaryUseActive()) {
+            if (level.isClientSide) openLinkerScreenClient(stack);
+            return InteractionResult.SUCCESS;
+        }
 
         ModeHandler handler = HANDLERS.get(settings.mode());
         if (handler == null) return InteractionResult.PASS;

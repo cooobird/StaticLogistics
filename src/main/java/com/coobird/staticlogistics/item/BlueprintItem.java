@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.item.blueprint.BlueprintData;
 import com.coobird.staticlogistics.item.blueprint.BlueprintUndoData;
 import com.coobird.staticlogistics.item.blueprint.BlueprintUndoManager;
@@ -598,11 +599,16 @@ public class BlueprintItem extends Item {
                 Component.literal(selectedGroup)).withStyle(ChatFormatting.AQUA));
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.use").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.scroll",
-            Component.translatable("key.staticlogistics.blueprint_preview_move"),
-            Component.translatable("key.staticlogistics.blueprint_preview_rotate"),
-            Component.translatable("key.staticlogistics.blueprint_preview_move_y")
-        ).withStyle(ChatFormatting.GRAY));
+        // 使用实际绑定的按键名称
+        if (FMLEnvironment.dist.isClient()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.scroll",
+                SLKeyMappings.BLUEPRINT_PREVIEW_MOVE.getTranslatedKeyMessage(),
+                SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE.getTranslatedKeyMessage(),
+                SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y.getTranslatedKeyMessage()
+            ).withStyle(ChatFormatting.GRAY));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.undo",
+                SLKeyMappings.BLUEPRINT_UNDO.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
+        }
         tooltip.add(Component.translatable("tooltip.staticlogistics.blueprint.clear").withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);
     }

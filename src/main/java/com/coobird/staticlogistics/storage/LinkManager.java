@@ -318,6 +318,12 @@ public class LinkManager {
 
     public void syncToPlayer(ServerPlayer player) {
         List<Map.Entry<Long, FaceConfigComposite>> nonDefault = new ArrayList<>();
+        for (long key : getAllConfigKeys()) {
+            FaceConfigComposite cfg = getFaceConfig(key);
+            if (cfg != null && !cfg.isDefault()) {
+                nonDefault.add(Map.entry(key, cfg));
+            }
+        }
         networkSyncManager.syncBulkToPlayer(player, nonDefault);
     }
 

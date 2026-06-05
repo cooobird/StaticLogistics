@@ -40,7 +40,8 @@ public record C2SDeleteGroupPayload(String groupId) implements CustomPacketPaylo
 
             var faceEntries = manager.collectGroupFaceConfigs(payload.groupId());
 
-            manager.removeGroup(payload.groupId());
+            // 统一删除分组（包括空分组和有内容的分组）
+            manager.removeGroup(player.getUUID(), payload.groupId());
 
             if (!faceEntries.isEmpty()) {
                 var s2cEntries = faceEntries.stream()

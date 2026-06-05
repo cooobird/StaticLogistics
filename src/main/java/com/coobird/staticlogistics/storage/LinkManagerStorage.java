@@ -91,10 +91,6 @@ public class LinkManagerStorage extends SavedData {
             }
         });
         cachedTag.put("container_configs", cConfigs);
-
-        CompoundTag globalTag = new CompoundTag();
-        GlobalLogisticsManager.get(level.getServer()).save(globalTag);
-        cachedTag.put("global_logistics", globalTag);
     }
 
     /**
@@ -135,11 +131,6 @@ public class LinkManagerStorage extends SavedData {
             }
             cachedTag.put("container_configs", cConfigs);
         }
-
-        // 全局管理器数据每次保存都更新（轻量）
-        CompoundTag globalTag = new CompoundTag();
-        GlobalLogisticsManager.get(level.getServer()).save(globalTag);
-        cachedTag.put("global_logistics", globalTag);
     }
 
     /**
@@ -193,9 +184,6 @@ public class LinkManagerStorage extends SavedData {
                     LOGGER.error("Failed to load container config for key: {}", keyStr, e);
                 }
             }
-        }
-        if (tag.contains("global_logistics")) {
-            GlobalLogisticsManager.get(level.getServer()).load(tag.getCompound("global_logistics"));
         }
 
         // 重新注册所有已加载的节点到 GlobalLogisticsManager（解决重进游戏后插件失效的问题）

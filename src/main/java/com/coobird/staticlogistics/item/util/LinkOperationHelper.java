@@ -209,7 +209,8 @@ public class LinkOperationHelper {
         currentCfg.addLinkedNode(stored);
         storedCfg.addLinkedNode(current);
 
-        GlobalLogisticsManager.get(level.getServer()).markReverseLinksStale();
+        GlobalLogisticsManager glm = GlobalLogisticsManager.get(level.getServer());
+        glm.markReverseLinksStale();
 
         if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
             currentCfg.setGlobalOutputEnabled(true);

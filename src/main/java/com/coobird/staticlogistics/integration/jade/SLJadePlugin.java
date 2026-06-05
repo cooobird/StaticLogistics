@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.integration.jade;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferLogManager;
@@ -14,6 +16,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -57,6 +60,25 @@ public class SLJadePlugin implements IWailaPlugin {
             if (!(level instanceof ServerLevel serverLevel)) return;
             BlockPos pos = be.getBlockPos();
 
+            // 获取玩家手持配置器的选中组
+            var player = accessor.getPlayer();
+            String selectedGroup = "";
+            if (player != null) {
+                ItemStack mainHand = player.getMainHandItem();
+                if (mainHand.getItem() instanceof LinkConfiguratorItem) {
+                    selectedGroup = mainHand.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+                }
+                if (selectedGroup.isEmpty()) {
+                    ItemStack offHand = player.getOffhandItem();
+                    if (offHand.getItem() instanceof LinkConfiguratorItem) {
+                        selectedGroup = offHand.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+                    }
+                }
+            }
+
+            // 没有选中组则不显示
+            if (selectedGroup.isEmpty()) return;
+
             LinkManager mgr = LinkManager.get(serverLevel);
             CompoundTag facesTag = new CompoundTag();
 
@@ -64,6 +86,8 @@ public class SLJadePlugin implements IWailaPlugin {
                 long key = LinkManager.posToKey(pos, face);
                 FaceConfigComposite cfg = mgr.getFaceConfig(key);
                 if (cfg == null || cfg.isDefault()) continue;
+                // 只显示属于选中组的面
+                if (!cfg.faceConfig.getGroupIds().contains(selectedGroup)) continue;
 
                 CompoundTag faceTag = new CompoundTag();
                 String groups = String.join(", ", cfg.faceConfig.getGroupIds());
@@ -151,106 +175,103 @@ public class SLJadePlugin implements IWailaPlugin {
             CompoundTag facesTag = tag.getCompound("sl_faces");
             if (facesTag.isEmpty()) return;
 
+            // 只显示玩家指向的那个面
+            Direction hitFace = accessor.getHitResult().getDirection();
+            CompoundTag faceTag = facesTag.getCompound(hitFace.getSerializedName());
+            if (faceTag == null || faceTag.isEmpty()) return;
+
+            String role = faceTag.getString("role");
+            String roleKey = switch (role) {
+                case "both" -> "jade.staticlogistics.both";
+                case "output" -> "jade.staticlogistics.output";
+                case "input" -> "jade.staticlogistics.input";
+                default -> null;
+            };
+            if (roleKey == null) return;
+
             ITooltip boxContent = IElementHelper.get().tooltip();
-            boxContent.add(Component.translatable("jade.staticlogistics.title").withStyle(ChatFormatting.GOLD));
 
-            for (String faceName : facesTag.getAllKeys()) {
-                CompoundTag faceTag = facesTag.getCompound(faceName);
-                Direction face = Direction.byName(faceName);
-                if (face == null) continue;
+            // 面名 + 角色 + 组
+            String groups = faceTag.getString("groups");
+            int linked = faceTag.getInt("linked");
+            String linkedStr = linked > 0
+                ? Component.translatable("jade.staticlogistics.linked", linked).getString()
+                : "";
+            MutableComponent line = Component.literal(hitFace.getSerializedName().toUpperCase() + " ")
+                .append(Component.translatable(roleKey));
+            if (!groups.isEmpty()) {
+                line.append(Component.literal(" ")
+                    .append(Component.translatable("jade.staticlogistics.group_label", groups)));
+            }
+            if (!linkedStr.isEmpty()) {
+                line.append(Component.literal(linkedStr));
+            }
+            boxContent.add(line);
 
-                String groups = faceTag.getString("groups");
-                String role = faceTag.getString("role");
-                int linked = faceTag.getInt("linked");
+            // 输入端信息
+            boolean hasIn = role.equals("input") || role.equals("both");
+            boolean hasOut = role.equals("output") || role.equals("both");
+            int inCh = faceTag.getInt("in_channel");
+            int outCh = faceTag.getInt("out_channel");
+            int priority = faceTag.getInt("priority");
+            int keepStock = faceTag.getInt("keep_stock");
+            String strategyKey = faceTag.getString("strategy");
+            String extractionKey = faceTag.getString("extraction_mode");
 
-                String roleKey = switch (role) {
-                    case "both" -> "jade.staticlogistics.both";
-                    case "output" -> "jade.staticlogistics.output";
-                    case "input" -> "jade.staticlogistics.input";
-                    default -> null;
-                };
-                if (roleKey == null) continue;
-
-                String linkedStr = linked > 0
-                    ? Component.translatable("jade.staticlogistics.linked", linked).getString()
-                    : "";
-
-                // 面配置行：方向 [角色] 组:xxx | N节点
-                MutableComponent line = Component.literal(faceName.toUpperCase() + " ")
-                    .append(Component.translatable(roleKey));
-                if (!groups.isEmpty()) {
-                    line.append(Component.literal(" ").append(Component.translatable("jade.staticlogistics.group_label", groups)));
-                }
-                if (!linkedStr.isEmpty()) {
-                    line.append(Component.literal(linkedStr));
-                }
-                boxContent.add(line);
-
-                // 输入端信息：频道、优先级、存量维持
-                boolean hasIn = role.equals("input") || role.equals("both");
-                boolean hasOut = role.equals("output") || role.equals("both");
-                int inCh = faceTag.getInt("in_channel");
-                int outCh = faceTag.getInt("out_channel");
-                int priority = faceTag.getInt("priority");
-                int keepStock = faceTag.getInt("keep_stock");
-                String strategyKey = faceTag.getString("strategy");
-                String extractionKey = faceTag.getString("extraction_mode");
-
-                if (hasIn) {
-                    boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
-                    if (inCh > 0) {
-                        boxContent.add(Component.literal("  ")
-                            .append(Component.translatable("jade.staticlogistics.channel", inCh))
-                            .withStyle(ChatFormatting.GRAY));
-                    }
+            if (hasIn) {
+                boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
+                if (inCh > 0) {
                     boxContent.add(Component.literal("  ")
-                        .append(Component.translatable("jade.staticlogistics.priority", priority))
-                        .withStyle(ChatFormatting.GRAY));
-                    if (keepStock > 0) {
-                        boxContent.add(Component.literal("  ")
-                            .append(Component.translatable("jade.staticlogistics.keep_stock", keepStock))
-                            .withStyle(ChatFormatting.GRAY));
-                    }
-                }
-
-                if (hasOut) {
-                    boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
-                    if (outCh > 0) {
-                        boxContent.add(Component.literal("  ")
-                            .append(Component.translatable("jade.staticlogistics.channel", outCh))
-                            .withStyle(ChatFormatting.GRAY));
-                    }
-                    if (!strategyKey.isEmpty()) {
-                        boxContent.add(Component.literal("  ")
-                            .append(Component.translatable("jade.staticlogistics.strategy_label",
-                                Component.translatable(strategyKey)))
-                            .withStyle(ChatFormatting.GRAY));
-                    }
-                    if (!extractionKey.isEmpty()) {
-                        boxContent.add(Component.literal("  ")
-                            .append(Component.translatable("jade.staticlogistics.extraction_label",
-                                Component.translatable(extractionKey)))
-                            .withStyle(ChatFormatting.GRAY));
-                    }
-                }
-
-                // 所有者
-                String owner = faceTag.getString("owner");
-                if (owner != null && !owner.isEmpty()) {
-                    boxContent.add(Component.literal("  ")
-                        .append(Component.translatable("jade.staticlogistics.owner", owner))
+                        .append(Component.translatable("jade.staticlogistics.channel", inCh))
                         .withStyle(ChatFormatting.GRAY));
                 }
-
-                // 传输统计行
-                long sent = faceTag.getLong("sent");
-                long received = faceTag.getLong("received");
-                if (sent > 0 || received > 0) {
-                    boxContent.add(Component.translatable("jade.staticlogistics.transfer_stats", sent, received).withStyle(ChatFormatting.GRAY));
+                boxContent.add(Component.literal("  ")
+                    .append(Component.translatable("jade.staticlogistics.priority", priority))
+                    .withStyle(ChatFormatting.GRAY));
+                if (keepStock > 0) {
+                    boxContent.add(Component.literal("  ")
+                        .append(Component.translatable("jade.staticlogistics.keep_stock", keepStock))
+                        .withStyle(ChatFormatting.GRAY));
                 }
             }
 
-            // 全局速率和最后传输时间
+            if (hasOut) {
+                boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
+                if (outCh > 0) {
+                    boxContent.add(Component.literal("  ")
+                        .append(Component.translatable("jade.staticlogistics.channel", outCh))
+                        .withStyle(ChatFormatting.GRAY));
+                }
+                if (!strategyKey.isEmpty()) {
+                    boxContent.add(Component.literal("  ")
+                        .append(Component.translatable("jade.staticlogistics.strategy_label",
+                            Component.translatable(strategyKey)))
+                        .withStyle(ChatFormatting.GRAY));
+                }
+                if (!extractionKey.isEmpty()) {
+                    boxContent.add(Component.literal("  ")
+                        .append(Component.translatable("jade.staticlogistics.extraction_label",
+                            Component.translatable(extractionKey)))
+                        .withStyle(ChatFormatting.GRAY));
+                }
+            }
+
+            // 所有者
+            String owner = faceTag.getString("owner");
+            if (owner != null && !owner.isEmpty()) {
+                boxContent.add(Component.literal("  ")
+                    .append(Component.translatable("jade.staticlogistics.owner", owner))
+                    .withStyle(ChatFormatting.GRAY));
+            }
+
+            // 传输统计
+            long sent = faceTag.getLong("sent");
+            long received = faceTag.getLong("received");
+            if (sent > 0 || received > 0) {
+                boxContent.add(Component.translatable("jade.staticlogistics.transfer_stats", sent, received).withStyle(ChatFormatting.GRAY));
+            }
+
+            // 全局速率
             double rate = tag.getDouble("sl_rate");
             long lastMs = tag.getLong("sl_last_ms");
             if (rate > 0 || lastMs > 0) {
