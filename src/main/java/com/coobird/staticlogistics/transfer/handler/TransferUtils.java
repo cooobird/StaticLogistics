@@ -1,12 +1,14 @@
 package com.coobird.staticlogistics.transfer.handler;
 
+import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
+import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.TransferContext;
+import com.coobird.staticlogistics.transfer.TransferFailureReason;
 import com.coobird.staticlogistics.transfer.TransferLogManager;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -14,7 +16,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.lang.ref.WeakReference;
@@ -70,10 +71,7 @@ public class TransferUtils {
         CAP_CACHE.remove(level);
     }
 
-    @FunctionalInterface
-    public interface CapGetter<C> {
-        @Nullable C get(ServerLevel level, BlockPos pos, Direction face);
-    }
+    // CapGetter 已移至 api.CapGetter 公开接口
 
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
@@ -116,9 +114,13 @@ public class TransferUtils {
         for (LogisticsNode remoteNode : destinations) {
             boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
 
-            if (!isSameDim && !canCrossDim) continue;
+            if (!isSameDim && !canCrossDim) {
+                if (context != null) logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
+                continue;
+            }
 
             if (isSameDim && !LogisticsCalculator.isWithinRange(localPos, remoteNode.gPos().pos(), localContainer)) {
+                if (context != null) logFailure(context, remoteNode, TransferFailureReason.OUT_OF_RANGE);
                 continue;
             }
 
@@ -126,8 +128,10 @@ public class TransferUtils {
                 localLevel.getServer().getLevel(remoteNode.gPos().dimension());
 
             if (remoteLevel == null || !remoteLevel.getChunkSource().hasChunk(
-                remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4))
+                remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4)) {
+                if (context != null) logFailure(context, remoteNode, TransferFailureReason.CHUNK_UNLOADED);
                 continue;
+            }
 
             C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
             if (remoteCap == null) {
@@ -135,6 +139,7 @@ public class TransferUtils {
                     && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
                     cleanStaleTarget(context.sourceConfig(), remoteNode, context);
                 }
+                if (context != null) logFailure(context, remoteNode, TransferFailureReason.CAPABILITY_NULL);
                 continue;
             }
 
@@ -163,6 +168,12 @@ public class TransferUtils {
             if (remaining <= 0) break;
         }
         return movedAny;
+    }
+
+    private static void logFailure(TransferContext context, LogisticsNode remoteNode, TransferFailureReason reason) {
+        LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
+        LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
+        TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), 0, false, reason);
     }
 
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {

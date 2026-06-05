@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.core.service.LinkRemovalService;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.LinkRemovalService;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.storage.sync.SyncManager;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
@@ -51,7 +51,9 @@ public class LinkChangeHandler {
         autoSymmetrizeLinks(currentNode, cfg);
         linkManager.refreshLocalCache(key, pos, face, cfg);
         syncManager.syncNode(pos, face, cfg);
-        linkManager.syncNodeToDimension(currentNode);
+        if (cfg.faceConfig.hasGroup()) {
+            linkManager.scheduleNetworkSync(currentNode);
+        }
         linkManager.activateNode(key, pos, face, cfg);
     }
 
@@ -70,7 +72,7 @@ public class LinkChangeHandler {
                 if (faceCfg.determineRole().canSend()) {
                     linkManager.activateNode(faceKey, pos, face, faceCfg);
                 }
-                linkManager.syncNodeToDimension(linkManager.createNodeFromKey(faceKey));
+                linkManager.scheduleNetworkSync(linkManager.createNodeFromKey(faceKey));
             }
         }
     }
@@ -112,7 +114,7 @@ public class LinkChangeHandler {
             if (faceCfg.getLinkedNodes().isEmpty() && !faceCfg.isGlobalInputEnabled() && !faceCfg.isGlobalOutputEnabled()) {
                 linkManager.removeFaceConfig(faceKey);
             } else {
-                linkManager.syncNodeToDimension(selfNode);
+                linkManager.scheduleNetworkSync(selfNode);
                 linkManager.refreshLocalCache(faceKey, selfPos, selfNode.face(), faceCfg);
                 linkManager.markFaceDirty(faceKey);
             }
@@ -146,7 +148,7 @@ public class LinkChangeHandler {
                 remoteCfg.getLinkedNodes().add(currentNode);
                 remoteCfg.markDirty();
                 remoteMgr.markFaceDirty(remoteNode.toKey());
-                remoteMgr.syncNodeToDimension(remoteNode);
+                remoteMgr.scheduleNetworkSync(remoteNode);
             }
         }
         // 对称链接修改了 linkedNodes，标记索引失效

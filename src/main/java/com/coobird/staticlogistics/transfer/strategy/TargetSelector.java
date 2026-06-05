@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.transfer.strategy;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.transfer.TransferContext;
 
 import java.util.List;
 

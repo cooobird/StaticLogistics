@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.core.BlockPos;
@@ -19,7 +19,7 @@ public record C2SUpdateBlueprintPreviewPayload(BlockPos previewAnchor,
                                                int rotation) implements CustomPacketPayload {
 
     public static final Type<C2SUpdateBlueprintPreviewPayload> TYPE =
-        new Type<>(Staticlogistics.asResource("update_blueprint_preview"));
+        new Type<>(StaticLogistics.asResource("update_blueprint_preview"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateBlueprintPreviewPayload> STREAM_CODEC =
         StreamCodec.composite(

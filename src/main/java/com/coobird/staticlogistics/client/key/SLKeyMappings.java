@@ -38,4 +38,12 @@ public class SLKeyMappings {
      */
     public static final KeyMapping CLEAR_STORED_NODES =
         new KeyMapping("key.staticlogistics.clear_stored_nodes", InputConstants.KEY_C, "key.categories.staticlogistics");
+
+    /**
+     * 蓝图撤销键位映射
+     * 撤销最近一次蓝图粘贴操作（需配合 Ctrl 按下时触发）
+     * 默认键位：Z键（配合 Ctrl 使用）
+     */
+    public static final KeyMapping BLUEPRINT_UNDO =
+        new KeyMapping("key.staticlogistics.blueprint_undo", InputConstants.KEY_Z, "key.categories.staticlogistics");
 }

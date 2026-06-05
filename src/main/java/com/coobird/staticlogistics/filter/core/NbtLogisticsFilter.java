@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.filter.core;
 
-import com.coobird.staticlogistics.api.type.NbtMatchMode;
+import com.coobird.staticlogistics.filter.NbtMatchMode;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;

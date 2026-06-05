@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.registry;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.HandFilterMenu;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
@@ -18,7 +18,7 @@ public class SLMenuTypes {
     /**
      * 菜单类型延迟注册器
      */
-    public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(BuiltInRegistries.MENU, Staticlogistics.MODID);
+    public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(BuiltInRegistries.MENU, StaticLogistics.MODID);
 
     /**
      * 节点配置器菜单：统一管理某一面的连接参数和容器升级插件

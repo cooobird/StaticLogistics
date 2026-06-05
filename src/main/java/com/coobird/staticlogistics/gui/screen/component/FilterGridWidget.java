@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.gui.screen.component;
 
-import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;

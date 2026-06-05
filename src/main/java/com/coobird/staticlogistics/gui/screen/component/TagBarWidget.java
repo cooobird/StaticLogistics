@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.gui.screen.component;
 
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;

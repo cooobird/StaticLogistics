@@ -1,11 +1,9 @@
 package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.storage.cache.CacheManager;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.persistence.DropHandler;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
 import com.coobird.staticlogistics.storage.repository.ContainerRepository;
 import com.coobird.staticlogistics.storage.service.ContainerConfigService;
@@ -18,8 +16,10 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -50,6 +50,38 @@ public class LinkManager {
     private final ContainerConfigService containerConfigService;
     private final NetworkSyncManager networkSyncManager;
     private final CacheManager cacheManager;
+
+    // 延迟批量网络同步：缓存当前 tick 内所有需要同步的面容配置，tick 结束时批量刷出
+    public record PendingSyncEntry(BlockPos pos, Direction face, FaceConfigComposite config) {
+    }
+
+    private final Map<ResourceKey<Level>, List<PendingSyncEntry>> pendingNetworkSync = new HashMap<>();
+    private volatile boolean isFlushingNetworkSync = false;
+
+    // cascade 期间抑制 scheduleNetworkSync，避免将即将删除的配置入队
+    private volatile boolean suppressNetworkSync = false;
+
+    // key 级版本计数器：确保删除重建后新配置的版本号高于旧配置
+    private final Map<Long, Integer> keyVersions = new ConcurrentHashMap<>();
+
+    /**
+     * 获取 key 的下一个版本号（单调递增，跨配置对象持久）
+     */
+    public int nextVersion(long key) {
+        return keyVersions.merge(key, 1, Integer::sum);
+    }
+
+    /**
+     * 从已加载的面配置中初始化版本计数器（世界加载时调用）
+     */
+    public void initKeyVersions() {
+        for (long key : getAllConfigKeys()) {
+            FaceConfigComposite cfg = getFaceConfig(key);
+            if (cfg != null) {
+                keyVersions.merge(key, cfg.getVersion(), Math::max);
+            }
+        }
+    }
 
     public LinkManager(ServerLevel level) {
         this.level = level;
@@ -148,7 +180,7 @@ public class LinkManager {
         incrementalSaveCounter.set(0);
     }
 
-    private void scheduleSave() {
+    private synchronized void scheduleSave() {
         if (storage == null || isShutdown) return;
         try {
             if (pendingSave != null && !pendingSave.isDone()) pendingSave.cancel(false);
@@ -158,7 +190,9 @@ public class LinkManager {
                 } catch (Exception e) {
                     LOGGER.error("Error during save", e);
                 } finally {
-                    pendingSave = null;
+                    synchronized (this) {
+                        pendingSave = null;
+                    }
                 }
             }, 1, TimeUnit.SECONDS);
         } catch (RejectedExecutionException e) {
@@ -275,6 +309,13 @@ public class LinkManager {
         return faceConfigHandler.getAllConfigKeys();
     }
 
+    /**
+     * 发送面配置移除包到追踪该区块的所有客户端
+     */
+    public void syncRemovalToDimension(BlockPos pos, Direction face) {
+        networkSyncManager.syncRemovalToDimension(pos, face);
+    }
+
     public void syncToPlayer(ServerPlayer player) {
         List<Map.Entry<Long, FaceConfigComposite>> nonDefault = new ArrayList<>();
         networkSyncManager.syncBulkToPlayer(player, nonDefault);
@@ -283,12 +324,76 @@ public class LinkManager {
     public void syncConfigToClients(BlockPos pos) {
         for (Direction face : Direction.values()) {
             FaceConfigComposite cfg = getFaceConfig(posToKey(pos, face));
-            if (cfg != null) syncNodeToDimension(createNodeFromKey(posToKey(pos, face)));
+            if (cfg != null) scheduleNetworkSync(createNodeFromKey(posToKey(pos, face)));
         }
     }
 
-    public void syncNodeToDimension(LogisticsNode node) {
-        for (ServerPlayer player : level.players()) syncNodeToPlayer(player, node);
+    /**
+     * 将面配置的网络同步延迟到当前 tick 结束时批量发送。
+     * 单次变更和批量操作（如蓝图粘贴）统一走此路径，减少网络包数量。
+     * cascade 期间（suppressNetworkSync=true）跳过入队，由 removal 包负责通知客户端。
+     */
+    public void scheduleNetworkSync(LogisticsNode node) {
+        if (suppressNetworkSync) return;
+        FaceConfigComposite cfg = getFaceConfig(node.toKey());
+        if (cfg == null) return;
+        ResourceKey<Level> dim = level.dimension();
+        synchronized (pendingNetworkSync) {
+            pendingNetworkSync.computeIfAbsent(dim, k -> new ArrayList<>())
+                .add(new PendingSyncEntry(node.gPos().pos(), node.face(), cfg));
+        }
+    }
+
+    /**
+     * 设置是否抑制 scheduleNetworkSync（cascade 期间使用）
+     */
+    public void setSuppressNetworkSync(boolean suppress) {
+        this.suppressNetworkSync = suppress;
+    }
+
+    /**
+     * 在 tick 结束时调用，将所有待同步的面配置以批量包发送给对应维度的玩家。
+     * 过滤掉已被删除的面配置（仓库中不存在的），避免发送过期数据。
+     */
+    public void flushPendingNetworkSync() {
+        if (isFlushingNetworkSync) return;
+        Map<ResourceKey<Level>, List<PendingSyncEntry>> toSend;
+        synchronized (pendingNetworkSync) {
+            if (pendingNetworkSync.isEmpty()) return;
+            toSend = new HashMap<>(pendingNetworkSync);
+            pendingNetworkSync.clear();
+        }
+        isFlushingNetworkSync = true;
+        try {
+            for (var entry : toSend.entrySet()) {
+                // 过滤：只发送仍在仓库中的面配置（双重保险）
+                List<PendingSyncEntry> valid = entry.getValue().stream()
+                    .filter(e -> {
+                        long key = posToKey(e.pos(), e.face());
+                        FaceConfigComposite live = faceConfigHandler.configRepository.get(key);
+                        return live != null && !live.isDefault();
+                    })
+                    .toList();
+                if (!valid.isEmpty()) {
+                    networkSyncManager.syncBulkToDimension(valid);
+                }
+            }
+        } finally {
+            isFlushingNetworkSync = false;
+        }
+    }
+
+    /**
+     * 供 removeLink 等场景使用的直接同步方法，跳过延迟队列。
+     * 用于需要立即通知客户端的情况（如级联删除时的远程节点同步）。
+     */
+    public void syncNodeToDimensionDirect(LogisticsNode node) {
+        FaceConfigComposite cfg = getFaceConfig(node.toKey());
+        if (cfg != null) {
+            for (ServerPlayer player : level.players()) {
+                networkSyncManager.syncToPlayer(player, node.gPos().pos(), node.face(), cfg);
+            }
+        }
     }
 
     public void syncNodeToPlayer(ServerPlayer player, LogisticsNode node) {

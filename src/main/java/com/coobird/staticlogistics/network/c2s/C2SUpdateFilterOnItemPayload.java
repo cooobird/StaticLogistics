@@ -1,14 +1,14 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.core.service.GroupService;
-import com.coobird.staticlogistics.filter.data.FilterData;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
+import com.coobird.staticlogistics.filter.FilterData;
+import com.coobird.staticlogistics.logic.GroupService;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -31,7 +31,7 @@ public record C2SUpdateFilterOnItemPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<C2SUpdateFilterOnItemPayload> TYPE =
-        new Type<>(Staticlogistics.asResource("update_filter_on_item"));
+        new Type<>(StaticLogistics.asResource("update_filter_on_item"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateFilterOnItemPayload> STREAM_CODEC =
         StreamCodec.composite(
@@ -73,7 +73,7 @@ public record C2SUpdateFilterOnItemPayload(
 
             manager.activateNode(key, payload.pos(), payload.face(), config);
             if (player instanceof ServerPlayer serverPlayer) {
-                S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face(), config);
+                S2CSyncFaceConfigPayload syncPacket = new S2CSyncFaceConfigPayload(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face(), config);
                 GroupService.syncToTeamMembers(serverPlayer, syncPacket);
             }
         });

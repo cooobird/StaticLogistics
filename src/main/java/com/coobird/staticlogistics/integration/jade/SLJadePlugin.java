@@ -1,15 +1,17 @@
 package com.coobird.staticlogistics.integration.jade;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
+import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -26,10 +28,10 @@ import java.util.List;
 /**
  * Jade 集成：指向有物流连接的方块时显示面数据。
  */
-@WailaPlugin(Staticlogistics.MODID)
+@WailaPlugin(StaticLogistics.MODID)
 public class SLJadePlugin implements IWailaPlugin {
 
-    static final ResourceLocation PLUGIN_ID = Staticlogistics.asResource("jade");
+    static final ResourceLocation PLUGIN_ID = StaticLogistics.asResource("jade");
 
     @Override
     public void register(IWailaCommonRegistration registration) {
@@ -86,21 +88,61 @@ public class SLJadePlugin implements IWailaPlugin {
                 int keepStock = cfg.linkConfig.getKeepStock();
                 if (keepStock > 0) faceTag.putInt("keep_stock", keepStock);
 
+                // 频道、策略、优先级、所有者
+                int inCh = cfg.linkConfig.getInputChannel();
+                int outCh = cfg.linkConfig.getOutputChannel();
+                if (inCh > 0) faceTag.putInt("in_channel", inCh);
+                if (outCh > 0) faceTag.putInt("out_channel", outCh);
+                faceTag.putString("strategy", cfg.linkConfig.getStrategy().getDescriptionId());
+                faceTag.putString("extraction_mode", cfg.linkConfig.getExtractionMode().getDescriptionId());
+                faceTag.putInt("priority", cfg.linkConfig.getPriority());
+                if (cfg.faceConfig.getOwner() != null) {
+                    faceTag.putString("owner", cfg.faceConfig.getOwnerName());
+                }
+
+                // 传输统计
+                long faceKey = LinkManager.posToKey(pos, face);
+                TransferLogManager.NodeStats nodeStats = TransferLogManager.get().getPerNodeStats(faceKey);
+                if (nodeStats != null) {
+                    faceTag.putLong("sent", nodeStats.sentAmount);
+                    faceTag.putLong("received", nodeStats.receivedAmount);
+                }
+
                 facesTag.put(face.getName(), faceTag);
             }
 
             if (!facesTag.isEmpty()) {
                 tag.put("sl_faces", facesTag);
             }
+
+            // 全局传输统计
+            TransferLogManager logMgr = TransferLogManager.get();
+            long timeSince = logMgr.getTimeSinceLastTransfer();
+            if (timeSince >= 0) {
+                tag.putDouble("sl_rate", logMgr.getTransfersPerMinute());
+                tag.putLong("sl_last_ms", timeSince);
+            }
         }
     }
 
     private static class LogisticsComponentProvider implements IBlockComponentProvider {
-        private static final Component TITLE = Component.translatable("jade.staticlogistics.title").withStyle(ChatFormatting.GOLD);
 
         @Override
         public ResourceLocation getUid() {
             return PLUGIN_ID;
+        }
+
+        private static String formatDuration(long ms) {
+            if (ms < 0) return "";
+            if (ms < 1000) return ms + "ms";
+            long seconds = ms / 1000;
+            if (seconds < 60) return seconds + "s";
+            long minutes = seconds / 60;
+            seconds %= 60;
+            if (minutes < 60) return minutes + "m " + seconds + "s";
+            long hours = minutes / 60;
+            minutes %= 60;
+            return hours + "h " + minutes + "m";
         }
 
         @Override
@@ -109,9 +151,9 @@ public class SLJadePlugin implements IWailaPlugin {
             CompoundTag facesTag = tag.getCompound("sl_faces");
             if (facesTag.isEmpty()) return;
 
-            tooltip.add(TITLE);
+            ITooltip boxContent = IElementHelper.get().tooltip();
+            boxContent.add(Component.translatable("jade.staticlogistics.title").withStyle(ChatFormatting.GOLD));
 
-            ITooltip boxTooltip = IElementHelper.get().tooltip();
             for (String faceName : facesTag.getAllKeys()) {
                 CompoundTag faceTag = facesTag.getCompound(faceName);
                 Direction face = Direction.byName(faceName);
@@ -120,7 +162,6 @@ public class SLJadePlugin implements IWailaPlugin {
                 String groups = faceTag.getString("groups");
                 String role = faceTag.getString("role");
                 int linked = faceTag.getInt("linked");
-                int keepStock = faceTag.getInt("keep_stock");
 
                 String roleKey = switch (role) {
                     case "both" -> "jade.staticlogistics.both";
@@ -133,20 +174,95 @@ public class SLJadePlugin implements IWailaPlugin {
                 String linkedStr = linked > 0
                     ? Component.translatable("jade.staticlogistics.linked", linked).getString()
                     : "";
-                String stockStr = keepStock > 0
-                    ? Component.translatable("jade.staticlogistics.keep_stock", keepStock).getString()
-                    : "";
 
-                Component line = Component.translatable("jade.staticlogistics.face_info",
-                    faceName.toUpperCase(),
-                    Component.translatable(roleKey).getString(),
-                    groups, linkedStr, stockStr);
+                // 面配置行：方向 [角色] 组:xxx | N节点
+                MutableComponent line = Component.literal(faceName.toUpperCase() + " ")
+                    .append(Component.translatable(roleKey));
+                if (!groups.isEmpty()) {
+                    line.append(Component.literal(" ").append(Component.translatable("jade.staticlogistics.group_label", groups)));
+                }
+                if (!linkedStr.isEmpty()) {
+                    line.append(Component.literal(linkedStr));
+                }
+                boxContent.add(line);
 
-                boxTooltip.add(line);
+                // 输入端信息：频道、优先级、存量维持
+                boolean hasIn = role.equals("input") || role.equals("both");
+                boolean hasOut = role.equals("output") || role.equals("both");
+                int inCh = faceTag.getInt("in_channel");
+                int outCh = faceTag.getInt("out_channel");
+                int priority = faceTag.getInt("priority");
+                int keepStock = faceTag.getInt("keep_stock");
+                String strategyKey = faceTag.getString("strategy");
+                String extractionKey = faceTag.getString("extraction_mode");
+
+                if (hasIn) {
+                    boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
+                    if (inCh > 0) {
+                        boxContent.add(Component.literal("  ")
+                            .append(Component.translatable("jade.staticlogistics.channel", inCh))
+                            .withStyle(ChatFormatting.GRAY));
+                    }
+                    boxContent.add(Component.literal("  ")
+                        .append(Component.translatable("jade.staticlogistics.priority", priority))
+                        .withStyle(ChatFormatting.GRAY));
+                    if (keepStock > 0) {
+                        boxContent.add(Component.literal("  ")
+                            .append(Component.translatable("jade.staticlogistics.keep_stock", keepStock))
+                            .withStyle(ChatFormatting.GRAY));
+                    }
+                }
+
+                if (hasOut) {
+                    boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
+                    if (outCh > 0) {
+                        boxContent.add(Component.literal("  ")
+                            .append(Component.translatable("jade.staticlogistics.channel", outCh))
+                            .withStyle(ChatFormatting.GRAY));
+                    }
+                    if (!strategyKey.isEmpty()) {
+                        boxContent.add(Component.literal("  ")
+                            .append(Component.translatable("jade.staticlogistics.strategy_label",
+                                Component.translatable(strategyKey)))
+                            .withStyle(ChatFormatting.GRAY));
+                    }
+                    if (!extractionKey.isEmpty()) {
+                        boxContent.add(Component.literal("  ")
+                            .append(Component.translatable("jade.staticlogistics.extraction_label",
+                                Component.translatable(extractionKey)))
+                            .withStyle(ChatFormatting.GRAY));
+                    }
+                }
+
+                // 所有者
+                String owner = faceTag.getString("owner");
+                if (owner != null && !owner.isEmpty()) {
+                    boxContent.add(Component.literal("  ")
+                        .append(Component.translatable("jade.staticlogistics.owner", owner))
+                        .withStyle(ChatFormatting.GRAY));
+                }
+
+                // 传输统计行
+                long sent = faceTag.getLong("sent");
+                long received = faceTag.getLong("received");
+                if (sent > 0 || received > 0) {
+                    boxContent.add(Component.translatable("jade.staticlogistics.transfer_stats", sent, received).withStyle(ChatFormatting.GRAY));
+                }
             }
 
-            if (!boxTooltip.isEmpty()) {
-                tooltip.add(IElementHelper.get().box(boxTooltip, BoxStyle.getNestedBox()));
+            // 全局速率和最后传输时间
+            double rate = tag.getDouble("sl_rate");
+            long lastMs = tag.getLong("sl_last_ms");
+            if (rate > 0 || lastMs > 0) {
+                String rateStr = String.format("%.1f", rate);
+                String lastStr = formatDuration(lastMs);
+                boxContent.add(Component.literal("  ")
+                    .append(Component.translatable("jade.staticlogistics.global_stats", rateStr, lastStr))
+                    .withStyle(ChatFormatting.GRAY));
+            }
+
+            if (!boxContent.isEmpty()) {
+                tooltip.add(IElementHelper.get().box(boxContent, BoxStyle.getNestedBox()));
             }
         }
     }

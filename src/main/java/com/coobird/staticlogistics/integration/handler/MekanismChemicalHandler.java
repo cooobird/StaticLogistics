@@ -1,12 +1,13 @@
 package com.coobird.staticlogistics.integration.handler;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
@@ -21,7 +22,7 @@ public class MekanismChemicalHandler implements ITransferHandler {
     private static final ThreadLocal<Boolean> isInTransfer = ThreadLocal.withInitial(() -> false);
 
     public static final TransferType TYPE = new TransferType(
-        Staticlogistics.asResource("mek_chemicals"),
+        StaticLogistics.asResource("mek_chemicals"),
         0xFF66FF66,
         3,
         "transfer_type.staticlogistics.mek_chemicals",
@@ -36,7 +37,7 @@ public class MekanismChemicalHandler implements ITransferHandler {
     }
 
     @Override
-    public boolean performTransfer(TransferContext context, List<LogisticsNode> targets) {
+    public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
             LOGGER.debug("Skipped reentrant mekanism chemical transfer for {}", context.sourceNode());
             return false;
@@ -45,7 +46,7 @@ public class MekanismChemicalHandler implements ITransferHandler {
         TransferContext newContext = null;
         try {
             isInTransfer.set(true);
-            newContext = context.withIncrementedDepth();
+            newContext = ((TransferContext) context).withIncrementedDepth();
             final TransferContext ctx = newContext;
             return TransferUtils.doTransferNodes(
                 ctx.level(),
@@ -59,7 +60,7 @@ public class MekanismChemicalHandler implements ITransferHandler {
                         try {
                             return src.extractChemical((long) max, Action.SIMULATE);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to simulate extract chemical: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return ChemicalStack.EMPTY;
                         }
                     },
@@ -68,7 +69,7 @@ public class MekanismChemicalHandler implements ITransferHandler {
                             return (int) (stack.getAmount()
                                 - dst.insertChemical(stack, Action.EXECUTE).getAmount());
                         } catch (Exception e) {
-                            LOGGER.error("Failed to insert chemical: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },
@@ -76,7 +77,7 @@ public class MekanismChemicalHandler implements ITransferHandler {
                         try {
                             src.extractChemical(stack.copyWithAmount((long) act), Action.EXECUTE);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to commit extract chemical: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                         }
                     },
                     ChemicalStack::isEmpty

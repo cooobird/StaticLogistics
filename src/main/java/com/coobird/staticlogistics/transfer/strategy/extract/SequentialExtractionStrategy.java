@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.transfer.strategy.extract;
 
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.transfer.TransferContext;
 
 /**
  * 顺序提取：每 tick 始终从 slotOrder[0] 开始遍历。

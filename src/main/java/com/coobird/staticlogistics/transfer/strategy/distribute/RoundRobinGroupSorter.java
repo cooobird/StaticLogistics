@@ -1,7 +1,8 @@
 package com.coobird.staticlogistics.transfer.strategy.distribute;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.api.TransferCursorProvider;
+import com.coobird.staticlogistics.api.type.GroupSorter;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
@@ -15,11 +16,13 @@ public enum RoundRobinGroupSorter implements GroupSorter {
 
     @Override
     public List<LogisticsNode> sort(List<LogisticsNode> group, BlockPos sourcePos,
-                                    LogisticsNode sourceNode, GlobalLogisticsManager glm) {
+                                    LogisticsNode sourceNode, TransferCursorProvider cursorProvider) {
         int n = group.size();
         if (n <= 1) return new ArrayList<>(group);
 
-        int index = glm.getNextRoundRobinIndex(sourceNode.toKey(), n);
+        int[] cursor = cursorProvider.getCursor(sourceNode.toKey(), null);
+        int index = cursor[0] % n;
+        cursor[0] = (index + 1) % n;
         List<LogisticsNode> result = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             result.add(group.get((index + i) % n));

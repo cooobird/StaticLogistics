@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.storage.sync;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;

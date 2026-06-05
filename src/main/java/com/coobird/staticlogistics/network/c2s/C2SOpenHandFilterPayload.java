@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.gui.menu.HandFilterMenu;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 public record C2SOpenHandFilterPayload() implements CustomPacketPayload {
 
     public static final Type<C2SOpenHandFilterPayload> TYPE =
-        new Type<>(Staticlogistics.asResource("open_hand_filter"));
+        new Type<>(StaticLogistics.asResource("open_hand_filter"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenHandFilterPayload> STREAM_CODEC =
         StreamCodec.unit(new C2SOpenHandFilterPayload());

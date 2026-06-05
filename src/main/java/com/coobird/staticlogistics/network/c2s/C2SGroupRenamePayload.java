@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.core.service.GroupService;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.GroupService;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -18,7 +18,7 @@ public record C2SGroupRenamePayload(
     String newGroupId
 ) implements CustomPacketPayload {
 
-    public static final Type<C2SGroupRenamePayload> TYPE = new Type<>(Staticlogistics.asResource("group_rename"));
+    public static final Type<C2SGroupRenamePayload> TYPE = new Type<>(StaticLogistics.asResource("group_rename"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SGroupRenamePayload> STREAM_CODEC = StreamCodec.composite(
         ByteBufCodecs.STRING_UTF8, C2SGroupRenamePayload::oldGroupId,

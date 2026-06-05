@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.registry;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.BlueprintData;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.filter.data.FilterData;
+import com.coobird.staticlogistics.filter.FilterData;
+import com.coobird.staticlogistics.item.blueprint.BlueprintData;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
@@ -17,7 +17,7 @@ import java.util.function.UnaryOperator;
 
 public class SLDataComponents {
     public static final DeferredRegister<DataComponentType<?>> DATA_COMPONENT_TYPES =
-        DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, Staticlogistics.MODID);
+        DeferredRegister.create(Registries.DATA_COMPONENT_TYPE, StaticLogistics.MODID);
 
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> SELECTED_GROUP =

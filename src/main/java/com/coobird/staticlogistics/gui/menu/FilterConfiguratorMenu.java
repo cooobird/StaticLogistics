@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.gui.menu;
 
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;

@@ -3,10 +3,11 @@ package com.coobird.staticlogistics.transfer.strategy;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
@@ -16,7 +17,7 @@ import java.util.*;
  * 基于分发策略的目标选择器。
  * <p>
  * 目标收集 + 频道过滤在这里统一做，每个 priority 组内的排序
- * 委托给 {@link GroupSorter}（每种分发策略独立实现）。
+ * 委托给 {@link com.coobird.staticlogistics.api.type.GroupSorter}（每种分发策略独立实现）。
  */
 public class StrategyBasedTargetSelector implements TargetSelector {
 
@@ -58,7 +59,7 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
         int configVersion = sourceConfig.getVersion();
         DistributionStrategy strategy = sourceConfig.linkConfig.getStrategy();
-        if (strategy != DistributionStrategy.RANDOM) {
+        if (strategy != DistributionStrategyRegistry.RANDOM) {
             List<LogisticsNode> cached = sourceConfig.getCachedTargets(configVersion);
             if (cached != null) return cached;
         }
@@ -76,17 +77,17 @@ public class StrategyBasedTargetSelector implements TargetSelector {
             priorityGroups.computeIfAbsent(p, k -> new ArrayList<>()).add(node);
         }
 
-        var sorter = strategy.getSorter();
+        var sorter = strategy.sorter();
         List<LogisticsNode> sorted = new ArrayList<>(allTargets.size());
         for (List<LogisticsNode> group : priorityGroups.values()) {
             if (group.size() <= 1) {
                 sorted.addAll(group);
             } else {
-                sorted.addAll(sorter.sort(group, sourcePos, sourceNode, globalManager));
+                sorted.addAll(sorter.sort(group, sourcePos, sourceNode, globalManager::getCursor));
             }
         }
 
-        if (strategy != DistributionStrategy.RANDOM) {
+        if (strategy != DistributionStrategyRegistry.RANDOM) {
             sourceConfig.setCachedTargets(sorted, configVersion);
         }
 

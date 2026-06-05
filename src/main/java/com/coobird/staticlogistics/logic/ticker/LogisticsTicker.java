@@ -1,0 +1,134 @@
+package com.coobird.staticlogistics.logic.ticker;
+
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.CooldownManager;
+import com.coobird.staticlogistics.transfer.TransferContext;
+import com.coobird.staticlogistics.transfer.handler.TransferExecutor;
+import com.coobird.staticlogistics.transfer.handler.TransferUtils;
+import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
+import com.coobird.staticlogistics.util.LogisticsConstants;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+@EventBusSubscriber(modid = StaticLogistics.MODID)
+public class LogisticsTicker {
+    private static final CooldownManager cooldownManager = new CooldownManager();
+    private static final TransferExecutor transferExecutor = new TransferExecutor(new StrategyBasedTargetSelector());
+
+    private static final Map<ResourceKey<Level>, Integer> dimensionCleanCounters = new ConcurrentHashMap<>();
+    private static final Map<ResourceKey<Level>, Integer> dimensionBatchOffsets = new ConcurrentHashMap<>();
+
+    @SubscribeEvent
+    public static void onLevelTick(LevelTickEvent.Post event) {
+        if (event.getLevel() instanceof ServerLevel level) tick(level);
+    }
+
+    @SubscribeEvent
+    public static void onLevelUnload(LevelEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            cooldownManager.clearForDimension(level.dimension());
+            dimensionCleanCounters.remove(level.dimension());
+            TransferUtils.clearDimCache(level);
+        }
+    }
+
+    private static void tick(ServerLevel level) {
+        ResourceKey<Level> dim = level.dimension();
+        long currentTick = level.getGameTime();
+
+        Integer c = dimensionCleanCounters.get(dim);
+        int counter = (c == null) ? 1 : c + 1;
+        dimensionCleanCounters.put(dim, counter);
+        if (counter >= LogisticsConstants.Performance.getCleanIntervalTicks()) {
+            cooldownManager.tick(dim, currentTick);
+            dimensionCleanCounters.put(dim, 0);
+        }
+
+        LinkManager manager = LinkManager.get(level);
+        long[] keys = manager.getActiveProviderKeysArray();
+        if (keys.length == 0) return;
+
+        int totalBatches = (keys.length + LogisticsConstants.Performance.getTickerBatchSize() - 1) / LogisticsConstants.Performance.getTickerBatchSize();
+        Integer b = dimensionBatchOffsets.get(dim);
+        int batchOffset = (b == null) ? 0 : b;
+
+        int startIdx = (batchOffset % totalBatches) * LogisticsConstants.Performance.getTickerBatchSize();
+        int endIdx = Math.min(startIdx + LogisticsConstants.Performance.getTickerBatchSize(), keys.length);
+
+        for (int i = startIdx; i < endIdx; i++) {
+            long sourceKey = keys[i];
+            LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
+            FaceConfigComposite config = manager.getFaceConfig(sourceKey);
+            if (config == null || config.isDefault()) continue;
+
+            for (var type : TransferRegistries.getAllActive()) {
+                if (!config.isTypeSelected(type)) continue;
+
+                boolean needsCooldown = type.requiresCooldown();
+                long typeCooldownKey = (sourceKey << 8) | type.bitOffset();
+                if (needsCooldown && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
+                if (type.requiresValidLinks() && config.getLinkedNodes().isEmpty()) continue;
+
+                int limit = config.getTransferLimit(type);
+                TransferContext context = TransferContext.obtain(
+                    level, sourceNode, config, type, limit, false, currentTick, manager
+                );
+
+                boolean typeMoved;
+                try {
+                    typeMoved = transferExecutor.executeTransfer(context);
+                } finally {
+                    context.recycle();
+                }
+
+                if (needsCooldown) {
+                    int baseInterval = SLConfig.getDefaultTickInterval();
+                    int speedMult = config.sharedContainerConfig != null
+                        ? config.sharedContainerConfig.getSpeedMultiplier() : 1;
+                    int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(Math.max(1, speedMult)));
+                    if (typeMoved) {
+                        cooldownManager.setCooldown(dim, typeCooldownKey, actualInterval, currentTick);
+                    } else {
+                        cooldownManager.setCooldown(dim, typeCooldownKey, LogisticsConstants.Performance.getDefaultCooldownTicks(), currentTick);
+                    }
+                }
+            }
+        }
+
+        dimensionBatchOffsets.put(dim, (batchOffset + 1) % totalBatches);
+
+        // tick 结束时批量刷出所有待同步的面容配置
+        manager.flushPendingNetworkSync();
+    }
+
+    public static void wakeup(ServerLevel level, long sourceKey) {
+        cooldownManager.removeAllForSourceKey(level.dimension(), sourceKey);
+    }
+
+    public static void wakeupGroup(MinecraftServer server, String groupId) {
+        GlobalLogisticsManager manager = GlobalLogisticsManager.get(server);
+        List<LogisticsNode> senders = manager.getSenders(groupId);
+        for (LogisticsNode sender : senders) {
+            ServerLevel level = server.getLevel(sender.gPos().dimension());
+            if (level != null) {
+                cooldownManager.removeAllForSourceKey(level.dimension(), sender.toKey());
+            }
+        }
+    }
+}

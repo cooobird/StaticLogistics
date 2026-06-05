@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.transfer.handler.impl;
 
+import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -17,7 +18,7 @@ public class EnergyTransferHandler implements ITransferHandler {
     private static final ThreadLocal<Boolean> isInTransfer = ThreadLocal.withInitial(() -> false);
 
     @Override
-    public boolean performTransfer(TransferContext context, List<LogisticsNode> targets) {
+    public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
             LOGGER.debug("Skipped reentrant energy transfer for {}", context.sourceNode());
             return false;
@@ -26,7 +27,7 @@ public class EnergyTransferHandler implements ITransferHandler {
         TransferContext newContext = null;
         try {
             isInTransfer.set(true);
-            newContext = context.withIncrementedDepth();
+            newContext = ((TransferContext) context).withIncrementedDepth();
             final TransferContext ctx = newContext;
 
             return TransferUtils.doTransferNodes(
@@ -42,7 +43,7 @@ public class EnergyTransferHandler implements ITransferHandler {
                         try {
                             return handler.receiveEnergy(val, false);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to receive energy: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },

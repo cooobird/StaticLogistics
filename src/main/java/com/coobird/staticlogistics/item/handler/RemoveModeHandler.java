@@ -1,11 +1,11 @@
 package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
+import com.coobird.staticlogistics.logic.GroupService;
+import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -17,8 +17,6 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
-
-import java.util.List;
 
 public class RemoveModeHandler implements ModeHandler {
     @Override
@@ -37,74 +35,53 @@ public class RemoveModeHandler implements ModeHandler {
                 if (GroupService.canModify(config.faceConfig.getOwner(), player)) {
                     String selectedGroup = settings.group();
 
-                    // 必须选取组才能移除
                     if (selectedGroup.isEmpty()) {
                         player.displayClientMessage(Component.translatable("msg.staticlogistics.select_group_to_remove"), true);
                         return InteractionResult.SUCCESS;
                     }
 
-                    // 移除选中的组
+                    if (!config.faceConfig.getGroupIds().contains(selectedGroup)) {
+                        player.displayClientMessage(Component.translatable("msg.staticlogistics.group_not_on_face", selectedGroup), true);
+                        return InteractionResult.SUCCESS;
+                    }
+
+                    // 移除点击的面：删组 → 无组则删面配置 → cascade 清理关联面
+                    // A→B: 移除任一端 → 整条链接移除
+                    // A→B,C,D: 移除 A → 全部移除；移除 B → 只移除 A→B
                     config.faceConfig.removeGroupId(selectedGroup);
                     config.markDirty();
                     mgr.markFaceDirty(key);
 
-                    // 级联清理：移除该链接面所属组中已无其他节点的链接面配置
-                    for (LogisticsNode linked : config.getLinkedNodes()) {
-                        ServerLevel linkedLevel = serverLevel.getServer().getLevel(linked.gPos().dimension());
-                        if (linkedLevel == null) continue;
-                        LinkManager linkedMgr = LinkManager.get(linkedLevel);
-                        FaceConfigComposite linkedCfg = linkedMgr.getFaceConfig(linked.toKey());
-                        if (linkedCfg == null || !linkedCfg.faceConfig.getGroupIds().contains(selectedGroup)) continue;
-                        // 全局检查：该组还有没有其他活跃节点
-                        boolean hasOtherInGroup = com.coobird.staticlogistics.core.manager.GlobalLogisticsManager
-                            .get(serverLevel.getServer()).getNodeGroupService()
-                            .getNodesInGroup(selectedGroup).size() > 1;  // >1 因为当前面自己占1个
-                        if (!hasOtherInGroup) {
-                            linkedCfg.faceConfig.removeGroupId(selectedGroup);
-                            linkedCfg.markDirty();
-                            linkedMgr.markFaceDirty(linked.toKey());
-                            linkedMgr.syncNodeToDimension(linked);
-                            S2CSyncFaceConfigPacket linkedPacket = new S2CSyncFaceConfigPacket(linked.gPos(), linked.face(), linkedCfg);
-                            GroupService.syncToTeamMembers((ServerPlayer) player, linkedPacket);
-                        }
-                    }
-
-                    // 面没有组了 → 完整移除面配置
                     if (!config.faceConfig.hasGroup()) {
-                        List<LogisticsNode> affectedNodes = List.copyOf(config.getLinkedNodes());
-                        mgr.removeFaceConfig(key);
-                        level.playSound(null, pos, SoundEvents.ITEM_BREAK, SoundSource.BLOCKS, 0.5f, 0.8f);
-                        player.displayClientMessage(Component.translatable("msg.staticlogistics.links_removed_smart"), true);
-                        S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, new FaceConfigComposite());
-                        GroupService.syncToTeamMembers((ServerPlayer) player, syncPacket);
-                        for (LogisticsNode node : affectedNodes) {
-                            ServerLevel nodeLevel = serverLevel.getServer().getLevel(node.gPos().dimension());
-                            if (nodeLevel != null) {
-                                LinkManager nodeMgr = LinkManager.get(nodeLevel);
-                                FaceConfigComposite nodeConfig = nodeMgr.getFaceConfig(node.toKey());
-                                if (nodeConfig != null) {
-                                    S2CSyncFaceConfigPacket nodePacket = new S2CSyncFaceConfigPacket(node.gPos(), node.face(), nodeConfig);
-                                    GroupService.syncToTeamMembers((ServerPlayer) player, nodePacket);
-                                }
+                        // 先给玩家发送所有关联面的 removal 包（不依赖区块追踪）
+                        for (LogisticsNode linked : config.getLinkedNodes()) {
+                            ServerLevel linkedLevel = serverLevel.getServer().getLevel(linked.gPos().dimension());
+                            if (linkedLevel != null) {
+                                S2CSyncFaceConfigPayload removalPacket = new S2CSyncFaceConfigPayload(
+                                    linked.gPos(), linked.face(), new FaceConfigComposite());
+                                GroupService.syncToTeamMembers((ServerPlayer) player, removalPacket);
                             }
                         }
+                        // 再发自身的 removal 包
+                        S2CSyncFaceConfigPayload selfRemoval = new S2CSyncFaceConfigPayload(
+                            GlobalPos.of(level.dimension(), pos), face, new FaceConfigComposite());
+                        GroupService.syncToTeamMembers((ServerPlayer) player, selfRemoval);
+
+                        // 删除面配置，cascade 清理关联面的服务端数据
+                        mgr.removeFaceConfig(key);
                     } else {
                         mgr.refreshLocalCache(key, pos, face, config);
-                        mgr.syncNodeToDimension(mgr.createNodeFromKey(key));
-                        level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 0.8f);
-                        player.displayClientMessage(Component.translatable("msg.staticlogistics.group_removed_from_face", selectedGroup), true);
-                        S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(level.dimension(), pos), face, config);
-                        GroupService.syncToTeamMembers((ServerPlayer) player, syncPacket);
+                        mgr.scheduleNetworkSync(mgr.createNodeFromKey(key));
                     }
+
+                    level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 0.8f);
+                    player.displayClientMessage(Component.translatable("msg.staticlogistics.group_removed_from_face", selectedGroup), true);
                 } else {
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission_to_remove"), true);
                 }
             } else {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_links_on_face", face.getName()), true);
             }
-            // 根源清理：移除所有面配置中已失活的组ID
-            com.coobird.staticlogistics.core.manager.GlobalLogisticsManager.get(serverLevel.getServer())
-                .cleanupOrphanedGroupIds(player.getUUID());
         }
         return InteractionResult.SUCCESS;
     }

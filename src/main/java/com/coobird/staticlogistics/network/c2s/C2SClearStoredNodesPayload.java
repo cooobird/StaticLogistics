@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * 清空链接配置器中已存储的节点
  */
 public record C2SClearStoredNodesPayload() implements CustomPacketPayload {
-    public static final Type<C2SClearStoredNodesPayload> TYPE = new Type<>(Staticlogistics.asResource("clear_stored_nodes"));
+    public static final Type<C2SClearStoredNodesPayload> TYPE = new Type<>(StaticLogistics.asResource("clear_stored_nodes"));
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SClearStoredNodesPayload> STREAM_CODEC =
         new StreamCodec<>() {
             @Override

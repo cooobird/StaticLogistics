@@ -1,15 +1,15 @@
 package com.coobird.staticlogistics.gui.screen;
 
-import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.component.NodeConfigControls;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -402,7 +402,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         }
         if (menu.isGlobalOutputEnabled()) {
             if (NodeConfigControls.hitCycleBtn(mx, my, lx + STRATEGY_X, ty + STRATEGY_Y, menu.getStrategy().getDisplayName(), font)) {
-                var vs = DistributionStrategy.getValues();
+                var vs = DistributionStrategyRegistry.getValues();
                 int curIdx = vs.indexOf(menu.getStrategy());
                 if (curIdx < 0) curIdx = 0;
                 int n = button == 1 ? (curIdx - 1 + vs.size()) % vs.size() : (curIdx + 1) % vs.size();

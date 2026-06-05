@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.util;
 
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import net.minecraft.core.BlockPos;
 
 /**

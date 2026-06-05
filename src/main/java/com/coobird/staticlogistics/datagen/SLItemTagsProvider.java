@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.datagen;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.registry.SLItems;
 import com.simibubi.create.AllTags;
@@ -26,7 +26,7 @@ public class SLItemTagsProvider extends ItemTagsProvider {
     public SLItemTagsProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider,
                               CompletableFuture<TagLookup<Block>> blockTags,
                               @Nullable ExistingFileHelper helper) {
-        super(output, lookupProvider, blockTags, Staticlogistics.MODID, helper);
+        super(output, lookupProvider, blockTags, StaticLogistics.MODID, helper);
     }
 
     @Override

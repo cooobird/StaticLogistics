@@ -1,11 +1,12 @@
 package com.coobird.staticlogistics.transfer.handler.impl;
 
+import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.config.manager.ConfigFilterManager;
+import com.coobird.staticlogistics.filter.FilterEvaluator;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.level.ServerLevel;
@@ -26,7 +27,7 @@ public class FluidTransferHandler implements ITransferHandler {
     private static final ThreadLocal<Boolean> isInTransfer = ThreadLocal.withInitial(() -> false);
 
     @Override
-    public boolean performTransfer(TransferContext context, List<LogisticsNode> targets) {
+    public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
             LOGGER.debug("Skipped reentrant fluid transfer for {}", context.sourceNode());
             return false;
@@ -35,7 +36,7 @@ public class FluidTransferHandler implements ITransferHandler {
         TransferContext newContext = null;
         try {
             isInTransfer.set(true);
-            newContext = context.withIncrementedDepth();
+            newContext = ((TransferContext) context).withIncrementedDepth();
             final TransferContext ctx = newContext;
             FaceConfigComposite sourceCfg = ctx.linkManager().getFaceConfig(ctx.sourceNode().toKey());
 
@@ -59,7 +60,7 @@ public class FluidTransferHandler implements ITransferHandler {
                         try {
                             return handler.fill(stack, IFluidHandler.FluidAction.EXECUTE);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to insert fluid: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },
@@ -70,7 +71,7 @@ public class FluidTransferHandler implements ITransferHandler {
                         ServerLevel targetLevel = ctx.level().getServer().getLevel(targetNode.gPos().dimension());
                         if (targetLevel == null) return true;
                         FaceConfigComposite targetCfg = LinkManager.get(targetLevel).getFaceConfig(targetNode.toKey());
-                        return targetCfg == null || ConfigFilterManager.isFluidInputAllowed(stack, targetCfg);
+                        return targetCfg == null || FilterEvaluator.isFluidInputAllowed(stack, targetCfg);
                     }
                 ),
                 ctx.isPullMode(),
@@ -85,7 +86,7 @@ public class FluidTransferHandler implements ITransferHandler {
     private static boolean isFluidAllowed(FaceConfigComposite config, FluidStack stack, boolean isPullMode) {
         if (config == null) return true;
         return isPullMode
-            ? ConfigFilterManager.isFluidInputAllowed(stack, config)
-            : ConfigFilterManager.isFluidOutputAllowed(stack, config);
+            ? FilterEvaluator.isFluidInputAllowed(stack, config)
+            : FilterEvaluator.isFluidOutputAllowed(stack, config);
     }
 }

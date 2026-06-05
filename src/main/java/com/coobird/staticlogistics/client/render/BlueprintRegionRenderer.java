@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.client.render;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.BlueprintData;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
+import com.coobird.staticlogistics.item.blueprint.BlueprintData;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -29,7 +29,7 @@ import org.joml.Matrix4f;
 import java.util.HashSet;
 import java.util.Set;
 
-@EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class BlueprintRegionRenderer {
 
     private static final RenderType BP_BOX = RenderType.create(

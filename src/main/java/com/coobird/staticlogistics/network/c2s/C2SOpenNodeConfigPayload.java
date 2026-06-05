@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record C2SOpenNodeConfigPayload(BlockPos pos, Direction face) implements CustomPacketPayload {
     public static final Type<C2SOpenNodeConfigPayload> TYPE =
-        new Type<>(Staticlogistics.asResource("open_node_config"));
+        new Type<>(StaticLogistics.asResource("open_node_config"));
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenNodeConfigPayload> STREAM_CODEC =
         StreamCodec.composite(BlockPos.STREAM_CODEC, C2SOpenNodeConfigPayload::pos,
             Direction.STREAM_CODEC, C2SOpenNodeConfigPayload::face, C2SOpenNodeConfigPayload::new);

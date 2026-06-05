@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.transfer.strategy.extract;
 
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.transfer.TransferContext;
 
 /**
  * 槽位轮询提取：从上次结束位置的下一个槽位开始，确保所有槽位公平轮转。

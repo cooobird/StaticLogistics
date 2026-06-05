@@ -1,11 +1,11 @@
 package com.coobird.staticlogistics.registry;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.type.UpgradeTier;
-import com.coobird.staticlogistics.api.type.UpgradeType;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.UpgradeItem;
+import com.coobird.staticlogistics.logic.UpgradeTier;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 
 import java.util.function.Supplier;
 
-import static com.coobird.staticlogistics.Staticlogistics.chineseProviders;
+import static com.coobird.staticlogistics.StaticLogistics.chineseProviders;
 
 /**
  * 注册模组的所有物品，包括连接配置器、各种升级插件（速度/范围/堆叠/过滤）。
@@ -22,11 +22,11 @@ public class SLItems {
     /**
      * 物品延迟注册器
      */
-    public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(Staticlogistics.MODID);
+    public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(StaticLogistics.MODID);
     /**
      * 方块物品延迟注册器（方块对应的物品形态）
      */
-    public static final DeferredRegister.Items BLOCK_ITEMS = DeferredRegister.createItems(Staticlogistics.MODID);
+    public static final DeferredRegister.Items BLOCK_ITEMS = DeferredRegister.createItems(StaticLogistics.MODID);
 
     /**
      * 连接配置器：核心工具，用于配置物流节点之间的连接

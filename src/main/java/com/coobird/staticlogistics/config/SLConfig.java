@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.config;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPacket;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -15,7 +15,7 @@ import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-@EventBusSubscriber(modid = Staticlogistics.MODID)
+@EventBusSubscriber(modid = StaticLogistics.MODID)
 public final class SLConfig {
 
     public static final AtomicLong configGeneration = new AtomicLong(0);
@@ -363,7 +363,7 @@ public final class SLConfig {
     private static void syncConfigToPlayers() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) return;
-        S2CConfigSyncPacket payload = new S2CConfigSyncPacket(buildConfigTag());
+        S2CConfigSyncPayload payload = new S2CConfigSyncPayload(buildConfigTag());
         PacketDistributor.sendToAllPlayers(payload);
     }
 

@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.datagen;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.registry.SLItems;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
@@ -208,12 +208,12 @@ public class VanillaRecipeProvider extends RecipeProvider {
     }
 
     protected void shaped(RecipeOutput output, String prefix, String suffix, ShapedRecipePattern pattern, ItemStack result) {
-        ResourceLocation id = Staticlogistics.asResource("shaped/" + prefix + getItemName(result.getItem()) + suffix);
+        ResourceLocation id = StaticLogistics.asResource("shaped/" + prefix + getItemName(result.getItem()) + suffix);
         output.accept(id, new ShapedRecipe("", CraftingBookCategory.MISC, pattern, result, true), null);
     }
 
     protected void shapeless(RecipeOutput output, String prefix, String suffix, ItemStack result, Ingredient... ingredients) {
-        ResourceLocation id = Staticlogistics.asResource("shapeless/" + prefix + getItemName(result.getItem()) + suffix);
+        ResourceLocation id = StaticLogistics.asResource("shapeless/" + prefix + getItemName(result.getItem()) + suffix);
         NonNullList<Ingredient> zingredients = NonNullList.of(Ingredient.EMPTY, ingredients);
         output.accept(id, new ShapelessRecipe("", CraftingBookCategory.MISC, result, zingredients), null);
     }
@@ -222,7 +222,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
      * 单物品无序配方：用于清理已配置的过滤器
      */
     protected void shapelessSingle(RecipeOutput output, ItemStack result) {
-        ResourceLocation id = Staticlogistics.asResource("shapeless/clear_" + getItemName(result.getItem()));
+        ResourceLocation id = StaticLogistics.asResource("shapeless/clear_" + getItemName(result.getItem()));
         NonNullList<Ingredient> list = NonNullList.of(Ingredient.EMPTY, Ingredient.of(result.getItem()));
         output.accept(id, new ShapelessRecipe("", CraftingBookCategory.MISC, result, list), null);
     }

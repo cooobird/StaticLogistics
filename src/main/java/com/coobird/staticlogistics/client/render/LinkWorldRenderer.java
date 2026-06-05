@@ -1,13 +1,13 @@
 package com.coobird.staticlogistics.client.render;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -17,6 +17,7 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -31,7 +32,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-@EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
 
     public static final RenderType PIPE_XRAY = RenderType.create(
@@ -145,6 +146,7 @@ public class LinkWorldRenderer {
 
         BlockPos sp = src.gPos().pos();
         double time = System.currentTimeMillis() / 1000.0;
+        boolean srcDual = srcCfg.isGlobalInputEnabled() && srcCfg.isGlobalOutputEnabled();
 
         for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
             if (!dst.gPos().dimension().equals(dim)) continue;
@@ -158,11 +160,28 @@ public class LinkWorldRenderer {
             double dstD2 = dp.distToCenterSqr(cam.x, cam.y, cam.z);
             if (!srcVis && dstD2 > maxD2) continue;
 
-            Vec3 s = Vec3.atCenterOf(sp).add(Vec3.atLowerCornerOf(src.face().getNormal()).scale(0.52));
-            Vec3 t = Vec3.atCenterOf(dp).add(Vec3.atLowerCornerOf(dst.face().getNormal()).scale(0.52));
+            boolean dstDual = dstCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled();
+            // 粒子起点偏移到输出半面片（dual 时 offset=+0.3）
+            Vec3 s = faceOffset(sp, src.face(), srcDual ? 0.3f : 0f);
+            // 粒子终点偏移到输入半面片（dual 时 offset=-0.3）
+            Vec3 t = faceOffset(dp, dst.face(), dstDual ? -0.3f : 0f);
 
             LogisticsRenderHelper.drawFlowParticles(b, mat, s, t, outCh, time);
         }
+    }
+
+    /**
+     * 计算面片中心位置，支持半面片偏移（与 drawFaceQuad 的 offset 对齐）
+     */
+    private static Vec3 faceOffset(BlockPos pos, Direction face, float offset) {
+        Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
+        Vec3 center = Vec3.atCenterOf(pos).add(n.scale(0.52));
+        if (offset == 0f) return center;
+        // 与 drawFaceQuad 相同的轴计算
+        Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+        Vec3 a2 = n.cross(a1).normalize();
+        float size = 0.85f; // 与 drawFaceStatus 的 size 一致
+        return center.add(a2.scale(offset * size));
     }
 
     private static ItemStack getActiveConfigurator(Minecraft mc) {

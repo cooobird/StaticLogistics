@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.client.event;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.type.ToolMode;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.gui.screen.FilterConfiguratorScreen;
@@ -9,6 +8,8 @@ import com.coobird.staticlogistics.gui.screen.HandFilterScreen;
 import com.coobird.staticlogistics.gui.screen.NodeConfiguratorScreen;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
@@ -32,7 +33,7 @@ import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-@EventBusSubscriber(modid = Staticlogistics.MODID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
 
     @SubscribeEvent
@@ -52,6 +53,7 @@ public class ClientEvents {
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
+        event.register(SLKeyMappings.BLUEPRINT_UNDO);
         event.register(SLKeyMappings.CLEAR_STORED_NODES);
     }
 
@@ -127,6 +129,14 @@ public class ClientEvents {
                 stack = mc.player.getOffhandItem();
             if (stack.getItem() instanceof LinkConfiguratorItem) {
                 PacketDistributor.sendToServer(new C2SClearStoredNodesPayload());
+            }
+        }
+
+        if (SLKeyMappings.BLUEPRINT_UNDO.consumeClick() && net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+            ItemStack stack = mc.player.getMainHandItem();
+            if (stack.getItem() instanceof BlueprintItem) {
+                PacketDistributor.sendToServer(new C2SBlueprintUndoPayload());
+                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 0.7f, 0.5f));
             }
         }
     }

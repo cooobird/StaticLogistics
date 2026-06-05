@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.storage.repository;
 
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 

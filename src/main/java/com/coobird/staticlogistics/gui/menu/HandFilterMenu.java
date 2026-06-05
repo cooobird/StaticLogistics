@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.gui.menu;
 
-import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;

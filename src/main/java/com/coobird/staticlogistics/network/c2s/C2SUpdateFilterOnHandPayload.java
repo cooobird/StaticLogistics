@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.filter.data.FilterData;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.filter.FilterData;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 public record C2SUpdateFilterOnHandPayload(FilterData filter) implements CustomPacketPayload {
 
     public static final Type<C2SUpdateFilterOnHandPayload> TYPE =
-        new Type<>(Staticlogistics.asResource("update_filter_on_hand"));
+        new Type<>(StaticLogistics.asResource("update_filter_on_hand"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateFilterOnHandPayload> STREAM_CODEC =
         StreamCodec.composite(

@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.transfer.strategy.extract;
 
 import com.coobird.staticlogistics.api.type.ExtractionMode;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.transfer.TransferContext;
 
 /**
  * 物品槽位提取策略 —— 控制每 tick 从源容器槽位的遍历起点。

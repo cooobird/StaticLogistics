@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.registry;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
@@ -15,12 +15,12 @@ public class SLCreativeTabs {
     /**
      * 延迟注册器，用于在模组初始化时注册创造标签页
      */
-    public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Staticlogistics.MODID);
+    public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, StaticLogistics.MODID);
 
     /**
      * 静态物流模组的创造标签页，图标使用连接配置器
      */
-    public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB_STATIC_LOGISTICS = CREATIVE_TABS.register(Staticlogistics.MODID,
+    public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB_STATIC_LOGISTICS = CREATIVE_TABS.register(StaticLogistics.MODID,
         () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.staticlogistics"))
             .icon(() -> new ItemStack(SLItems.LINK_CONFIGURATOR.get()))

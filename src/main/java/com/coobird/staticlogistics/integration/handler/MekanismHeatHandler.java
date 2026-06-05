@@ -1,12 +1,13 @@
 package com.coobird.staticlogistics.integration.handler;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.item.ItemStack;
@@ -19,7 +20,7 @@ public class MekanismHeatHandler implements ITransferHandler {
     private static final ThreadLocal<Boolean> isInTransfer = ThreadLocal.withInitial(() -> false);
 
     public static final TransferType TYPE = new TransferType(
-        Staticlogistics.asResource("mek_heat"),
+        StaticLogistics.asResource("mek_heat"),
         0xFFFF6600,
         5,
         "transfer_type.staticlogistics.mek_heat",
@@ -34,7 +35,7 @@ public class MekanismHeatHandler implements ITransferHandler {
     }
 
     @Override
-    public boolean performTransfer(TransferContext context, List<LogisticsNode> targets) {
+    public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
             LOGGER.debug("Skipped reentrant mekanism heat transfer for {}", context.sourceNode());
             return false;
@@ -43,7 +44,7 @@ public class MekanismHeatHandler implements ITransferHandler {
         TransferContext newContext = null;
         try {
             isInTransfer.set(true);
-            newContext = context.withIncrementedDepth();
+            newContext = ((TransferContext) context).withIncrementedDepth();
             final TransferContext ctx = newContext;
             return TransferUtils.doTransferNodes(
                 ctx.level(),
@@ -64,7 +65,7 @@ public class MekanismHeatHandler implements ITransferHandler {
                             }
                             return (int) Math.min(max, totalHeat);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to simulate extract heat: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },
@@ -73,7 +74,7 @@ public class MekanismHeatHandler implements ITransferHandler {
                             dst.handleHeat(val);
                             return val;
                         } catch (Exception e) {
-                            LOGGER.error("Failed to insert heat: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },
@@ -87,7 +88,7 @@ public class MekanismHeatHandler implements ITransferHandler {
                                 src.handleHeat(i, -toExtract);
                             }
                         } catch (Exception e) {
-                            LOGGER.error("Failed to commit extract heat: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                         }
                     },
                     val -> val <= 0

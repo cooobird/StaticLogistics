@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.storage.service;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.storage.DropHandler;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.persistence.DropHandler;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

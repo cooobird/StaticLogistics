@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -332,7 +332,7 @@ public class BlueprintGroupScreen extends Screen {
     // ==================== 杂项 ====================
 
     private void playClickSound() {
-        com.coobird.staticlogistics.util.SoundUtil.playClickSound();
+        com.coobird.staticlogistics.client.util.SoundUtil.playClickSound();
     }
 
     @Override

@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.gui.screen.component.*;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
 import com.coobird.staticlogistics.network.c2s.C2SDeleteGroupPayload;
 import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.Objects;
 
@@ -183,7 +184,7 @@ public class LinkConfiguratorScreen extends Screen {
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
-        if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode) || keyCode == 256) {
+        if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode) || keyCode == GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
         }
@@ -227,7 +228,7 @@ public class LinkConfiguratorScreen extends Screen {
     }
 
     private void playClickSound() {
-        com.coobird.staticlogistics.util.SoundUtil.playClickSound();
+        com.coobird.staticlogistics.client.util.SoundUtil.playClickSound();
     }
 
     @Override

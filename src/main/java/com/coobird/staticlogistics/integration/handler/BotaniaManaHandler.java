@@ -1,12 +1,14 @@
 package com.coobird.staticlogistics.integration.handler;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.CapGetter;
+import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.item.ItemStack;
@@ -29,7 +31,7 @@ public class BotaniaManaHandler implements ITransferHandler {
     private static final ThreadLocal<Boolean> isInTransfer = ThreadLocal.withInitial(() -> false);
 
     public static final TransferType TYPE = new TransferType(
-        Staticlogistics.asResource("botania_mana"),
+        StaticLogistics.asResource("botania_mana"),
         0xFF55FFFF,
         6,
         "transfer_type.staticlogistics.botania_mana",
@@ -41,13 +43,13 @@ public class BotaniaManaHandler implements ITransferHandler {
                 var be = level.getBlockEntity(pos);
                 return be != null && (ManaReceiver.LOOKUP.find(be, null) != null
                     || be instanceof GeneratingFlowerBlockEntity);
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 return false;
             }
         }
     );
 
-    private static final TransferUtils.CapGetter<ManaAccess> CAP_GETTER = (lvl, pos, face) -> {
+    private static final CapGetter<ManaAccess> CAP_GETTER = (lvl, pos, face) -> {
         var be = lvl.getBlockEntity(pos);
         if (be == null) return null;
         if (be instanceof GeneratingFlowerBlockEntity flower) {
@@ -77,7 +79,7 @@ public class BotaniaManaHandler implements ITransferHandler {
     }
 
     @Override
-    public boolean performTransfer(TransferContext context, List<LogisticsNode> targets) {
+    public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
             LOGGER.debug("Skipped reentrant mana transfer for {}", context.sourceNode());
             return false;
@@ -86,7 +88,7 @@ public class BotaniaManaHandler implements ITransferHandler {
         TransferContext newCtx = null;
         try {
             isInTransfer.set(true);
-            newCtx = context.withIncrementedDepth();
+            newCtx = ((TransferContext) context).withIncrementedDepth();
             return TransferUtils.doTransferNodes(
                 context.level(),
                 context.sourceNode().gPos().pos(),

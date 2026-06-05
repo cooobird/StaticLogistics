@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.gui.screen.component;
 
 import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.util.LogisticsConstants;
@@ -463,7 +463,7 @@ public class GroupPanel {
     }
 
     private void playClickSound() {
-        com.coobird.staticlogistics.util.SoundUtil.playClickSound();
+        com.coobird.staticlogistics.client.util.SoundUtil.playClickSound();
     }
 
     public static class ClickResult {

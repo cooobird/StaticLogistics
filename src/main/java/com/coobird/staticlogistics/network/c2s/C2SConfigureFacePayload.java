@@ -1,14 +1,14 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.GroupService;
+import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -25,7 +25,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag data) implements CustomPacketPayload {
-    public static final Type<C2SConfigureFacePayload> TYPE = new Type<>(Staticlogistics.asResource("configure_face"));
+    public static final Type<C2SConfigureFacePayload> TYPE = new Type<>(StaticLogistics.asResource("configure_face"));
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SConfigureFacePayload> STREAM_CODEC = StreamCodec.composite(
         BlockPos.STREAM_CODEC, C2SConfigureFacePayload::pos,
         Direction.STREAM_CODEC, C2SConfigureFacePayload::face,
@@ -64,7 +64,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                         buf -> {
                             buf.writeBlockPos(pos);
                             buf.writeEnum(face);
-                            buf.writeResourceLocation(Staticlogistics.asResource("item"));
+                            buf.writeResourceLocation(StaticLogistics.asResource("item"));
                             CompoundTag configTag = config.serializeNBT(player.registryAccess());
                             buf.writeNbt(configTag);
                             buf.writeBoolean(isInput);
@@ -106,7 +106,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                 manager.activateNode(key, payload.pos(), payload.face(), config);
 
                 if (player instanceof ServerPlayer serverPlayer) {
-                    S2CSyncFaceConfigPacket syncPacket = new S2CSyncFaceConfigPacket(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face(), config);
+                    S2CSyncFaceConfigPayload syncPacket = new S2CSyncFaceConfigPayload(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face(), config);
                     GroupService.syncToTeamMembers(serverPlayer, syncPacket);
                 }
             }

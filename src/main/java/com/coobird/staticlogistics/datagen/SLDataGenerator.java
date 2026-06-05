@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.datagen;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
@@ -11,7 +11,7 @@ import net.neoforged.neoforge.data.event.GatherDataEvent;
 
 import java.util.concurrent.CompletableFuture;
 
-@EventBusSubscriber(modid = Staticlogistics.MODID)
+@EventBusSubscriber(modid = StaticLogistics.MODID)
 public class SLDataGenerator {
     @SubscribeEvent
     public static void onGatherData(GatherDataEvent event) {
@@ -21,8 +21,8 @@ public class SLDataGenerator {
         CompletableFuture<HolderLookup.Provider> lookup = event.getLookupProvider();
 
         boolean client = event.includeClient();
-        generator.addProvider(client, new SlLanguageProvider(output, "en_us"));
-        generator.addProvider(client, new SlLanguageProvider(output, "zh_cn"));
+        generator.addProvider(client, new SLLanguageProvider(output, "en_us"));
+        generator.addProvider(client, new SLLanguageProvider(output, "zh_cn"));
         generator.addProvider(client, new SLItemModelProvider(output, helper));
 
         boolean server = event.includeServer();

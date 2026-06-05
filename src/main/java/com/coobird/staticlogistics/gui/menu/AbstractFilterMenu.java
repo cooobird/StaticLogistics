@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.gui.menu;
 
-import com.coobird.staticlogistics.api.type.NbtMatchMode;
-import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.filter.data.FilterData;
+import com.coobird.staticlogistics.filter.FilterData;
+import com.coobird.staticlogistics.filter.NbtMatchMode;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;

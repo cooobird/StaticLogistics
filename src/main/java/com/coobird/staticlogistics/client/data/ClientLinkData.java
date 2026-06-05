@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.client.data;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -20,7 +20,6 @@ public enum ClientLinkData {
     INSTANCE;
 
     private final Map<ResourceKey<Level>, Map<Long, FaceConfigComposite>> dimensionConfigs = new ConcurrentHashMap<>();
-    private final Map<Long, Integer> configVersions = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> knownGroupIds = new ConcurrentHashMap<>();
     private final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
     private final Map<UUID, CompoundTag> knownOwnerProfiles = new ConcurrentHashMap<>();
@@ -47,23 +46,21 @@ public enum ClientLinkData {
     }
 
     /**
-     * 更新面配置，带版本号控制
+     * 更新面配置。服务端是唯一数据源，按序到达，客户端无条件接受。
      */
     public void setFaceConfig(GlobalPos pos, Direction face, FaceConfigComposite config, int version) {
         long key = posToKey(pos.pos(), face);
         Map<Long, FaceConfigComposite> dimMap = getOrCreateDimMap(pos.dimension());
         if (config.isDefault()) {
-            if (dimMap.remove(key) != null) {
+            FaceConfigComposite removed = dimMap.remove(key);
+            if (removed != null) {
                 dataVersion++;
-                configVersions.remove(key);
+                cleanupStaleKnownGroups(removed);
             }
             return;
         }
-        Integer currentVersion = configVersions.get(key);
-        if (currentVersion != null && version <= currentVersion) return;
         dimMap.put(key, config);
         dataVersion++;
-        configVersions.put(key, version);
 
         UUID owner = config.faceConfig.getOwner();
         if (owner != null && config.faceConfig.hasGroup()) {
@@ -78,15 +75,35 @@ public enum ClientLinkData {
     public void removeFaceConfig(GlobalPos pos, Direction face) {
         long key = posToKey(pos.pos(), face);
         Map<Long, FaceConfigComposite> dimMap = dimensionConfigs.get(pos.dimension());
-        if (dimMap != null && dimMap.remove(key) != null) {
-            dataVersion++;
-            configVersions.remove(key);
+        if (dimMap != null) {
+            FaceConfigComposite removed = dimMap.remove(key);
+            if (removed != null) {
+                dataVersion++;
+                cleanupStaleKnownGroups(removed);
+            }
+        }
+    }
+
+    /**
+     * 当面配置被移除时，清理 knownGroupIds 中不再被任何面配置引用的组
+     */
+    private void cleanupStaleKnownGroups(FaceConfigComposite removed) {
+        if (removed == null || !removed.faceConfig.hasGroup()) return;
+        UUID owner = removed.faceConfig.getOwner();
+        if (owner == null) return;
+        for (String gid : removed.faceConfig.getGroupIds()) {
+            if (!isGroupInDimensionConfigs(gid)) {
+                Set<String> known = knownGroupIds.get(owner);
+                if (known != null) {
+                    known.remove(gid);
+                    if (known.isEmpty()) knownGroupIds.remove(owner);
+                }
+            }
         }
     }
 
     public void invalidate() {
         dimensionConfigs.clear();
-        configVersions.clear();
         knownGroupIds.clear();
         knownOwnerNames.clear();
         knownOwnerProfiles.clear();
@@ -107,6 +124,7 @@ public enum ClientLinkData {
 
     public List<String> getGroupsByOwners(Collection<UUID> owners) {
         Set<String> groups = new HashSet<>();
+        // 从已同步的面配置中收集组（权威数据源）
         for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
             for (FaceConfigComposite cfg : dimMap.values()) {
                 if (owners.contains(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
@@ -114,11 +132,27 @@ public enum ClientLinkData {
                 }
             }
         }
+        // 补充 knownGroupIds（包含刚创建还没链接的组）
+        // 过期条目已由 cleanupStaleKnownGroups 在面配置删除时清理
         for (UUID owner : owners) {
             Set<String> known = knownGroupIds.get(owner);
             if (known != null) groups.addAll(known);
         }
         return new ArrayList<>(groups);
+    }
+
+    /**
+     * 检查某个组 ID 是否还存在于任何已同步的面配置中（不检查 knownGroupIds）
+     */
+    private boolean isGroupInDimensionConfigs(String groupId) {
+        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
+            for (FaceConfigComposite cfg : dimMap.values()) {
+                if (cfg.faceConfig.hasGroup() && cfg.faceConfig.getGroupIds().contains(groupId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public void addKnownGroup(UUID owner, String ownerName, String groupId) {

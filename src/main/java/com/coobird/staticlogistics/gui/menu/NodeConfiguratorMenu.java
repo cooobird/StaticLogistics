@@ -3,14 +3,15 @@ package com.coobird.staticlogistics.gui.menu;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.api.type.UpgradeType;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
+import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.config.LinkConfig;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.LinkConfig;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -151,8 +152,8 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
 
     public DistributionStrategy getStrategy() {
         int idx = strategySlot.get();
-        var vals = DistributionStrategy.getValues();
-        return idx >= 0 && idx < vals.size() ? vals.get(idx) : DistributionStrategy.SEQUENTIAL;
+        var vals = DistributionStrategyRegistry.getValues();
+        return idx >= 0 && idx < vals.size() ? vals.get(idx) : DistributionStrategyRegistry.SEQUENTIAL;
     }
 
     public ExtractionMode getExtractionMode() {
@@ -278,7 +279,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
         globalOutputSlot.set(faceConfig.isGlobalOutputEnabled() ? 1 : 0);
         inputChannelSlot.set(faceConfig.linkConfig.getInputChannel());
         outputChannelSlot.set(faceConfig.linkConfig.getOutputChannel());
-        strategySlot.set(DistributionStrategy.getValues().indexOf(faceConfig.linkConfig.getStrategy()));
+        strategySlot.set(DistributionStrategyRegistry.getValues().indexOf(faceConfig.linkConfig.getStrategy()));
         extractionModeSlot.set(faceConfig.linkConfig.getExtractionMode().ordinal());
         prioritySlot.set(faceConfig.linkConfig.getPriority());
         keepStockSlot.set(faceConfig.linkConfig.getKeepStock());
@@ -370,7 +371,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     yield false;
                 }
                 case "strategy" -> {
-                    DistributionStrategy v = DistributionStrategy.byName(tag.getString(key));
+                    DistributionStrategy v = DistributionStrategyRegistry.byName(tag.getString(key));
                     if (!v.equals(getStrategy())) {
                         setStrategy(v);
                         yield true;

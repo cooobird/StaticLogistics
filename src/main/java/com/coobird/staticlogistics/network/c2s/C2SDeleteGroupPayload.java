@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPacket;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -16,7 +16,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  */
 public record C2SDeleteGroupPayload(String groupId) implements CustomPacketPayload {
 
-    public static final Type<C2SDeleteGroupPayload> TYPE = new Type<>(Staticlogistics.asResource("delete_group"));
+    public static final Type<C2SDeleteGroupPayload> TYPE = new Type<>(StaticLogistics.asResource("delete_group"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SDeleteGroupPayload> STREAM_CODEC =
         StreamCodec.composite(
@@ -44,10 +44,10 @@ public record C2SDeleteGroupPayload(String groupId) implements CustomPacketPaylo
 
             if (!faceEntries.isEmpty()) {
                 var s2cEntries = faceEntries.stream()
-                    .map(e -> new S2CRemoveBulkFaceConfigPacket.Entry(e.pos(), e.face()))
+                    .map(e -> new S2CRemoveBulkFaceConfigPayload.Entry(e.pos(), e.face()))
                     .toList();
                 PacketDistributor.sendToPlayer(sp,
-                    new S2CRemoveBulkFaceConfigPacket(s2cEntries));
+                    new S2CRemoveBulkFaceConfigPayload(s2cEntries));
             }
         });
     }

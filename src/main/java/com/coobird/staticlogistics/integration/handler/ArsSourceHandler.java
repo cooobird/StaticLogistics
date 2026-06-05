@@ -1,12 +1,13 @@
 package com.coobird.staticlogistics.integration.handler;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.transfer.context.TransferContext;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.item.ItemStack;
@@ -19,7 +20,7 @@ public class ArsSourceHandler implements ITransferHandler {
     private static final ThreadLocal<Boolean> isInTransfer = ThreadLocal.withInitial(() -> false);
 
     public static final TransferType TYPE = new TransferType(
-        Staticlogistics.asResource("ars_source"),
+        StaticLogistics.asResource("ars_source"),
         0xFF8000FF,
         4,
         "transfer_type.staticlogistics.ars_source",
@@ -34,7 +35,7 @@ public class ArsSourceHandler implements ITransferHandler {
     }
 
     @Override
-    public boolean performTransfer(TransferContext context, List<LogisticsNode> targets) {
+    public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
             LOGGER.debug("Skipped reentrant ars source transfer for {}", context.sourceNode());
             return false;
@@ -43,7 +44,7 @@ public class ArsSourceHandler implements ITransferHandler {
         TransferContext newContext = null;
         try {
             isInTransfer.set(true);
-            newContext = context.withIncrementedDepth();
+            newContext = ((TransferContext) context).withIncrementedDepth();
             final TransferContext ctx = newContext;
             return TransferUtils.doTransferNodes(
                 ctx.level(),
@@ -57,7 +58,7 @@ public class ArsSourceHandler implements ITransferHandler {
                         try {
                             return src.extractSource(max, true);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to simulate extract source: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },
@@ -65,7 +66,7 @@ public class ArsSourceHandler implements ITransferHandler {
                         try {
                             return dst.receiveSource(val, false);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to receive source: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                             return 0;
                         }
                     },
@@ -73,7 +74,7 @@ public class ArsSourceHandler implements ITransferHandler {
                         try {
                             src.extractSource(act, false);
                         } catch (Exception e) {
-                            LOGGER.error("Failed to commit extract source: {}", e.getMessage());
+                            LOGGER.error("Transfer failed", e);
                         }
                     },
                     val -> val <= 0

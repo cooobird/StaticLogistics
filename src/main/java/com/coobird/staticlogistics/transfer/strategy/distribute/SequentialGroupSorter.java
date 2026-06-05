@@ -1,7 +1,8 @@
 package com.coobird.staticlogistics.transfer.strategy.distribute;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
+import com.coobird.staticlogistics.api.TransferCursorProvider;
+import com.coobird.staticlogistics.api.type.GroupSorter;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;
@@ -15,7 +16,7 @@ public enum SequentialGroupSorter implements GroupSorter {
 
     @Override
     public List<LogisticsNode> sort(List<LogisticsNode> group, BlockPos sourcePos,
-                                    LogisticsNode sourceNode, GlobalLogisticsManager glm) {
+                                    LogisticsNode sourceNode, TransferCursorProvider cursorProvider) {
         return new ArrayList<>(group);
     }
 }

@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.item.handler;
 
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;

@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.datagen;
 
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.registry.SLItems;
 import net.minecraft.data.PackOutput;
 import net.minecraft.world.item.Item;
@@ -18,7 +18,7 @@ public class SLItemModelProvider extends ItemModelProvider {
     protected final Set<Item> handheld = new HashSet<>();
 
     public SLItemModelProvider(PackOutput output, ExistingFileHelper existingFileHelper) {
-        super(output, Staticlogistics.MODID, existingFileHelper);
+        super(output, StaticLogistics.MODID, existingFileHelper);
         handheld.add(SLItems.LINK_CONFIGURATOR.get());
     }
 
@@ -34,7 +34,7 @@ public class SLItemModelProvider extends ItemModelProvider {
             String path = item.getId().getPath();
             String parent = handheld.contains(item.get()) ? "item/handheld" : "item/generated";
             withExistingParent(path, parent)
-                .texture("layer0", Staticlogistics.asResource("item/" + path));
+                .texture("layer0", StaticLogistics.asResource("item/" + path));
         }
     }
 }

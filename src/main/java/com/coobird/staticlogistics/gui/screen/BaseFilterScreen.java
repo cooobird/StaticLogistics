@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.api.type.UpgradeType;
 import com.coobird.staticlogistics.gui.menu.AbstractFilterMenu;
 import com.coobird.staticlogistics.gui.screen.component.BlacklistButton;
 import com.coobird.staticlogistics.gui.screen.component.FilterGridWidget;
 import com.coobird.staticlogistics.gui.screen.component.NbtModeControls;
 import com.coobird.staticlogistics.gui.screen.component.TagBarWidget;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
@@ -254,10 +254,10 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
 
         if (NbtModeControls.isModeBtnHovered(mx, my, leftPos, topPos)) {
             boolean isPartial = menu.getNbtMatchMode()
-                == com.coobird.staticlogistics.api.type.NbtMatchMode.PARTIAL;
+                == com.coobird.staticlogistics.filter.NbtMatchMode.PARTIAL;
             menu.setNbtMatchMode(isPartial
-                ? com.coobird.staticlogistics.api.type.NbtMatchMode.FULL
-                : com.coobird.staticlogistics.api.type.NbtMatchMode.PARTIAL);
+                ? com.coobird.staticlogistics.filter.NbtMatchMode.FULL
+                : com.coobird.staticlogistics.filter.NbtMatchMode.PARTIAL);
             sendFilterUpdate();
             return true;
         }

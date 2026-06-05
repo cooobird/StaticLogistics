@@ -1,11 +1,9 @@
 package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.server.ticker.LogisticsTicker;
-import com.coobird.staticlogistics.storage.cache.CacheManager;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
-import com.coobird.staticlogistics.storage.persistence.DropHandler;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.ticker.LogisticsTicker;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
 import com.coobird.staticlogistics.storage.service.FaceConfigService;
 import com.coobird.staticlogistics.storage.sync.NetworkSyncManager;
@@ -60,8 +58,13 @@ class FaceConfigHandler {
 
     public FaceConfigComposite getOrCreateFaceConfig(BlockPos pos, Direction face) {
         long key = LinkManager.posToKey(pos, face);
+        boolean isNew = !faceConfigService.exists(key);
         FaceConfigComposite config = faceConfigService.getOrCreate(pos, face);
         config.setOnDirty(cfg -> changeHandler.onFaceConfigChanged(key, pos, face, cfg));
+        if (isNew) {
+            // 新建配置继承 LinkManager 的全局版本计数器，确保版本号单调递增
+            config.setVersion(parent.nextVersion(key));
+        }
         return config;
     }
 
@@ -87,8 +90,8 @@ class FaceConfigHandler {
         }
         sourceCfg.markDirty();
         targetCfg.markDirty();
-        parent.syncNodeToDimension(source);
-        targetMgr.syncNodeToDimension(target);
+        parent.scheduleNetworkSync(source);
+        targetMgr.scheduleNetworkSync(target);
         parent.markFaceDirty(source.toKey());
         targetMgr.markFaceDirty(target.toKey());
         cleanUpFaceIfNeeded(source, sourceCfg);
@@ -118,7 +121,14 @@ class FaceConfigHandler {
             if (config == null) return;
             LogisticsNode selfNode = parent.createNodeFromKey(key);
             List<LogisticsNode> affectedNodes = doCascade ? List.copyOf(config.getLinkedNodes()) : List.of();
-            if (doCascade) changeHandler.cascadeRemove(selfNode, config);
+            if (doCascade) {
+                parent.setSuppressNetworkSync(true);
+                try {
+                    changeHandler.cascadeRemove(selfNode, config);
+                } finally {
+                    parent.setSuppressNetworkSync(false);
+                }
+            }
             dropHandler.dropFilterUpgrades(selfNode.gPos().pos(), config.filterConfig.getUpgrades());
             faceConfigService.remove(key);
             cacheManager.remove(key);
@@ -129,7 +139,7 @@ class FaceConfigHandler {
             if (sendPacket) networkSyncManager.syncRemovalToDimension(selfNode.gPos().pos(), selfNode.face());
             for (LogisticsNode node : affectedNodes) {
                 ServerLevel nodeLevel = level.getServer().getLevel(node.gPos().dimension());
-                if (nodeLevel != null) LinkManager.get(nodeLevel).syncNodeToDimension(node);
+                if (nodeLevel != null) LinkManager.get(nodeLevel).syncNodeToDimensionDirect(node);
             }
         } finally {
             pendingRemovals.remove(key);

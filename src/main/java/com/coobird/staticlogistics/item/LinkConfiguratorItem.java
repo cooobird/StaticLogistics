@@ -1,16 +1,13 @@
 package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.item.handler.*;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
+import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
@@ -94,7 +91,7 @@ public class LinkConfiguratorItem extends Item {
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_info").withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
-            SLKeyMappings.CLEAR_STORED_NODES.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
+            Component.translatable("key.staticlogistics.clear_stored_nodes")).withStyle(ChatFormatting.GRAY));
         super.appendHoverText(stack, context, tooltip, flag);
     }
 
@@ -112,8 +109,9 @@ public class LinkConfiguratorItem extends Item {
 
     @OnlyIn(Dist.CLIENT)
     private void openLinkerScreenClient(ItemStack stack) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc != null && mc.player != null) mc.setScreen(new LinkConfiguratorScreen(stack));
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc != null && mc.player != null)
+            mc.setScreen(new com.coobird.staticlogistics.gui.screen.LinkConfiguratorScreen(stack));
     }
 
     /**

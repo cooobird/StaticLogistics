@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.integration.jei;
 
-import com.coobird.staticlogistics.Staticlogistics;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.gui.screen.BaseFilterScreen;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 public class JeiPlugin implements IModPlugin {
     @Override
     public ResourceLocation getPluginUid() {
-        return Staticlogistics.asResource("jei_integration");
+        return StaticLogistics.asResource("jei_integration");
     }
 
 

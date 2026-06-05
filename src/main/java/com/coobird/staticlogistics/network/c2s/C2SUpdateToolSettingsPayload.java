@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.type.ToolMode;
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.logic.ToolMode;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -19,7 +19,7 @@ import java.util.List;
 
 public record C2SUpdateToolSettingsPayload(String groupId, int mode,
                                            int typeMask) implements CustomPacketPayload {
-    public static final Type<C2SUpdateToolSettingsPayload> TYPE = new Type<>(Staticlogistics.asResource("update_tool_settings"));
+    public static final Type<C2SUpdateToolSettingsPayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_settings"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolSettingsPayload> STREAM_CODEC = StreamCodec.composite(
         ByteBufCodecs.STRING_UTF8, C2SUpdateToolSettingsPayload::groupId,

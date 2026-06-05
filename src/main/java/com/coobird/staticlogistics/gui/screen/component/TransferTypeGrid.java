@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.gui.screen.component;
 
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
+import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;

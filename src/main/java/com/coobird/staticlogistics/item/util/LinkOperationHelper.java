@@ -1,16 +1,16 @@
 package com.coobird.staticlogistics.item.util;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.ToolMode;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.core.service.GroupService;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPacket;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.GroupService;
+import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.ChatFormatting;
@@ -237,9 +237,9 @@ public class LinkOperationHelper {
         storedMgr.activateNode(stored.toKey(), stored.gPos().pos(), stored.face(), storedCfg);
 
         if (player instanceof ServerPlayer serverPlayer) {
-            S2CSyncFaceConfigPacket currentPacket = new S2CSyncFaceConfigPacket(current.gPos(), current.face(), currentCfg);
+            S2CSyncFaceConfigPayload currentPacket = new S2CSyncFaceConfigPayload(current.gPos(), current.face(), currentCfg);
             GroupService.syncToTeamMembers(serverPlayer, currentPacket);
-            S2CSyncFaceConfigPacket storedPacket = new S2CSyncFaceConfigPacket(stored.gPos(), stored.face(), storedCfg);
+            S2CSyncFaceConfigPayload storedPacket = new S2CSyncFaceConfigPayload(stored.gPos(), stored.face(), storedCfg);
             GroupService.syncToTeamMembers(serverPlayer, storedPacket);
         }
 

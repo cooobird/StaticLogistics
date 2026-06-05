@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.item;
 
-import com.coobird.staticlogistics.api.type.UpgradeTier;
-import com.coobird.staticlogistics.api.type.UpgradeType;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.logic.UpgradeTier;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.network.c2s.C2SOpenHandFilterPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;

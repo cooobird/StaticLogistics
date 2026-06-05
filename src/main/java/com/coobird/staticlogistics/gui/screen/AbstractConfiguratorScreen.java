@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.gui.screen;
 
 import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.gui.screen.texture.SLGuiTextures;
+import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -246,7 +246,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     protected abstract void renderCustomContent(GuiGraphics graphics, int mouseX, int mouseY);
 
     protected void playClickSound() {
-        com.coobird.staticlogistics.util.SoundUtil.playClickSound();
+        com.coobird.staticlogistics.client.util.SoundUtil.playClickSound();
     }
 
     @Override

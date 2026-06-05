@@ -1,8 +1,13 @@
 package com.coobird.staticlogistics.datagen;
 
-import com.coobird.staticlogistics.Staticlogistics;
-import com.coobird.staticlogistics.api.type.*;
-import com.coobird.staticlogistics.core.registration.TransferRegistries;
+import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.UpgradeTier;
+import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;
 import net.minecraft.data.PackOutput;
 import net.minecraft.network.chat.Component;
@@ -17,11 +22,11 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class SlLanguageProvider extends LanguageProvider {
+public class SLLanguageProvider extends LanguageProvider {
     private final String locale;
 
-    public SlLanguageProvider(PackOutput output, String locale) {
-        super(output, Staticlogistics.MODID, locale);
+    public SLLanguageProvider(PackOutput output, String locale) {
+        super(output, StaticLogistics.MODID, locale);
         this.locale = locale;
     }
 
@@ -173,6 +178,8 @@ public class SlLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.blueprint.select_group", "Select a group first before pasting.", "请先在配置器中选取组再粘贴。");
         add("msg.staticlogistics.blueprint.group_applied", "Applied group %s to %s face(s).", "已将组 %s 应用到 %s 个面。");
         add("msg.staticlogistics.blueprint.cleared", "Blueprint cleared.", "蓝图已清空。");
+        add("msg.staticlogistics.blueprint.undone", "Blueprint paste undone. Restored %s face(s).", "蓝图粘贴已撤销。恢复了 %s 个面。");
+        add("msg.staticlogistics.blueprint.no_undo", "Nothing to undo.", "没有可撤销的操作。");
 
         add("mode.staticlogistics.wrench", "Wrench", "扳手");
         add("mode.staticlogistics.wrench.desc",
@@ -199,14 +206,24 @@ public class SlLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.blueprint_preview_move_y", "Blueprint Preview Move Y", "蓝图预览升降");
         add("key.staticlogistics.toggle_multi_select", "Toggle Point Mode", "切换选点模式");
         add("key.staticlogistics.clear_stored_nodes", "Clear Stored Nodes", "清除已存储节点");
+        add("key.staticlogistics.blueprint_undo", "Undo Blueprint Paste (Ctrl+Z)", "撤销蓝图粘贴 (Ctrl+Z)");
 
         add("jade.staticlogistics.title", "Static Logistics", "静态物流");
-        add("jade.staticlogistics.input", "[In]", "[输入]");
-        add("jade.staticlogistics.output", "[Out]", "[输出]");
-        add("jade.staticlogistics.both", "[I/O]", "[双向]");
-        add("jade.staticlogistics.face_info", "%s %s Group:%s%s%s", "%s %s 组:%s%s%s");
+        add("jade.staticlogistics.input", "[Input]", "[输入]");
+        add("jade.staticlogistics.output", "[Output]", "[输出]");
+        add("jade.staticlogistics.both", "[Both]", "[双向]");
+        add("jade.staticlogistics.group_label", "Group: %s", "组: %s");
         add("jade.staticlogistics.linked", " | %s nodes", " | %s节点");
-        add("jade.staticlogistics.keep_stock", " | Keep >= %s", " | 存量维持 >= %s");
+        add("jade.staticlogistics.transfer_stats", "  Sent:%s Rcv:%s", "  发送:%s 接收:%s");
+        add("jade.staticlogistics.global_stats", "Rate: %s/min | Last: %s ago", "速率: %s/分钟 | 最近: %s前");
+        add("jade.staticlogistics.section_input", "Input:", "输入:");
+        add("jade.staticlogistics.section_output", "Output:", "输出:");
+        add("jade.staticlogistics.channel", "Channel: %s", "频道: %s");
+        add("jade.staticlogistics.priority", "Priority: %s", "优先级: %s");
+        add("jade.staticlogistics.keep_stock", "Keep >= %s", "存量维持 >= %s");
+        add("jade.staticlogistics.strategy_label", "Distribution: %s", "分发策略: %s");
+        add("jade.staticlogistics.extraction_label", "Extraction: %s", "提取策略: %s");
+        add("jade.staticlogistics.owner", "Owner: %s", "所有者: %s");
 
         add("tooltip.staticlogistics.mode", "Mode: %s", "工具模式：%s");
         add("tooltip.staticlogistics.type", "Transfer Type: %s", "传输类型：%s");
@@ -513,16 +530,16 @@ public class SlLanguageProvider extends LanguageProvider {
         add("transfer_type.staticlogistics.botania_mana", "Mana", "魔力");
         add("transfer_type.staticlogistics.botania_mana.desc", "Transport Mana", "传输魔力。");
 
-        for (DistributionStrategy strategy : DistributionStrategy.getValues()) {
-            String zh = switch (strategy.getId().getPath()) {
+        for (DistributionStrategy strategy : DistributionStrategyRegistry.getValues()) {
+            String zh = switch (strategy.id().getPath()) {
                 case "sequential" -> "顺序优先";
                 case "round_robin" -> "轮询分发";
                 case "nearest" -> "最近优先";
                 case "furthest" -> "最远优先";
                 case "random" -> "随机分发";
-                default -> toTitleCase(strategy.getId().getPath());
+                default -> toTitleCase(strategy.id().getPath());
             };
-            add(strategy.getDescriptionId(), toTitleCase(strategy.getId().getPath()), zh);
+            add(strategy.getDescriptionId(), toTitleCase(strategy.id().getPath()), zh);
         }
 
         for (ExtractionMode mode : ExtractionMode.values()) {
@@ -533,7 +550,7 @@ public class SlLanguageProvider extends LanguageProvider {
             add(mode.getDescriptionId(), toTitleCase(mode.getSerializedName()), zh);
         }
 
-        Staticlogistics.chineseProviders.forEach(action -> action.accept(this));
+        StaticLogistics.chineseProviders.forEach(action -> action.accept(this));
     }
 
     public void add(String key, String en, String zh) {

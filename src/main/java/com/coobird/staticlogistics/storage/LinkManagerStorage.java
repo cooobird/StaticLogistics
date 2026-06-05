@@ -2,9 +2,9 @@ package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.core.manager.GlobalLogisticsManager;
-import com.coobird.staticlogistics.storage.config.ContainerConfig;
-import com.coobird.staticlogistics.storage.config.FaceConfigComposite;
+import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
 import com.coobird.staticlogistics.storage.repository.ContainerRepository;
 import com.coobird.staticlogistics.storage.service.ContainerConfigService;
@@ -214,12 +214,15 @@ public class LinkManagerStorage extends SavedData {
                 // 重新注册频道索引
                 int inputChannel = cfg.linkConfig.getInputChannel();
                 if (inputChannel != 0) {
-                    for (var type : com.coobird.staticlogistics.core.registration.TransferRegistries.getAllActive()) {
+                    for (var type : com.coobird.staticlogistics.logic.TransferRegistries.getAllActive()) {
                         glm.registerNodeToChannel(type, inputChannel, node);
                     }
                 }
             }
         }
+
+        // 初始化版本计数器，确保新建配置的版本号高于已加载的配置
+        linkManager.initKeyVersions();
 
         return storage;
     }
