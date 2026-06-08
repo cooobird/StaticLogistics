@@ -211,20 +211,9 @@ public final class TransferPipeline {
      */
     @SuppressWarnings("unchecked")
     private static <C, T> long transferSimpleResource(
-        TransferUtils.TransferProtocol<C, T> protocol, C from, C to, long limit
-    ) {
-        // 直接提取（不模拟）
-        T extracted = ((ResourceAdapterProtocol<C>) protocol).getAdapter().extract(from, limit, false);
-        if (extracted == null) return 0;
-
-        // 检查是否是 Long 类型（简单资源返回 Long）
-        long extractedAmount = 0;
-        if (extracted instanceof Long l) {
-            extractedAmount = l;
-        } else {
-            // 不应该发生，简单资源应该返回 Long
-            return 0;
-        }
+        TransferUtils.TransferProtocol<C, T> protocol, C from, C to, long limit) {
+        // 直接提取（不模拟）- 简单资源返回 long
+        long extractedAmount = ((ResourceAdapterProtocol<C>) protocol).getAdapter().extract(from, limit, false);
         if (extractedAmount <= 0) return 0;
 
         // 直接插入
