@@ -33,4 +33,8 @@ public class ContainerRepository {
     public Set<Long> keySet() {
         return containerConfigs.keySet();
     }
+
+    public Set<Long2ObjectMap.Entry<ContainerConfig>> getAllEntries() {
+        return containerConfigs.long2ObjectEntrySet();
+    }
 }

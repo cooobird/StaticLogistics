@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.logic.UpgradeTier;
 import com.coobird.staticlogistics.logic.UpgradeType;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -21,19 +22,21 @@ import java.util.function.Consumer;
 public class ContainerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private int cachedSpeedMult = 1;
-    private int cachedRangeMult = 1;
-    private int cachedStackMult = 1;
+    private long cachedSpeedMult = 1;
+    private long cachedRangeMult = 1;
+    private long cachedStackMult = 1;
     private boolean cachedDimEffective = false;
+    private int cachedActualInterval = -1; // 缓存冷却间隔
     private boolean cacheDirty = true;
     private long configGenAtCache = -1; // 追踪配置代数，重载时自动失效
-    public static final int INFINITY_MARKER = Integer.MAX_VALUE;
+    public static final long INFINITY_MARKER = Long.MAX_VALUE;
     private BlockPos pos = BlockPos.ZERO;
 
     private final ItemStackHandler upgrades = new ItemStackHandler(3) {
         @Override
         protected void onContentsChanged(int slot) {
             markDirty();
+            updateEmptySlotCount();
         }
 
         @Override
@@ -49,6 +52,7 @@ public class ContainerConfig {
     private Consumer<ContainerConfig> onDirty = (c) -> {
     };
     private final LongSet linkedFaceKeys = new LongOpenHashSet();
+    private int emptySlotCount = 3; // 初始 3 个槽位全空
 
     public ContainerConfig() {
     }
@@ -73,17 +77,17 @@ public class ContainerConfig {
         linkedFaceKeys.remove(faceKey);
     }
 
-    public int getSpeedMultiplier() {
+    public long getSpeedMultiplier() {
         updateCache();
         return cachedSpeedMult;
     }
 
-    public int getRangeMultiplier() {
+    public long getRangeMultiplier() {
         updateCache();
         return cachedRangeMult;
     }
 
-    public int getStackMultiplier() {
+    public long getStackMultiplier() {
         updateCache();
         return cachedStackMult;
     }
@@ -91,6 +95,11 @@ public class ContainerConfig {
     public boolean isDimensionEffective() {
         updateCache();
         return cachedDimEffective;
+    }
+
+    public int getCachedActualInterval() {
+        updateCache();
+        return cachedActualInterval;
     }
 
     public ItemStackHandler getUpgrades() {
@@ -149,6 +158,10 @@ public class ContainerConfig {
         this.cachedDimEffective = dim;
         this.cacheDirty = false;
 
+        // 预计算冷却间隔（统一公式）
+        int baseInterval = SLConfig.getDefaultTickInterval();
+        this.cachedActualInterval = LogisticsCalculator.calcSpeedInterval(baseInterval, cachedSpeedMult);
+
         LOGGER.debug("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
             cachedSpeedMult, cachedRangeMult, cachedStackMult, cachedDimEffective);
     }
@@ -172,6 +185,7 @@ public class ContainerConfig {
      */
     public void markDirty() {
         this.cacheDirty = true;
+        this.cachedActualInterval = -1;
         if (onDirty != null) onDirty.accept(this);
     }
 
@@ -180,12 +194,17 @@ public class ContainerConfig {
     }
 
     /**
-     * 没有任何升级卡就是默认（空）配置
+     * 没有任何升级卡就是默认（空）配置 —— O(1) 检查
      */
     public boolean isDefault() {
+        return emptySlotCount >= upgrades.getSlots();
+    }
+
+    private void updateEmptySlotCount() {
+        int count = 0;
         for (int i = 0; i < upgrades.getSlots(); i++) {
-            if (!upgrades.getStackInSlot(i).isEmpty()) return false;
+            if (upgrades.getStackInSlot(i).isEmpty()) count++;
         }
-        return true;
+        emptySlotCount = count;
     }
 }

@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.gui.menu;
 
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.logic.TransferRegistries;
@@ -21,12 +21,12 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
     private final FaceConfigComposite config;
     private final BlockPos pos;
     private final Direction face;
-    private final TransferType transferType;
+    private final LogisticsResource<?> transferType;
     private final boolean isInput;
     private final ItemStack upgradeStack;
 
     public FilterConfiguratorMenu(int containerId, Inventory inv, BlockPos pos, Direction face,
-                                  TransferType type, FaceConfigComposite config, boolean isInput,
+                                  LogisticsResource<?> type, FaceConfigComposite config, boolean isInput,
                                   ItemStack upgradeStack) {
         super(SLMenuTypes.FILTER_CONFIG.get(), containerId, upgradeStack);
         this.pos = pos;
@@ -41,7 +41,7 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
     public static FilterConfiguratorMenu fromBuffer(int containerId, Inventory inv, FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
         Direction face = buf.readEnum(Direction.class);
-        TransferType type = TransferRegistries.get(buf.readResourceLocation());
+        LogisticsResource<?> type = TransferRegistries.get(buf.readResourceLocation());
         CompoundTag tag = buf.readNbt();
         boolean isInput = buf.readBoolean();
         ItemStack upgradeStack = ItemStack.STREAM_CODEC.decode((RegistryFriendlyByteBuf) buf);
@@ -74,7 +74,7 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
         return face;
     }
 
-    public TransferType getTransferType() {
+    public LogisticsResource<?> getTransferType() {
         return transferType;
     }
 

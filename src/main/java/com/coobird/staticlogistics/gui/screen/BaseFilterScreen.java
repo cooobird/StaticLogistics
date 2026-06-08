@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.gui.screen;
 
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.gui.menu.AbstractFilterMenu;
 import com.coobird.staticlogistics.gui.screen.component.BlacklistButton;
 import com.coobird.staticlogistics.gui.screen.component.FilterGridWidget;
@@ -338,7 +338,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
     }
 
     @Override
-    protected List<TransferType> getTypeList() {
+    protected List<LogisticsResource<?>> getTypeList() {
         return List.of();
     }
 
@@ -348,11 +348,11 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
     }
 
     @Override
-    protected void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected) {
+    protected void renderTypeListItem(GuiGraphics g, LogisticsResource<?> type, int x, int y, boolean isSelected) {
     }
 
     @Override
-    protected void onTypeClicked(TransferType type) {
+    protected void onTypeClicked(LogisticsResource<?> type) {
     }
 
     protected abstract void sendFilterUpdate();

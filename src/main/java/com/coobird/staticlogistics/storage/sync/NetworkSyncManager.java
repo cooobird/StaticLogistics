@@ -4,7 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPayload;
 import com.coobird.staticlogistics.network.s2c.S2CSyncBulkFaceConfigPayload;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.PendingSyncBuffer;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.core.BlockPos;
@@ -41,13 +41,13 @@ public class NetworkSyncManager {
     }
 
     /**
-     * 批量同步面容配置到维度内所有追踪对应区块的玩家。
+     * 批量同步面配置到维度内所有追踪对应区块的玩家。
      * 按 ChunkPos 分组后使用 S2CSyncBulkFaceConfigPayload 发送，减少网络包数量。
      */
-    public void syncBulkToDimension(List<LinkManager.PendingSyncEntry> entries) {
+    public void syncBulkToDimension(List<PendingSyncBuffer.PendingSyncEntry> entries) {
         if (entries.isEmpty()) return;
         Map<ChunkPos, List<S2CSyncBulkFaceConfigPayload.Entry>> grouped = new HashMap<>();
-        for (LinkManager.PendingSyncEntry entry : entries) {
+        for (PendingSyncBuffer.PendingSyncEntry entry : entries) {
             if (entry.config().isDefault()) continue;
             ChunkPos chunkPos = new ChunkPos(entry.pos());
             grouped.computeIfAbsent(chunkPos, k -> new ArrayList<>())
@@ -63,7 +63,7 @@ public class NetworkSyncManager {
                 int end = Math.min(i + LogisticsConstants.Network.getMaxBulkEntries(), packetEntries.size());
                 PacketDistributor.sendToPlayersTrackingChunk(
                     level, group.getKey(),
-                    new S2CSyncBulkFaceConfigPayload(new ArrayList<>(packetEntries.subList(i, end)))
+                    new S2CSyncBulkFaceConfigPayload(packetEntries.subList(i, end))
                 );
             }
         }

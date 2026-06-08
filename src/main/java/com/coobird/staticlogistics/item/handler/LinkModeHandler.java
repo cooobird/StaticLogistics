@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.item.handler;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

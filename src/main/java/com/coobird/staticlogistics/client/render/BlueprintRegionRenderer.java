@@ -29,6 +29,18 @@ import org.joml.Matrix4f;
 import java.util.HashSet;
 import java.util.Set;
 
+/**
+ * 蓝图区域渲染器 —— 在世界中渲染蓝图的选区、预览和粘贴效果。
+ *
+ * <p>渲染内容：
+ * <ul>
+ *   <li>锚点模式：选区线框 + 锚点（绿）+ 终点（红）</li>
+ *   <li>预览模式：旋转后的选区 + 每个方块的面状态指示器 + 链接流动粒子</li>
+ * </ul>
+ *
+ * <p>使用 X-Ray 渲染，在 {@link RenderLevelStageEvent.Stage#AFTER_TRANSLUCENT_BLOCKS} 阶段绘制。
+ * 只在手持蓝图时激活。
+ */
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class BlueprintRegionRenderer {
 
@@ -139,8 +151,11 @@ public class BlueprintRegionRenderer {
         float R = 0.025f;
         drawEdges12(bc, mat, cx1 - R, cy1 - R, cz1 - R, cx2 + 1 + R, cy2 + 1 + R, cz2 + 1 + R,
             R, 0.3f, 0.6f, 1f, 0.7f);
-        // 锚点高亮
-        LogisticsRenderHelper.drawFrame(bc, mat, anchor, 1f, 1f, 1f, 0.9f);
+        // 锚点（起点）绿色高亮
+        LogisticsRenderHelper.drawFrame(bc, mat, anchor, 0.3f, 1f, 0.3f, 0.9f);
+        // 终点（对角）红色高亮
+        BlockPos corner2Abs = new BlockPos(cx2, cy2, cz2);
+        LogisticsRenderHelper.drawFrame(bc, mat, corner2Abs, 1f, 0.3f, 0.3f, 0.9f);
 
         Set<BlockPos> renderedFrames = new HashSet<>();
         for (var entry : entryMap.entrySet()) {
@@ -149,8 +164,8 @@ public class BlueprintRegionRenderer {
             double d2 = absPos.distToCenterSqr(cam.x, cam.y, cam.z);
             boolean vis = d2 <= maxD2;
 
-            // 方块线框
-            if (vis && renderedFrames.add(absPos)) {
+            // 方块线框（锚点和终点已单独高亮，跳过以免覆盖颜色）
+            if (vis && renderedFrames.add(absPos) && !absPos.equals(anchor) && !absPos.equals(corner2Abs)) {
                 LogisticsRenderHelper.drawFrame(bc, mat, absPos, 1f, 1f, 1f, 0.25f);
             }
 

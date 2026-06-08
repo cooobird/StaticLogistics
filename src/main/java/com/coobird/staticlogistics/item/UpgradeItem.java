@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logic.UpgradeTier;
 import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.network.c2s.C2SOpenHandFilterPayload;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
@@ -61,8 +62,9 @@ public class UpgradeItem extends Item {
             int multiplier = tier.getMultiplier();
             if (type == UpgradeType.SPEED) {
                 int baseInterval = SLConfig.getDefaultTickInterval();
-                int effectiveInterval = Math.max(1, (int) (baseInterval / Math.sqrt(multiplier)));
-                String valueDisplay = effectiveInterval + " tick" + (effectiveInterval != 1 ? "s" : "");
+                int effectiveInterval = LogisticsCalculator.calcSpeedInterval(baseInterval, multiplier);
+                double tps = 20.0 / effectiveInterval;
+                String valueDisplay = String.format("%.1f/s (%d tick%s)", tps, effectiveInterval, effectiveInterval != 1 ? "s" : "");
                 tooltip.add(Component.translatable("tooltip.staticlogistics.upgrade.value", valueDisplay)
                     .withStyle(ChatFormatting.GREEN));
             } else {

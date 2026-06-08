@@ -12,7 +12,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record S2CSyncFaceConfigPayload(GlobalPos pos, Direction face,
-                                       FaceConfigComposite config, int version) implements CustomPacketPayload {
+                                       FaceConfigComposite config, long version) implements CustomPacketPayload {
     public S2CSyncFaceConfigPayload(GlobalPos pos, Direction face, FaceConfigComposite config) {
         this(pos, face, config, config.getVersion());
     }
@@ -26,7 +26,7 @@ public record S2CSyncFaceConfigPayload(GlobalPos pos, Direction face,
             Direction f = Direction.STREAM_CODEC.decode(buf);
             FaceConfigComposite cfg = new FaceConfigComposite();
             cfg.deserializeNBT(buf.registryAccess(), ByteBufCodecs.COMPOUND_TAG.decode(buf));
-            int version = buf.readInt();
+            long version = buf.readLong();
             return new S2CSyncFaceConfigPayload(p, f, cfg, version);
         }
 
@@ -35,7 +35,7 @@ public record S2CSyncFaceConfigPayload(GlobalPos pos, Direction face,
             GlobalPos.STREAM_CODEC.encode(buf, p.pos());
             Direction.STREAM_CODEC.encode(buf, p.face());
             ByteBufCodecs.COMPOUND_TAG.encode(buf, p.config().serializeNBT(buf.registryAccess()));
-            buf.writeInt(p.version());
+            buf.writeLong(p.version());
         }
     };
 

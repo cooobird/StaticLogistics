@@ -6,7 +6,7 @@ NeoForge 1.21.1 的 Minecraft 物流模组。物品、流体、能量传输。�
 
 ## 特性
 
-- **物品 / 流体 / 能量传输** — 内置 3 种传输类型，支持其他模组注册自定义类型
+- **统一传输管线** — 所有资源类型（物品/流体/能量/化学品/热量/魔源/魔力）统一走 `LogisticsResource<C>` 接口和 `doTransferNodes` 管线，自动获得能力缓存、维度/距离/区块检查、脏链接清理和传输日志
 - **跨维度传输** — 维度升级插件启用跨维度物流
 - **5 种工具模式** — 扳手、链接为输入、链接为输出、移除链接、节点配置
 - **每面独立配置** — 6 个方块面各有独立设置：频道（1–16）、优先级、分发策略、提取模式、输入/输出开关、类型掩码
@@ -14,6 +14,7 @@ NeoForge 1.21.1 的 Minecraft 物流模组。物品、流体、能量传输。�
 - **智能过滤** — 基础过滤（物品白名单/黑名单）、标签过滤（物品+流体标签）、NBT 过滤（精确/部分 NBT 匹配），4 种匹配策略：EXACT、CONTAINS、SMART_CONTAINS、IGNORE
 - **2 种提取模式** — 顺序提取、槽位轮询
 - **5 种分发策略** — 顺序、轮询、最近、最远、随机
+- **传输事件** — `PreTransferEvent`（可取消）和 `PostTransferEvent`，第三方可 hook 传输行为
 - **分组管理** — 命名分组，按组同步、转移所有权、重命名、清理
 - **FTB Teams 集成** — 基于队伍的所有权和权限
 - **蓝图系统** — 保存物流配置、旋转预览、粘贴到方块
@@ -120,12 +121,14 @@ component_strategy_overrides = []  # 格式："命名空间:组件ID=策略"
 
 ## 模组集成
 
-| 模组          | 传输类型     |
-|-------------|----------|
-| Mekanism    | 化学品、热量   |
-| Ars Nouveau | 魔源       |
-| Botania     | 魔力       |
-| FTB Teams   | 队伍权限和所有权 |
+| 模组          | 传输类型     | 实现方式                                                                    |
+|-------------|----------|-------------------------------------------------------------------------|
+| Mekanism    | 化学品、热量   | `LogisticsResource<IChemicalHandler>`、`LogisticsResource<IHeatHandler>` |
+| Ars Nouveau | 魔源       | `LogisticsResource<ISourceCap>`                                         |
+| Botania     | 魔力       | `LogisticsResource<ManaHandle>`                                         |
+| FTB Teams   | 队伍权限和所有权 | `FTBEventHandlers`                                                      |
+
+所有外部模组集成均使用统一的 `LogisticsResource<C>` 接口。详见 [docs/INTEGRATION.md](docs/INTEGRATION.md) 了解如何添加自定义集成。
 
 ## 许可证
 

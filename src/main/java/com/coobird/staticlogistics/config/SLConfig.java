@@ -85,7 +85,7 @@ public final class SLConfig {
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
     // 核心资源传输量缓存值
-    private static volatile int DefaultItemStack = 8;
+    private static volatile int DefaultItemStack = 64;
     private static volatile int DefaultFluidStack = 250;
     private static volatile int DefaultEnergyStack = 1024;
 

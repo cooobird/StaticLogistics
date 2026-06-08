@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.datagen;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
-import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.logic.UpgradeTier;
@@ -485,8 +485,8 @@ public class SLLanguageProvider extends LanguageProvider {
             add("tier.staticlogistics." + tier.getSerializedName(), toTitleCase(tier.getSerializedName()), zh);
         }
 
-        for (TransferType type : TransferRegistries.getAllActive()) {
-            String path = type.id().getPath();
+        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
+            String path = type.typeId().getPath();
             String enName = toTitleCase(path);
             String cn = switch (path) {
                 case "item" -> "物品";
@@ -512,6 +512,12 @@ public class SLLanguageProvider extends LanguageProvider {
         add("transfer_type.staticlogistics.ars_source.desc", "Transport Ars Source", "传输魔源。");
         add("transfer_type.staticlogistics.botania_mana", "Mana", "魔力");
         add("transfer_type.staticlogistics.botania_mana.desc", "Transport Mana", "传输魔力。");
+
+        add("failure.staticlogistics.no_dim", "No Dimension Upgrade", "无维度升级");
+        add("failure.staticlogistics.out_of_range", "Out of Range", "超出范围");
+        add("failure.staticlogistics.chunk_unloaded", "Chunk Unloaded", "区块未加载");
+        add("failure.staticlogistics.no_capability", "No Capability", "无能力");
+        add("failure.staticlogistics.event_cancelled", "Event Cancelled", "事件取消");
 
         for (DistributionStrategy strategy : DistributionStrategyRegistry.getValues()) {
             String zh = switch (strategy.id().getPath()) {

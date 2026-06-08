@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public record S2CSyncBulkFaceConfigPayload(List<Entry> entries) implements CustomPacketPayload {
-    public record Entry(GlobalPos pos, Direction face, FaceConfigComposite config, int version) {
+    public record Entry(GlobalPos pos, Direction face, FaceConfigComposite config, long version) {
     }
 
     public static final Type<S2CSyncBulkFaceConfigPayload> TYPE = new Type<>(StaticLogistics.asResource("sync_bulk_face_config"));
@@ -30,7 +30,7 @@ public record S2CSyncBulkFaceConfigPayload(List<Entry> entries) implements Custo
                 Direction face = Direction.STREAM_CODEC.decode(buf);
                 FaceConfigComposite config = new FaceConfigComposite();
                 config.deserializeNBT(buf.registryAccess(), ByteBufCodecs.COMPOUND_TAG.decode(buf));
-                int version = buf.readInt();
+                long version = buf.readLong();
                 entries.add(new Entry(pos, face, config, version));
             }
             return new S2CSyncBulkFaceConfigPayload(entries);
@@ -43,7 +43,7 @@ public record S2CSyncBulkFaceConfigPayload(List<Entry> entries) implements Custo
                 GlobalPos.STREAM_CODEC.encode(buf, entry.pos());
                 Direction.STREAM_CODEC.encode(buf, entry.face());
                 ByteBufCodecs.COMPOUND_TAG.encode(buf, entry.config().serializeNBT(buf.registryAccess()));
-                buf.writeInt(entry.version());
+                buf.writeLong(entry.version());
             }
         }
     };

@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.storage.service;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.storage.DropHandler;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
@@ -28,11 +28,7 @@ public class FaceConfigService {
 
     @Nullable
     public FaceConfigComposite get(long key) {
-        FaceConfigComposite config = repository.get(key);
-        if (config != null && config.sharedContainerConfig == null) {
-            config.sharedContainerConfig = containerConfigService.get(LogisticsNode.keyToPos(key));
-        }
-        return config;
+        return repository.get(key);
     }
 
     public FaceConfigComposite getOrCreate(BlockPos pos, Direction face) {

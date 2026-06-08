@@ -2,9 +2,9 @@ package com.coobird.staticlogistics;
 
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.datagen.SLLanguageProvider;
+import com.coobird.staticlogistics.integration.ExtendedTypeRegisterHandler;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
-import com.coobird.staticlogistics.integration.handler.ExtendedTypeRegisterHandler;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -26,6 +26,20 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+/**
+ * Static Logistics —— Minecraft NeoForge 物流模组主入口。
+ *
+ * <p>启动流程：
+ * <ol>
+ *   <li>注册配置（{@link SLConfig}）</li>
+ *   <li>注册物品/菜单/数据组件/创造标签页</li>
+ *   <li>检测 FTB Teams 集成</li>
+ *   <li>在 {@code FMLCommonSetupEvent} 中初始化传输类型注册（{@link TransferRegistries} + {@link ExtendedTypeRegisterHandler}）</li>
+ * </ol>
+ *
+ * <p>支持的传输类型：物品、流体、能量（内置）+ 化学品、热量、魔源、魔力（外部模组）。
+ * 第三方模组通过 {@link com.coobird.staticlogistics.api.LogisticsResource} 接口接入。
+ */
 @Mod(StaticLogistics.MODID)
 public class StaticLogistics {
     public static final String MODID = "staticlogistics";

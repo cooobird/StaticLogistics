@@ -1,13 +1,13 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.filter.FilterData;
-import com.coobird.staticlogistics.logic.GroupService;
 import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.group.GroupService;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -59,7 +59,7 @@ public record C2SUpdateFilterOnItemPayload(
             if (config == null) return;
             if (!config.canPlayerModify(player)) return;
 
-            TransferType type = TransferRegistries.get(payload.typeId());
+            LogisticsResource<?> type = TransferRegistries.get(payload.typeId());
             if (type == null) return;
 
             int slotIndex = payload.isInput() ? 0 : 1;

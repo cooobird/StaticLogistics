@@ -6,13 +6,19 @@ import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class CooldownManager {
-    private final Map<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new ConcurrentHashMap<>();
-    private final Map<ResourceKey<Level>, Integer> dimCleanCounters = new ConcurrentHashMap<>();
+    // 主线程单线程访问（setCooldown/hasCooldown 由 LogisticsTicker.tick 调用）
+    // clearForDimension 在 LevelEvent.Unload 中调用，也由主线程触发
+    private final Map<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new HashMap<>();
+    private final Map<ResourceKey<Level>, Integer> dimCleanCounters = new HashMap<>();
+
+    private static long extractSourceKey(long cooldownKey) {
+        return cooldownKey >> 8;
+    }
 
     public void setCooldown(ResourceKey<Level> dimension, long key, int durationTicks, long currentTick) {
         long nextAllowedTick = currentTick + durationTicks;
@@ -50,7 +56,9 @@ public class CooldownManager {
         Long2LongMap map = dimensionCooldowns.get(dimension);
         if (map == null) return;
         map.long2LongEntrySet().removeIf(entry -> entry.getLongValue() <= currentTick);
-        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
+        if (map.isEmpty()) {
+            dimensionCooldowns.remove(dimension);
+        }
     }
 
     private void cleanExpiredBatched(ResourceKey<Level> dimension, long currentTick) {
@@ -63,17 +71,27 @@ public class CooldownManager {
             if (entry.getLongValue() <= currentTick) it.remove();
             processed++;
         }
-        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
+        if (map.isEmpty()) {
+            dimensionCooldowns.remove(dimension);
+        }
     }
 
+    /**
+     * 线性扫描移除指定 sourceKey 的所有冷却。
+     * cooldown 表通常只有几百条，线性扫描代价可接受。
+     */
     public void removeAllForSourceKey(ResourceKey<Level> dimension, long sourceKey) {
         Long2LongMap map = dimensionCooldowns.get(dimension);
         if (map == null) return;
+
         var it = map.long2LongEntrySet().iterator();
         while (it.hasNext()) {
-            if ((it.next().getLongKey() >> 8) == sourceKey) it.remove();
+            if (extractSourceKey(it.next().getLongKey()) == sourceKey) it.remove();
         }
-        if (map.isEmpty()) dimensionCooldowns.remove(dimension);
+
+        if (map.isEmpty()) {
+            dimensionCooldowns.remove(dimension);
+        }
     }
 
     public void clearForDimension(ResourceKey<Level> dimension) {

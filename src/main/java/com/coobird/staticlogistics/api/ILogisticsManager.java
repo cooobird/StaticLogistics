@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.api;
 
-import com.coobird.staticlogistics.api.type.TransferType;
 import net.minecraft.server.level.ServerLevel;
 
 import java.util.List;
@@ -56,7 +55,7 @@ public interface ILogisticsManager {
      * @param type    传输类型
      * @return 长度为 1 的 int 数组，用于在传输过程中持久化索引
      */
-    int[] getCursor(long nodeKey, TransferType type);
+    int[] getCursor(long nodeKey, LogisticsResource<?> type);
 
     /**
      * 同步指定组中的所有节点之间的链接

@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import mekanism.additions.common.AdditionsTags;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;

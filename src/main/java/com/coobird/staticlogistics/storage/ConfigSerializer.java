@@ -10,6 +10,14 @@ import org.slf4j.Logger;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 配置序列化器 —— 将 {@link FaceConfigComposite} 的子配置序列化/反序列化为 NBT。
+ *
+ * <p>处理的字段：group_ids、owner、input/output_channel、strategy、extraction_mode、
+ * priority、keep_stock、filter_upgrades、selected_types_mask。
+ *
+ * <p>版本兼容：反序列化时自动迁移旧格式（group_id → group_ids，SLOT_ROUND_ROBIN → ROUND_ROBIN）。
+ */
 public class ConfigSerializer {
     private static final Logger LOGGER = LogUtils.getLogger();
 

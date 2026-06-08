@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.gui.screen;
 
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
-import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
@@ -10,6 +10,7 @@ import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -95,7 +96,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
     }
 
     @Override
-    protected List<TransferType> getTypeList() {
+    protected List<LogisticsResource<?>> getTypeList() {
         return new ArrayList<>(TransferRegistries.getAllActive());
     }
 
@@ -105,7 +106,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
     }
 
     @Override
-    protected void renderTypeListItem(GuiGraphics g, TransferType t, int x, int y, boolean sel) {
+    protected void renderTypeListItem(GuiGraphics g, LogisticsResource<?> t, int x, int y, boolean sel) {
         g.pose().pushPose();
         g.pose().translate(x + 4, y + 2, 0);
         g.pose().scale(0.75f, 0.75f, 1.0f);
@@ -138,7 +139,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
     }
 
     @Override
-    protected void onTypeClicked(TransferType t) {
+    protected void onTypeClicked(LogisticsResource<?> t) {
         menu.toggleTypeSelection(t);
         syncType();
         playClickSound();
@@ -285,7 +286,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         switch (slotIdx) {
             case 2 -> { // 速度
                 long sm = menu.getSpeedMultiplier();
-                int cur = (int) Math.max(1, baseInterval / Math.sqrt(sm));
+                int cur = LogisticsCalculator.calcSpeedInterval(baseInterval, (int) sm);
                 lines.add(Component.translatable("gui.staticlogistics.stat.speed").withStyle(ChatFormatting.GRAY)
                     .append(Component.literal(" ")).append(statValue(cur, sm > 1))
                     .append(statUnit("gui.staticlogistics.unit.ticks", sm > 1))

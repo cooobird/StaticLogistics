@@ -71,7 +71,7 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
         FilterData filter = menu.getFilterData();
         PacketDistributor.sendToServer(new C2SUpdateFilterOnItemPayload(
             menu.getPos(), menu.getFace(),
-            menu.getTransferType().id(), menu.isInput(), filter));
+            menu.getTransferType().typeId(), menu.isInput(), filter));
     }
 
     @Override

@@ -1,9 +1,10 @@
 package com.coobird.staticlogistics.item.handler;
 
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.TransferRegistries;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
 import net.minecraft.ChatFormatting;
@@ -42,7 +43,7 @@ public class NodeConfigModeHandler implements ModeHandler {
 
             if (config != null && config.canPlayerAccess(player)) {
                 var firstType = settings.getSelectedTypes().isEmpty()
-                    ? TransferRegistries.ITEM : settings.getSelectedTypes().getFirst();
+                    ? TransferRegistries.get(StaticLogistics.asResource("item")) : settings.getSelectedTypes().getFirst();
                 BlockState state = level.getBlockState(pos);
                 var title = state.getBlock().getName().copy()
                     .append(Component.literal(String.format(" [%d, %d, %d]", pos.getX(), pos.getY(), pos.getZ()))
@@ -52,7 +53,7 @@ public class NodeConfigModeHandler implements ModeHandler {
                     buf -> {
                         buf.writeBlockPos(pos);
                         buf.writeEnum(face);
-                        buf.writeResourceLocation(firstType.id());
+                        buf.writeResourceLocation(firstType.typeId());
                     });
             } else {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission"), true);

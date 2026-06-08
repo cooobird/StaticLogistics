@@ -2,9 +2,9 @@ package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logic.GroupService;
+import com.coobird.staticlogistics.logic.group.GroupService;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

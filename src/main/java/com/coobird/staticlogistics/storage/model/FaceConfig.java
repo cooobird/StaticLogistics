@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -43,7 +44,7 @@ public class FaceConfig {
     }
 
     public Set<String> getGroupIds() {
-        return new LinkedHashSet<>(groupIds);
+        return Collections.unmodifiableSet(groupIds);
     }
 
     public void setGroupId(String groupId) {

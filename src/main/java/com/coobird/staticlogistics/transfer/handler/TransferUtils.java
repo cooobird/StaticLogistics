@@ -3,186 +3,69 @@ package com.coobird.staticlogistics.transfer.handler;
 import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.logic.TransferRegistries;
-import com.coobird.staticlogistics.storage.LinkManager;
-import com.coobird.staticlogistics.storage.model.ContainerConfig;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferContext;
-import com.coobird.staticlogistics.transfer.TransferFailureReason;
-import com.coobird.staticlogistics.transfer.TransferLogManager;
-import com.coobird.staticlogistics.util.LogisticsCalculator;
-import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
-import org.slf4j.Logger;
 
-import java.lang.ref.WeakReference;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 /**
- * 传输工具类 —— 核心传输管线 + 按维度缓存的 capability 查询
- * <p>
- * 缓存机制：
+ * 传输工具类 —— 提供传输协议接口和 capability 查询工具。
+ *
+ * <p>职责分离：
  * <ul>
- *   <li>每个 IItemHandler / IFluidHandler / IEnergyStorage 实例的生命周期
- *       等于其 BlockEntity 的生命周期</li>
- *   <li>用 WeakReference 持有缓存引用 —— BlockEntity 被 GC 时缓存自动清除</li>
- *   <li>按维度分桶 —— 维度卸载时整桶清空</li>
+ *   <li>{@link CapabilityCache} — capability 缓存</li>
+ *   <li>{@link TransferPipeline} — 传输管线编排</li>
+ *   <li>本类 — 传输协议接口、capability 查询工具</li>
  * </ul>
  */
 public class TransferUtils {
-    private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static final Map<Level, Map<Long, WeakReference<Object>>> CAP_CACHE = new ConcurrentHashMap<>();
-
-    /**
-     * 获取缓存的 capability，缓存未命中时查询一次并缓存。
-     */
-    @SuppressWarnings("unchecked")
-    private static <C> C getCachedCapability(ServerLevel level, BlockPos pos, Direction face,
-                                             BlockCapability<C, Direction> cap) {
-        Map<Long, WeakReference<Object>> dimCache = CAP_CACHE.computeIfAbsent(level, k -> new ConcurrentHashMap<>());
-        long key = (pos.asLong() << 4) | face.ordinal();
-
-        WeakReference<Object> ref = dimCache.get(key);
-        if (ref != null) {
-            Object cached = ref.get();
-            if (cached != null) return (C) cached;
-            dimCache.remove(key);
-        }
-
-        C fresh = level.getCapability(cap, pos, face);
-        if (fresh != null) {
-            dimCache.put(key, new WeakReference<>(fresh));
-        }
-        return fresh;
-    }
-
-    /**
-     * 维度卸载时调用 —— 清空该维度的全部缓存
-     */
-    public static void clearDimCache(Level level) {
-        CAP_CACHE.remove(level);
-    }
-
-    // CapGetter 已移至 api.CapGetter 公开接口
+    // ── 向后兼容：委托给 TransferPipeline ──
 
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
-        int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
+        long limit, TransferProtocol<C, T> protocol, boolean isPullMode,
         TransferContext context
     ) {
-        return doTransferNodes(localLevel, localPos, localFace, destinations,
-            (level, pos, face) -> getCachedCapability(level, pos, face, cap),
-            limit, protocol, isPullMode, context);
+        return TransferPipeline.execute(localLevel, localPos, localFace, destinations, cap, limit, protocol, isPullMode, context);
     }
 
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, CapGetter<C> capGetter,
-        int limit, TransferProtocol<C, T> protocol, boolean isPullMode,
+        long limit, TransferProtocol<C, T> protocol, boolean isPullMode,
         TransferContext context
     ) {
-        if (context != null && context.isDepthExceeded()) {
-            LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
-            return false;
-        }
-        if (destinations.isEmpty() || limit <= 0) return false;
-
-        int remaining = limit;
-
-        LinkManager localMgr = LinkManager.get(localLevel);
-        ContainerConfig localContainer = localMgr.getContainerConfig(localPos);
-        if (localContainer == null && context != null && context.sourceConfig() != null) {
-            localContainer = context.sourceConfig().sharedContainerConfig;
-        }
-        if (localContainer == null) return false;
-
-        boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
-        C localCap = capGetter.get(localLevel, localPos, localFace);
-        if (localCap == null) return false;
-
-        boolean movedAny = false;
-
-        for (LogisticsNode remoteNode : destinations) {
-            boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
-
-            if (!isSameDim && !canCrossDim) {
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
-                continue;
-            }
-
-            if (isSameDim && !LogisticsCalculator.isWithinRange(localPos, remoteNode.gPos().pos(), localContainer)) {
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.OUT_OF_RANGE);
-                continue;
-            }
-
-            ServerLevel remoteLevel = isSameDim ? localLevel :
-                localLevel.getServer().getLevel(remoteNode.gPos().dimension());
-
-            if (remoteLevel == null || !remoteLevel.getChunkSource().hasChunk(
-                remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4)) {
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.CHUNK_UNLOADED);
-                continue;
-            }
-
-            C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
-            if (remoteCap == null) {
-                if (context != null && context.sourceConfig() != null
-                    && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
-                    cleanStaleTarget(context.sourceConfig(), remoteNode, context);
-                }
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.CAPABILITY_NULL);
-                continue;
-            }
-
-            C from = isPullMode ? remoteCap : localCap;
-            C to = isPullMode ? localCap : remoteCap;
-
-            while (remaining > 0) {
-                ExtractionResult<T> result = protocol.simulateExtract(from, remaining);
-                if (protocol.isEmpty(result)) break;
-
-                if (!protocol.canInsert(to, result.value(), remoteNode)) break;
-
-                int accepted = protocol.executeInsert(to, result.value());
-                if (accepted <= 0) break;
-
-                protocol.commitExtract(from, result, accepted);
-                remaining -= accepted;
-                movedAny = true;
-
-                if (context != null) {
-                    LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
-                    LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                    TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), accepted, true);
-                }
-            }
-            if (remaining <= 0) break;
-        }
-        return movedAny;
+        return TransferPipeline.execute(localLevel, localPos, localFace, destinations, capGetter, limit, protocol, isPullMode, context);
     }
 
-    private static void logFailure(TransferContext context, LogisticsNode remoteNode, TransferFailureReason reason) {
-        LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
-        LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-        TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), 0, false, reason);
-    }
+    // ── capability 查询工具 ──
 
+    /**
+     * 检查指定位置是否支持任何物流 capability。
+     */
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
-        return TransferRegistries.getAllActive().stream().anyMatch(type -> {
-            if (type.customCapCheck() != null) return type.customCapCheck().test(level, pos);
-            var cap = type.capability();
-            return cap != null && (level.getCapability(cap, pos, face) != null || level.getCapability(cap, pos, null) != null);
-        });
+        for (var type : TransferRegistries.getAllActive()) {
+            if (type.isPresent((ServerLevel) level, pos, face)) return true;
+        }
+        return false;
     }
+
+    /**
+     * 维度卸载时清空 capability 缓存。
+     */
+    public static void clearDimCache(Level level) {
+        CapabilityCache.clearDimension(level);
+    }
+
+    // ── 传输协议接口 ──
 
     public interface TransferProtocol<C, T> {
         ExtractionResult<T> simulateExtract(C source, int max);
@@ -195,6 +78,31 @@ public class TransferUtils {
 
         default boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
             return true;
+        }
+
+        default BulkExtractionResult<T> extractBulk(C source, long maxAmount) {
+            int singleMax = (int) Math.min(maxAmount, Integer.MAX_VALUE);
+            ExtractionResult<T> single = simulateExtract(source, singleMax);
+            if (isEmpty(single)) return BulkExtractionResult.empty();
+            return BulkExtractionResult.single(single);
+        }
+
+        default long insertBulk(C dest, BulkExtractionResult<T> bulk, LogisticsNode targetNode) {
+            long total = 0;
+            for (ExtractionResult<T> r : bulk.results()) {
+                if (!canInsert(dest, r.value(), targetNode)) break;
+                total += executeInsert(dest, r.value());
+            }
+            return total;
+        }
+
+        default void commitBulkExtract(C source, BulkExtractionResult<T> bulk, long actual) {
+            long remaining = actual;
+            for (ExtractionResult<T> r : bulk.results()) {
+                if (remaining <= 0) break;
+                commitExtract(source, r, (int) Math.min(remaining, Integer.MAX_VALUE));
+                remaining -= Integer.MAX_VALUE;
+            }
         }
     }
 
@@ -240,21 +148,5 @@ public class TransferUtils {
     @FunctionalInterface
     public interface TriConsumer<A, B, C> {
         void accept(A a, B b, C c);
-    }
-
-    private static void cleanStaleTarget(FaceConfigComposite sourceCfg, LogisticsNode remoteNode,
-                                         TransferContext ctx) {
-        sourceCfg.getLinkedNodes().remove(remoteNode);
-        LinkManager mgr = ctx.linkManager();
-        FaceConfigComposite targetCfg = mgr.getFaceConfig(remoteNode.toKey());
-        if (targetCfg != null) {
-            targetCfg.getLinkedNodes().remove(ctx.sourceNode());
-            targetCfg.markDirty();
-        }
-        if (sourceCfg.getLinkedNodes().isEmpty()) {
-            sourceCfg.setGlobalOutputEnabled(false);
-            sourceCfg.setGlobalInputEnabled(false);
-        }
-        sourceCfg.markDirty();
     }
 }

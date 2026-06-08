@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.logic.event;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;

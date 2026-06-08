@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.gui.screen;
 
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -31,7 +31,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     protected float typeScrollOffset = 0;
     protected boolean isScrollingTypes = false;
     protected String typeSearchTerm = "";
-    protected TransferType hoveredType = null;
+    protected LogisticsResource<?> hoveredType = null;
 
     public AbstractConfiguratorScreen(T menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -71,19 +71,19 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
 
     protected abstract String getSearchHintKey();
 
-    protected abstract List<TransferType> getTypeList();
+    protected abstract List<LogisticsResource<?>> getTypeList();
 
     protected abstract int getSelectedTypesMask();
 
-    protected abstract void renderTypeListItem(GuiGraphics g, TransferType type, int x, int y, boolean isSelected);
+    protected abstract void renderTypeListItem(GuiGraphics g, LogisticsResource<?> type, int x, int y, boolean isSelected);
 
-    protected abstract void onTypeClicked(TransferType type);
+    protected abstract void onTypeClicked(LogisticsResource<?> type);
 
     protected void renderTransferTypePanel(GuiGraphics g, int mx, int my) {
-        List<TransferType> allTypes = getTypeList();
+        List<LogisticsResource<?>> allTypes = getTypeList();
         if (allTypes.isEmpty()) return;
 
-        List<TransferType> types = allTypes.stream()
+        List<LogisticsResource<?>> types = allTypes.stream()
             .filter(t -> this.typeSearchTerm.isEmpty() ||
                 Component.translatable(t.translationKey()).getString().toLowerCase().contains(this.typeSearchTerm))
             .toList();
@@ -104,7 +104,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
         g.enableScissor(listX - 2, listY, listX + SELECTION_WIDTH + 2, listY + LIST_HEIGHT);
 
         for (int i = 0; i < types.size(); i++) {
-            TransferType type = types.get(i);
+            LogisticsResource<?> type = types.get(i);
             boolean isSelected = (selectedMask & type.getFlag()) != 0;
             int itemY = listY + (i * this.itemHeight) - (int) typeScrollOffset;
 
@@ -164,7 +164,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
             int listY = topPos + LIST_OFFSET_Y;
             if (mx >= listX && mx <= listX + SELECTION_WIDTH &&
                 my >= listY && my <= listY + LIST_HEIGHT) {
-                List<TransferType> types = getTypeList().stream()
+                List<LogisticsResource<?>> types = getTypeList().stream()
                     .filter(t -> this.typeSearchTerm.isEmpty() ||
                         Component.translatable(t.translationKey()).getString().toLowerCase().contains(this.typeSearchTerm))
                     .toList();

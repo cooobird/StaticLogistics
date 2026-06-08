@@ -2,25 +2,42 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import net.minecraft.server.level.ServerLevel;
 
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
+/**
+ * 传输上下文 —— 携载一次传输所需的全部参数，通过对象池复用避免频繁 GC。
+ *
+ * <p>生命周期：
+ * <ol>
+ *   <li>{@link #obtain} 从池中取出或新建，填充参数</li>
+ *   <li>传输管线中读取参数（level、sourceNode、type、limit 等）</li>
+ *   <li>{@link #recycle} 清空引用并归还池中</li>
+ * </ol>
+ *
+ * <p>深度控制：通过 {@link #withIncrementedDepth()} 创建递增深度的副本，
+ * 防止 A→B→A 的双向传输形成无限循环。{@link #MAX_DEPTH} = 3。
+ *
+ * <p>线程安全：每个 tick 的传输在服务器主线程上串行执行，
+ * 对象池使用 ArrayDeque（主线程单线程访问）。
+ */
 public final class TransferContext implements ITransferContext {
     public static final int MAX_DEPTH = 3;
 
-    private static final ConcurrentLinkedDeque<TransferContext> POOL = new ConcurrentLinkedDeque<>();
+    private static final Deque<TransferContext> POOL = new ArrayDeque<>();
 
     private ServerLevel level;
     private LogisticsNode sourceNode;
     private FaceConfigComposite sourceConfig;
-    private TransferType type;
-    private int limit;
+    private LogisticsResource<?> type;
+    private long limit;
     private boolean isPullMode;
     private long currentTick;
     private int depth;
@@ -30,7 +47,7 @@ public final class TransferContext implements ITransferContext {
     }
 
     public static TransferContext obtain(ServerLevel level, LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
-                                         TransferType type, int limit, boolean isPullMode, long currentTick,
+                                         LogisticsResource<?> type, long limit, boolean isPullMode, long currentTick,
                                          LinkManager linkManager) {
         TransferContext ctx = POOL.poll();
         if (ctx == null) ctx = new TransferContext();
@@ -87,11 +104,11 @@ public final class TransferContext implements ITransferContext {
         return sourceConfig;
     }
 
-    public TransferType type() {
+    public LogisticsResource<?> type() {
         return type;
     }
 
-    public int limit() {
+    public long limit() {
         return limit;
     }
 

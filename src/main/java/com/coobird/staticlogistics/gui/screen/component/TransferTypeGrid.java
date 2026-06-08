@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.gui.screen.component;
 
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -28,12 +28,12 @@ public class TransferTypeGrid {
 
     public static void render(GuiGraphics g, ItemStack stack, int leftPos, int topPos, int mx, int my) {
         int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-        List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
+        List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
         int startX = leftPos + START_X_OFFSET;
         int startY = topPos + START_Y_OFFSET;
 
         for (int i = 0; i < types.size(); i++) {
-            TransferType type = types.get(i);
+            LogisticsResource<?> type = types.get(i);
             boolean isSelected = (mask & type.getFlag()) != 0;
             int row = i / PER_ROW;
             int col = i % PER_ROW;
@@ -61,15 +61,15 @@ public class TransferTypeGrid {
     }
 
     @Nullable
-    public static TransferType getHoveredType(double mx, double my, ItemStack stack,
-                                              int leftPos, int topPos) {
-        List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
+    public static LogisticsResource<?> getHoveredType(double mx, double my, ItemStack stack,
+                                                      int leftPos, int topPos) {
+        List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
         int startX = leftPos + START_X_OFFSET;
         int startY = topPos + START_Y_OFFSET;
         int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
 
         for (int i = 0; i < types.size(); i++) {
-            TransferType type = types.get(i);
+            LogisticsResource<?> type = types.get(i);
             boolean isSelected = (mask & type.getFlag()) != 0;
             int row = i / PER_ROW;
             int col = i % PER_ROW;
@@ -88,12 +88,12 @@ public class TransferTypeGrid {
     }
 
     /**
-     * 处理类型按钮点击。返回被点击的 TransferType（已 toggle），未命中返回 null。
+     * 处理类型按钮点击。返回被点击的 LogisticsResource<?>（已 toggle），未命中返回 null。
      */
     @Nullable
-    public static TransferType handleClick(double mx, double my, ItemStack stack,
-                                           int leftPos, int topPos) {
-        List<TransferType> types = new ArrayList<>(TransferRegistries.getAllActive());
+    public static LogisticsResource<?> handleClick(double mx, double my, ItemStack stack,
+                                                   int leftPos, int topPos) {
+        List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
         if (types.isEmpty()) return null;
 
         int startX = leftPos + START_X_OFFSET;
@@ -109,14 +109,14 @@ public class TransferTypeGrid {
         int idx = row * PER_ROW + col;
         if (idx < 0 || idx >= types.size()) return null;
 
-        TransferType clicked = types.get(idx);
+        LogisticsResource<?> clicked = types.get(idx);
         int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         int newMask = mask ^ clicked.getFlag();
         stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), newMask);
         return clicked;
     }
 
-    public static void renderTooltip(GuiGraphics g, Font font, TransferType type, int mx, int my) {
+    public static void renderTooltip(GuiGraphics g, Font font, LogisticsResource<?> type, int mx, int my) {
         List<Component> tooltip = new ArrayList<>();
         int safeColor = type.color() & 0xFFFFFF;
         tooltip.add(Component.translatable(type.translationKey())

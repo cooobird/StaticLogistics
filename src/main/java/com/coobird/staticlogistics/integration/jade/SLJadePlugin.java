@@ -1,13 +1,14 @@
 package com.coobird.staticlogistics.integration.jade;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.TransferLogManager;
+import com.coobird.staticlogistics.transfer.log.NodeStats;
+import com.coobird.staticlogistics.transfer.log.TransferLogManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -102,9 +103,9 @@ public class SLJadePlugin implements IWailaPlugin {
                 }
 
                 List<String> activeTypes = new ArrayList<>();
-                for (TransferType type : TransferRegistries.getAllActive()) {
+                for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
                     if (cfg.isTypeSelected(type)) {
-                        activeTypes.add(type.id().getPath());
+                        activeTypes.add(type.typeId().getPath());
                     }
                 }
                 faceTag.putString("types", String.join(",", activeTypes));
@@ -126,7 +127,7 @@ public class SLJadePlugin implements IWailaPlugin {
 
                 // 传输统计
                 long faceKey = LinkManager.posToKey(pos, face);
-                TransferLogManager.NodeStats nodeStats = TransferLogManager.get().getPerNodeStats(faceKey);
+                NodeStats nodeStats = TransferLogManager.get().getPerNodeStats(faceKey);
                 if (nodeStats != null) {
                     faceTag.putLong("sent", nodeStats.sentAmount);
                     faceTag.putLong("received", nodeStats.receivedAmount);

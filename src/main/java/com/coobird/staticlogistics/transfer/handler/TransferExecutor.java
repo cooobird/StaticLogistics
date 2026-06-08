@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.transfer.handler;
 
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferContext;
@@ -10,6 +10,20 @@ import com.coobird.staticlogistics.transfer.strategy.TargetSelector;
 
 import java.util.List;
 
+/**
+ * 传输执行器 —— 协调目标选择和传输处理器，完成一次完整的传输尝试。
+ *
+ * <p>调用方（{@link com.coobird.staticlogistics.logic.ticker.LogisticsTicker}）
+ * 已完成冷却检查后才调用此方法。
+ *
+ * <p>执行流程：
+ * <ol>
+ *   <li>深度检查 → 源配置输出开关检查</li>
+ *   <li>目标选择（{@link TargetSelector}）</li>
+ *   <li>获取对应的 {@link ITransferHandler}（通过 {@link TransferRegistries}）</li>
+ *   <li>执行传输</li>
+ * </ol>
+ */
 public class TransferExecutor {
     private final TargetSelector targetSelector;
 
@@ -26,7 +40,7 @@ public class TransferExecutor {
     public boolean executeTransfer(TransferContext context) {
         if (context.isDepthExceeded()) return false;
         FaceConfigComposite config = context.sourceConfig();
-        TransferType type = context.type();
+        LogisticsResource<?> type = context.type();
         if (!config.isGlobalOutputEnabled()) return false;
         List<LogisticsNode> targets = targetSelector.selectTargets(context);
         if (targets.isEmpty()) return false;

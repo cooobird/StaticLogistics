@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.util;
 
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import net.minecraft.core.BlockPos;
@@ -14,23 +14,23 @@ public final class LogisticsCalculator {
     }
 
     /**
-     * 获取速度倍率（直接读取缓存）
+     * 获取速度倍率
      */
-    public static int getSpeedMultiplier(ContainerConfig container) {
+    public static long getSpeedMultiplier(ContainerConfig container) {
         return container == null ? 1 : container.getSpeedMultiplier();
     }
 
     /**
-     * 获取范围倍率（直接读取缓存）
+     * 获取范围倍率
      */
-    public static int getRangeMultiplier(ContainerConfig container) {
+    public static long getRangeMultiplier(ContainerConfig container) {
         return container == null ? 1 : container.getRangeMultiplier();
     }
 
     /**
-     * 获取堆叠倍率（直接读取缓存）
+     * 获取堆叠倍率
      */
-    public static int getStackMultiplier(ContainerConfig container) {
+    public static long getStackMultiplier(ContainerConfig container) {
         return container == null ? 1 : container.getStackMultiplier();
     }
 
@@ -39,19 +39,6 @@ public final class LogisticsCalculator {
      */
     public static boolean isDimensionEffective(ContainerConfig container) {
         return container != null && container.isDimensionEffective();
-    }
-
-    // 算一次最多传多少，不管配置文件的上限了——源/目标自己有多能装就是多大量
-    public static long getTransferLimit(ContainerConfig container, TransferType type) {
-        if (container == null) {
-            return type.getBaseStackSize();
-        }
-        long stackMult = getStackMultiplier(container);
-        if (stackMult >= ContainerConfig.INFINITY_MARKER) {
-            return Integer.MAX_VALUE;
-        }
-        long limit = (long) type.getBaseStackSize() * stackMult;
-        return Math.min(limit, Integer.MAX_VALUE);
     }
 
     // 算最远传多远，不设人工上限，倍率多少就是多少
@@ -71,14 +58,50 @@ public final class LogisticsCalculator {
     }
 
     /**
-     * 检查两个节点是否在传输范围内（基于发送端容器）
+     * 检查两个节点是否超出传输范围（基于发送端容器）。
+     * 返回 true 表示超出范围，应跳过传输。
      */
-    public static boolean isWithinRange(BlockPos senderPos, BlockPos receiverPos, ContainerConfig senderContainer) {
-        if (isDimensionEffective(senderContainer)) return true; // 跨维度忽略距离
+    public static boolean isOutOfRange(BlockPos senderPos, BlockPos receiverPos, ContainerConfig senderContainer) {
+        if (isDimensionEffective(senderContainer)) return false; // 跨维度忽略距离
         double maxDist = getMaxTransferDistance(senderContainer);
-        if (Double.isInfinite(maxDist)) return true;
+        if (Double.isInfinite(maxDist)) return false;
         double actualDistSq = senderPos.distSqr(receiverPos);
-        return actualDistSq <= maxDist * maxDist;
+        return actualDistSq > maxDist * maxDist;
+    }
+
+    /**
+     * 统一计算速度间隔：interval = baseInterval / speedMult（线性梯度）。
+     * 所有需要显示或使用速度间隔的地方都应调用此方法。
+     *
+     * @param baseInterval 基础间隔（tick），来自配置
+     * @param speedMult    速度倍率
+     * @return 实际间隔（tick），最小为 1
+     */
+    public static int calcSpeedInterval(int baseInterval, long speedMult) {
+        if (speedMult <= 1) return baseInterval;
+        if (speedMult >= ContainerConfig.INFINITY_MARKER) return 1;
+        return Math.max(1, (int) (baseInterval / speedMult));
+    }
+
+    /**
+     * 统一计算传输限制：limit = baseStackSize × stackMult。
+     * 所有需要计算传输量的地方都应调用此方法。
+     *
+     * @param type      资源类型
+     * @param stackMult 堆叠倍率
+     * @return 传输限制（long），溢出或 INFINITY_MARKER 时返回 Long.MAX_VALUE
+     */
+    public static long calcTransferLimit(LogisticsResource<?> type, long stackMult) {
+        if (stackMult >= ContainerConfig.INFINITY_MARKER) {
+            return Long.MAX_VALUE;
+        }
+        long base = type.getBaseStackSize();
+        if (base <= 0 || stackMult <= 0) return base;
+        long result = base * stackMult;
+        if (result / stackMult != base || result < 0) {
+            return Long.MAX_VALUE;
+        }
+        return result;
     }
 
 }

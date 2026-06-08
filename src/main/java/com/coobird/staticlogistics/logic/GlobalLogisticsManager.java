@@ -2,14 +2,16 @@ package com.coobird.staticlogistics.logic;
 
 import com.coobird.staticlogistics.api.ILogisticsManager;
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.logic.group.GroupMemberService;
+import com.coobird.staticlogistics.logic.group.GroupSyncScheduler;
+import com.coobird.staticlogistics.logic.group.NodeGroupService;
+import com.coobird.staticlogistics.logic.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logic.ticker.LogisticsTicker;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.resources.ResourceKey;
@@ -22,8 +24,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 全局物流管理器——整个模组的大管家。
- * 管理所有节点注册/注销、组同步、反向链接索引、传输游标等核心逻辑。
+ * 全局物流管理器。
+ * 管理所有节点注册/注销、组同步、传输游标等核心逻辑。
  * 每个 MinecraftServer 只有一个实例。
  */
 public class GlobalLogisticsManager implements ILogisticsManager {
@@ -34,14 +36,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     private final GroupMemberService groupMemberService;
     private final TransferCursorService cursorService;
     private final GroupSyncScheduler syncScheduler;
-
-    /**
-     * 反向链接索引：target 的 nodeKey → 所有指向它的 source nodeKey 集合。
-     * 这是从 linkedNodes 派生的只读缓存，不再手动同步——外部只需调 markReverseLinksStale()，
-     * 下次访问时自动从 linkedNodes 重建。
-     */
-    private final Map<Long, LongSet> reverseLinks = new ConcurrentHashMap<>();
-    private volatile boolean reverseLinksStale = false;
 
     private GlobalLogisticsManager(MinecraftServer server) {
         this.server = server;
@@ -115,7 +109,7 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     }
 
     @Override
-    public int[] getCursor(long nodeKey, TransferType type) {
+    public int[] getCursor(long nodeKey, LogisticsResource<?> type) {
         return cursorService.getOrCreateCursor(nodeKey, type);
     }
 
@@ -125,63 +119,29 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     }
 
     /**
-     * 标记反向链接索引已失效。外部修改 linkedNodes 后必须调用此方法。
-     * 不再需要手动维护 addReverseLink / removeReverseLink。
-     */
-    public void markReverseLinksStale() {
-        reverseLinksStale = true;
-    }
-
-    /**
-     * O(1) 查找指向 target 的所有源节点（自动按需重建索引）。
+     * 查找指向 target 的所有源节点 —— 全量扫描所有维度的 FaceConfigComposite.linkedNodes。
+     * 无增量索引，按需查询。适用于低频 API 调用。
      */
     public Set<LogisticsNode> getSourcesLinkedTo(LogisticsNode target) {
-        ensureReverseLinksFresh();
-        Set<LogisticsNode> sources = ConcurrentHashMap.newKeySet();
-        LongSet sourceKeys = reverseLinks.get(target.toKey());
-        if (sourceKeys == null || sourceKeys.isEmpty()) return sources;
-        for (long sourceKey : sourceKeys) {
-            ServerLevel sourceLevel = server.getLevel(LogisticsNode.fromKey(sourceKey, target.gPos().dimension()).gPos().dimension());
-            if (sourceLevel != null) {
-                FaceConfigComposite cfg = LinkManager.get(sourceLevel).getFaceConfig(sourceKey);
-                if (cfg != null && cfg.getLinkedNodes().contains(target)) {
-                    sources.add(LinkManager.get(sourceLevel).createNodeFromKey(sourceKey));
+        Set<LogisticsNode> sources = new LinkedHashSet<>();
+        for (ServerLevel level : server.getAllLevels()) {
+            LinkManager mgr = LinkManager.get(level);
+            for (long faceKey : mgr.getAllConfigKeys()) {
+                FaceConfigComposite cfg = mgr.getFaceConfig(faceKey);
+                if (cfg == null) continue;
+                if (cfg.getLinkedNodes().contains(target)) {
+                    sources.add(mgr.createNodeFromKey(faceKey));
                 }
             }
         }
         return sources;
     }
 
-    /**
-     * 从所有维度的 FaceConfigComposite.linkedNodes 重建反向链接索引。
-     * linkedNodes 才是真正的数据源，索引只是缓存。
-     */
-    private void ensureReverseLinksFresh() {
-        if (!reverseLinksStale) return;
-        synchronized (this) {
-            if (!reverseLinksStale) return; // 双重检查
-            reverseLinks.clear();
-            for (ServerLevel level : server.getAllLevels()) {
-                LinkManager mgr = LinkManager.get(level);
-                for (long faceKey : mgr.getAllConfigKeys()) {
-                    FaceConfigComposite cfg = mgr.getFaceConfig(faceKey);
-                    if (cfg == null) continue;
-                    long sourceKey = LinkManager.posToKey(cfg.faceConfig.getPos(),
-                        LogisticsNode.fromKey(faceKey, level.dimension()).face());
-                    for (LogisticsNode linked : cfg.getLinkedNodes()) {
-                        reverseLinks.computeIfAbsent(linked.toKey(), k -> new LongOpenHashSet()).add(sourceKey);
-                    }
-                }
-            }
-            reverseLinksStale = false;
-        }
-    }
-
     public int getNextRoundRobinIndex(long nodeKey, int poolSize) {
         return cursorService.getNextRoundRobinIndex(nodeKey, poolSize);
     }
 
-    public void registerNodeToChannel(TransferType type, int channel, LogisticsNode node) {
+    public void registerNodeToChannel(LogisticsResource<?> type, int channel, LogisticsNode node) {
         groupMemberService.registerNodeToChannel(type, channel, node);
     }
 
@@ -189,7 +149,7 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         groupMemberService.unregisterNodeFromAllChannels(node);
     }
 
-    public List<LogisticsNode> getReceiversForChannel(TransferType type, int channel) {
+    public List<LogisticsNode> getReceiversForChannel(LogisticsResource<?> type, int channel) {
         return groupMemberService.getReceiversForChannel(type, channel);
     }
 
@@ -235,8 +195,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                 sMgr.markFaceDirty(source.toKey());
             }
         }
-        // 如果本轮清理了死链接，标记反向索引失效
-        markReverseLinksStale();
     }
 
     // 处理节点事件（添加/删除/修改），更新注册、频道索引、标记脏数据
@@ -267,7 +225,7 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         if (config != null) {
             int inputChannel = config.linkConfig.getInputChannel();
             if (inputChannel != 0) {
-                for (TransferType type : TransferRegistries.getAllActive()) {
+                for (var type : TransferRegistries.getAllActive()) {
                     registerNodeToChannel(type, inputChannel, node);
                 }
             }
@@ -324,8 +282,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                         mgr.markFaceDirty(key);
                     }
                 }
-                // 没有组的面配置无法参与物流，直接删除
-                // removeFaceConfig 内部 cascade 会清理 linkedNodes 和关联面的 I/O
                 if (!cfg.faceConfig.hasGroup()) {
                     toRemove.add(key);
                 }
@@ -343,16 +299,16 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     public void removeGroup(UUID playerId, String groupId) {
         if (groupId == null || groupId.isEmpty()) return;
 
-        // 1. 从 PlayerGroupStore 移除（触发持久化）
+        // 从 PlayerGroupStore 移除（触发持久化）
         PlayerGroupStore.get(server).removeGroup(playerId, groupId);
 
-        // 2. 从 nodeGroupService 注销所有节点
+        // 从 nodeGroupService 注销所有节点
         Map<LogisticsNode, NodeRole> nodes = nodeGroupService.getNodesInGroup(groupId);
         for (LogisticsNode node : new ArrayList<>(nodes.keySet())) {
             nodeGroupService.unregister(node);
         }
 
-        // 3. 清理面配置中的组引用（只移除组ID，不删除FaceConfig）
+        // 清理面配置中的组引用（只移除组ID，不删除FaceConfig）
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
             for (long key : mgr.getAllConfigKeys()) {
@@ -365,9 +321,8 @@ public class GlobalLogisticsManager implements ILogisticsManager {
             }
         }
 
-        // 4. 清理无组的面配置（通过cleanupOrphanedGroupIds统一处理）
+        // 清理无组的面配置（通过cleanupOrphanedGroupIds统一处理）
         cleanupOrphanedGroupIds(playerId);
-        markReverseLinksStale();
     }
 
     /**

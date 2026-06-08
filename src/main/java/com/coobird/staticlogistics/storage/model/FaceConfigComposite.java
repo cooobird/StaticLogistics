@@ -1,25 +1,24 @@
 package com.coobird.staticlogistics.storage.model;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.api.type.TransferType;
-import com.coobird.staticlogistics.logic.GroupService;
+import com.coobird.staticlogistics.logic.group.GroupService;
 import com.coobird.staticlogistics.storage.ConfigSerializer;
-import com.coobird.staticlogistics.util.LogisticsConstants;
+import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
- * 面容复合配置 —— 组合 FaceConfig + LinkConfig + FilterConfig 三个子配置，
+ * 面复合配置 —— 组合 FaceConfig + LinkConfig + FilterConfig 三个子配置，
  * 管理链接节点集合、全局输入/输出开关、目标缓存和序列化。
  * 这是整个物流系统最核心的数据模型。
  */
@@ -29,17 +28,16 @@ public class FaceConfigComposite {
     public final FilterConfig filterConfig;
     public ContainerConfig sharedContainerConfig;
 
-    private final Set<LogisticsNode> linkedNodes = ConcurrentHashMap.newKeySet();
+    private final Set<LogisticsNode> linkedNodes = new LinkedHashSet<>();
     private int selectedTypesMask = 0;
-    private int version = 0;
+    private long version = 0;
     private Consumer<FaceConfigComposite> onDirty = (c) -> {
     };
 
     private boolean globalInputEnabled = false;
     private boolean globalOutputEnabled = false;
 
-    private List<LogisticsNode> cachedTargets = null;
-    private int targetsCacheVersion = -1;
+    private final TargetCacheManager targetCacheManager = new TargetCacheManager();
 
     public FaceConfigComposite() {
         this.faceConfig = new FaceConfig();
@@ -64,7 +62,7 @@ public class FaceConfigComposite {
     private void endBulkEdit() {
         this.bulkEditing = false;
         version++;
-        targetsCacheVersion = -1;
+        targetCacheManager.clear();
         if (onDirty != null) onDirty.accept(this);
     }
 
@@ -78,7 +76,7 @@ public class FaceConfigComposite {
     public void markDirty() {
         if (bulkEditing) return;
         version++;
-        targetsCacheVersion = -1;
+        targetCacheManager.clear();
         if (onDirty != null) onDirty.accept(this);
     }
 
@@ -150,29 +148,23 @@ public class FaceConfigComposite {
 
     /**
      * 计算考虑了容器升级（堆叠倍率）后的实际传输限制。
-     * 不做外部截断——上限由源/目标能力自然约束。
-     * 溢出防护：stackMult >= INFINITY_MARKER 时返回 Integer.MAX_VALUE。
+     * 委托给 LogisticsCalculator.calcTransferLimit() 统一计算。
      */
-    public int getTransferLimit(TransferType type) {
+    public long getTransferLimit(LogisticsResource<?> type) {
         if (sharedContainerConfig == null) {
             return type.getBaseStackSize();
         }
-        int stackMult = sharedContainerConfig.getStackMultiplier();
-        if (stackMult == ContainerConfig.INFINITY_MARKER) {
-            return Integer.MAX_VALUE;
-        }
-        long limit = (long) type.getBaseStackSize() * stackMult;
-        return (int) Math.min(limit, Integer.MAX_VALUE);
+        return LogisticsCalculator.calcTransferLimit(type, sharedContainerConfig.getStackMultiplier());
     }
 
-    public int getVersion() {
+    public long getVersion() {
         return version;
     }
 
     /**
      * 设置版本号（用于新建配置时继承 LinkManager 的全局计数器，确保跨对象版本单调递增）
      */
-    public void setVersion(int v) {
+    public void setVersion(long v) {
         this.version = v;
     }
 
@@ -181,30 +173,19 @@ public class FaceConfigComposite {
      * 返回内部引用——调用方只读遍历，不做修改。
      */
     @Nullable
-    public List<LogisticsNode> getCachedTargets(int currentVersion) {
-        if (cachedTargets != null && targetsCacheVersion == currentVersion) {
-            return cachedTargets;
-        }
-        return null;
+    public List<LogisticsNode> getCachedTargets(long currentVersion) {
+        return targetCacheManager.getCachedTargets(currentVersion);
     }
 
     /**
-     * 设置目标缓存，同时写入全局缓存
+     * 设置目标缓存。直接缓存调用方提供的列表引用（调用方已创建新列表）。
      */
-    public void setCachedTargets(List<LogisticsNode> targets, int currentVersion) {
-        if (targets != null && !targets.isEmpty()) {
-            int cacheSize = Math.min(targets.size(), LogisticsConstants.Cache.getTargetCacheSize());
-            this.cachedTargets = new ArrayList<>(targets.subList(0, cacheSize));
-            this.targetsCacheVersion = currentVersion;
-
-        } else {
-            clearCache();
-        }
+    public void setCachedTargets(List<LogisticsNode> targets, long currentVersion) {
+        targetCacheManager.setCachedTargets(targets, currentVersion);
     }
 
     private void clearCache() {
-        this.cachedTargets = null;
-        this.targetsCacheVersion = -1;
+        targetCacheManager.clear();
     }
 
     /**
@@ -212,7 +193,7 @@ public class FaceConfigComposite {
      */
     public CompoundTag serializeNBT(HolderLookup.Provider p) {
         CompoundTag tag = ConfigSerializer.serializeNBT(this, p);
-        tag.putInt("version", version);
+        tag.putLong("version", version);
         tag.putBoolean("globalInput", globalInputEnabled);
         tag.putBoolean("globalOutput", globalOutputEnabled);
         if (!linkedNodes.isEmpty()) {
@@ -231,7 +212,7 @@ public class FaceConfigComposite {
      */
     public void deserializeNBT(HolderLookup.Provider p, CompoundTag nbt) {
         ConfigSerializer.deserializeNBT(this, p, nbt);
-        if (nbt.contains("version")) version = nbt.getInt("version");
+        if (nbt.contains("version")) version = nbt.getLong("version");
         globalInputEnabled = nbt.getBoolean("globalInput");
         globalOutputEnabled = nbt.getBoolean("globalOutput");
         linkedNodes.clear();
@@ -242,8 +223,7 @@ public class FaceConfigComposite {
                 }).ifPresent(linkedNodes::add);
             }
         }
-        targetsCacheVersion = -1;
-        cachedTargets = null;
+        targetCacheManager.clear();
     }
 
     public boolean isDefault() {
@@ -263,7 +243,7 @@ public class FaceConfigComposite {
         }
     }
 
-    public boolean isTypeSelected(TransferType type) {
+    public boolean isTypeSelected(LogisticsResource<?> type) {
         return (selectedTypesMask & type.getFlag()) != 0;
     }
 }

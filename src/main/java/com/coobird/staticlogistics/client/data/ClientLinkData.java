@@ -15,6 +15,19 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 客户端物流数据存储 —— 接收服务端同步的面配置，供 GUI 和世界渲染使用。
+ *
+ * <p>职责：
+ * <ul>
+ *   <li>按维度存储所有面配置（由服务端通过 S2C 包同步）</li>
+ *   <li>维护已知组 ID、所有者名称、所有者 Profile 的缓存</li>
+ *   <li>维护服务端同步的空分组列表</li>
+ *   <li>提供查询接口供 GUI 和 {@link com.coobird.staticlogistics.client.render.LinkWorldRenderer} 使用</li>
+ * </ul>
+ *
+ * <p>线程安全：所有 Map 使用 ConcurrentHashMap，数据变更通过 {@code dataVersion} 计数器通知 GUI 刷新。
+ */
 @OnlyIn(Dist.CLIENT)
 public enum ClientLinkData {
     INSTANCE;
@@ -49,7 +62,7 @@ public enum ClientLinkData {
     /**
      * 更新面配置。服务端是唯一数据源，按序到达，客户端无条件接受。
      */
-    public void setFaceConfig(GlobalPos pos, Direction face, FaceConfigComposite config, int version) {
+    public void setFaceConfig(GlobalPos pos, Direction face, FaceConfigComposite config, long version) {
         long key = posToKey(pos.pos(), face);
         Map<Long, FaceConfigComposite> dimMap = getOrCreateDimMap(pos.dimension());
         if (config.isDefault()) {

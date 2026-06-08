@@ -1,10 +1,8 @@
 package com.coobird.staticlogistics.storage.service;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.repository.ContainerRepository;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 
 public class ContainerConfigService {
@@ -38,15 +36,10 @@ public class ContainerConfigService {
 
     public void removeIfUnused(BlockPos pos) {
         long posKey = pos.asLong();
-        boolean used = false;
-        for (Direction face : Direction.values()) {
-            long faceKey = LogisticsNode.posToKey(pos, face);
-            if (faceConfigService != null && faceConfigService.exists(faceKey)) {
-                used = true;
-                break;
-            }
-        }
-        if (!used) {
+        ContainerConfig config = repository.get(posKey);
+        if (config == null) return;
+        // ContainerConfig.linkedFaceKeys 已维护了关联的面 key，直接判断是否为空
+        if (config.getLinkedFaceKeys().isEmpty()) {
             repository.remove(posKey);
         }
     }

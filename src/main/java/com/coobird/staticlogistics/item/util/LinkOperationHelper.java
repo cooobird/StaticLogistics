@@ -4,11 +4,11 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logic.GroupService;
 import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.logic.group.GroupService;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;
@@ -155,7 +155,7 @@ public class LinkOperationHelper {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_dimension_upgrade").withStyle(ChatFormatting.RED), true);
                 continue;
             }
-            if (sameDim && !LogisticsCalculator.isWithinRange(senderPos, receiverPos, rangeContainer)) {
+            if (sameDim && LogisticsCalculator.isOutOfRange(senderPos, receiverPos, rangeContainer)) {
                 double maxDist = LogisticsCalculator.getMaxTransferDistance(rangeContainer);
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.out_of_range", (int) maxDist).withStyle(ChatFormatting.RED), true);
                 continue;
@@ -208,9 +208,6 @@ public class LinkOperationHelper {
 
         currentCfg.addLinkedNode(stored);
         storedCfg.addLinkedNode(current);
-
-        GlobalLogisticsManager glm = GlobalLogisticsManager.get(level.getServer());
-        glm.markReverseLinksStale();
 
         if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
             currentCfg.setGlobalOutputEnabled(true);

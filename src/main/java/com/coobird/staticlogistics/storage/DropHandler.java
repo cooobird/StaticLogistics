@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.storage;
 
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -9,6 +10,9 @@ import net.neoforged.neoforge.items.IItemHandler;
 
 import java.util.List;
 
+/**
+ * 掉落处理器 —— 方块实体被破坏时，将升级卡和过滤器物品掉落为实体。
+ */
 public class DropHandler {
     private final ServerLevel level;
 

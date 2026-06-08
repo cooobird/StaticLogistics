@@ -7,7 +7,7 @@ import com.coobird.staticlogistics.item.blueprint.BlueprintUndoData;
 import com.coobird.staticlogistics.item.blueprint.BlueprintUndoManager;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.mojang.logging.LogUtils;
@@ -248,29 +248,14 @@ public class BlueprintItem extends Item {
         int count = 0;
         int skipped = 0;
 
-        int invalidCount = 0;
         for (BlueprintData.BlockEntry entry : data.blocks()) {
             BlockPos absPos = rotateRelToAbs(entry.relativePos(), newAnchor, rotation);
             if (level.getBlockEntity(absPos) == null) {
-                invalidCount++;
-                continue;
+                player.displayClientMessage(
+                    Component.translatable("msg.staticlogistics.blueprint.missing_block", absPos.toShortString())
+                        .withStyle(ChatFormatting.RED), true);
+                return;
             }
-            boolean anyValid = false;
-            for (var faceEntry : entry.faces().entrySet()) {
-                Direction rotatedFace = rotateDirection(faceEntry.getKey(), rotation);
-                if (com.coobird.staticlogistics.transfer.handler.TransferUtils
-                    .hasLogisticsCapability(level, absPos, rotatedFace)) {
-                    anyValid = true;
-                    break;
-                }
-            }
-            if (!anyValid) invalidCount++;
-        }
-        if (invalidCount > 0) {
-            player.displayClientMessage(
-                Component.translatable("msg.staticlogistics.blueprint.skipped_no_cap", invalidCount)
-                    .withStyle(ChatFormatting.RED), true);
-            return;
         }
 
         if (!player.isCreative()) {
@@ -411,7 +396,6 @@ public class BlueprintItem extends Item {
                             }
                             srcCfg.addLinkedNode(dstNode);
                             dstCfg.addLinkedNode(srcNode);
-                            globalMgr.markReverseLinksStale();
                             mgr.scheduleNetworkSync(srcNode);
                             mgr.scheduleNetworkSync(dstNode);
                             break;

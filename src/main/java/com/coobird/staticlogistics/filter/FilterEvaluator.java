@@ -15,13 +15,98 @@ import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 import javax.annotation.Nullable;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 过滤评估器 —— 判断物品/流体是否通过面配置的过滤规则。
+ *
+ * <p>编译结果按 {@link FilterData} 实例缓存，同一 FilterData 只编译一次。
+ * FilterData 是不可变 record（DataComponent），修改过滤器时会创建新实例，
+ * 旧实例会被 GC 回收，缓存随之失效。
+ */
 public class FilterEvaluator {
+
+    // ── 编译缓存 ──
+
+    private record CompiledItemFilters(
+        Set<Item> basicItems,
+        Set<TagKey<Item>> whitelistTags,
+        Set<TagKey<Item>> blacklistTags,
+        ItemStack nbtTemplate,
+        BasicLogisticsFilter basicFilter,
+        TagLogisticsFilter tagFilter,
+        NbtLogisticsFilter nbtFilter
+    ) {
+    }
+
+    private record CompiledFluidFilters(
+        Set<Fluid> fluids,
+        Set<TagKey<Fluid>> fluidWhitelistTags,
+        Set<TagKey<Fluid>> fluidBlacklistTags,
+        BasicLogisticsFilter basicFilter,
+        TagLogisticsFilter tagFilter
+    ) {
+    }
+
+    // 主线程单线程访问，无需 ConcurrentHashMap
+    private static final Map<FilterData, CompiledItemFilters> ITEM_FILTER_CACHE = new HashMap<>(64);
+    private static final Map<FilterData, CompiledFluidFilters> FLUID_FILTER_CACHE = new HashMap<>(64);
+
+    private static CompiledItemFilters compileItemFilters(FilterData filter) {
+        return ITEM_FILTER_CACHE.computeIfAbsent(filter, f -> {
+            Set<Item> basicItems = f.items().values().stream()
+                .filter(s -> !s.isEmpty())
+                .map(ItemStack::getItem)
+                .collect(Collectors.toSet());
+
+            Set<TagKey<Item>> whitelistTags = f.tagSlots().values().stream()
+                .flatMap(Set::stream)
+                .collect(Collectors.toSet());
+            Set<TagKey<Item>> blacklistTags = f.excludedTagSlots().values().stream()
+                .flatMap(Set::stream)
+                .collect(Collectors.toSet());
+
+            ItemStack nbtTemplate = f.items().values().stream()
+                .filter(s -> !s.isEmpty())
+                .findFirst().orElse(ItemStack.EMPTY);
+
+            return new CompiledItemFilters(
+                basicItems, whitelistTags, blacklistTags, nbtTemplate,
+                new BasicLogisticsFilter(basicItems, Collections.emptySet(), true),
+                new TagLogisticsFilter(whitelistTags, blacklistTags, Collections.emptySet(), Collections.emptySet(), true),
+                new NbtLogisticsFilter(nbtTemplate, f.nbtMatchMode(), true, f.ignoreDamage())
+            );
+        });
+    }
+
+    private static CompiledFluidFilters compileFluidFilters(FilterData filter) {
+        return FLUID_FILTER_CACHE.computeIfAbsent(filter, f -> {
+            Set<Fluid> fluids = new HashSet<>();
+            fluids.addAll(f.fluids().values());
+            for (ItemStack itemStack : f.items().values()) {
+                if (!itemStack.isEmpty() && itemStack.getItem() instanceof BucketItem bucket) {
+                    fluids.add(bucket.content);
+                }
+            }
+
+            Set<TagKey<Fluid>> fluidWhitelistTags = f.fluidFilterTags().values().stream()
+                .flatMap(Set::stream)
+                .collect(Collectors.toSet());
+            Set<TagKey<Fluid>> fluidBlacklistTags = f.excludedFluidTags().values().stream()
+                .flatMap(Set::stream)
+                .collect(Collectors.toSet());
+
+            return new CompiledFluidFilters(
+                fluids, fluidWhitelistTags, fluidBlacklistTags,
+                new BasicLogisticsFilter(Collections.emptySet(), fluids, true),
+                new TagLogisticsFilter(Collections.emptySet(), Collections.emptySet(),
+                    fluidWhitelistTags, fluidBlacklistTags, true)
+            );
+        });
+    }
+
+    // ── 查询接口 ──
 
     private record FilterDataWithType(FilterData filter, @Nullable UpgradeType type) {
         private FilterDataWithType(FilterData filter, @Nullable UpgradeType type) {
@@ -76,36 +161,23 @@ public class FilterEvaluator {
         Objects.requireNonNull(filter, "filter must not be null");
         Objects.requireNonNull(upgradeType, "upgradeType must not be null");
 
+        CompiledItemFilters compiled = compileItemFilters(filter);
+
         boolean useBasic = upgradeType == UpgradeType.BASIC_FILTER;
         boolean useTag = upgradeType == UpgradeType.TAG_FILTER;
         boolean useNbt = upgradeType == UpgradeType.NBT_FILTER;
 
-        Set<Item> basicItems = useBasic ? filter.items().values().stream()
-            .filter(s -> !s.isEmpty())
-            .map(ItemStack::getItem)
-            .collect(Collectors.toSet()) : Collections.emptySet();
-        boolean hasBasicFilter = useBasic && !basicItems.isEmpty();
-
-        Set<TagKey<Item>> allWhitelistTags = filter.tagSlots().values().stream()
-            .flatMap(Set::stream)
-            .collect(Collectors.toSet());
-        Set<TagKey<Item>> allBlacklistTags = filter.excludedTagSlots().values().stream()
-            .flatMap(Set::stream)
-            .collect(Collectors.toSet());
-        boolean hasTagFilter = useTag && (!allWhitelistTags.isEmpty() || !allBlacklistTags.isEmpty());
-
-        ItemStack nbtTemplate = useNbt ? filter.items().values().stream()
-            .filter(s -> !s.isEmpty())
-            .findFirst().orElse(ItemStack.EMPTY) : ItemStack.EMPTY;
-        boolean hasNbtFilter = useNbt && !nbtTemplate.isEmpty();
+        boolean hasBasicFilter = useBasic && !compiled.basicItems.isEmpty();
+        boolean hasTagFilter = useTag && (!compiled.whitelistTags.isEmpty() || !compiled.blacklistTags.isEmpty());
+        boolean hasNbtFilter = useNbt && !compiled.nbtTemplate.isEmpty();
 
         if (!hasBasicFilter && !hasTagFilter && !hasNbtFilter) return true;
 
         boolean isBlacklist = filter.isBlacklist();
 
-        boolean basicPass = !hasBasicFilter || new BasicLogisticsFilter(basicItems, Collections.emptySet(), true).test(stack, isBlacklist);
-        boolean tagPass = !hasTagFilter || new TagLogisticsFilter(allWhitelistTags, allBlacklistTags, Collections.emptySet(), Collections.emptySet(), true).test(stack, isBlacklist);
-        boolean nbtPass = !hasNbtFilter || new NbtLogisticsFilter(nbtTemplate, filter.nbtMatchMode(), true, filter.ignoreDamage()).test(stack, isBlacklist);
+        boolean basicPass = !hasBasicFilter || compiled.basicFilter.test(stack, isBlacklist);
+        boolean tagPass = !hasTagFilter || compiled.tagFilter.test(stack, isBlacklist);
+        boolean nbtPass = !hasNbtFilter || compiled.nbtFilter.test(stack, isBlacklist);
 
         return basicPass && tagPass && nbtPass;
     }
@@ -114,37 +186,21 @@ public class FilterEvaluator {
         Objects.requireNonNull(filter, "filter must not be null");
         Objects.requireNonNull(upgradeType, "upgradeType must not be null");
 
+        CompiledFluidFilters compiled = compileFluidFilters(filter);
+
         boolean useBasic = upgradeType == UpgradeType.BASIC_FILTER;
         boolean useTag = upgradeType == UpgradeType.TAG_FILTER;
 
-        Set<Fluid> fluids = new HashSet<>();
-        if (useBasic) {
-            fluids.addAll(filter.fluids().values());
-            for (ItemStack itemStack : filter.items().values()) {
-                if (!itemStack.isEmpty() && itemStack.getItem() instanceof BucketItem bucket) {
-                    fluids.add(bucket.content);
-                }
-            }
-        }
-        boolean hasBasicFilter = useBasic && !fluids.isEmpty();
-        Set<TagKey<Fluid>> allFluidWhitelistTags = filter.fluidFilterTags().values().stream()
-            .flatMap(Set::stream)
-            .collect(Collectors.toSet());
-        Set<TagKey<Fluid>> allFluidBlacklistTags = filter.excludedFluidTags().values().stream()
-            .flatMap(Set::stream)
-            .collect(Collectors.toSet());
-        boolean hasTagFilter = useTag && (!allFluidWhitelistTags.isEmpty() || !allFluidBlacklistTags.isEmpty());
+        boolean hasBasicFilter = useBasic && !compiled.fluids.isEmpty();
+        boolean hasTagFilter = useTag && (!compiled.fluidWhitelistTags.isEmpty() || !compiled.fluidBlacklistTags.isEmpty());
 
         if (!hasBasicFilter && !hasTagFilter) return true;
 
         boolean isBlacklist = filter.isBlacklist();
 
-        boolean basicPass = !hasBasicFilter || new BasicLogisticsFilter(Collections.emptySet(), fluids, true).test(stack, isBlacklist);
-        boolean tagPass = !hasTagFilter || new TagLogisticsFilter(Collections.emptySet(), Collections.emptySet(),
-            allFluidWhitelistTags, allFluidBlacklistTags, true).test(stack, isBlacklist);
+        boolean basicPass = !hasBasicFilter || compiled.basicFilter.test(stack, isBlacklist);
+        boolean tagPass = !hasTagFilter || compiled.tagFilter.test(stack, isBlacklist);
 
         return basicPass && tagPass;
     }
-
-
 }

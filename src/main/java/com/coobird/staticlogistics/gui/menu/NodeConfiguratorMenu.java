@@ -1,14 +1,14 @@
 package com.coobird.staticlogistics.gui.menu;
 
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
-import com.coobird.staticlogistics.api.type.TransferType;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.logic.UpgradeType;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.model.LinkConfig;
@@ -266,7 +266,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
         }
     }
 
-    public void toggleTypeSelection(TransferType type) {
+    public void toggleTypeSelection(LogisticsResource<?> type) {
         int current = getSelectedTypesMask();
         setSelectedTypesMask(current ^ type.getFlag());
     }
@@ -288,9 +288,9 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
 
     public void syncContainerSlots() {
         if (containerConfig == null) return;
-        speedMultSlot.set(LogisticsCalculator.getSpeedMultiplier(containerConfig));
-        rangeMultSlot.set(LogisticsCalculator.getRangeMultiplier(containerConfig));
-        stackMultSlot.set(LogisticsCalculator.getStackMultiplier(containerConfig));
+        speedMultSlot.set((int) Math.min(LogisticsCalculator.getSpeedMultiplier(containerConfig), Integer.MAX_VALUE));
+        rangeMultSlot.set((int) Math.min(LogisticsCalculator.getRangeMultiplier(containerConfig), Integer.MAX_VALUE));
+        stackMultSlot.set((int) Math.min(LogisticsCalculator.getStackMultiplier(containerConfig), Integer.MAX_VALUE));
         dimensionSlot.set(LogisticsCalculator.isDimensionEffective(containerConfig) ? 1 : 0);
     }
 

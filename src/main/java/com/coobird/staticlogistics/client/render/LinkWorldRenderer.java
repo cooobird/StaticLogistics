@@ -32,6 +32,19 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 世界内链接渲染器 —— 持连接配置器/蓝图时，在世界中渲染物流网络的可视化。
+ *
+ * <p>渲染内容：
+ * <ul>
+ *   <li>存储节点高亮（选中的面 + 方块线框）</li>
+ *   <li>选中组的所有节点：面状态指示器（输入/输出频道颜色）</li>
+ *   <li>链接流动粒子（从输出面流向输入面的彩色粒子）</li>
+ * </ul>
+ *
+ * <p>使用 X-Ray 渲染（穿透方块），在 {@link RenderLevelStageEvent.Stage#AFTER_TRANSLUCENT_BLOCKS} 阶段绘制。
+ * 只在手持连接配置器或蓝图时激活。
+ */
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
 

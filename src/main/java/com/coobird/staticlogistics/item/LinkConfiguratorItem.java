@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.type.TransferType;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.item.handler.*;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import com.coobird.staticlogistics.logic.ToolMode;
@@ -57,7 +57,7 @@ public class LinkConfiguratorItem extends Item {
 
     public record ToolSettings(ToolMode mode, int typeMask, String group, List<LogisticsNode> storedNodes,
                                @Nullable ToolMode storedMode) {
-        public List<TransferType> getSelectedTypes() {
+        public List<LogisticsResource<?>> getSelectedTypes() {
             return TransferRegistries.getAllActive().stream().filter(type -> (typeMask & type.getFlag()) != 0).toList();
         }
     }

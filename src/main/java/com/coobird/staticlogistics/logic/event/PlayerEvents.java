@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.logic.event;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.network.s2c.S2CSyncEmptyGroupsPayload;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;

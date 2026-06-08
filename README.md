@@ -6,7 +6,7 @@ A Minecraft logistics mod for NeoForge 1.21.1. Item, fluid, energy transfer. Cro
 
 ## Features
 
-- **Item / Fluid / Energy transfer** — 3 built-in types; other mods can register custom types
+- **Unified transfer pipeline** — All resource types (Item/Fluid/Energy/Chemical/Heat/Source/Mana) go through a single `LogisticsResource<C>` interface and `doTransferNodes` pipeline with capability caching, dimension/range/chunk checks, dirty link cleanup, and transfer logging
 - **Cross-dimension transfer** — Dimension upgrade for inter-dimensional logistics
 - **5 tool modes** — Wrench, Link as Input, Link as Output, Remove Links, Node Config
 - **Per-face configuration** — each of 6 block faces has independent: channels (1–16), priority, distribution strategy, extraction mode, input/output toggle, type mask
@@ -14,6 +14,7 @@ A Minecraft logistics mod for NeoForge 1.21.1. Item, fluid, energy transfer. Cro
 - **Smart filtering** — Basic (item whitelist/blacklist), Tag (item + fluid tags), NBT (exact/partial NBT matching) with 4 match strategies: EXACT, CONTAINS, SMART_CONTAINS, IGNORE
 - **2 extraction modes** — Sequential, Slot Round-Robin
 - **5 distribution strategies** — Sequential, Round-Robin, Nearest, Furthest, Random
+- **Transfer events** — `PreTransferEvent` (cancellable) and `PostTransferEvent` for third-party hooking
 - **Group management** — named groups for per-group sync, ownership transfer, rename, cleanup
 - **FTB Teams integration** — team-based ownership and permissions
 - **Blueprints** — save logistics config, preview placement with rotation, paste to blocks
@@ -119,12 +120,14 @@ component_strategy_overrides = []  # Format: "namespace:id=STRATEGY"
 
 ## Mod Integrations
 
-| Mod         | Transfer types               |
-|-------------|------------------------------|
-| Mekanism    | Chemical, Heat               |
-| Ars Nouveau | Source                       |
-| Botania     | Mana                         |
-| FTB Teams   | Team permissions & ownership |
+| Mod         | Transfer types               | Implementation                                                           |
+|-------------|------------------------------|--------------------------------------------------------------------------|
+| Mekanism    | Chemical, Heat               | `LogisticsResource<IChemicalHandler>`, `LogisticsResource<IHeatHandler>` |
+| Ars Nouveau | Source                       | `LogisticsResource<ISourceCap>`                                          |
+| Botania     | Mana                         | `LogisticsResource<ManaHandle>`                                          |
+| FTB Teams   | Team permissions & ownership | `FTBEventHandlers`                                                       |
+
+All external mod integrations use the unified `LogisticsResource<C>` interface. See [docs/INTEGRATION.md](docs/INTEGRATION.md) for details on how to add your own.
 
 ## License
 

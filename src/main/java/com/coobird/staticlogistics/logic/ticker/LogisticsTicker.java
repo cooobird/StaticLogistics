@@ -2,10 +2,11 @@ package com.coobird.staticlogistics.logic.ticker;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logic.TransferRegistries;
-import com.coobird.staticlogistics.storage.LinkManager;
+import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.CooldownManager;
 import com.coobird.staticlogistics.transfer.TransferContext;
@@ -22,17 +23,39 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 物流定时器 —— 每个世界 tick 驱动物流网络运转的核心调度器。
+ *
+ * <p>通过 {@link LevelTickEvent.Post} 监听每个世界的 tick 事件。
+ *
+ * <p>执行流程：
+ * <ol>
+ *   <li>冷却清理（按配置间隔）</li>
+ *   <li>获取活跃节点数组，按批次分片（避免单 tick 处理过多节点导致卡顿）</li>
+ *   <li>遍历当前批次的节点 × 已启用的传输类型</li>
+ *   <li>冷却检查 → 创建 {@link TransferContext} → 执行传输</li>
+ *   <li>设置成功/失败冷却</li>
+ *   <li>tick 结束时批量刷出待同步的网络配置</li>
+ * </ol>
+ *
+ * <p>线程安全：所有操作在服务器主线程上执行。
+ * 维度级数据使用普通 HashMap（主线程单线程访问）。
+ */
 @EventBusSubscriber(modid = StaticLogistics.MODID)
 public class LogisticsTicker {
     private static final CooldownManager cooldownManager = new CooldownManager();
     private static final TransferExecutor transferExecutor = new TransferExecutor(new StrategyBasedTargetSelector());
 
-    private static final Map<ResourceKey<Level>, Integer> dimensionCleanCounters = new ConcurrentHashMap<>();
-    private static final Map<ResourceKey<Level>, Integer> dimensionBatchOffsets = new ConcurrentHashMap<>();
+    private static final Map<ResourceKey<Level>, Integer> dimensionCleanCounters = new HashMap<>();
+    private static final Map<ResourceKey<Level>, Integer> dimensionBatchOffsets = new HashMap<>();
+
+    // 缓存类型数组，避免每 tick 每节点创建迭代器
+    private static LogisticsResource<?>[] cachedTypes = new LogisticsResource<?>[0];
+    private static int cachedTypesGen = -1;
 
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
@@ -77,7 +100,10 @@ public class LogisticsTicker {
             FaceConfigComposite config = manager.getFaceConfig(sourceKey);
             if (config == null || config.isDefault()) continue;
 
-            for (var type : TransferRegistries.getAllActive()) {
+            // 缓存类型数组
+            LogisticsResource<?>[] types = getCachedTypes();
+
+            for (var type : types) {
                 if (!config.isTypeSelected(type)) continue;
 
                 boolean needsCooldown = type.requiresCooldown();
@@ -85,7 +111,7 @@ public class LogisticsTicker {
                 if (needsCooldown && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
                 if (type.requiresValidLinks() && config.getLinkedNodes().isEmpty()) continue;
 
-                int limit = config.getTransferLimit(type);
+                long limit = config.getTransferLimit(type);
                 TransferContext context = TransferContext.obtain(
                     level, sourceNode, config, type, limit, false, currentTick, manager
                 );
@@ -98,10 +124,7 @@ public class LogisticsTicker {
                 }
 
                 if (needsCooldown) {
-                    int baseInterval = SLConfig.getDefaultTickInterval();
-                    int speedMult = config.sharedContainerConfig != null
-                        ? config.sharedContainerConfig.getSpeedMultiplier() : 1;
-                    int actualInterval = (int) Math.max(1, baseInterval / Math.sqrt(Math.max(1, speedMult)));
+                    int actualInterval = getCachedActualInterval(config);
                     if (typeMoved) {
                         cooldownManager.setCooldown(dim, typeCooldownKey, actualInterval, currentTick);
                     } else {
@@ -113,7 +136,7 @@ public class LogisticsTicker {
 
         dimensionBatchOffsets.put(dim, (batchOffset + 1) % totalBatches);
 
-        // tick 结束时批量刷出所有待同步的面容配置
+        // tick 结束时批量刷出所有待同步的面配置
         manager.flushPendingNetworkSync();
     }
 
@@ -130,5 +153,21 @@ public class LogisticsTicker {
                 cooldownManager.removeAllForSourceKey(level.dimension(), sender.toKey());
             }
         }
+    }
+
+    private static LogisticsResource<?>[] getCachedTypes() {
+        int gen = TransferRegistries.generation();
+        if (gen != cachedTypesGen) {
+            cachedTypes = TransferRegistries.getAllActive().toArray(new LogisticsResource<?>[0]);
+            cachedTypesGen = gen;
+        }
+        return cachedTypes;
+    }
+
+    private static int getCachedActualInterval(FaceConfigComposite config) {
+        if (config.sharedContainerConfig != null) {
+            return config.sharedContainerConfig.getCachedActualInterval();
+        }
+        return SLConfig.getDefaultTickInterval();
     }
 }
