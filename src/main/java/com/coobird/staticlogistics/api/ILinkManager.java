@@ -4,7 +4,6 @@ import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,8 +25,7 @@ import java.util.Set;
  */
 public interface ILinkManager {
 
-    // ── 面配置 CRUD ──
-
+    // 面配置 CRUD
     @Nullable
     FaceConfigComposite getFaceConfig(long key);
 
@@ -41,21 +39,18 @@ public interface ILinkManager {
 
     void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg);
 
-    // ── 容器配置 ──
-
+    // 容器配置
     @Nullable
     ContainerConfig getContainerConfig(BlockPos pos);
 
     ContainerConfig getOrCreateContainerConfig(BlockPos pos);
 
-    // ── 缓存 ──
-
+    // 缓存
     boolean hasActiveProviders();
 
     Set<Long> getAllConfigKeys();
 
-    // ── 网络同步 ──
-
+    // 网络同步
     void scheduleNetworkSync(LogisticsNode node);
 
     void syncToPlayer(ServerPlayer player);
@@ -66,17 +61,14 @@ public interface ILinkManager {
 
     void syncNodeToPlayer(ServerPlayer player, LogisticsNode node);
 
-    // ── 批量操作 ──
-
+    // 批量操作
     void onBlocksRemovedBulk(Collection<BlockPos> positions);
 
-    // ── 脏数据 ──
-
+    // 脏数据
     void markFaceDirty(long faceKey);
 
     void markContainerDirty(long containerKey);
 
-    // ── 生命周期 ──
-
+    // 生命周期
     void shutdown();
 }

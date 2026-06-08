@@ -8,9 +8,6 @@ import com.coobird.staticlogistics.transfer.TransferContext;
 import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * 将 {@link LogisticsResource} 适配为 {@link TransferUtils.TransferProtocol} 的协议适配器。
  *
@@ -41,19 +38,19 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
     }
 
     @Override
-    public ExtractionResult<Object> simulateExtract(C source, int max) {
+    public ExtractionResult<Object> simulateExtract(C source, long max) {
         @SuppressWarnings("unchecked")
         ExtractionResult<Object> result = (ExtractionResult<Object>) adapter.extractTyped(source, max, true, sourceCfg, isPullMode, transferContext);
         return result;
     }
 
     @Override
-    public int executeInsert(C dest, Object value) {
-        return (int) adapter.insertTyped(dest, value, false, sourceCfg, isPullMode, transferContext);
+    public long executeInsert(C dest, Object value) {
+        return adapter.insertTyped(dest, value, false, sourceCfg, isPullMode, transferContext);
     }
 
     @Override
-    public void commitExtract(C source, ExtractionResult<Object> result, int actual) {
+    public void commitExtract(C source, ExtractionResult<Object> result, long actual) {
         adapter.commitExtract(source, result, actual, sourceCfg, isPullMode, transferContext);
     }
 
@@ -76,40 +73,10 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
         return adapter.canInsertToTarget(dest, value, targetCfg);
     }
 
-    // ── 批量模式 ──
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public BulkExtractionResult<Object> extractBulk(C source, long maxAmount) {
-        BulkExtractionResult<?> result = adapter.extractBulkTyped(source, maxAmount, true, sourceCfg, isPullMode, transferContext);
-        return (BulkExtractionResult<Object>) result;
-    }
-
-    @Override
-    public long insertBulk(C dest, BulkExtractionResult<Object> bulk, LogisticsNode targetNode) {
-        // 检查目标过滤器
-        if (transferContext != null && !isPullMode) {
-            ServerLevel targetLevel = transferContext.level().getServer().getLevel(
-                targetNode.gPos().dimension());
-            if (targetLevel != null) {
-                FaceConfigComposite targetCfg = LinkManager.get(targetLevel).getFaceConfig(targetNode.toKey());
-                if (targetCfg != null) {
-                    // 过滤掉目标不接受的栈
-                    List<ExtractionResult<Object>> filtered = new ArrayList<>();
-                    for (ExtractionResult<Object> r : bulk.results()) {
-                        if (adapter.canInsertToTarget(dest, r.value(), targetCfg)) {
-                            filtered.add(r);
-                        }
-                    }
-                    bulk = new BulkExtractionResult<>(filtered);
-                }
-            }
-        }
-        return adapter.insertBulkTyped(dest, bulk, false, sourceCfg, isPullMode, transferContext);
-    }
-
-    @Override
-    public void commitBulkExtract(C source, BulkExtractionResult<Object> bulk, long actual) {
-        adapter.commitBulkExtract(source, bulk, actual, sourceCfg, isPullMode, transferContext);
+    /**
+     * 获取适配器（用于简单资源的直接传输）。
+     */
+    public LogisticsResource<C> getAdapter() {
+        return adapter;
     }
 }

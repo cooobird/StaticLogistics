@@ -15,7 +15,7 @@ class TransferRateCalculator {
     private long slotStartTime = System.currentTimeMillis();
     private int currentSlot = 0;
 
-    synchronized void record(int amount) {
+    synchronized void record(long amount) {
         advanceSlot(System.currentTimeMillis());
         slotCounts[currentSlot]++;
         slotAmounts[currentSlot] += amount;

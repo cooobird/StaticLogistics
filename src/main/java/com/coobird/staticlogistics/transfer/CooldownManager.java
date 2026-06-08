@@ -3,18 +3,20 @@ package com.coobird.staticlogistics.transfer;
 import com.coobird.staticlogistics.util.LogisticsConstants;
 import it.unimi.dsi.fastutil.longs.Long2LongMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 
 public class CooldownManager {
     // 主线程单线程访问（setCooldown/hasCooldown 由 LogisticsTicker.tick 调用）
     // clearForDimension 在 LevelEvent.Unload 中调用，也由主线程触发
-    private final Map<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new HashMap<>();
-    private final Map<ResourceKey<Level>, Integer> dimCleanCounters = new HashMap<>();
+    private final Object2ObjectMap<ResourceKey<Level>, Long2LongMap> dimensionCooldowns = new Object2ObjectOpenHashMap<>();
+    private final Object2IntMap<ResourceKey<Level>> dimCleanCounters = new Object2IntOpenHashMap<>();
 
     private static long extractSourceKey(long cooldownKey) {
         return cooldownKey >> 8;

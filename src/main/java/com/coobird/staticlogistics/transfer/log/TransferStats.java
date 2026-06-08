@@ -29,7 +29,7 @@ class TransferStats {
 
     // ── 写入（传输路径调用）──
 
-    void incrementTotal(int amount) {
+    void incrementTotal(long amount) {
         totalTransfers.increment();
         totalAmount.add(amount);
     }
@@ -38,12 +38,12 @@ class TransferStats {
         failedTransfers.increment();
     }
 
-    synchronized void recordType(String typeId, int amount) {
+    synchronized void recordType(String typeId, long amount) {
         perType.computeIfAbsent(typeId, k -> new TypeStats()).count++;
         perType.get(typeId).totalAmount += amount;
     }
 
-    synchronized void recordSource(long srcKey, int sx, int sy, int sz, String dim, String face, int amount) {
+    synchronized void recordSource(long srcKey, int sx, int sy, int sz, String dim, String face, long amount) {
         NodeStats s = perNode.computeIfAbsent(srcKey, k -> {
             NodeStats ns = new NodeStats();
             ns.posX = sx;
@@ -51,13 +51,15 @@ class TransferStats {
             ns.posZ = sz;
             ns.dim = dim;
             ns.face = face;
+            ns.firstTransferTime = System.currentTimeMillis();
             return ns;
         });
         s.sentCount++;
         s.sentAmount += amount;
+        s.lastTransferTime = System.currentTimeMillis();
     }
 
-    synchronized void recordTarget(long tgtKey, int tx, int ty, int tz, String dim, String face, int amount) {
+    synchronized void recordTarget(long tgtKey, int tx, int ty, int tz, String dim, String face, long amount) {
         NodeStats s = perNode.computeIfAbsent(tgtKey, k -> {
             NodeStats ns = new NodeStats();
             ns.posX = tx;
@@ -65,10 +67,12 @@ class TransferStats {
             ns.posZ = tz;
             ns.dim = dim;
             ns.face = face;
+            ns.firstTransferTime = System.currentTimeMillis();
             return ns;
         });
         s.receivedCount++;
         s.receivedAmount += amount;
+        s.lastTransferTime = System.currentTimeMillis();
     }
 
     // ── 读取（命令线程调用）──

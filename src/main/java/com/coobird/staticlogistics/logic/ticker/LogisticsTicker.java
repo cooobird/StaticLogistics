@@ -93,7 +93,6 @@ public class LogisticsTicker {
 
         int startIdx = (batchOffset % totalBatches) * LogisticsConstants.Performance.getTickerBatchSize();
         int endIdx = Math.min(startIdx + LogisticsConstants.Performance.getTickerBatchSize(), keys.length);
-
         for (int i = startIdx; i < endIdx; i++) {
             long sourceKey = keys[i];
             LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
@@ -107,9 +106,13 @@ public class LogisticsTicker {
                 if (!config.isTypeSelected(type)) continue;
 
                 boolean needsCooldown = type.requiresCooldown();
-                long typeCooldownKey = (sourceKey << 8) | type.bitOffset();
-                if (needsCooldown && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) continue;
-                if (type.requiresValidLinks() && config.getLinkedNodes().isEmpty()) continue;
+                long typeCooldownKey = sourceKey ^ (Long.rotateLeft(type.bitOffset(), 48));
+                if (needsCooldown && cooldownManager.hasCooldown(dim, typeCooldownKey, currentTick)) {
+                    continue;
+                }
+                if (type.requiresValidLinks() && config.getLinkedNodes().isEmpty()) {
+                    continue;
+                }
 
                 long limit = config.getTransferLimit(type);
                 TransferContext context = TransferContext.obtain(

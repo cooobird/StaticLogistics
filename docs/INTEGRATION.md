@@ -19,9 +19,11 @@ StaticLogistics 通过 `LogisticsResource<C>` 接口将任意模组的资源类�
 ```java
 // 1. 实现 LogisticsResource<你的句柄类型>
 public class MyResource implements LogisticsResource<MyHandle> {
+    // 定义类型 ID 常量
+    private static final ResourceLocation TYPE_ID = ResourceLocation.fromNamespaceAndPath("mymod", "my_type");
 
     // ── 类型元数据 ──
-    @Override public ResourceLocation typeId() { return ResourceLocation.fromNamespaceAndPath("mymod", "my_type"); }
+    @Override public ResourceLocation typeId() { return TYPE_ID; }
     @Override public int color() { return 0xFF55FFFF; }
     @Override public int bitOffset() { return 10; }
     @Override public String translationKey() { return "transfer_type.mymod.my_type"; }
@@ -38,11 +40,13 @@ public class MyResource implements LogisticsResource<MyHandle> {
     @Override
     public long extract(MyHandle handle, long amount, boolean simulate) {
         // 从句柄提取资源
+        return handle.extract(amount, simulate);
     }
 
     @Override
     public long insert(MyHandle handle, long amount, boolean simulate) {
         // 向句柄注入资源
+        return handle.receive(amount, simulate);
     }
 
     // 2. 注册（在 mod 初始化阶段调用）
@@ -56,7 +60,7 @@ public class MyResource implements LogisticsResource<MyHandle> {
 
 ## 实现层级
 
-### 简单资源（能量/魔源/热量等 int/long 值资源）
+### 简单资源（能量/魔源/热量等数值资源）
 
 覆写 `extract` / `insert`，返回 `long`。
 
@@ -71,6 +75,8 @@ public long insert(MyHandle handle, long amount, boolean simulate) {
     return handle.receive(amount, simulate);
 }
 ```
+
+**注意**：底层 API 的参数类型决定实际传输上限。例如 NeoForge 的 `IEnergyStorage.extractEnergy(int, boolean)` 参数是 `int`，所以能量传输上限为 `Integer.MAX_VALUE`。直接传 `(int) amount` 即可，让 API 自己截断。
 
 ### 类型化资源（化学品等需要携带类型信息的资源）
 
@@ -130,12 +136,12 @@ public boolean canInsertToTarget(MyHandle handle, Object value, FaceConfigCompos
 }
 
 @Override
-public void commitExtract(MyHandle handle, ExtractionResult<?> result, int actual,
+public void commitExtract(MyHandle handle, ExtractionResult<?> result, long actual,
                            @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                            @Nullable TransferContext context) {
     // 从 ExtractionResult.context() 获取槽位索引进行精确提取
     if (result.context() instanceof Integer slotIdx) {
-        handle.extractFromSlot(slotIdx, actual);
+        handle.extractFromSlot(slotIdx, (int) actual);
     }
 }
 ```
@@ -239,7 +245,7 @@ public static void onPostTransfer(PostTransferEvent event) {
 
 ## TransferFailureReason 注册表
 
-内置 11 个失败原因，第三方可注册自定义原因：
+内置失败原因，第三方可注册自定义原因：
 
 ```java
 TransferFailureReason.register(
@@ -250,15 +256,21 @@ TransferFailureReason.register(
 
 ---
 
-## 旧式集成（已废弃）
+## 传输上限说明
 
-### TransferProvider
+传输上限由底层 API 决定，我们不需要特殊处理：
 
-较早期的简化集成方式，**已废弃，不推荐使用**。
+| 类型 | 上限 | 原因 |
+|------|------|------|
+| 物品 | Integer.MAX_VALUE | `IItemHandler.extractItem(int, int, boolean)` |
+| 流体 | Integer.MAX_VALUE | `IFluidHandler.drain(int, Action)` |
+| 能量 | Integer.MAX_VALUE | `IEnergyStorage.extractEnergy(int, boolean)` |
+| 化学品 | Long.MAX_VALUE | `IChemicalHandler.extractChemical(long, Action)` |
+| 热量 | Long.MAX_VALUE | `IHeatHandler.handleHeat(double)` |
+| 魔源 | Integer.MAX_VALUE | `ISourceCap.extractSource(int, boolean)` |
+| 魔力 | Integer.MAX_VALUE | Botania API 参数是 int |
 
-### TransferType
-
-旧版类型定义 record，**已移除**。所有元数据已合并到 `LogisticsResource` 接口。
+**实际传输量** = `baseStackSize × stackMultiplier`，由配置和升级决定，通常远小于 API 上限。
 
 ---
 
@@ -266,8 +278,9 @@ TransferFailureReason.register(
 
 ```java
 public class MekanismChemicalResource implements LogisticsResource<IChemicalHandler> {
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_chemicals");
 
-    @Override public ResourceLocation typeId() { return StaticLogistics.asResource("mek_chemicals"); }
+    @Override public ResourceLocation typeId() { return TYPE_ID; }
     @Override public int color() { return 0xFF66FF66; }
     @Override public int bitOffset() { return 3; }
     @Override public String translationKey() { return "transfer_type.staticlogistics.mek_chemicals"; }
@@ -299,8 +312,59 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
         return false;
     }
 
+    @Override
+    public boolean canInsertToTarget(IChemicalHandler handle, Object value, FaceConfigComposite targetCfg) {
+        if (!(value instanceof ChemicalStack stack) || stack.isEmpty()) return false;
+        // 直接模拟插入，insertChemical 内部会检查类型和空间
+        ChemicalStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
+        return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
+    }
+
     public static void register() {
         TransferRegistries.registerAdapter(new MekanismChemicalResource());
+    }
+}
+```
+
+---
+
+## 完整示例 — 简单能量资源
+
+```java
+public class EnergyResource implements LogisticsResource<IEnergyStorage> {
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("energy");
+
+    @Override public ResourceLocation typeId() { return TYPE_ID; }
+    @Override public int color() { return 0xFFFFFF00; }
+    @Override public int bitOffset() { return 2; }
+    @Override public String translationKey() { return "transfer_type.staticlogistics.energy"; }
+    @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(Items.REDSTONE); }
+    @Override public IntSupplier baseStackSizeSupplier() { return SLConfig::getEnergyStack; }
+
+    @Override
+    public boolean requiresCooldown() { return false; }
+
+    @Override
+    public boolean requiresValidLinks() { return false; }
+
+    @Override
+    public @Nullable IEnergyStorage resolve(ServerLevel level, BlockPos pos, Direction face) {
+        return level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, face);
+    }
+
+    @Override
+    public long extract(IEnergyStorage handle, long amount, boolean simulate) {
+        // NeoForge API 参数是 int，直接截断
+        return handle.extractEnergy((int) amount, simulate);
+    }
+
+    @Override
+    public long insert(IEnergyStorage handle, long amount, boolean simulate) {
+        return handle.receiveEnergy((int) amount, simulate);
+    }
+
+    public static void register() {
+        TransferRegistries.registerAdapter(new EnergyResource());
     }
 }
 ```

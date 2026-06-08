@@ -16,6 +16,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.capabilities.BlockCapability;
+import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -127,34 +128,53 @@ public final class TransferPipeline {
             if (context != null) {
                 LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
                 LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                PreTransferEvent preEvent = new PreTransferEvent(srcNode, dstNode, context.type(), (int) Math.min(remaining, Integer.MAX_VALUE));
-                net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(preEvent);
-                if (preEvent.isCanceled()) {
-                    logFailure(context, remoteNode, TransferFailureReason.EVENT_CANCELLED);
-                    continue;
+                PreTransferEvent preEvent = PreTransferEvent.obtain(srcNode, dstNode, context.type(), remaining);
+                try {
+                    NeoForge.EVENT_BUS.post(preEvent);
+                    if (preEvent.isCanceled()) {
+                        logFailure(context, remoteNode, TransferFailureReason.EVENT_CANCELLED);
+                        continue;
+                    }
+                } finally {
+                    preEvent.recycle();
                 }
             }
 
-            // 批量传输
+            // 一对一传输
             long targetAccepted = 0;
-            BulkExtractionResult<T> bulk = protocol.extractBulk(from, remaining);
-            if (!bulk.isEmpty()) {
-                long accepted = protocol.insertBulk(to, bulk, remoteNode);
-                if (accepted > 0) {
-                    protocol.commitBulkExtract(from, bulk, accepted);
-                    remaining -= accepted;
-                    targetAccepted += accepted;
-                    movedAny = true;
+            if (context != null && context.type().isSimpleResource()) {
+                // 简单资源快速路径：跳过模拟，直接 extract + insert
+                targetAccepted = transferSimpleResource(protocol, from, to, remaining);
+            } else {
+                // 复杂资源路径：simulateExtract → canInsert → executeInsert → commitExtract
+                ExtractionResult<T> extracted = protocol.simulateExtract(from, remaining);
+                if (!protocol.isEmpty(extracted)) {
+                    if (protocol.canInsert(to, extracted.value(), remoteNode)) {
+                        long accepted = protocol.executeInsert(to, extracted.value());
+                        if (accepted > 0) {
+                            protocol.commitExtract(from, extracted, accepted);
+                            targetAccepted = accepted;
+                        }
+                    }
                 }
+            }
+
+            if (targetAccepted > 0) {
+                remaining -= targetAccepted;
+                movedAny = true;
             }
 
             // 日志 + Post 事件
             if (targetAccepted > 0 && context != null) {
                 LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
                 LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), (int) targetAccepted, true);
-                PostTransferEvent postEvent = new PostTransferEvent(srcNode, dstNode, context.type(), (int) targetAccepted, true);
-                net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(postEvent);
+                TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), targetAccepted, true);
+                PostTransferEvent postEvent = PostTransferEvent.obtain(srcNode, dstNode, context.type(), targetAccepted, true);
+                try {
+                    NeoForge.EVENT_BUS.post(postEvent);
+                } finally {
+                    postEvent.recycle();
+                }
             }
             if (remaining <= 0) break;
         }
@@ -180,5 +200,46 @@ public final class TransferPipeline {
             sourceCfg.setGlobalInputEnabled(false);
         }
         sourceCfg.markDirty();
+    }
+
+    /**
+     * 简单资源快速传输路径。
+     * <p>跳过模拟提取，直接执行 extract + insert。
+     * 如果插入量不足，回退多余部分。
+     *
+     * @return 实际传输量
+     */
+    @SuppressWarnings("unchecked")
+    private static <C, T> long transferSimpleResource(
+        TransferUtils.TransferProtocol<C, T> protocol, C from, C to, long limit
+    ) {
+        // 直接提取（不模拟）
+        T extracted = ((ResourceAdapterProtocol<C>) protocol).getAdapter().extract(from, limit, false);
+        if (extracted == null) return 0;
+
+        // 检查是否是 Long 类型（简单资源返回 Long）
+        long extractedAmount = 0;
+        if (extracted instanceof Long l) {
+            extractedAmount = l;
+        } else {
+            // 不应该发生，简单资源应该返回 Long
+            return 0;
+        }
+        if (extractedAmount <= 0) return 0;
+
+        // 直接插入
+        long accepted = ((ResourceAdapterProtocol<C>) protocol).getAdapter().insert(to, extractedAmount, false);
+        if (accepted <= 0) {
+            // 插入失败，回退
+            ((ResourceAdapterProtocol<C>) protocol).getAdapter().insert(from, extractedAmount, false);
+            return 0;
+        }
+
+        // 如果插入量 < 提取量，回退多余部分
+        if (accepted < extractedAmount) {
+            ((ResourceAdapterProtocol<C>) protocol).getAdapter().insert(from, extractedAmount - accepted, false);
+        }
+
+        return accepted;
     }
 }

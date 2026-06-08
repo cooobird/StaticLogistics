@@ -152,9 +152,9 @@ public class ContainerConfig {
             }
         }
 
-        this.cachedSpeedMult = (int) Math.min(speed, INFINITY_MARKER);
-        this.cachedRangeMult = (int) Math.min(range, INFINITY_MARKER);
-        this.cachedStackMult = (int) Math.min(stack, INFINITY_MARKER);
+        this.cachedSpeedMult = Math.min(speed, INFINITY_MARKER);
+        this.cachedRangeMult = Math.min(range, INFINITY_MARKER);
+        this.cachedStackMult = Math.min(stack, INFINITY_MARKER);
         this.cachedDimEffective = dim;
         this.cacheDirty = false;
 

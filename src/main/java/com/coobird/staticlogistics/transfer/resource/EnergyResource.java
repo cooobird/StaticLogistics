@@ -23,10 +23,11 @@ import java.util.function.Supplier;
  */
 public class EnergyResource implements LogisticsResource<IEnergyStorage> {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("energy");
 
     @Override
     public ResourceLocation typeId() {
-        return StaticLogistics.asResource("energy");
+        return TYPE_ID;
     }
 
     @Override
@@ -62,6 +63,11 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
     @Override
     public boolean requiresValidLinks() {
         return false;
+    }
+
+    @Override
+    public boolean isSimpleResource() {
+        return true;
     }
 
     @Override

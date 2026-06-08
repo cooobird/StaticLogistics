@@ -27,10 +27,11 @@ import java.util.function.Supplier;
  * 物流系统从产能花抽取魔力，注入到魔力池/扩散器等接收方。
  */
 public class BotaniaManaResource implements LogisticsResource<BotaniaManaResource.ManaHandle> {
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("botania_mana");
 
     @Override
     public ResourceLocation typeId() {
-        return StaticLogistics.asResource("botania_mana");
+        return TYPE_ID;
     }
 
     @Override
@@ -56,6 +57,11 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     @Override
     public IntSupplier baseStackSizeSupplier() {
         return SLConfig::getBotaniaManaStack;
+    }
+
+    @Override
+    public boolean isSimpleResource() {
+        return true;
     }
 
     /**
@@ -127,7 +133,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
         if (be == null) return null;
 
         if (be instanceof GeneratingFlowerBlockEntity flower) {
-            if (flower.getMana() <= 0) return null;
+            // 即使魔力为0也返回handle，让extract方法处理
             return ManaHandle.source(flower, flower.getMana());
         }
 
@@ -140,19 +146,19 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     @Override
     public long extract(ManaHandle handle, long amount, boolean simulate) {
         if (!handle.isSource()) return 0;
-        int actual = (int) Math.min(handle.currentMana(), amount);
+        long actual = Math.min(handle.currentMana(), amount);
         if (actual <= 0) return 0;
-        if (!simulate) handle.addMana(-actual);
+        if (!simulate) handle.addMana((int) -actual);
         return actual;
     }
 
     @Override
     public long insert(ManaHandle handle, long amount, boolean simulate) {
         if (!handle.isTarget()) return 0;
-        int space = handle.availableSpace();
+        long space = handle.availableSpace();
         if (space <= 0) return 0;
-        int actual = (int) Math.min(amount, space);
-        if (!simulate) handle.addMana(actual);
+        long actual = Math.min(amount, space);
+        if (!simulate) handle.addMana((int) actual);
         return actual;
     }
 

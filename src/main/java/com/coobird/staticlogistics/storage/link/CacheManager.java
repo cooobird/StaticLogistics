@@ -35,6 +35,7 @@ public class CacheManager {
     public void add(long key) {
         activeProviderCache.putAndMoveToLast(key, true);
         evictIfNeeded();
+        keysDirty = true;
         rebuildArrayIfNeeded();
     }
 
@@ -44,6 +45,7 @@ public class CacheManager {
      */
     public void remove(long key) {
         activeProviderCache.remove(key);
+        keysDirty = true;
         rebuildArrayIfNeeded();
     }
 

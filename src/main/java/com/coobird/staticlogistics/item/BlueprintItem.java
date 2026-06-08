@@ -466,11 +466,11 @@ public class BlueprintItem extends Item {
                 mgr.markFaceDirty(LinkManager.posToKey(fs.pos(), fs.face()));
                 mgr.refreshLocalCache(LinkManager.posToKey(fs.pos(), fs.face()), fs.pos(), fs.face(), cfg);
                 mgr.scheduleNetworkSync(new LogisticsNode(GlobalPos.of(level.dimension(), fs.pos()), fs.face()));
-                restored++;
             } else {
                 // 粘贴前不存在 → 删除
                 mgr.removeFaceConfig(LinkManager.posToKey(fs.pos(), fs.face()));
             }
+            restored++;
         }
 
         // 恢复容器配置

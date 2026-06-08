@@ -28,10 +28,11 @@ import java.util.function.Supplier;
  */
 public class FluidResource implements LogisticsResource<IFluidHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("fluid");
 
     @Override
     public ResourceLocation typeId() {
-        return StaticLogistics.asResource("fluid");
+        return TYPE_ID;
     }
 
     @Override
@@ -113,11 +114,11 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
     }
 
     @Override
-    public void commitExtract(IFluidHandler handle, ExtractionResult<?> result, int actual,
+    public void commitExtract(IFluidHandler handle, ExtractionResult<?> result, long actual,
                               @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                               @Nullable TransferContext context) {
         try {
-            handle.drain(actual, IFluidHandler.FluidAction.EXECUTE);
+            handle.drain((int) actual, IFluidHandler.FluidAction.EXECUTE);
         } catch (Exception e) {
             LOGGER.error("Fluid commitExtract failed", e);
         }

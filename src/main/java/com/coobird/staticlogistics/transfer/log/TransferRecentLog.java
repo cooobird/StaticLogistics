@@ -14,7 +14,8 @@ class TransferRecentLog {
 
     void add(TransferEntry entry) {
         while (log.size() >= MAX_ENTRIES) {
-            log.pollFirst();
+            TransferEntry old = log.pollFirst();
+            if (old != null) old.recycle(); // 回收到对象池
         }
         log.offerLast(entry);
     }
@@ -30,6 +31,10 @@ class TransferRecentLog {
     }
 
     void clear() {
-        log.clear();
+        // 回收所有条目到对象池
+        TransferEntry entry;
+        while ((entry = log.pollFirst()) != null) {
+            entry.recycle();
+        }
     }
 }

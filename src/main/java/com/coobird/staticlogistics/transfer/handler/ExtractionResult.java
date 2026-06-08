@@ -16,6 +16,7 @@ public record ExtractionResult<T>(T value, @Nullable Object context) {
     }
 
     @Nullable
+    @SuppressWarnings("unchecked")
     public <C> C getContext() {
         return (C) context;
     }

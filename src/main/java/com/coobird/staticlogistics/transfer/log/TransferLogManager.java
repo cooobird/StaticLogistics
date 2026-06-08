@@ -34,17 +34,17 @@ public class TransferLogManager {
 
     // 记录
     public void logTransfer(LogisticsNode source, LogisticsNode target,
-                            LogisticsResource<?> type, int amount, boolean success) {
+                            LogisticsResource<?> type, long amount, boolean success) {
         logTransfer(source, target, type, amount, success, null);
     }
 
     public void logTransfer(LogisticsNode source, LogisticsNode target,
-                            LogisticsResource<?> type, int amount, boolean success,
+                            LogisticsResource<?> type, long amount, boolean success,
                             TransferFailureReason reason) {
         long now = System.currentTimeMillis();
 
-        // 最近日志
-        recentLog.add(new TransferEntry(
+        // 最近日志（使用对象池）
+        TransferEntry entry = TransferEntry.obtain(
             now,
             source.gPos().dimension().location().toString(),
             source.gPos().pos().getX(), source.gPos().pos().getY(), source.gPos().pos().getZ(),
@@ -54,7 +54,8 @@ public class TransferLogManager {
             target.face().getName(),
             type.typeId().getPath(), type.color(),
             amount, success, reason != null ? reason.id().toString() : null
-        ));
+        );
+        recentLog.add(entry);
 
         // 累计统计
         stats.incrementTotal(amount);

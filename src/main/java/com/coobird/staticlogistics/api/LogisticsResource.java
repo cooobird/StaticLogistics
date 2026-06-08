@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.api;
 
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferContext;
-import com.coobird.staticlogistics.transfer.handler.BulkExtractionResult;
 import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -76,6 +75,16 @@ public interface LogisticsResource<C> {
      */
     default boolean requiresValidLinks() {
         return true;
+    }
+
+    /**
+     * 是否是简单资源（能量/魔源/热量等无状态资源）。
+     * <p>简单资源可以跳过模拟提取步骤，直接执行 extract + insert，
+     * 如果插入量不足则回退多余部分。这减少了方法调用开销。
+     * <p>默认返回 {@code false}。能量/魔源/热量应覆写返回 {@code true}。
+     */
+    default boolean isSimpleResource() {
+        return false;
     }
 
     /**
@@ -162,6 +171,9 @@ public interface LogisticsResource<C> {
         if (value instanceof Long amount) {
             return insert(handle, amount, simulate);
         }
+        if (value instanceof Number num) {
+            return insert(handle, num.longValue(), simulate);
+        }
         return 0;
     }
 
@@ -201,6 +213,7 @@ public interface LogisticsResource<C> {
      * @param sourceCfg  源面配置（用于判断推/拉模式下的过滤规则），可为 null
      * @param isPullMode 是否为拉模式
      * @param context    传输上下文，可为 null
+     * @return 实际注入量
      */
     default long insertTyped(C handle, Object value, boolean simulate,
                              @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
@@ -231,78 +244,9 @@ public interface LogisticsResource<C> {
      * @param isPullMode 是否为拉模式
      * @param context    传输上下文
      */
-    default void commitExtract(C handle, ExtractionResult<?> result, int actual,
+    default void commitExtract(C handle, ExtractionResult<?> result, long actual,
                                @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                                @Nullable TransferContext context) {
         extractTyped(handle, actual, false, sourceCfg, isPullMode, context);
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    //  批量模式（减少循环次数，优化大量传输场景）
-    // ════════════════════════════════════════════════════════════════
-
-    /**
-     * 批量提取 —— 从源提取多个栈，直到达到 maxAmount 上限。
-     * <p>默认实现退化为单栈提取。物品/流体应覆写以遍历所有槽位。
-     *
-     * @param handle    源句柄
-     * @param maxAmount 最大提取量
-     * @param simulate  是否模拟
-     * @param sourceCfg 源面配置
-     * @param isPullMode 是否拉模式
-     * @param context   传输上下文
-     * @return 批量提取结果（包含多个 ExtractionResult）
-     */
-    default BulkExtractionResult<?> extractBulkTyped(C handle, long maxAmount, boolean simulate,
-                                                     @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                                     @Nullable TransferContext context) {
-        ExtractionResult<?> single = extractTyped(handle, maxAmount, simulate, sourceCfg, isPullMode, context);
-        if (isEmptyResult(single.value())) return BulkExtractionResult.empty();
-        return BulkExtractionResult.single(single);
-    }
-
-    /**
-     * 批量插入 —— 将多个栈插入目标，返回实际插入总量。
-     * <p>默认实现逐个插入。物品/流体应覆写以遍历所有槽位。
-     *
-     * @param handle    目标句柄
-     * @param bulk      批量提取结果
-     * @param simulate  是否模拟
-     * @param sourceCfg 源面配置
-     * @param isPullMode 是否拉模式
-     * @param context   传输上下文
-     * @return 实际插入总量
-     */
-    default long insertBulkTyped(C handle, BulkExtractionResult<?> bulk, boolean simulate,
-                                 @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                 @Nullable TransferContext context) {
-        long total = 0;
-        for (ExtractionResult<?> r : bulk.results()) {
-            total += insertTyped(handle, r.value(), simulate, sourceCfg, isPullMode, context);
-        }
-        return total;
-    }
-
-    /**
-     * 批量提交提取 —— 从源实际提取已确认的量。
-     * <p>默认实现逐个提交。物品应覆写以遍历所有槽位。
-     *
-     * @param handle    源句柄
-     * @param bulk      批量提取结果
-     * @param actual    实际提取总量
-     * @param sourceCfg 源面配置
-     * @param isPullMode 是否拉模式
-     * @param context   传输上下文
-     */
-    default void commitBulkExtract(C handle, BulkExtractionResult<?> bulk, long actual,
-                                   @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                   @Nullable TransferContext context) {
-        long remaining = actual;
-        for (ExtractionResult<?> r : bulk.results()) {
-            if (remaining <= 0) break;
-            int toCommit = (int) Math.min(remaining, Integer.MAX_VALUE);
-            commitExtract(handle, r, toCommit, sourceCfg, isPullMode, context);
-            remaining -= toCommit;
-        }
     }
 }

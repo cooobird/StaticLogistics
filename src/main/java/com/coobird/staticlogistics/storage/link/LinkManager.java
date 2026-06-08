@@ -61,7 +61,7 @@ public class LinkManager implements ILinkManager {
         DropHandler dropHandler = new DropHandler(level);
 
         this.containerConfigService = new ContainerConfigService(level, containerRepository);
-        FaceConfigService faceConfigService = new FaceConfigService(level, configRepository, dropHandler, containerConfigService);
+        FaceConfigService faceConfigService = new FaceConfigService(configRepository, containerConfigService);
         this.containerConfigService.setFaceConfigService(faceConfigService);
 
         LinkChangeHandler changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this,
@@ -71,7 +71,7 @@ public class LinkManager implements ILinkManager {
             cacheManager, changeHandler, dropHandler, networkSyncManager, syncManager, this);
     }
 
-    // ── 版本管理 ──
+    // 版本管理
 
     public long nextVersion(long key) {
         return keyVersions.merge(key, 1L, Long::sum);
@@ -86,7 +86,7 @@ public class LinkManager implements ILinkManager {
         }
     }
 
-    // ── 脏数据追踪（委托 LinkDirtyTracker）──
+    // 脏数据追踪（委托 LinkDirtyTracker）
 
     public void markDirtyBatch(Runnable operation) {
         operation.run();
@@ -113,7 +113,7 @@ public class LinkManager implements ILinkManager {
         return dirtyTracker.drainDirtyContainers();
     }
 
-    // ── 保存调度（委托 LinkSaveScheduler）──
+    // 保存调度（委托 LinkSaveScheduler）
 
     void setStorage(LinkManagerStorage storage) {
         saveScheduler.setStorage(storage);
@@ -136,7 +136,7 @@ public class LinkManager implements ILinkManager {
         LinkSaveScheduler.shutdownSaver();
     }
 
-    // ── 网络同步（委托 PendingSyncBuffer）──
+    // 网络同步（委托 PendingSyncBuffer）
 
     public void scheduleNetworkSync(LogisticsNode node) {
         FaceConfigComposite cfg = getFaceConfig(node.toKey());
@@ -152,7 +152,7 @@ public class LinkManager implements ILinkManager {
         syncBuffer.flush(networkSyncManager, faceConfigHandler);
     }
 
-    // ── 面配置 CRUD（委托 FaceConfigHandler）──
+    // 面配置 CRUD（委托 FaceConfigHandler）
 
     FaceConfigHandler getFaceConfigHandler() {
         return faceConfigHandler;
@@ -249,7 +249,7 @@ public class LinkManager implements ILinkManager {
         faceConfigHandler.onBlockRemoved(pos);
     }
 
-    // ── 容器配置（委托 ContainerConfigService）──
+    // 容器配置（委托 ContainerConfigService）
 
     @Override
     @Nullable
@@ -265,7 +265,7 @@ public class LinkManager implements ILinkManager {
         return config;
     }
 
-    // ── 缓存（委托 CacheManager）──
+    // 缓存（委托 CacheManager）
 
     public LongSet getActiveProviderKeys() {
         return cacheManager.getActiveProviderKeys();
@@ -285,7 +285,7 @@ public class LinkManager implements ILinkManager {
         return faceConfigHandler.getAllConfigKeys();
     }
 
-    // ── 网络同步直接操作 ──
+    // 网络同步直接操作
 
     public void syncRemovalToDimension(BlockPos pos, Direction face) {
         networkSyncManager.syncRemovalToDimension(pos, face);
@@ -330,7 +330,7 @@ public class LinkManager implements ILinkManager {
         if (cfg != null) networkSyncManager.syncToPlayer(player, node.gPos().pos(), node.face(), cfg);
     }
 
-    // ── 批量操作 ──
+    // 批量操作
 
     @Override
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
@@ -360,7 +360,7 @@ public class LinkManager implements ILinkManager {
         saveScheduler.scheduleSave();
     }
 
-    // ── 工厂 ──
+    // 工厂
 
     public static LinkManager get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(

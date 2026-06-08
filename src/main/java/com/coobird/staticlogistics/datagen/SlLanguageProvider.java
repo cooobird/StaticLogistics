@@ -198,7 +198,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("jade.staticlogistics.group_label", "Group: %s", "组: %s");
         add("jade.staticlogistics.linked", " | %s nodes", " | %s节点");
         add("jade.staticlogistics.transfer_stats", "  Sent:%s Rcv:%s", "  发送:%s 接收:%s");
-        add("jade.staticlogistics.global_stats", "Rate: %s/min | Last: %s ago", "速率: %s/分钟 | 最近: %s前");
+        add("jade.staticlogistics.face_stats", "Rate: %s/min | Last: %s ago", "速率: %s/分钟 | 上次: %s前");
         add("jade.staticlogistics.section_input", "Input:", "输入:");
         add("jade.staticlogistics.section_output", "Output:", "输出:");
         add("jade.staticlogistics.channel", "Channel: %s", "频道: %s");

@@ -27,8 +27,7 @@ import java.util.stream.Collectors;
  */
 public class FilterEvaluator {
 
-    // ── 编译缓存 ──
-
+    // 编译缓存
     private record CompiledItemFilters(
         Set<Item> basicItems,
         Set<TagKey<Item>> whitelistTags,
@@ -49,9 +48,8 @@ public class FilterEvaluator {
     ) {
     }
 
-    // 主线程单线程访问，无需 ConcurrentHashMap
-    private static final Map<FilterData, CompiledItemFilters> ITEM_FILTER_CACHE = new HashMap<>(64);
-    private static final Map<FilterData, CompiledFluidFilters> FLUID_FILTER_CACHE = new HashMap<>(64);
+    private static final Map<FilterData, CompiledItemFilters> ITEM_FILTER_CACHE = new WeakHashMap<>(64);
+    private static final Map<FilterData, CompiledFluidFilters> FLUID_FILTER_CACHE = new WeakHashMap<>(64);
 
     private static CompiledItemFilters compileItemFilters(FilterData filter) {
         return ITEM_FILTER_CACHE.computeIfAbsent(filter, f -> {
@@ -106,8 +104,7 @@ public class FilterEvaluator {
         });
     }
 
-    // ── 查询接口 ──
-
+    // 查询接口
     private record FilterDataWithType(FilterData filter, @Nullable UpgradeType type) {
         private FilterDataWithType(FilterData filter, @Nullable UpgradeType type) {
             this.filter = Objects.requireNonNull(filter);

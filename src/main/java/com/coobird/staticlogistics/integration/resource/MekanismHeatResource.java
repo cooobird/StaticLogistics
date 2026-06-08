@@ -26,10 +26,11 @@ import java.util.function.Supplier;
  */
 public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_heat");
 
     @Override
     public ResourceLocation typeId() {
-        return StaticLogistics.asResource("mek_heat");
+        return TYPE_ID;
     }
 
     @Override
@@ -58,6 +59,11 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
+    public boolean isSimpleResource() {
+        return true;
+    }
+
+    @Override
     public @Nullable IHeatHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         return level.getCapability(mekanism.common.capabilities.Capabilities.HEAT, pos, face);
     }
@@ -68,21 +74,27 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
             int capacitorCount = handle.getHeatCapacitorCount();
             if (capacitorCount <= 0) return 0;
 
+            // 计算总热量
+            double totalHeat = 0;
+            for (int i = 0; i < capacitorCount; i++) {
+                totalHeat += handle.getTemperature(i) * handle.getHeatCapacity(i);
+            }
+
+            // 限制提取量为实际可用热量
+            long actualAmount = Math.min(amount, (long) totalHeat);
+            if (actualAmount <= 0) return 0;
+
             if (simulate) {
-                double totalHeat = 0;
-                for (int i = 0; i < capacitorCount; i++) {
-                    totalHeat += handle.getTemperature(i) * handle.getHeatCapacity(i);
-                }
-                return (int) Math.min(amount, totalHeat);
+                return actualAmount;
             } else {
                 double totalCapacity = handle.getTotalHeatCapacity();
                 if (totalCapacity <= 0) return 0;
                 for (int i = 0; i < capacitorCount; i++) {
                     double ratio = handle.getHeatCapacity(i) / totalCapacity;
-                    double toExtract = amount * ratio;
+                    double toExtract = actualAmount * ratio;
                     handle.handleHeat(i, -toExtract);
                 }
-                return amount;
+                return actualAmount;
             }
         } catch (Exception e) {
             LOGGER.error("Mekanism heat extract failed", e);

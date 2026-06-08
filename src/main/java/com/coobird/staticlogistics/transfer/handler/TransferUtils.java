@@ -68,69 +68,44 @@ public class TransferUtils {
     // ── 传输协议接口 ──
 
     public interface TransferProtocol<C, T> {
-        ExtractionResult<T> simulateExtract(C source, int max);
+        ExtractionResult<T> simulateExtract(C source, long max);
 
-        int executeInsert(C dest, T stack);
+        long executeInsert(C dest, T stack);
 
-        void commitExtract(C source, ExtractionResult<T> result, int actual);
+        void commitExtract(C source, ExtractionResult<T> result, long actual);
 
         boolean isEmpty(ExtractionResult<T> result);
 
         default boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
             return true;
         }
-
-        default BulkExtractionResult<T> extractBulk(C source, long maxAmount) {
-            int singleMax = (int) Math.min(maxAmount, Integer.MAX_VALUE);
-            ExtractionResult<T> single = simulateExtract(source, singleMax);
-            if (isEmpty(single)) return BulkExtractionResult.empty();
-            return BulkExtractionResult.single(single);
-        }
-
-        default long insertBulk(C dest, BulkExtractionResult<T> bulk, LogisticsNode targetNode) {
-            long total = 0;
-            for (ExtractionResult<T> r : bulk.results()) {
-                if (!canInsert(dest, r.value(), targetNode)) break;
-                total += executeInsert(dest, r.value());
-            }
-            return total;
-        }
-
-        default void commitBulkExtract(C source, BulkExtractionResult<T> bulk, long actual) {
-            long remaining = actual;
-            for (ExtractionResult<T> r : bulk.results()) {
-                if (remaining <= 0) break;
-                commitExtract(source, r, (int) Math.min(remaining, Integer.MAX_VALUE));
-                remaining -= Integer.MAX_VALUE;
-            }
-        }
     }
 
     public record SimpleProtocol<C, T>(
-        BiFunction<C, Integer, T> extractor,
-        BiFunction<C, T, Integer> inserter,
-        TriConsumer<C, T, Integer> committer,
+        BiFunction<C, Long, T> extractor,
+        BiFunction<C, T, Long> inserter,
+        TriConsumer<C, T, Long> committer,
         Predicate<T> emptyChecker,
         @javax.annotation.Nullable java.util.function.BiPredicate<T, LogisticsNode> targetFilter
     ) implements TransferProtocol<C, T> {
-        public SimpleProtocol(BiFunction<C, Integer, T> extractor, BiFunction<C, T, Integer> inserter,
-                              TriConsumer<C, T, Integer> committer, Predicate<T> emptyChecker) {
+        public SimpleProtocol(BiFunction<C, Long, T> extractor, BiFunction<C, T, Long> inserter,
+                              TriConsumer<C, T, Long> committer, Predicate<T> emptyChecker) {
             this(extractor, inserter, committer, emptyChecker, null);
         }
 
         @Override
-        public ExtractionResult<T> simulateExtract(C source, int max) {
+        public ExtractionResult<T> simulateExtract(C source, long max) {
             T value = extractor.apply(source, max);
             return ExtractionResult.of(value);
         }
 
         @Override
-        public int executeInsert(C dest, T stack) {
+        public long executeInsert(C dest, T stack) {
             return inserter.apply(dest, stack);
         }
 
         @Override
-        public void commitExtract(C source, ExtractionResult<T> result, int actual) {
+        public void commitExtract(C source, ExtractionResult<T> result, long actual) {
             committer.accept(source, result.value(), actual);
         }
 

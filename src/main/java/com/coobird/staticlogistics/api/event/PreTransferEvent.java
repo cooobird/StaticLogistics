@@ -5,6 +5,9 @@ import com.coobird.staticlogistics.api.LogisticsResource;
 import net.neoforged.bus.api.Event;
 import net.neoforged.bus.api.ICancellableEvent;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+
 /**
  * 传输开始前触发的事件。可取消以阻止传输。
  *
@@ -19,17 +22,44 @@ import net.neoforged.bus.api.ICancellableEvent;
  * <p>在服务器主线程的传输管线中触发，监听器应尽快返回。
  */
 public class PreTransferEvent extends Event implements ICancellableEvent {
-    private final LogisticsNode sourceNode;
-    private final LogisticsNode targetNode;
-    private final LogisticsResource<?> resource;
-    private final int requestedAmount;
+    private static final Deque<PreTransferEvent> POOL = new ArrayDeque<>(64);
 
-    public PreTransferEvent(LogisticsNode sourceNode, LogisticsNode targetNode,
-                            LogisticsResource<?> resource, int requestedAmount) {
-        this.sourceNode = sourceNode;
-        this.targetNode = targetNode;
-        this.resource = resource;
-        this.requestedAmount = requestedAmount;
+    private LogisticsNode sourceNode;
+    private LogisticsNode targetNode;
+    private LogisticsResource<?> resource;
+    private long requestedAmount;
+    private boolean canceled;
+
+    private PreTransferEvent() {
+    }
+
+    /**
+     * 从对象池获取或创建新实例。
+     */
+    public static PreTransferEvent obtain(LogisticsNode sourceNode, LogisticsNode targetNode,
+                                          LogisticsResource<?> resource, long requestedAmount) {
+        PreTransferEvent event = POOL.poll();
+        if (event == null) event = new PreTransferEvent();
+        event.sourceNode = sourceNode;
+        event.targetNode = targetNode;
+        event.resource = resource;
+        event.requestedAmount = requestedAmount;
+        event.canceled = false;
+        return event;
+    }
+
+    /**
+     * 回收到对象池。
+     */
+    public void recycle() {
+        this.sourceNode = null;
+        this.targetNode = null;
+        this.resource = null;
+        this.requestedAmount = 0;
+        this.canceled = false;
+        if (POOL.size() < 64) {
+            POOL.offer(this);
+        }
     }
 
     public LogisticsNode getSourceNode() {
@@ -44,7 +74,17 @@ public class PreTransferEvent extends Event implements ICancellableEvent {
         return resource;
     }
 
-    public int getRequestedAmount() {
+    public long getRequestedAmount() {
         return requestedAmount;
+    }
+
+    @Override
+    public boolean isCanceled() {
+        return canceled;
+    }
+
+    @Override
+    public void setCanceled(boolean canceled) {
+        this.canceled = canceled;
     }
 }

@@ -27,10 +27,11 @@ import java.util.function.Supplier;
  */
 public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("ars_source");
 
     @Override
     public ResourceLocation typeId() {
-        return StaticLogistics.asResource("ars_source");
+        return TYPE_ID;
     }
 
     @Override
@@ -56,6 +57,11 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     @Override
     public IntSupplier baseStackSizeSupplier() {
         return SLConfig::getArsSourceStack;
+    }
+
+    @Override
+    public boolean isSimpleResource() {
+        return true;
     }
 
     @Override

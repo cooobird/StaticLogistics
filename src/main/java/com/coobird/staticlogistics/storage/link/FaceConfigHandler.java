@@ -78,7 +78,6 @@ class FaceConfigHandler {
         FaceConfigComposite config = faceConfigService.getOrCreate(pos, face);
         config.setOnDirty(cfg -> changeHandler.onFaceConfigChanged(key, pos, face, cfg));
         if (isNew) {
-            // 新建配置继承 LinkManager 的全局版本计数器，确保版本号单调递增
             config.setVersion(parent.nextVersion(key));
         }
         return config;

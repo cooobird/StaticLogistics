@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
 import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
@@ -29,10 +30,11 @@ import java.util.function.Supplier;
  */
 public class MekanismChemicalResource implements LogisticsResource<IChemicalHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_chemicals");
 
     @Override
     public ResourceLocation typeId() {
-        return StaticLogistics.asResource("mek_chemicals");
+        return TYPE_ID;
     }
 
     @Override
@@ -93,6 +95,13 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
         if (value == null) return true;
         if (value instanceof ChemicalStack chem) return chem.isEmpty();
         return false;
+    }
+
+    @Override
+    public boolean canInsertToTarget(IChemicalHandler handle, Object value, FaceConfigComposite targetCfg) {
+        if (!(value instanceof ChemicalStack stack) || stack.isEmpty()) return false;
+        ChemicalStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
+        return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
     }
 
     public static void register() {

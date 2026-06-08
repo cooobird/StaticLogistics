@@ -119,12 +119,12 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
     protected void renderHoveredTypeTooltip(GuiGraphics g, int mx, int my) {
         if (hoveredType == null) return;
         long sm = menu.getStackMultiplier();
-        int base = hoveredType.getBaseStackSize();
+        long base = hoveredType.getBaseStackSize();
         boolean inf;
         long fs;
         try {
             fs = Math.multiplyExact(base, sm);
-            inf = fs >= Integer.MAX_VALUE;
+            inf = fs >= Long.MAX_VALUE / 2;  // 接近最大值时视为无限
         } catch (ArithmeticException e) {
             inf = true;
             fs = 0;

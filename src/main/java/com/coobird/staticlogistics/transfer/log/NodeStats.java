@@ -11,4 +11,18 @@ public class NodeStats {
     public int posX, posY, posZ;
     public String dim;
     public String face;
+    public long firstTransferTime;
+    public long lastTransferTime;
+
+    /**
+     * 计算传输速率（每分钟传输次数）
+     */
+    public double getTransfersPerMinute() {
+        long totalTransfers = sentCount + receivedCount;
+        if (totalTransfers <= 1 || firstTransferTime == 0 || lastTransferTime == 0) return 0;
+        long durationMs = lastTransferTime - firstTransferTime;
+        if (durationMs <= 0) return 0;
+        // 计算每分钟传输次数
+        return (double) totalTransfers / durationMs * 60000.0;
+    }
 }
