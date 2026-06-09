@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.logic.event;
+package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;

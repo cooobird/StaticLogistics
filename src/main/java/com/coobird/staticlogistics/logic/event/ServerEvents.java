@@ -9,6 +9,7 @@ import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logic.ToolMode;
 import com.coobird.staticlogistics.network.c2s.*;
 import com.coobird.staticlogistics.network.s2c.*;
+import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import net.minecraft.ChatFormatting;
