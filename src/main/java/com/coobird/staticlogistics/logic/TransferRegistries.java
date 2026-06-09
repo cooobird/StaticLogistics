@@ -73,109 +73,109 @@ public class TransferRegistries {
     }
 
     /**
-         * 包装器：覆写 bitOffset() 为注册时自动分配的值。
-         */
-        private record BitOffsetWrapper<C>(LogisticsResource<C> delegate,
-                                           int assignedOffset) implements LogisticsResource<C> {
+     * 包装器：覆写 bitOffset() 为注册时自动分配的值。
+     */
+    private record BitOffsetWrapper<C>(LogisticsResource<C> delegate,
+                                       int assignedOffset) implements LogisticsResource<C> {
 
         @Override
-            public int bitOffset() {
-                return assignedOffset;
-            }
-
-            @Override
-            public ResourceLocation typeId() {
-                return delegate.typeId();
-            }
-
-            @Override
-            public int color() {
-                return delegate.color();
-            }
-
-            @Override
-            public String translationKey() {
-                return delegate.translationKey();
-            }
-
-            @Override
-            public Supplier<ItemStack> iconSupplier() {
-                return delegate.iconSupplier();
-            }
-
-            @Override
-            public IntSupplier baseStackSizeSupplier() {
-                return delegate.baseStackSizeSupplier();
-            }
-
-            @Override
-            public boolean requiresCooldown() {
-                return delegate.requiresCooldown();
-            }
-
-            @Override
-            public boolean requiresValidLinks() {
-                return delegate.requiresValidLinks();
-            }
-
-            @Override
-            public boolean isSimpleResource() {
-                return delegate.isSimpleResource();
-            }
-
-            @Override
-            public @Nullable C resolve(ServerLevel level, BlockPos pos, Direction face) {
-                return delegate.resolve(level, pos, face);
-            }
-
-            @Override
-            public boolean isPresent(ServerLevel level, BlockPos pos, Direction face) {
-                return delegate.isPresent(level, pos, face);
-            }
-
-            @Override
-            public long extract(C handle, long amount, boolean simulate) {
-                return delegate.extract(handle, amount, simulate);
-            }
-
-            @Override
-            public long insert(C handle, long amount, boolean simulate) {
-                return delegate.insert(handle, amount, simulate);
-            }
-
-            @Override
-            public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate) {
-                return delegate.extractTyped(handle, amount, simulate);
-            }
-
-            @Override
-            public long insertTyped(C handle, Object value, boolean simulate) {
-                return delegate.insertTyped(handle, value, simulate);
-            }
-
-            @Override
-            public boolean isEmptyResult(@Nullable Object value) {
-                return delegate.isEmptyResult(value);
-            }
-
-            @Override
-            public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
-                return delegate.extractTyped(handle, amount, simulate, sourceCfg, isPullMode, context);
-            }
-
-            @Override
-            public long insertTyped(C handle, Object value, boolean simulate, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
-                return delegate.insertTyped(handle, value, simulate, sourceCfg, isPullMode, context);
-            }
-
-            @Override
-            public boolean canInsertToTarget(C handle, Object value, FaceConfigComposite targetCfg) {
-                return delegate.canInsertToTarget(handle, value, targetCfg);
-            }
-
-            @Override
-            public void commitExtract(C handle, ExtractionResult<?> result, long actual, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
-                delegate.commitExtract(handle, result, actual, sourceCfg, isPullMode, context);
-            }
+        public int bitOffset() {
+            return assignedOffset;
         }
+
+        @Override
+        public ResourceLocation typeId() {
+            return delegate.typeId();
+        }
+
+        @Override
+        public int color() {
+            return delegate.color();
+        }
+
+        @Override
+        public String translationKey() {
+            return delegate.translationKey();
+        }
+
+        @Override
+        public Supplier<ItemStack> iconSupplier() {
+            return delegate.iconSupplier();
+        }
+
+        @Override
+        public IntSupplier baseStackSizeSupplier() {
+            return delegate.baseStackSizeSupplier();
+        }
+
+        @Override
+        public boolean requiresCooldown() {
+            return delegate.requiresCooldown();
+        }
+
+        @Override
+        public boolean requiresValidLinks() {
+            return delegate.requiresValidLinks();
+        }
+
+        @Override
+        public boolean isSimpleResource() {
+            return delegate.isSimpleResource();
+        }
+
+        @Override
+        public @Nullable C resolve(ServerLevel level, BlockPos pos, Direction face) {
+            return delegate.resolve(level, pos, face);
+        }
+
+        @Override
+        public boolean isPresent(ServerLevel level, BlockPos pos, Direction face) {
+            return delegate.isPresent(level, pos, face);
+        }
+
+        @Override
+        public long extract(C handle, long amount, boolean simulate) {
+            return delegate.extract(handle, amount, simulate);
+        }
+
+        @Override
+        public long insert(C handle, long amount, boolean simulate) {
+            return delegate.insert(handle, amount, simulate);
+        }
+
+        @Override
+        public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate) {
+            return delegate.extractTyped(handle, amount, simulate);
+        }
+
+        @Override
+        public long insertTyped(C handle, Object value, boolean simulate) {
+            return delegate.insertTyped(handle, value, simulate);
+        }
+
+        @Override
+        public boolean isEmptyResult(@Nullable Object value) {
+            return delegate.isEmptyResult(value);
+        }
+
+        @Override
+        public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
+            return delegate.extractTyped(handle, amount, simulate, sourceCfg, isPullMode, context);
+        }
+
+        @Override
+        public long insertTyped(C handle, Object value, boolean simulate, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
+            return delegate.insertTyped(handle, value, simulate, sourceCfg, isPullMode, context);
+        }
+
+        @Override
+        public boolean canInsertToTarget(C handle, Object value, FaceConfigComposite targetCfg) {
+            return delegate.canInsertToTarget(handle, value, targetCfg);
+        }
+
+        @Override
+        public void commitExtract(C handle, ExtractionResult<?> result, long actual, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
+            delegate.commitExtract(handle, result, actual, sourceCfg, isPullMode, context);
+        }
+    }
 }
