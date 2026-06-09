@@ -33,8 +33,7 @@ public class SLItemTagsProvider extends ItemTagsProvider {
     protected void addTags(HolderLookup.@NotNull Provider provider) {
         tag(Tags.Items.TOOLS_WRENCH).add(SLItems.LINK_CONFIGURATOR.get());
         tag(Tags.Items.TOOLS).add(SLItems.LINK_CONFIGURATOR.get());
-        if (ModCompat.isCreateLoaded())
-            tag(AllTags.AllItemTags.CHAIN_RIDEABLE.tag).add(SLItems.LINK_CONFIGURATOR.get());
-        if (ModCompat.isMekanismLoaded()) tag(MekanismTags.Items.CONFIGURATORS).add(SLItems.LINK_CONFIGURATOR.get());
+        tag(AllTags.AllItemTags.CHAIN_RIDEABLE.tag).add(SLItems.LINK_CONFIGURATOR.get());
+        tag(MekanismTags.Items.CONFIGURATORS).add(SLItems.LINK_CONFIGURATOR.get());
     }
 }
