@@ -153,7 +153,6 @@ public class TagBarWidget {
     }
 
     // 下拉框渲染
-
     private static void renderDropdown(GuiGraphics g, Font font, int leftPos, int topPos,
                                        int mx, int my, State state, TagSlotAccess access,
                                        FilterGridWidget.FilterSlotProvider slotProvider,
@@ -166,12 +165,12 @@ public class TagBarWidget {
 
         if (!ref.isEmpty()) {
             options = collectEnhancedTagOptions(ref);
-            displayName = "[fluid]"; // getFluid() not in 1.20.1
+            displayName = ref.getHoverName().getString();
         } else {
             fluid = slotProvider.getFluidItem(index);
             if (fluid == null) return;
             options = collectEnhancedTagOptionsForFluid(fluid);
-            displayName = "[fluid]";
+            displayName = new FluidStack(fluid, 1000).getDisplayName().getString();
         }
         state.tagOptionsCache[row] = options;
         if (options.isEmpty()) return;

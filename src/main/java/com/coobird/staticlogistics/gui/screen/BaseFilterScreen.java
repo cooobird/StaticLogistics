@@ -212,7 +212,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
                 case SET_FLUID:
                     var fluidHandler = menu.getCarried()
                         .getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM);
-                    if (fluidHandler != null) {
+                    if (fluidHandler.isPresent()) {
                         FluidStack drained = fluidHandler.orElse(null).drain(1000,
                             IFluidHandler.FluidAction.SIMULATE);
                         if (!drained.isEmpty()) {

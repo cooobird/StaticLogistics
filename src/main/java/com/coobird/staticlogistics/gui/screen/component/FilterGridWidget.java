@@ -127,13 +127,13 @@ public class FilterGridWidget {
         Component carriedItemName = null;
         Component carriedFluidName = null;
         if (!carried.isEmpty()) {
-            carriedItemName = Component.literal("[item]");
+            carriedItemName = carried.getDisplayName();
             var fluidCapOpt = carried.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM);
             if (fluidCapOpt.isPresent()) {
                 IFluidHandler fluidCap = fluidCapOpt.orElse(null);
                 FluidStack stored = fluidCap.drain(Integer.MAX_VALUE, IFluidHandler.FluidAction.SIMULATE);
                 if (!stored.isEmpty()) {
-                    carriedFluidName = Component.literal("[fluid]");
+                    carriedFluidName = stored.getDisplayName();
                 }
             }
         }
@@ -150,7 +150,7 @@ public class FilterGridWidget {
                     if (fluid != null) {
                         FluidStack fs = new FluidStack(fluid, 1000);
                         List<Component> tooltip = new ArrayList<>();
-                        tooltip.add(Component.literal("[fluid]"));
+                        tooltip.add(fs.getDisplayName());
                         if (mc != null && mc.options.advancedItemTooltips) {
                             tooltip.add(Component.literal(
                                     BuiltInRegistries.FLUID.getKey(fluid).toString())
@@ -275,7 +275,7 @@ public class FilterGridWidget {
                     } else { // 右键
                         if (!carried.isEmpty()) {
                             var fluidHandler = carried.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM);
-                            if (fluidHandler != null) {
+                            if (fluidHandler.isPresent()) {
                                 FluidStack drained = fluidHandler.orElse(null).drain(1000,
                                     IFluidHandler.FluidAction.SIMULATE);
                                 if (!drained.isEmpty()) {
@@ -320,9 +320,10 @@ public class FilterGridWidget {
             blockItem.getBlock().defaultBlockState().getTags().forEach(all::add);
         }
         var fluidHandler = stack.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM);
-        if (fluidHandler != null) {
-            for (int i = 0; i < fluidHandler.orElse(null).getTanks(); i++) {
-                FluidStack fs = fluidHandler.orElse(null).getFluidInTank(i);
+        if (fluidHandler.isPresent()) {
+            IFluidHandler handler = fluidHandler.orElse(null);
+            for (int i = 0; i < handler.getTanks(); i++) {
+                FluidStack fs = handler.getFluidInTank(i);
                 if (!fs.isEmpty()) {
                     BuiltInRegistries.FLUID.wrapAsHolder(fs.getFluid()).tags().forEach(all::add);
                 }

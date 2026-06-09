@@ -3,12 +3,15 @@ package com.coobird.staticlogistics.network.s2c;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
+import net.minecraftforge.server.ServerLifecycleHooks;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
@@ -34,7 +37,13 @@ public record S2CSyncFaceConfigPayload(GlobalPos pos, Direction face,
             Direction face = Direction.from3DDataValue(fbuf.readVarInt());
             CompoundTag nbt = fbuf.readNbt();
             FaceConfigComposite config = new FaceConfigComposite();
-            if (nbt != null) config.deserializeNBT(null, nbt); // TODO: Provider not available in network context
+            if (nbt != null) {
+                RegistryAccess provider = null;
+                if (Minecraft.getInstance().level != null) {
+                    provider = Minecraft.getInstance().level.registryAccess();
+                }
+                config.deserializeNBT(provider, nbt);
+            }
             long version = fbuf.readLong();
             return new S2CSyncFaceConfigPayload(pos, face, config, version);
         }
@@ -45,7 +54,8 @@ public record S2CSyncFaceConfigPayload(GlobalPos pos, Direction face,
             fbuf.writeResourceLocation(value.pos().dimension().location());
             fbuf.writeBlockPos(value.pos().pos());
             fbuf.writeVarInt(value.face().get3DDataValue());
-            fbuf.writeNbt(value.config().serializeNBT(null)); // TODO: Provider not available in network context
+            var provider = ServerLifecycleHooks.getCurrentServer().registryAccess();
+            fbuf.writeNbt(value.config().serializeNBT(provider));
             fbuf.writeLong(value.version());
         }
     };

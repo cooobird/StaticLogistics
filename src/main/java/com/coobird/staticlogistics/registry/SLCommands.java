@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.logic.event;
+package com.coobird.staticlogistics.registry;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
@@ -123,7 +123,7 @@ public class SLCommands {
                 if (!stack.isEmpty()) {
                     int finalI = i;
                     source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.slot_format",
-                        finalI, "[fluid]", stack.getCount()).withStyle(ChatFormatting.GRAY), false);
+                        finalI, stack.getDisplayName(), stack.getCount()).withStyle(ChatFormatting.GRAY), false);
                 }
             }
         } else {

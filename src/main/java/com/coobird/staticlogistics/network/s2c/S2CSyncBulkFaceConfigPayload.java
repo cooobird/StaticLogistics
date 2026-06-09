@@ -3,12 +3,15 @@ package com.coobird.staticlogistics.network.s2c;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
+import net.minecraftforge.server.ServerLifecycleHooks;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
@@ -28,6 +31,10 @@ public record S2CSyncBulkFaceConfigPayload(List<Entry> entries) implements IPort
             FriendlyByteBuf fbuf = buf;
             int size = fbuf.readVarInt();
             List<Entry> entries = new ArrayList<>(size);
+            RegistryAccess provider = null;
+            if (Minecraft.getInstance().level != null) {
+                provider = Minecraft.getInstance().level.registryAccess();
+            }
             for (int i = 0; i < size; i++) {
                 ResourceLocation dimId = fbuf.readResourceLocation();
                 var dim = net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION, dimId);
@@ -35,7 +42,7 @@ public record S2CSyncBulkFaceConfigPayload(List<Entry> entries) implements IPort
                 Direction face = Direction.from3DDataValue(fbuf.readVarInt());
                 CompoundTag nbt = fbuf.readNbt();
                 FaceConfigComposite config = new FaceConfigComposite();
-                if (nbt != null) config.deserializeNBT(null, nbt); // TODO: Provider not available in network context
+                if (nbt != null) config.deserializeNBT(provider, nbt);
                 long version = fbuf.readLong();
                 entries.add(new Entry(pos, face, config, version));
             }
@@ -46,11 +53,12 @@ public record S2CSyncBulkFaceConfigPayload(List<Entry> entries) implements IPort
         public void encode(PortRegistryFriendlyByteBuf buf, S2CSyncBulkFaceConfigPayload packet) {
             FriendlyByteBuf fbuf = buf;
             fbuf.writeVarInt(packet.entries().size());
+            var provider = ServerLifecycleHooks.getCurrentServer().registryAccess();
             for (Entry entry : packet.entries()) {
                 fbuf.writeResourceLocation(entry.pos().dimension().location());
                 fbuf.writeBlockPos(entry.pos().pos());
                 fbuf.writeVarInt(entry.face().get3DDataValue());
-                fbuf.writeNbt(entry.config().serializeNBT(null)); // TODO: Provider not available in network context
+                fbuf.writeNbt(entry.config().serializeNBT(provider));
                 fbuf.writeLong(entry.version());
             }
         }

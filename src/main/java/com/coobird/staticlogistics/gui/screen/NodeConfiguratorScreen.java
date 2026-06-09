@@ -350,6 +350,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         if (this.hoveredType != null) {
             renderHoveredTypeTooltip(g, mx, my);
         }
+        renderTooltip(g, mx, my);
     }
 
     private void renderCycleBtn(GuiGraphics g, int mx, int my, int ax, int ay, Component label) {

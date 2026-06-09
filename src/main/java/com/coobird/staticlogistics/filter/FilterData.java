@@ -11,7 +11,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
-import org.mesdag.portlib.network.codec.PortByteBufCodecs;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
 import java.util.HashMap;
@@ -78,10 +77,10 @@ public record FilterData(
 
             int fluidSize = fbuf.readVarInt();
             Map<String, Fluid> fluids = new HashMap<>();
-            var fluidCodec = PortByteBufCodecs.registry(BuiltInRegistries.FLUID.key());
             for (int i = 0; i < fluidSize; i++) {
                 int slot = fbuf.readVarInt();
-                Fluid fluid = fluidCodec.decode(buf);
+                ResourceLocation fluidId = fbuf.readResourceLocation();
+                Fluid fluid = BuiltInRegistries.FLUID.get(fluidId);
                 fluids.put(String.valueOf(slot), fluid);
             }
 
@@ -152,10 +151,9 @@ public record FilterData(
             });
 
             fbuf.writeVarInt(data.fluids().size());
-            var fluidCodec = PortByteBufCodecs.registry(BuiltInRegistries.FLUID.key());
             data.fluids().forEach((slot, fluid) -> {
                 fbuf.writeVarInt(Integer.parseInt(slot));
-                fluidCodec.encode(buf, fluid);
+                fbuf.writeResourceLocation(BuiltInRegistries.FLUID.getKey(fluid));
             });
 
             fbuf.writeBoolean(data.isBlacklist());
