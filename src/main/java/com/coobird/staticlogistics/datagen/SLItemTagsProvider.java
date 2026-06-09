@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.datagen;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.registry.SLItems;
 import com.simibubi.create.AllTags;
 import mekanism.common.tags.MekanismTags;
@@ -32,7 +33,8 @@ public class SLItemTagsProvider extends ItemTagsProvider {
     protected void addTags(HolderLookup.@NotNull Provider provider) {
         tag(Tags.Items.TOOLS_WRENCH).add(SLItems.LINK_CONFIGURATOR.get());
         tag(Tags.Items.TOOLS).add(SLItems.LINK_CONFIGURATOR.get());
-        tag(AllTags.AllItemTags.CHAIN_RIDEABLE.tag).add(SLItems.LINK_CONFIGURATOR.get());
-        tag(MekanismTags.Items.CONFIGURATORS).add(SLItems.LINK_CONFIGURATOR.get());
+        if (ModCompat.isCreateLoaded())
+            tag(AllTags.AllItemTags.CHAIN_RIDEABLE.tag).add(SLItems.LINK_CONFIGURATOR.get());
+        if (ModCompat.isMekanismLoaded()) tag(MekanismTags.Items.CONFIGURATORS).add(SLItems.LINK_CONFIGURATOR.get());
     }
 }
