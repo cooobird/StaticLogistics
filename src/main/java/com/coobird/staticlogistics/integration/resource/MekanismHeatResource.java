@@ -39,11 +39,6 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
-    public int bitOffset() {
-        return 5;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.mek_heat";
     }

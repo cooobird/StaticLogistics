@@ -44,9 +44,13 @@ public interface LogisticsResource<C> {
     int color();
 
     /**
-     * 位掩码偏移 [0,31]，用于 {@code selectedTypesMask} 和冷却 key 编码。各类型必须唯一。
+     * 位掩码偏移，由注册中心自动分配。
+     * 子类不应覆写此方法。
+     * 返回 -1 表示未分配（由 TransferRegistries 的 wrapper 覆盖）。
      */
-    int bitOffset();
+    default int bitOffset() {
+        return -1;
+    }
 
     /**
      * GUI 翻译键

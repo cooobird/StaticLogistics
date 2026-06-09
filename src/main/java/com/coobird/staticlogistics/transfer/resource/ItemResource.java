@@ -49,11 +49,6 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public int bitOffset() {
-        return 0;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.item";
     }

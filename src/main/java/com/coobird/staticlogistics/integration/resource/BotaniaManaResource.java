@@ -40,11 +40,6 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
-    public int bitOffset() {
-        return 6;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.botania_mana";
     }

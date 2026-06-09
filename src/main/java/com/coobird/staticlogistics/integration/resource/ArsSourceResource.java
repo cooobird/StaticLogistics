@@ -40,11 +40,6 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     }
 
     @Override
-    public int bitOffset() {
-        return 4;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.ars_source";
     }

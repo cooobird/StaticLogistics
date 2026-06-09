@@ -43,11 +43,6 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
     }
 
     @Override
-    public int bitOffset() {
-        return 3;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.mek_chemicals";
     }

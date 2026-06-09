@@ -36,11 +36,6 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
     }
 
     @Override
-    public int bitOffset() {
-        return 2;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.energy";
     }

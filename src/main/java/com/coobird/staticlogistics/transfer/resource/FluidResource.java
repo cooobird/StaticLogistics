@@ -41,11 +41,6 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
     }
 
     @Override
-    public int bitOffset() {
-        return 1;
-    }
-
-    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.fluid";
     }
