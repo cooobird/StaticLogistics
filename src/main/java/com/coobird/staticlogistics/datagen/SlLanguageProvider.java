@@ -485,24 +485,12 @@ public class SLLanguageProvider extends LanguageProvider {
             add("tier.staticlogistics." + tier.getSerializedName(), toTitleCase(tier.getSerializedName()), zh);
         }
 
-        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
-            String path = type.typeId().getPath();
-            String enName = toTitleCase(path);
-            String cn = switch (path) {
-                case "item" -> "物品";
-                case "fluid" -> "流体";
-                case "energy" -> "能量";
-                default -> path;
-            };
-            String cnDesc = switch (path) {
-                case "item" -> "传输物品。";
-                case "fluid" -> "传输液体。";
-                case "energy" -> "传输能量。";
-                default -> "传输" + cn + "。";
-            };
-            add("transfer_type.staticlogistics." + path, enName, cn);
-            add("transfer_type.staticlogistics." + path + ".desc", "Transport " + enName, cnDesc);
-        }
+        add("transfer_type.staticlogistics.item", "Item", "物品");
+        add("transfer_type.staticlogistics.item.desc", "Transport Items", "传输物品。");
+        add("transfer_type.staticlogistics.fluid", "Fluid", "流体");
+        add("transfer_type.staticlogistics.fluid.desc", "Transport Fluids", "传输流体。");
+        add("transfer_type.staticlogistics.energy", "Energy", "能量");
+        add("transfer_type.staticlogistics.energy.desc", "Transport Energy", "传输能量。");
 
         add("transfer_type.staticlogistics.mek_chemicals", "Mek Chemicals", "化学品");
         add("transfer_type.staticlogistics.mek_chemicals.desc", "Transport Mek Chemicals", "传输化学品。");
