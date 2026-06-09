@@ -1,0 +1,29 @@
+package com.coobird.staticlogistics.integration;
+
+import net.minecraftforge.fml.ModList;
+
+public class ModCompat {
+    public static boolean isFtbTeamsLoaded() {
+        return ModList.get().isLoaded("ftbteams");
+    }
+
+    public static boolean isMekanismLoaded() {
+        return ModList.get().isLoaded("mekanism");
+    }
+
+    public static boolean isMekanismAdditionsLoaded() {
+        return ModList.get().isLoaded("mekanismadditions");
+    }
+
+    public static boolean isArsNouveauLoaded() {
+        return ModList.get().isLoaded("ars_nouveau");
+    }
+
+    public static boolean isBotaniaLoaded() {
+        return ModList.get().isLoaded("botania");
+    }
+
+    public static boolean isGregTechCeuLoaded() {
+        return ModList.get().isLoaded("gtceu");
+    }
+}
