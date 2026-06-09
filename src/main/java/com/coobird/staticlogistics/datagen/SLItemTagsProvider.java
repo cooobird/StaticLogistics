@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.datagen;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.registry.SLItems;
 import com.simibubi.create.AllTags;
 import mekanism.common.tags.MekanismTags;
