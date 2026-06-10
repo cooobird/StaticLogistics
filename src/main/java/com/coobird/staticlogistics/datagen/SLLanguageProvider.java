@@ -169,7 +169,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("mode.staticlogistics.wrench", "Wrench", "扳手");
         add("mode.staticlogistics.wrench.desc",
             "Shift + Right-click a machine to remove it. With Mekanism Additions installed, plastic blocks can also be dismantled.",
-            "潜行+右键拆卸机器。安装 Mekanism：拓展 后可拆卸塑料方块。");
+            "潜行+右键拆卸机器。安装 Mekanism：Additions 后可拆卸塑料方块。");
         add("mode.staticlogistics.link_as_input", "Select point as Insert", "选取点为存入端");
         add("mode.staticlogistics.link_as_input.desc",
             "Shift + Right-click a node to store it as an insert target. Resources will be inserted into this node.",
@@ -192,6 +192,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.clear_stored_nodes", "Clear Stored Nodes", "清除已存储节点");
         add("key.staticlogistics.blueprint_undo", "Undo Blueprint Paste", "撤销蓝图粘贴");
 
+        add("config.jade.plugin_staticlogistics.jade", "Static Logistics", "静态物流");
         add("jade.staticlogistics.title", "Static Logistics", "静态物流");
         add("jade.staticlogistics.input", "[Input]", "[输入]");
         add("jade.staticlogistics.output", "[Output]", "[输出]");
