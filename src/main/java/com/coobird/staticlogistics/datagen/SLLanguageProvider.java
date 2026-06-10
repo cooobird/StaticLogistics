@@ -192,7 +192,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.clear_stored_nodes", "Clear Stored Nodes", "清除已存储节点");
         add("key.staticlogistics.blueprint_undo", "Undo Blueprint Paste", "撤销蓝图粘贴");
 
-        add("config.jade.plugin_staticlogistics.jade", "Static Logistics", "静态物流");
         add("jade.staticlogistics.title", "Static Logistics", "静态物流");
         add("jade.staticlogistics.input", "[Input]", "[输入]");
         add("jade.staticlogistics.output", "[Output]", "[输出]");
