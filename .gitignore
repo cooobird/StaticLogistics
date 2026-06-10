@@ -17,6 +17,8 @@ build/
 .gradletasknamecache
 gradle-app.setting
 
+note/
+
 # --- Data Generator Output (Generated Resources) ---
 # 忽略所有层级下的 src/generated 文件夹及其内容
 **/src/generated/**
@@ -81,3 +83,4 @@ $RECYCLE.BIN/
 
 # --- Whitelist ---
 !gradle/wrapper/gradle-wrapper.jar
+!libs/MesdagPortLib-0.1.1.jar
