@@ -13,6 +13,7 @@ import com.coobird.staticlogistics.storage.sync.SyncManager;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -146,6 +147,7 @@ public class LinkManagerStorage extends SavedData {
         FaceConfigService faceConfigService = linkManager.getFaceConfigService();
         ContainerConfigService containerConfigService = linkManager.getContainerConfigService();
         SyncManager syncManager = linkManager.getSyncManager();
+        LinkChangeHandler changeHandler = linkManager.getChangeHandler();
 
         if (tag.contains("face_configs")) {
             CompoundTag fTag = tag.getCompound("face_configs");
@@ -156,12 +158,15 @@ public class LinkManagerStorage extends SavedData {
                     FaceConfigComposite cfg = new FaceConfigComposite();
                     cfg.deserializeNBT(provider, fTag.getCompound(keyStr));
                     cfg.faceConfig.setPos(node.gPos().pos());
-                    ContainerConfig cc = containerConfigService.getOrCreate(node.gPos().pos());
+                    BlockPos pos = node.gPos().pos();
+                    Direction face = node.face();
+                    cfg.setOnDirty(c -> changeHandler.onFaceConfigChanged(key, pos, face, c));
+                    ContainerConfig cc = containerConfigService.getOrCreate(pos);
                     cfg.sharedContainerConfig = cc;
                     cc.linkFace(key);
                     configRepository.put(key, cfg);
-                    syncManager.syncNode(node.gPos().pos(), node.face(), cfg);
-                    linkManager.refreshLocalCache(key, node.gPos().pos(), node.face(), cfg);
+                    syncManager.syncNode(pos, face, cfg);
+                    linkManager.refreshLocalCache(key, pos, face, cfg);
                 } catch (Exception e) {
                     LOGGER.error("Failed to load face config for key: {}", keyStr, e);
                 }
@@ -175,6 +180,7 @@ public class LinkManagerStorage extends SavedData {
                     BlockPos pos = BlockPos.of(key);
                     // 使用 getOrCreate 而非 new，确保已关联的面配置引用不被破坏
                     ContainerConfig cfg = containerConfigService.getOrCreate(pos);
+                    cfg.setOnDirty(changeHandler::onContainerConfigChanged);
                     CompoundTag nbt = cTag.getCompound(keyStr);
                     if (nbt.contains("upgrades")) {
                         cfg.getUpgrades().deserializeNBT(nbt.getCompound("upgrades"));

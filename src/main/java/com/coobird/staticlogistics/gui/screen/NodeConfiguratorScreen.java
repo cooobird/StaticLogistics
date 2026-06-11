@@ -238,6 +238,18 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
             }
         }
 
+        // 玩家物品栏 tooltip
+        for (int i = 5; i < menu.slots.size(); i++) {
+            Slot s = menu.getSlot(i);
+            if (s == null || !s.isActive()) continue;
+            int sx = lx + s.x, sy = ty + s.y;
+            if (mx < sx || mx >= sx + 16 || my < sy || my >= sy + 16) continue;
+            if (!s.getItem().isEmpty()) {
+                g.renderTooltip(font, s.getItem(), mx, my);
+            }
+            return;
+        }
+
         // 编辑框悬停提示
         if (keepStockBox != null && keepStockBox.isVisible() && keepStockBox.isMouseOver(mx, my))
             g.renderTooltip(font, Component.translatable("gui.staticlogistics.keep_stock.tooltip"), mx, my);
