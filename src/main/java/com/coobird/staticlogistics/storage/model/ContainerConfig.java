@@ -36,7 +36,6 @@ public class ContainerConfig {
         @Override
         protected void onContentsChanged(int slot) {
             markDirty();
-            updateEmptySlotCount();
         }
 
         @Override
@@ -52,7 +51,6 @@ public class ContainerConfig {
     private Consumer<ContainerConfig> onDirty = (c) -> {
     };
     private final LongSet linkedFaceKeys = new LongOpenHashSet();
-    private int emptySlotCount = 3; // 初始 3 个槽位全空
 
     public ContainerConfig() {
     }
@@ -158,7 +156,7 @@ public class ContainerConfig {
         this.cachedDimEffective = dim;
         this.cacheDirty = false;
 
-        // 预计算冷却间隔（统一公式）
+        // 预计算冷却间隔
         int baseInterval = SLConfig.getDefaultTickInterval();
         this.cachedActualInterval = LogisticsCalculator.calcSpeedInterval(baseInterval, cachedSpeedMult);
 
@@ -194,17 +192,12 @@ public class ContainerConfig {
     }
 
     /**
-     * 没有任何升级卡就是默认（空）配置 —— O(1) 检查
+     * 没有任何升级卡就是默认（空）配置
      */
     public boolean isDefault() {
-        return emptySlotCount >= upgrades.getSlots();
-    }
-
-    private void updateEmptySlotCount() {
-        int count = 0;
         for (int i = 0; i < upgrades.getSlots(); i++) {
-            if (upgrades.getStackInSlot(i).isEmpty()) count++;
+            if (!upgrades.getStackInSlot(i).isEmpty()) return false;
         }
-        emptySlotCount = count;
+        return true;
     }
 }

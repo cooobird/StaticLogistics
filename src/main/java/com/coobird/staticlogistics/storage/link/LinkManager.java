@@ -43,6 +43,7 @@ public class LinkManager implements ILinkManager {
     private final ContainerConfigService containerConfigService;
     private final NetworkSyncManager networkSyncManager;
     private final CacheManager cacheManager;
+    private final LinkChangeHandler changeHandler;
 
     private final LinkDirtyTracker dirtyTracker = new LinkDirtyTracker();
     private final LinkSaveScheduler saveScheduler = new LinkSaveScheduler();
@@ -64,7 +65,7 @@ public class LinkManager implements ILinkManager {
         FaceConfigService faceConfigService = new FaceConfigService(configRepository, containerConfigService);
         this.containerConfigService.setFaceConfigService(faceConfigService);
 
-        LinkChangeHandler changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this,
+        this.changeHandler = new LinkChangeHandler(level, syncManager, networkSyncManager, this,
             GlobalLogisticsManager.get(level.getServer()));
 
         this.faceConfigHandler = new FaceConfigHandler(level, faceConfigService, configRepository,
@@ -72,7 +73,6 @@ public class LinkManager implements ILinkManager {
     }
 
     // 版本管理
-
     public long nextVersion(long key) {
         return keyVersions.merge(key, 1L, Long::sum);
     }
@@ -153,9 +153,12 @@ public class LinkManager implements ILinkManager {
     }
 
     // 面配置 CRUD（委托 FaceConfigHandler）
-
     FaceConfigHandler getFaceConfigHandler() {
         return faceConfigHandler;
+    }
+
+    LinkChangeHandler getChangeHandler() {
+        return changeHandler;
     }
 
     ContainerRepository getContainerRepository() {
@@ -260,8 +263,7 @@ public class LinkManager implements ILinkManager {
     @Override
     public ContainerConfig getOrCreateContainerConfig(BlockPos pos) {
         ContainerConfig config = containerConfigService.getOrCreate(pos);
-        config.setOnDirty(mgr -> {
-        });
+        config.setOnDirty(changeHandler::onContainerConfigChanged);
         return config;
     }
 
