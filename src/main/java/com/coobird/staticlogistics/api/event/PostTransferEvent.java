@@ -3,48 +3,24 @@ package com.coobird.staticlogistics.api.event;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import net.minecraftforge.eventbus.api.Event;
-import net.minecraftforge.eventbus.api.EventPriority;
-
-import java.util.ArrayDeque;
-import java.util.Deque;
 
 /**
  * 传输完成后触发的事件。
  */
 public class PostTransferEvent extends Event {
-    private static final Deque<PostTransferEvent> POOL = new ArrayDeque<>(64);
+    private final LogisticsNode sourceNode;
+    private final LogisticsNode targetNode;
+    private final LogisticsResource<?> resource;
+    private final long transferredAmount;
+    private final boolean success;
 
-    private LogisticsNode sourceNode;
-    private LogisticsNode targetNode;
-    private LogisticsResource<?> resource;
-    private long transferredAmount;
-    private boolean success;
-
-    private PostTransferEvent() {
-    }
-
-    public static PostTransferEvent obtain(LogisticsNode sourceNode, LogisticsNode targetNode,
-                                           LogisticsResource<?> resource, long transferredAmount, boolean success) {
-        PostTransferEvent event = POOL.poll();
-        if (event == null) event = new PostTransferEvent();
-        event.sourceNode = sourceNode;
-        event.targetNode = targetNode;
-        event.resource = resource;
-        event.transferredAmount = transferredAmount;
-        event.success = success;
-        return event;
-    }
-
-    public void recycle() {
-        this.sourceNode = null;
-        this.targetNode = null;
-        this.resource = null;
-        this.transferredAmount = 0;
-        this.success = false;
-        this.setPhase(EventPriority.NORMAL);
-        if (POOL.size() < 64) {
-            POOL.offer(this);
-        }
+    public PostTransferEvent(LogisticsNode sourceNode, LogisticsNode targetNode,
+                             LogisticsResource<?> resource, long transferredAmount, boolean success) {
+        this.sourceNode = sourceNode;
+        this.targetNode = targetNode;
+        this.resource = resource;
+        this.transferredAmount = transferredAmount;
+        this.success = success;
     }
 
     public LogisticsNode getSourceNode() {

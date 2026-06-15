@@ -94,15 +94,11 @@ public final class TransferPipeline {
             if (context != null) {
                 LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
                 LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                PreTransferEvent preEvent = PreTransferEvent.obtain(srcNode, dstNode, context.type(), remaining);
-                try {
-                    MinecraftForge.EVENT_BUS.post(preEvent);
-                    if (preEvent.isCanceled()) {
-                        logFailure(context, remoteNode, TransferFailureReason.EVENT_CANCELLED);
-                        continue;
-                    }
-                } finally {
-                    preEvent.recycle();
+                PreTransferEvent preEvent = new PreTransferEvent(srcNode, dstNode, context.type(), remaining);
+                MinecraftForge.EVENT_BUS.post(preEvent);
+                if (preEvent.isCanceled()) {
+                    logFailure(context, remoteNode, TransferFailureReason.EVENT_CANCELLED);
+                    continue;
                 }
             }
 
@@ -133,12 +129,8 @@ public final class TransferPipeline {
                 LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
                 LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
                 TransferLogManager.get().logTransfer(srcNode, dstNode, context.type(), targetAccepted, true);
-                PostTransferEvent postEvent = PostTransferEvent.obtain(srcNode, dstNode, context.type(), targetAccepted, true);
-                try {
-                    MinecraftForge.EVENT_BUS.post(postEvent);
-                } finally {
-                    postEvent.recycle();
-                }
+                PostTransferEvent postEvent = new PostTransferEvent(srcNode, dstNode, context.type(), targetAccepted, true);
+                MinecraftForge.EVENT_BUS.post(postEvent);
             }
             if (remaining <= 0) break;
         }
