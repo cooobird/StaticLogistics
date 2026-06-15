@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.api.event;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import net.minecraftforge.eventbus.api.Event;
+import net.minecraftforge.eventbus.api.EventPriority;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -40,6 +41,7 @@ public class PostTransferEvent extends Event {
         this.resource = null;
         this.transferredAmount = 0;
         this.success = false;
+        this.setPhase(EventPriority.NORMAL);
         if (POOL.size() < 64) {
             POOL.offer(this);
         }
