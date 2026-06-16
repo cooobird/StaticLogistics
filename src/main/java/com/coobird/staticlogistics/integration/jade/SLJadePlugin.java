@@ -132,6 +132,9 @@ public class SLJadePlugin implements IWailaPlugin {
                 if (nodeStats != null) {
                     faceTag.putLong("sent", nodeStats.sentAmount);
                     faceTag.putLong("received", nodeStats.receivedAmount);
+                    faceTag.putDouble("rate", nodeStats.getTransfersPerMinute());
+                    long timeSince = nodeStats.lastTransferTime > 0 ? System.currentTimeMillis() - nodeStats.lastTransferTime : -1;
+                    faceTag.putLong("last_ms", timeSince);
                 }
 
                 facesTag.put(face.getName(), faceTag);
@@ -139,14 +142,6 @@ public class SLJadePlugin implements IWailaPlugin {
 
             if (!facesTag.isEmpty()) {
                 tag.put("sl_faces", facesTag);
-            }
-
-            // 全局传输统计
-            TransferLogManager logMgr = TransferLogManager.get();
-            long timeSince = logMgr.getTimeSinceLastTransfer();
-            if (timeSince >= 0) {
-                tag.putDouble("sl_rate", logMgr.getTransfersPerMinute());
-                tag.putLong("sl_last_ms", timeSince);
             }
         }
     }
@@ -273,14 +268,14 @@ public class SLJadePlugin implements IWailaPlugin {
                 boxContent.add(Component.translatable("jade.staticlogistics.transfer_stats", sent, received).withStyle(ChatFormatting.GRAY));
             }
 
-            // 全局速率
-            double rate = tag.getDouble("sl_rate");
-            long lastMs = tag.getLong("sl_last_ms");
+            // 面速率
+            double rate = faceTag.getDouble("rate");
+            long lastMs = faceTag.getLong("last_ms");
             if (rate > 0 || lastMs > 0) {
                 String rateStr = String.format("%.1f", rate);
                 String lastStr = formatDuration(lastMs);
                 boxContent.add(Component.literal("  ")
-                    .append(Component.translatable("jade.staticlogistics.global_stats", rateStr, lastStr))
+                    .append(Component.translatable("jade.staticlogistics.face_stats", rateStr, lastStr))
                     .withStyle(ChatFormatting.GRAY));
             }
 

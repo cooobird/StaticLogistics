@@ -13,6 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 特定轮询（Round-Robin）游标（独立存储）
  */
 public class TransferCursorService {
+    private static final ResourceLocation DEFAULT_KEY = StaticLogistics.asResource("default");
+
     private final Map<Long, Map<ResourceLocation, int[]>> nodeCursors = new ConcurrentHashMap<>();
     private final Map<Long, Map<ResourceLocation, Integer>> rrCursors = new ConcurrentHashMap<>();
 
@@ -20,9 +22,10 @@ public class TransferCursorService {
      * 获取指定节点和传输类型的游标数组（长度为1，可修改）。
      */
     public int[] getOrCreateCursor(long nodeKey, LogisticsResource<?> type) {
+        ResourceLocation key = type != null ? type.typeId() : DEFAULT_KEY;
         return nodeCursors
             .computeIfAbsent(nodeKey, k -> new ConcurrentHashMap<>())
-            .computeIfAbsent(type.typeId(), t -> new int[]{0});
+            .computeIfAbsent(key, t -> new int[]{0});
     }
 
     /**
