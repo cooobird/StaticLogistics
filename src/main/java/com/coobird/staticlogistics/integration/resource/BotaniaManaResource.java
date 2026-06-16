@@ -46,7 +46,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
 
     @Override
     public Supplier<ItemStack> iconSupplier() {
-        return () -> new ItemStack(BotaniaBlocks.manaPool);
+        return () -> new ItemStack(BotaniaBlocks.MANA_POOL);
     }
 
     @Override

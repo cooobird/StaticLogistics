@@ -17,16 +17,19 @@ import java.util.Map;
  * 内层用 HashMap（主线程单线程访问）。
  */
 public class TransferCursorService {
-    private final Long2ObjectOpenHashMap<Map<LogisticsResource<?>, int[]>> nodeCursors = new Long2ObjectOpenHashMap<>();
+    private static final ResourceLocation DEFAULT_KEY = StaticLogistics.asResource("default");
+
+    private final Long2ObjectOpenHashMap<Map<ResourceLocation, int[]>> nodeCursors = new Long2ObjectOpenHashMap<>();
     private final Long2ObjectOpenHashMap<Map<ResourceLocation, Integer>> rrCursors = new Long2ObjectOpenHashMap<>();
 
     /**
      * 获取指定节点和传输类型的游标数组（长度为1，可修改）。
      */
     public int[] getOrCreateCursor(long nodeKey, LogisticsResource<?> type) {
+        ResourceLocation key = type != null ? type.typeId() : DEFAULT_KEY;
         return nodeCursors
             .computeIfAbsent(nodeKey, k -> new HashMap<>())
-            .computeIfAbsent(type, t -> new int[]{0});
+            .computeIfAbsent(key, t -> new int[]{0});
     }
 
     /**
