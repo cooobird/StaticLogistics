@@ -149,6 +149,7 @@ public class LinkManagerStorage extends SavedData {
         SyncManager syncManager = linkManager.getSyncManager();
         LinkChangeHandler changeHandler = linkManager.getChangeHandler();
 
+        // 纯数据加载，不触发任何回调
         if (tag.contains("face_configs")) {
             CompoundTag fTag = tag.getCompound("face_configs");
             for (String keyStr : fTag.getAllKeys()) {
@@ -160,7 +161,6 @@ public class LinkManagerStorage extends SavedData {
                     cfg.faceConfig.setPos(node.gPos().pos());
                     BlockPos pos = node.gPos().pos();
                     Direction face = node.face();
-                    cfg.setOnDirty(c -> changeHandler.onFaceConfigChanged(key, pos, face, c));
                     ContainerConfig cc = containerConfigService.getOrCreate(pos);
                     cfg.sharedContainerConfig = cc;
                     cc.linkFace(key);
@@ -178,21 +178,18 @@ public class LinkManagerStorage extends SavedData {
                 try {
                     long key = Long.parseLong(keyStr);
                     BlockPos pos = BlockPos.of(key);
-                    // 使用 getOrCreate 而非 new，确保已关联的面配置引用不被破坏
                     ContainerConfig cfg = containerConfigService.getOrCreate(pos);
-                    cfg.setOnDirty(changeHandler::onContainerConfigChanged);
                     CompoundTag nbt = cTag.getCompound(keyStr);
                     if (nbt.contains("upgrades")) {
                         cfg.getUpgrades().deserializeNBT(nbt.getCompound("upgrades"));
                     }
-                    cfg.markDirty();
                 } catch (Exception e) {
                     LOGGER.error("Failed to load container config for key: {}", keyStr, e);
                 }
             }
         }
 
-        // 重新注册所有已加载的节点到 GlobalLogisticsManager（解决重进游戏后插件失效的问题）
+        // 重新注册所有已加载的节点到 GlobalLogisticsManager
         GlobalLogisticsManager glm = GlobalLogisticsManager.get(level.getServer());
         for (Long key : configRepository.keySet()) {
             FaceConfigComposite cfg = configRepository.get(key);
@@ -205,7 +202,6 @@ public class LinkManagerStorage extends SavedData {
                         glm.registerNode(gid, node, role);
                     }
                 }
-                // 重新注册频道索引
                 int inputChannel = cfg.linkConfig.getInputChannel();
                 if (inputChannel != 0) {
                     for (var type : com.coobird.staticlogistics.logic.TransferRegistries.getAllActive()) {
@@ -215,8 +211,25 @@ public class LinkManagerStorage extends SavedData {
             }
         }
 
-        // 初始化版本计数器，确保新建配置的版本号高于已加载的配置
+        // 初始化版本计数器
         linkManager.initKeyVersions();
+
+        // 所有数据加载完成后，设置 onDirty 回调
+        for (var entry : configRepository.getAllEntries()) {
+            long key = entry.getLongKey();
+            FaceConfigComposite cfg = entry.getValue();
+            if (cfg == null) continue;
+            LogisticsNode node = linkManager.createNodeFromKey(key);
+            BlockPos pos = node.gPos().pos();
+            Direction face = node.face();
+            cfg.setOnDirty(c -> changeHandler.onFaceConfigChanged(key, pos, face, c));
+        }
+        for (var entry : containerRepository.getAllEntries()) {
+            ContainerConfig cfg = entry.getValue();
+            if (cfg != null) {
+                cfg.setOnDirty(changeHandler::onContainerConfigChanged);
+            }
+        }
 
         return storage;
     }
