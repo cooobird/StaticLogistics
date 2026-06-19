@@ -22,8 +22,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 
 /**
- * 存档持久化 —— 把 LinkManager 的数据序列化/反序列化成 NBT。
- * 支持增量保存（只写脏键对应的 NBT），每 {@code FULL_SAVE_INTERVAL} 次增量保存后做一次全量保存。
+ * 存档持久化 —— 把 LinkManager 的数据序列化/反序列化成 NBT
  */
 public class LinkManagerStorage extends SavedData {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -158,6 +157,7 @@ public class LinkManagerStorage extends SavedData {
         SyncManager syncManager = linkManager.getSyncManager();
         LinkChangeHandler changeHandler = linkManager.getChangeHandler();
 
+        // 纯数据加载，不触发任何回调
         if (tag.contains("face_configs")) {
             CompoundTag fTag = tag.getCompound("face_configs");
             for (String keyStr : fTag.getAllKeys()) {
@@ -169,7 +169,6 @@ public class LinkManagerStorage extends SavedData {
                     cfg.faceConfig.setPos(node.gPos().pos());
                     BlockPos pos = node.gPos().pos();
                     Direction face = node.face();
-                    cfg.setOnDirty(c -> changeHandler.onFaceConfigChanged(key, pos, face, c));
                     ContainerConfig cc = containerConfigService.getOrCreate(pos);
                     cfg.sharedContainerConfig = cc;
                     cc.linkFace(key);
@@ -187,22 +186,18 @@ public class LinkManagerStorage extends SavedData {
                 try {
                     long key = Long.parseLong(keyStr);
                     BlockPos pos = BlockPos.of(key);
-                    // 使用 getOrCreate 而非 new，确保已关联的面配置引用不被破坏
                     ContainerConfig cfg = containerConfigService.getOrCreate(pos);
-                    cfg.setOnDirty(changeHandler::onContainerConfigChanged);
                     CompoundTag nbt = cTag.getCompound(keyStr);
                     if (nbt.contains("upgrades")) {
                         cfg.getUpgrades().deserializeNBT(provider, nbt.getCompound("upgrades"));
                     }
-                    cfg.markDirty();
                 } catch (Exception e) {
                     LOGGER.error("Failed to load container config for key: {}", keyStr, e);
                 }
             }
         }
 
-        // 重新注册所有已加载的节点到 GlobalLogisticsManager（解决重进游戏后插件失效的问题）
-        // 缓存类型数组避免每节点调用 getAllActive()
+        // 重新注册所有已加载的节点到 GlobalLogisticsManager
         var allTypes = TransferRegistries.getAllActive();
         GlobalLogisticsManager glm = GlobalLogisticsManager.get(level.getServer());
         for (var entry : configRepository.getAllEntries()) {
@@ -217,7 +212,6 @@ public class LinkManagerStorage extends SavedData {
                         glm.registerNode(gid, node, role);
                     }
                 }
-                // 重新注册频道索引
                 int inputChannel = cfg.linkConfig.getInputChannel();
                 if (inputChannel != 0) {
                     for (var type : allTypes) {
@@ -227,8 +221,25 @@ public class LinkManagerStorage extends SavedData {
             }
         }
 
-        // 初始化版本计数器，确保新建配置的版本号高于已加载的配置
+        // 初始化版本计数器
         linkManager.initKeyVersions();
+
+        // 所有数据加载完成后，设置 onDirty 回调
+        for (var entry : configRepository.getAllEntries()) {
+            long key = entry.getLongKey();
+            FaceConfigComposite cfg = entry.getValue();
+            if (cfg == null) continue;
+            LogisticsNode node = linkManager.createNodeFromKey(key);
+            BlockPos pos = node.gPos().pos();
+            Direction face = node.face();
+            cfg.setOnDirty(c -> changeHandler.onFaceConfigChanged(key, pos, face, c));
+        }
+        for (var entry : containerRepository.getAllEntries()) {
+            ContainerConfig cfg = entry.getValue();
+            if (cfg != null) {
+                cfg.setOnDirty(changeHandler::onContainerConfigChanged);
+            }
+        }
 
         return storage;
     }
