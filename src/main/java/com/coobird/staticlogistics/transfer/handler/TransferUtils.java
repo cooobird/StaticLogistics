@@ -4,10 +4,12 @@ import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferContext;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -17,6 +19,7 @@ import java.util.function.Predicate;
  * 传输工具类 —— 提供传输协议接口和 capability 查询工具。
  */
 public class TransferUtils {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
@@ -28,8 +31,13 @@ public class TransferUtils {
     }
 
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
+        if (!(level instanceof ServerLevel serverLevel)) return false;
         for (var type : TransferRegistries.getAllActive()) {
-            if (type.isPresent((ServerLevel) level, pos, face)) return true;
+            try {
+                if (type.isPresent(serverLevel, pos, face)) return true;
+            } catch (Exception e) {
+                LOGGER.error("Capability check failed at {} face {} type {}: {}", pos, face, type.typeId(), e.getMessage());
+            }
         }
         return false;
     }

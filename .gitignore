@@ -83,4 +83,4 @@ $RECYCLE.BIN/
 
 # --- Whitelist ---
 !gradle/wrapper/gradle-wrapper.jar
-!libs/MesdagPortLib-0.1.1.jar
+!libs/MesdagPortLib-0.1.2.jar

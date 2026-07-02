@@ -105,7 +105,8 @@ public class FaceConfigComposite {
     }
 
     /**
-     * 开启全局输入，如果频道是禁用状态则自动设到最小频道
+     * 开启全局输入。首次开启时如果频道未设(0)，自动设到频道1。
+     * 频道=0(禁用)时不受频道过滤约束；设到1以上则按频道过滤已链接节点。
      */
     public void setGlobalInputEnabled(boolean enabled) {
         if (this.globalInputEnabled != enabled) {
@@ -122,7 +123,8 @@ public class FaceConfigComposite {
     }
 
     /**
-     * 开启全局输出，如果频道是禁用状态则自动设到最小频道
+     * 开启全局输出。首次开启时如果频道未设(0)，自动设到频道1。
+     * 频道=0(禁用)时不受频道过滤约束；设到1以上则按频道过滤已链接节点。
      */
     public void setGlobalOutputEnabled(boolean enabled) {
         if (this.globalOutputEnabled != enabled) {

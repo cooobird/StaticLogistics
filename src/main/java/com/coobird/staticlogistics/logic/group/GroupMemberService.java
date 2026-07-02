@@ -1,19 +1,16 @@
 package com.coobird.staticlogistics.logic.group;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
-import net.minecraft.resources.ResourceLocation;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 管理每个组内的发送者/接收者集合，以及按（传输类型，频道）索引的接收节点。
+ * 管理每个组内的发送者/接收者集合。
  */
 public class GroupMemberService {
     private final Map<String, GroupMembers> groups = new ConcurrentHashMap<>();
-    private final Map<ResourceLocation, Map<Integer, Set<LogisticsNode>>> typeChannelReceivers = new ConcurrentHashMap<>();
 
     private static class GroupMembers {
         final Set<LogisticsNode> senders = ConcurrentHashMap.newKeySet();
@@ -100,29 +97,5 @@ public class GroupMemberService {
 
     public Set<String> getAllGroupIds() {
         return groups.keySet();
-    }
-
-    // 频道接收者索引 (用于按频道广播)
-    public void registerNodeToChannel(LogisticsResource<?> type, int channelId, LogisticsNode node) {
-        if (channelId == 0) return;
-        typeChannelReceivers.computeIfAbsent(type.typeId(), k -> new ConcurrentHashMap<>())
-            .computeIfAbsent(channelId, k -> ConcurrentHashMap.newKeySet())
-            .add(node);
-    }
-
-    public void unregisterNodeFromAllChannels(LogisticsNode node) {
-        for (Map<Integer, Set<LogisticsNode>> channelMap : typeChannelReceivers.values()) {
-            for (Set<LogisticsNode> nodes : channelMap.values()) {
-                nodes.remove(node);
-            }
-        }
-    }
-
-    public List<LogisticsNode> getReceiversForChannel(LogisticsResource<?> type, int channelId) {
-        if (channelId == 0) return Collections.emptyList();
-        Map<Integer, Set<LogisticsNode>> channelMap = typeChannelReceivers.get(type.typeId());
-        if (channelMap == null) return Collections.emptyList();
-        Set<LogisticsNode> nodes = channelMap.get(channelId);
-        return nodes != null ? new ArrayList<>(nodes) : Collections.emptyList();
     }
 }

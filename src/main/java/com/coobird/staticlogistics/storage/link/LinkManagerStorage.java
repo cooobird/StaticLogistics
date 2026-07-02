@@ -202,12 +202,7 @@ public class LinkManagerStorage extends SavedData {
                         glm.registerNode(gid, node, role);
                     }
                 }
-                int inputChannel = cfg.linkConfig.getInputChannel();
-                if (inputChannel != 0) {
-                    for (var type : com.coobird.staticlogistics.logic.TransferRegistries.getAllActive()) {
-                        glm.registerNodeToChannel(type, inputChannel, node);
-                    }
-                }
+
             }
         }
 
