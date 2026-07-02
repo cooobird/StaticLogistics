@@ -143,10 +143,10 @@ public class ServerEvents {
         if (stack.getItem() instanceof LinkConfiguratorItem item) {
             if (item.getSettings(stack).mode() != ToolMode.WRENCH) {
                 Block block = event.getLevel().getBlockState(event.getPos()).getBlock();
-                if (ModCompat.isMekanismLoaded() &&
+                if (ModCompat.isMekanismLoaded() && (
                     BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mekanism") ||
-                    BuiltInRegistries.BLOCK.getKey(block).getNamespace().endsWith("mekanism") ||
-                    BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mek")) {
+                        BuiltInRegistries.BLOCK.getKey(block).getNamespace().endsWith("mekanism") ||
+                        BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mek"))) {
                     if (event.isCanceled()) event.setCanceled(false);
                     event.setUseBlock(TriState.FALSE);
                     event.setUseItem(TriState.DEFAULT);

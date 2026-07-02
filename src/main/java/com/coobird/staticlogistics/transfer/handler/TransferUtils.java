@@ -4,11 +4,13 @@ import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferContext;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
+import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -25,6 +27,7 @@ import java.util.function.Predicate;
  * </ul>
  */
 public class TransferUtils {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     // ── 向后兼容：委托给 TransferPipeline ──
 
@@ -52,8 +55,13 @@ public class TransferUtils {
      * 检查指定位置是否支持任何物流 capability。
      */
     public static boolean hasLogisticsCapability(Level level, BlockPos pos, Direction face) {
+        if (!(level instanceof ServerLevel serverLevel)) return false;
         for (var type : TransferRegistries.getAllActive()) {
-            if (type.isPresent((ServerLevel) level, pos, face)) return true;
+            try {
+                if (type.isPresent(serverLevel, pos, face)) return true;
+            } catch (Exception e) {
+                LOGGER.error("Capability check failed at {} face {} type {}: {}", pos, face, type.typeId(), e.getMessage());
+            }
         }
         return false;
     }

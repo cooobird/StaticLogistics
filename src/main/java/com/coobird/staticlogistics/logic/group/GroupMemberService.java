@@ -1,25 +1,21 @@
 package com.coobird.staticlogistics.logic.group;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
-import net.minecraft.resources.ResourceLocation;
 
 import java.util.*;
 
 /**
- * 管理每个组内的发送者/接收者集合，以及按（传输类型，频道）索引的接收节点。
+ * 管理每个组内的发送者/接收者集合。
  *
  * <p>线程安全：
  * <ul>
  *   <li>groups: 主线程单线程访问，使用 HashMap</li>
  *   <li>GroupMembers.senders/receivers: 主线程单线程访问，使用 LinkedHashSet</li>
- *   <li>typeChannelReceivers: 主线程单线程访问，使用 HashMap</li>
  * </ul>
  */
 public class GroupMemberService {
     private final Map<String, GroupMembers> groups = new HashMap<>();
-    private final Map<ResourceLocation, Map<Integer, Set<LogisticsNode>>> typeChannelReceivers = new HashMap<>();
 
     private static class GroupMembers {
         final Set<LogisticsNode> senders = new LinkedHashSet<>();
@@ -106,36 +102,5 @@ public class GroupMemberService {
 
     public Set<String> getAllGroupIds() {
         return groups.keySet();
-    }
-
-    // 频道接收者索引 (用于按频道广播)
-    public void registerNodeToChannel(LogisticsResource<?> type, int channelId, LogisticsNode node) {
-        if (channelId == 0) return;
-        typeChannelReceivers.computeIfAbsent(type.typeId(), k -> new HashMap<>())
-            .computeIfAbsent(channelId, k -> new LinkedHashSet<>())
-            .add(node);
-    }
-
-    /**
-     * 注销节点的所有频道 —— 遍历 typeChannelReceivers 移除该节点。
-     * 无反向索引，O(types × channels) 扫描。节点移除是低频操作，代价可接受。
-     */
-    public void unregisterNodeFromAllChannels(LogisticsNode node) {
-        for (Map<Integer, Set<LogisticsNode>> channelMap : typeChannelReceivers.values()) {
-            Iterator<Map.Entry<Integer, Set<LogisticsNode>>> it = channelMap.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry<Integer, Set<LogisticsNode>> entry = it.next();
-                entry.getValue().remove(node);
-                if (entry.getValue().isEmpty()) it.remove();
-            }
-        }
-    }
-
-    public List<LogisticsNode> getReceiversForChannel(LogisticsResource<?> type, int channelId) {
-        if (channelId == 0) return Collections.emptyList();
-        Map<Integer, Set<LogisticsNode>> channelMap = typeChannelReceivers.get(type.typeId());
-        if (channelMap == null) return Collections.emptyList();
-        Set<LogisticsNode> nodes = channelMap.get(channelId);
-        return nodes != null ? new ArrayList<>(nodes) : Collections.emptyList();
     }
 }

@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.transfer.strategy;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
@@ -32,7 +31,6 @@ public class StrategyBasedTargetSelector implements TargetSelector {
         ServerLevel level = context.level();
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
         LogisticsNode sourceNode = context.sourceNode();
-        LogisticsResource<?> type = context.type();
 
         FaceConfigComposite sourceConfig = context.sourceConfig();
         targetSet.clear();
@@ -54,11 +52,6 @@ public class StrategyBasedTargetSelector implements TargetSelector {
 
                 targetSet.add(target);
                 targetConfigCache.put(target, targetCfg);
-            }
-
-            int outputChannel = sourceConfig.linkConfig.getOutputChannel();
-            if (outputChannel != 0) {
-                targetSet.addAll(globalManager.getReceiversForChannel(type, outputChannel));
             }
 
             if (targetSet.isEmpty()) return Collections.emptyList();

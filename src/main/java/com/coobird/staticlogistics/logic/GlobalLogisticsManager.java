@@ -80,7 +80,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
     public void unregisterNode(LogisticsNode node) {
         nodeGroupService.unregister(node);
         cursorService.removeCursor(node.toKey());
-        groupMemberService.unregisterNodeFromAllChannels(node);
     }
 
     @Override
@@ -141,18 +140,6 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         return cursorService.getNextRoundRobinIndex(nodeKey, poolSize);
     }
 
-    public void registerNodeToChannel(LogisticsResource<?> type, int channel, LogisticsNode node) {
-        groupMemberService.registerNodeToChannel(type, channel, node);
-    }
-
-    public void unregisterNodeFromAllChannels(LogisticsNode node) {
-        groupMemberService.unregisterNodeFromAllChannels(node);
-    }
-
-    public List<LogisticsNode> getReceiversForChannel(LogisticsResource<?> type, int channel) {
-        return groupMemberService.getReceiversForChannel(type, channel);
-    }
-
     public void markGroupDirty(String groupId) {
         syncScheduler.markDirty(groupId);
         if (groupId != null) {
@@ -197,13 +184,12 @@ public class GlobalLogisticsManager implements ILogisticsManager {
         }
     }
 
-    // 处理节点事件（添加/删除/修改），更新注册、频道索引、标记脏数据
+    // 处理节点事件（添加/删除/修改），更新注册、标记脏数据
     public void handleNodeEvent(LogisticsNodeEvent event, ServerLevel level) {
         for (LogisticsNodeEvent.NodeEntry entry : event.getAffectedEntries()) {
             switch (event.getType()) {
                 case ADDED -> {
                     registerNode(entry.groupId(), entry.node(), entry.role());
-                    updateChannelRegistration(level, entry.node());
                     markGroupDirty(entry.groupId());
                 }
                 case REMOVED -> notifyNodeRemoved(level, entry.node());
@@ -211,22 +197,8 @@ public class GlobalLogisticsManager implements ILogisticsManager {
                     FaceConfigComposite config = LinkManager.get(level).getFaceConfig(entry.node().toKey());
                     if (config != null) {
                         registerNode(entry.groupId(), entry.node(), config.determineRole());
-                        updateChannelRegistration(level, entry.node());
                         markGroupDirty(entry.groupId());
                     }
-                }
-            }
-        }
-    }
-
-    private void updateChannelRegistration(ServerLevel level, LogisticsNode node) {
-        unregisterNodeFromAllChannels(node);
-        FaceConfigComposite config = LinkManager.get(level).getFaceConfig(node.toKey());
-        if (config != null) {
-            int inputChannel = config.linkConfig.getInputChannel();
-            if (inputChannel != 0) {
-                for (var type : TransferRegistries.getAllActive()) {
-                    registerNodeToChannel(type, inputChannel, node);
                 }
             }
         }

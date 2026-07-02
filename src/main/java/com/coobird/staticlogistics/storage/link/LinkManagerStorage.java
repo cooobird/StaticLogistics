@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.storage.link;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.storage.repository.ConfigRepository;
@@ -198,7 +197,6 @@ public class LinkManagerStorage extends SavedData {
         }
 
         // 重新注册所有已加载的节点到 GlobalLogisticsManager
-        var allTypes = TransferRegistries.getAllActive();
         GlobalLogisticsManager glm = GlobalLogisticsManager.get(level.getServer());
         for (var entry : configRepository.getAllEntries()) {
             long key = entry.getLongKey();
@@ -210,12 +208,6 @@ public class LinkManagerStorage extends SavedData {
                 for (String gid : cfg.faceConfig.getGroupIds()) {
                     if (gid != null && !gid.isEmpty()) {
                         glm.registerNode(gid, node, role);
-                    }
-                }
-                int inputChannel = cfg.linkConfig.getInputChannel();
-                if (inputChannel != 0) {
-                    for (var type : allTypes) {
-                        glm.registerNodeToChannel(type, inputChannel, node);
                     }
                 }
             }
