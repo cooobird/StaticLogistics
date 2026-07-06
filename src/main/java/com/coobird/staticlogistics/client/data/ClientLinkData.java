@@ -14,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 客户端物流数据存储 —— 接收服务端同步的面配置，供 GUI 和世界渲染使用。
@@ -37,10 +38,14 @@ public enum ClientLinkData {
     private final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
     private final Map<UUID, CompoundTag> knownOwnerProfiles = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> serverEmptyGroups = new ConcurrentHashMap<>();
-    private int dataVersion = 0;
+    private final AtomicInteger dataVersion = new AtomicInteger();
 
     public int getDataVersion() {
-        return dataVersion;
+        return dataVersion.get();
+    }
+
+    private void incrementDataVersion() {
+        dataVersion.incrementAndGet();
     }
 
     private Map<Long, FaceConfigComposite> getOrCreateDimMap(ResourceKey<Level> dim) {
@@ -68,13 +73,13 @@ public enum ClientLinkData {
         if (config.isDefault()) {
             FaceConfigComposite removed = dimMap.remove(key);
             if (removed != null) {
-                dataVersion++;
+                incrementDataVersion();
                 cleanupStaleKnownGroups(removed);
             }
             return;
         }
         dimMap.put(key, config);
-        dataVersion++;
+        incrementDataVersion();
 
         UUID owner = config.faceConfig.getOwner();
         if (owner != null && config.faceConfig.hasGroup()) {
@@ -92,7 +97,7 @@ public enum ClientLinkData {
         if (dimMap != null) {
             FaceConfigComposite removed = dimMap.remove(key);
             if (removed != null) {
-                dataVersion++;
+                incrementDataVersion();
                 cleanupStaleKnownGroups(removed);
             }
         }
@@ -122,7 +127,7 @@ public enum ClientLinkData {
         knownOwnerNames.clear();
         knownOwnerProfiles.clear();
         serverEmptyGroups.clear();
-        dataVersion++;
+        incrementDataVersion();
     }
 
     /**
@@ -134,7 +139,7 @@ public enum ClientLinkData {
         } else {
             serverEmptyGroups.put(playerId, new HashSet<>(emptyGroups));
         }
-        dataVersion++;
+        incrementDataVersion();
     }
 
     public Map<LogisticsNode, FaceConfigComposite> getActiveNodesWithConfig(ResourceKey<Level> dimension) {
@@ -193,13 +198,13 @@ public enum ClientLinkData {
         if (ownerName != null && !ownerName.isEmpty()) {
             knownOwnerNames.putIfAbsent(owner, ownerName);
         }
-        dataVersion++;
+        incrementDataVersion();
     }
 
     public void removeKnownGroup(UUID owner, String groupId) {
         if (groupId == null || groupId.isEmpty()) return;
         Set<String> set = knownGroupIds.get(owner);
-        if (set != null && set.remove(groupId)) dataVersion++;
+        if (set != null && set.remove(groupId)) incrementDataVersion();
     }
 
     /**
@@ -210,7 +215,7 @@ public enum ClientLinkData {
         Set<String> set = serverEmptyGroups.get(owner);
         if (set != null && set.remove(groupId)) {
             if (set.isEmpty()) serverEmptyGroups.remove(owner);
-            dataVersion++;
+            incrementDataVersion();
         }
     }
 

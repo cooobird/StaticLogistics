@@ -25,7 +25,6 @@ public class MyResource implements LogisticsResource<MyHandle> {
     // ── 类型元数据 ──
     @Override public ResourceLocation typeId() { return TYPE_ID; }
     @Override public int color() { return 0xFF55FFFF; }
-    @Override public int bitOffset() { return 10; }
     @Override public String translationKey() { return "transfer_type.mymod.my_type"; }
     @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(MyItems.ICON); }
     @Override public IntSupplier baseStackSizeSupplier() { return MyConfig::getStackSize; }
@@ -49,10 +48,6 @@ public class MyResource implements LogisticsResource<MyHandle> {
         return handle.receive(amount, simulate);
     }
 
-    // 2. 注册（在 mod 初始化阶段调用）
-    public static void register() {
-        TransferRegistries.registerAdapter(new MyResource());
-    }
 }
 ```
 
@@ -150,20 +145,26 @@ public void commitExtract(MyHandle handle, ExtractionResult<?> result, long actu
 
 ## 注册参数
 
-`TransferRegistries.registerAdapter(new MyResource())` 一步注册。
+资源类只负责实现能力解析和传输逻辑；稳定的类型位偏移在 `TransferTypeBootstrap` 中显式分配：
+
+```java
+public static final int BIT_MY_TYPE = 10;
+
+TransferRegistries.registerAdapter(new MyResource(), BIT_MY_TYPE);
+```
 
 `LogisticsResource` 接口的元数据方法：
 
-| 方法                        | 说明                       | 约束                  |
-|---------------------------|--------------------------|---------------------|
-| `typeId()`                | ResourceLocation 格式的唯一标识 | `"modid:type_name"` |
-| `color()`                 | ARGB 颜色值                 | `0xAARRGGBB`        |
-| `bitOffset()`             | 类型位掩码偏移                  | [0, 31]，各类型必须唯一     |
-| `translationKey()`        | GUI 显示文本                 | 需提供 lang 文件         |
-| `iconSupplier()`          | 类型图标的 ItemStack          | —                   |
-| `baseStackSizeSupplier()` | 单次基础传输量                  | 读取 config 配置        |
-| `requiresCooldown()`      | 传输失败后是否冷却                | 默认 `true`           |
-| `requiresValidLinks()`    | 是否需要有效链接                 | 默认 `true`           |
+| 方法                        | 说明                       | 约束                         |
+|---------------------------|--------------------------|----------------------------|
+| `typeId()`                | ResourceLocation 格式的唯一标识 | `"modid:type_name"`        |
+| `color()`                 | ARGB 颜色值                 | `0xAARRGGBB`               |
+| `bitOffset()`             | 稳定类型序号，由注册中心包装赋值         | 非负且唯一；0-31 会额外写入旧 mask 兼容值 |
+| `translationKey()`        | GUI 显示文本                 | 需提供 lang 文件                |
+| `iconSupplier()`          | 类型图标的 ItemStack          | —                          |
+| `baseStackSizeSupplier()` | 单次基础传输量                  | 读取 config 配置               |
+| `requiresCooldown()`      | 传输失败后是否冷却                | 默认 `true`                  |
+| `requiresValidLinks()`    | 是否需要有效链接                 | 默认 `true`                  |
 
 ### 内置类型偏移分配
 
@@ -173,7 +174,9 @@ public void commitExtract(MyHandle handle, ExtractionResult<?> result, long actu
 | 1         | 流体 (fluid)          |
 | 2         | 能量 (energy)         |
 | 3         | 化学品 (mek_chemicals) |
-| 4         | 魔源 (ars_source)     |
+| 4         | 热量 (mek_heat)       |
+| 5         | 魔源 (ars_source)     |
+| 6         | 魔力 (botania_mana)   |
 | 5         | 热量 (mek_heat)       |
 | 6         | 魔力 (botania_mana)   |
 | 7+        | 自定义第三方类型            |
@@ -258,17 +261,17 @@ TransferFailureReason.register(
 
 ## 传输上限说明
 
-传输上限由底层 API 决定，我们不需要特殊处理：
+传输上限由底层 API 决定：
 
-| 类型 | 上限 | 原因 |
-|------|------|------|
-| 物品 | Integer.MAX_VALUE | `IItemHandler.extractItem(int, int, boolean)` |
-| 流体 | Integer.MAX_VALUE | `IFluidHandler.drain(int, Action)` |
-| 能量 | Integer.MAX_VALUE | `IEnergyStorage.extractEnergy(int, boolean)` |
-| 化学品 | Long.MAX_VALUE | `IChemicalHandler.extractChemical(long, Action)` |
-| 热量 | Long.MAX_VALUE | `IHeatHandler.handleHeat(double)` |
-| 魔源 | Integer.MAX_VALUE | `ISourceCap.extractSource(int, boolean)` |
-| 魔力 | Integer.MAX_VALUE | Botania API 参数是 int |
+| 类型  | 上限                | 原因                                               |
+|-----|-------------------|--------------------------------------------------|
+| 物品  | Integer.MAX_VALUE | `IItemHandler.extractItem(int, int, boolean)`    |
+| 流体  | Integer.MAX_VALUE | `IFluidHandler.drain(int, Action)`               |
+| 能量  | Integer.MAX_VALUE | `IEnergyStorage.extractEnergy(int, boolean)`     |
+| 化学品 | Long.MAX_VALUE    | `IChemicalHandler.extractChemical(long, Action)` |
+| 热量  | Long.MAX_VALUE    | `IHeatHandler.handleHeat(double)`                |
+| 魔源  | Integer.MAX_VALUE | `ISourceCap.extractSource(int, boolean)`         |
+| 魔力  | Integer.MAX_VALUE | Botania API 参数是 int                              |
 
 **实际传输量** = `baseStackSize × stackMultiplier`，由配置和升级决定，通常远小于 API 上限。
 
@@ -282,7 +285,6 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
 
     @Override public ResourceLocation typeId() { return TYPE_ID; }
     @Override public int color() { return 0xFF66FF66; }
-    @Override public int bitOffset() { return 3; }
     @Override public String translationKey() { return "transfer_type.staticlogistics.mek_chemicals"; }
     @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(MekanismBlocks.BASIC_CHEMICAL_TANK.get()); }
     @Override public IntSupplier baseStackSizeSupplier() { return SLConfig::getMekChemicalStack; }
@@ -320,9 +322,6 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
         return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
     }
 
-    public static void register() {
-        TransferRegistries.registerAdapter(new MekanismChemicalResource());
-    }
 }
 ```
 
@@ -336,7 +335,6 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
 
     @Override public ResourceLocation typeId() { return TYPE_ID; }
     @Override public int color() { return 0xFFFFFF00; }
-    @Override public int bitOffset() { return 2; }
     @Override public String translationKey() { return "transfer_type.staticlogistics.energy"; }
     @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(Items.REDSTONE); }
     @Override public IntSupplier baseStackSizeSupplier() { return SLConfig::getEnergyStack; }
@@ -363,8 +361,5 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
         return handle.receiveEnergy((int) amount, simulate);
     }
 
-    public static void register() {
-        TransferRegistries.registerAdapter(new EnergyResource());
-    }
 }
 ```

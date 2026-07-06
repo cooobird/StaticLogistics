@@ -333,8 +333,8 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
     }
 
     @Override
-    protected int getSelectedTypesMask() {
-        return 0;
+    protected boolean isTypeSelected(LogisticsResource<?> type) {
+        return false;
     }
 
     @Override

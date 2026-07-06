@@ -73,7 +73,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
 
     protected abstract List<LogisticsResource<?>> getTypeList();
 
-    protected abstract int getSelectedTypesMask();
+    protected abstract boolean isTypeSelected(LogisticsResource<?> type);
 
     protected abstract void renderTypeListItem(GuiGraphics g, LogisticsResource<?> type, int x, int y, boolean isSelected);
 
@@ -88,7 +88,6 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
                 Component.translatable(t.translationKey()).getString().toLowerCase().contains(this.typeSearchTerm))
             .toList();
 
-        int selectedMask = getSelectedTypesMask();
         int maxScroll = Math.max(0, types.size() * this.itemHeight - LIST_HEIGHT);
         int sx = leftPos + SIDE_PANEL_X;
 
@@ -105,7 +104,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
 
         for (int i = 0; i < types.size(); i++) {
             LogisticsResource<?> type = types.get(i);
-            boolean isSelected = (selectedMask & type.getFlag()) != 0;
+            boolean isSelected = isTypeSelected(type);
             int itemY = listY + (i * this.itemHeight) - (int) typeScrollOffset;
 
             if (itemY + this.itemHeight < listY || itemY > listY + LIST_HEIGHT) continue;

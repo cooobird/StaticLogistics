@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.hollingsworth.arsnouveau.api.source.ISourceCap;
 import com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry;
 import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
@@ -82,10 +81,5 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
             LOGGER.error("Ars source insert failed", e);
             return 0;
         }
-    }
-
-    public static void register() {
-        TransferRegistries.registerAdapter(new ArsSourceResource());
-        LOGGER.info("Registered Ars Nouveau source transfer support");
     }
 }

@@ -18,7 +18,7 @@ A Minecraft logistics mod for NeoForge 1.21.1. Item, fluid, energy transfer. Cro
 - **Group management** — named groups for per-group sync, ownership transfer, rename, cleanup
 - **FTB Teams integration** — team-based ownership and permissions
 - **Blueprints** — save logistics config, preview placement with rotation, paste to blocks
-- **Full /sl command tree** — info, list, stats, transfer, rename, cleanup, strategies
+- **Full /sl command tree** — info, list, stats, transfer, rename, cleanup, debug
 - **Configurable performance** — ticker batch size, cooldown intervals, cache sizes, object pool size
 ## Getting Started
 
@@ -65,19 +65,21 @@ All filters support blacklist mode (invert match). All match strategies support 
 
 Requires permission level 2.
 
-| Command                             | Description                                        |
-|-------------------------------------|----------------------------------------------------|
-| /sl info [pos]                      | Show container + 6-face config details at position |
-| /sl list                            | List all active groups with member nodes           |
-| /sl stats                           | Transfer statistics overview                       |
-| /sl stats recent                    | Last 20 transfers with timestamps                  |
-| /sl stats top                       | Top sender and receiver nodes by count             |
-| /sl stats reset                     | Reset all transfer statistics                      |
-| /sl transfer <from> <to>            | Transfer all node ownership to another player      |
-| /sl transfer <from> group <id> <to> | Transfer a specific group                          |
-| /sl rename <owner> <old> <new>      | Rename a group                                     |
-| /sl cleanup <owner>                 | Delete all nodes owned by a player                 |
-| /sl strategies [page]               | List registered component match strategies         |
+| Command                             | Description                                         |
+|-------------------------------------|-----------------------------------------------------|
+| /sl info [pos]                      | Show container + 6-face config details at position  |
+| /sl list                            | List all active groups with member nodes            |
+| /sl stats                           | Transfer statistics overview                        |
+| /sl stats recent                    | Last 20 transfers with timestamps                   |
+| /sl stats top                       | Top sender and receiver nodes by count              |
+| /sl stats reset                     | Reset all transfer statistics                       |
+| /sl transfer <from> <to>            | Transfer all node ownership to another player       |
+| /sl transfer <from> group <id> <to> | Transfer a specific group                           |
+| /sl rename <owner> <old> <new>      | Rename a group                                      |
+| /sl cleanup <owner>                 | Delete all nodes owned by a player                  |
+| /sl debug                           | Show transfer registry and capability cache status  |
+| /sl debug cache                     | Clean stale capability cache entries and show stats |
+| /sl debug types                     | List active transfer types and legacy bit offsets   |
 
 ## Server Config
 

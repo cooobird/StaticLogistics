@@ -288,11 +288,9 @@ public class BlueprintGroupScreen extends Screen {
         stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
         SelectionContext.setSelection(groupId, 0);
         PacketDistributor.sendToServer(
-            new C2SUpdateToolSettingsPayload(groupId, 0, 0));
+            new C2SUpdateToolSettingsPayload(groupId, 0, List.of()));
         playClickSound();
     }
-
-    // ==================== 滚动 ====================
 
     @Override
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
@@ -328,8 +326,6 @@ public class BlueprintGroupScreen extends Screen {
             this.scrollOffset = Mth.clamp(rp * ms, 0, ms);
         }
     }
-
-    // ==================== 杂项 ====================
 
     private void playClickSound() {
         com.coobird.staticlogistics.client.util.SoundUtil.playClickSound();

@@ -194,14 +194,14 @@ public class LinkOperationHelper {
         if (currentIsNew) {
             currentCfg.faceConfig.setGroupId(groupId);
             currentCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
-            currentCfg.setSelectedTypesMask(settings.typeMask());
+            currentCfg.setSelectedTypeIds(settings.selectedTypeIds());
         } else {
             currentCfg.faceConfig.addGroupId(groupId);
         }
         if (storedIsNew) {
             storedCfg.faceConfig.setGroupId(groupId);
             storedCfg.faceConfig.setOwner(player.getUUID(), player.getGameProfile().getName());
-            storedCfg.setSelectedTypesMask(settings.typeMask());
+            storedCfg.setSelectedTypeIds(settings.selectedTypeIds());
         } else {
             storedCfg.faceConfig.addGroupId(groupId);
         }

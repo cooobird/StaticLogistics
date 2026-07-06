@@ -4,6 +4,8 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.gui.screen.component.*;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.network.c2s.C2SCreateEmptyGroupPayload;
 import com.coobird.staticlogistics.network.c2s.C2SDeleteGroupPayload;
 import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
@@ -13,10 +15,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.List;
 import java.util.Objects;
 
 public class LinkConfiguratorScreen extends Screen {
@@ -225,8 +229,12 @@ public class LinkConfiguratorScreen extends Screen {
         SelectionContext.setSelection(groupId, modeIdx);
         stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
         stack.set(SLDataComponents.TOOL_MODE.get(), modeIdx);
-        int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-        PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, typeMask));
+        List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
+        if (selectedTypeIds == null) {
+            int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
+        }
+        PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, selectedTypeIds));
 
         if (playSound) playClickSound();
     }

@@ -8,10 +8,12 @@ import com.mojang.serialization.Codec;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.component.CustomData;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.UnaryOperator;
 
@@ -26,13 +28,18 @@ public class SLDataComponents {
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> SELECTED_TYPES_MASK =
         register("selected_types_mask", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<List<ResourceLocation>>> SELECTED_TYPES =
+        register("selected_types", builder -> builder
+            .persistent(Codec.list(ResourceLocation.CODEC))
+            .networkSynchronized(ByteBufCodecs.collection(ArrayList::new, ResourceLocation.STREAM_CODEC)));
+
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> TOOL_MODE =
         register("tool_mode", builder -> builder.persistent(Codec.INT).networkSynchronized(ByteBufCodecs.VAR_INT));
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<List<LogisticsNode>>> STORED_NODES =
         register("stored_nodes", builder -> builder
             .persistent(Codec.list(LogisticsNode.CODEC))
-            .networkSynchronized(ByteBufCodecs.collection(java.util.ArrayList::new, LogisticsNode.STREAM_CODEC)));
+            .networkSynchronized(ByteBufCodecs.collection(ArrayList::new, LogisticsNode.STREAM_CODEC)));
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> STORED_MODE =
         register("stored_mode", builder -> builder

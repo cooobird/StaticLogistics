@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.api;
 
+import com.coobird.staticlogistics.logic.type.TransferTypeMask;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
@@ -16,7 +17,7 @@ import java.util.function.Supplier;
 /**
  * 物流资源适配器接口 —— 所有传输类型（物品/流体/能量/化学品/魔源/热量/魔力）的统一抽象。
  *
- * <p>实现此接口并通过 {@code TransferRegistries.registerAdapter()} 注册，
+ * <p>实现此接口并通过 {@code TransferRegistries.registerAdapter(adapter, bitOffset)} 注册，
  * 即可将任意模组的资源类型接入 StaticLogistics 物流管线。
  *
  * <h3>实现层级</h3>
@@ -44,9 +45,9 @@ public interface LogisticsResource<C> {
     int color();
 
     /**
-     * 位掩码偏移，由注册中心自动分配。
+     * 位掩码偏移，由 TransferRegistries 注册时显式分配。
      * 子类不应覆写此方法。
-     * 返回 -1 表示未分配（由 TransferRegistries 的 wrapper 覆盖）。
+     * 返回 -1 表示尚未由注册中心包装。
      */
     default int bitOffset() {
         return -1;
@@ -95,7 +96,7 @@ public interface LogisticsResource<C> {
      * 获取位标记：{@code 1 << bitOffset()}
      */
     default int getFlag() {
-        return 1 << bitOffset();
+        return TransferTypeMask.flag(this);
     }
 
     /**

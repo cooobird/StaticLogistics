@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -155,9 +154,5 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
         long actual = Math.min(amount, space);
         if (!simulate) handle.addMana((int) actual);
         return actual;
-    }
-
-    public static void register() {
-        TransferRegistries.registerAdapter(new BotaniaManaResource());
     }
 }

@@ -6,7 +6,9 @@ import com.coobird.staticlogistics.item.blueprint.BlueprintData;
 import com.coobird.staticlogistics.item.blueprint.BlueprintUndoData;
 import com.coobird.staticlogistics.item.blueprint.BlueprintUndoManager;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.storage.ConfigKeys;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
@@ -227,14 +229,15 @@ public class BlueprintItem extends Item {
 
     private static CompoundTag getFaceTag(FaceConfigComposite cfg) {
         CompoundTag faceTag = new CompoundTag();
-        faceTag.putInt("input_channel", cfg.linkConfig.getInputChannel());
-        faceTag.putInt("output_channel", cfg.linkConfig.getOutputChannel());
-        faceTag.putString("strategy", cfg.linkConfig.getStrategy().id().toString());
-        faceTag.putString("extraction_mode", cfg.linkConfig.getExtractionMode().name());
-        faceTag.putInt("priority", cfg.linkConfig.getPriority());
-        faceTag.putBoolean("global_input", cfg.isGlobalInputEnabled());
-        faceTag.putBoolean("global_output", cfg.isGlobalOutputEnabled());
-        faceTag.putInt("selected_types_mask", cfg.getSelectedTypesMask());
+        faceTag.putInt(ConfigKeys.INPUT_CHANNEL, cfg.linkConfig.getInputChannel());
+        faceTag.putInt(ConfigKeys.OUTPUT_CHANNEL, cfg.linkConfig.getOutputChannel());
+        faceTag.putString(ConfigKeys.STRATEGY, cfg.linkConfig.getStrategy().id().toString());
+        faceTag.putString(ConfigKeys.EXTRACTION_MODE, cfg.linkConfig.getExtractionMode().name());
+        faceTag.putInt(ConfigKeys.PRIORITY, cfg.linkConfig.getPriority());
+        faceTag.putBoolean(ConfigKeys.GLOBAL_INPUT, cfg.isGlobalInputEnabled());
+        faceTag.putBoolean(ConfigKeys.GLOBAL_OUTPUT, cfg.isGlobalOutputEnabled());
+        TransferTypeSelection.writeIds(faceTag, ConfigKeys.SELECTED_TYPES, cfg.getSelectedTypeIds());
+        faceTag.putInt(ConfigKeys.SELECTED_TYPES_MASK, cfg.getSelectedTypesMask());
         return faceTag;
     }
 
@@ -322,14 +325,14 @@ public class BlueprintItem extends Item {
 
                 try (var ignored = cfg.beginBulkEdit()) {
                     CompoundTag ft = fe.faceConfig();
-                    cfg.linkConfig.setInputChannel(ft.getInt("input_channel"));
-                    cfg.linkConfig.setOutputChannel(ft.getInt("output_channel"));
-                    String stratName = ft.getString("strategy");
+                    cfg.linkConfig.setInputChannel(ft.getInt(ConfigKeys.INPUT_CHANNEL));
+                    cfg.linkConfig.setOutputChannel(ft.getInt(ConfigKeys.OUTPUT_CHANNEL));
+                    String stratName = ft.getString(ConfigKeys.STRATEGY);
                     if (!stratName.isEmpty()) {
                         cfg.linkConfig.setStrategy(
                             com.coobird.staticlogistics.logic.DistributionStrategyRegistry.byName(stratName));
                     }
-                    String extName = ft.getString("extraction_mode");
+                    String extName = ft.getString(ConfigKeys.EXTRACTION_MODE);
                     if (!extName.isEmpty()) {
                         try {
                             cfg.linkConfig.setExtractionMode(
@@ -338,10 +341,14 @@ public class BlueprintItem extends Item {
                             LOGGER.warn("Failed to parse extraction mode", e);
                         }
                     }
-                    cfg.linkConfig.setPriority(ft.getInt("priority"));
-                    cfg.setGlobalInputEnabled(ft.getBoolean("global_input"));
-                    cfg.setGlobalOutputEnabled(ft.getBoolean("global_output"));
-                    cfg.setSelectedTypesMask(ft.getInt("selected_types_mask"));
+                    cfg.linkConfig.setPriority(ft.getInt(ConfigKeys.PRIORITY));
+                    cfg.setGlobalInputEnabled(ft.getBoolean(ConfigKeys.GLOBAL_INPUT));
+                    cfg.setGlobalOutputEnabled(ft.getBoolean(ConfigKeys.GLOBAL_OUTPUT));
+                    if (ft.contains(ConfigKeys.SELECTED_TYPES)) {
+                        cfg.setSelectedTypeIds(TransferTypeSelection.readIds(ft, ConfigKeys.SELECTED_TYPES));
+                    } else {
+                        cfg.setSelectedTypesMask(ft.getInt(ConfigKeys.SELECTED_TYPES_MASK));
+                    }
 
                     if (!fe.filterUpgrades().isEmpty()) {
                         cfg.filterConfig.getUpgrades().deserializeNBT(level.registryAccess(), fe.filterUpgrades());

@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.filter.FilterData;
 import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.logic.UpgradeType;
+import com.coobird.staticlogistics.network.ConfigEditKeys;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateFilterOnItemPayload;
 import net.minecraft.client.gui.GuiGraphics;
@@ -57,7 +58,7 @@ public class FilterConfiguratorScreen extends BaseFilterScreen<FilterConfigurato
         if (mx >= bxBack && mx < bxBack + bwBack
             && my >= byBack && my < byBack + bhBack) {
             CompoundTag tag = new CompoundTag();
-            tag.putBoolean("open_face_config", true);
+            tag.putBoolean(ConfigEditKeys.OPEN_FACE_CONFIG, true);
             PacketDistributor.sendToServer(new C2SConfigureFacePayload(
                 menu.getPos(), menu.getFace(), tag));
             playClickSound();

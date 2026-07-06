@@ -4,27 +4,31 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public record C2SUpdateToolSettingsPayload(String groupId, int mode,
-                                           int typeMask) implements CustomPacketPayload {
+                                           List<ResourceLocation> selectedTypeIds) implements CustomPacketPayload {
     public static final Type<C2SUpdateToolSettingsPayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_settings"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolSettingsPayload> STREAM_CODEC = StreamCodec.composite(
         ByteBufCodecs.STRING_UTF8, C2SUpdateToolSettingsPayload::groupId,
         ByteBufCodecs.VAR_INT, C2SUpdateToolSettingsPayload::mode,
-        ByteBufCodecs.VAR_INT, C2SUpdateToolSettingsPayload::typeMask,
+        ByteBufCodecs.collection(ArrayList::new, ResourceLocation.STREAM_CODEC), C2SUpdateToolSettingsPayload::selectedTypeIds,
         C2SUpdateToolSettingsPayload::new
     );
 
@@ -49,8 +53,10 @@ public record C2SUpdateToolSettingsPayload(String groupId, int mode,
             String finalId = safeId.isEmpty() ? "" : safeId.substring(0, Math.min(safeId.length(), 32));
             stack.set(SLDataComponents.SELECTED_GROUP.get(), finalId);
 
-            int finalMask = payload.typeMask();
-            stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), finalMask);
+            List<ResourceLocation> finalTypes = TransferTypeSelection.sanitize(payload.selectedTypeIds());
+            stack.set(SLDataComponents.SELECTED_TYPES.get(), finalTypes);
+            stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(),
+                TransferTypeSelection.toMask(finalTypes, TransferRegistries.getAllActive()));
 
             int vMode = Mth.clamp(payload.mode(), 0, ToolMode.values().length - 1);
             int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);

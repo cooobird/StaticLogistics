@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.storage;
 
 import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
@@ -13,8 +14,7 @@ import java.util.UUID;
 /**
  * 配置序列化器 —— 将 {@link FaceConfigComposite} 的子配置序列化/反序列化为 NBT。
  *
- * <p>处理的字段：group_ids、owner、input/output_channel、strategy、extraction_mode、
- * priority、keep_stock、filter_upgrades、selected_types_mask。
+ * <p>处理的字段见 {@link ConfigKeys}。
  *
  * <p>版本兼容：反序列化时自动迁移旧格式（group_id → group_ids，SLOT_ROUND_ROBIN → ROUND_ROBIN）。
  */
@@ -26,35 +26,36 @@ public class ConfigSerializer {
         // 始终写 group_ids（哪怕是单组），不再单独写 group_id
         Set<String> allGroups = config.faceConfig.getGroupIds();
         if (!allGroups.isEmpty()) {
-            nbt.putString("group_ids", String.join(",", allGroups));
+            nbt.putString(ConfigKeys.GROUP_IDS, String.join(",", allGroups));
         }
 
         UUID ownerUuid = config.faceConfig.getOwner();
-        if (ownerUuid != null) nbt.putUUID("owner", ownerUuid);
-        nbt.putString("owner_name", config.faceConfig.getOwnerName());
+        if (ownerUuid != null) nbt.putUUID(ConfigKeys.OWNER, ownerUuid);
+        nbt.putString(ConfigKeys.OWNER_NAME, config.faceConfig.getOwnerName());
 
-        nbt.putInt("input_channel", config.linkConfig.getInputChannel());
-        nbt.putInt("output_channel", config.linkConfig.getOutputChannel());
-        nbt.putString("strategy", config.linkConfig.getStrategy().id().toString());
-        nbt.putString("extraction_mode", config.linkConfig.getExtractionMode().name());
-        nbt.putInt("priority", config.linkConfig.getPriority());
-        nbt.putInt("keep_stock", config.linkConfig.getKeepStock());
+        nbt.putInt(ConfigKeys.INPUT_CHANNEL, config.linkConfig.getInputChannel());
+        nbt.putInt(ConfigKeys.OUTPUT_CHANNEL, config.linkConfig.getOutputChannel());
+        nbt.putString(ConfigKeys.STRATEGY, config.linkConfig.getStrategy().id().toString());
+        nbt.putString(ConfigKeys.EXTRACTION_MODE, config.linkConfig.getExtractionMode().name());
+        nbt.putInt(ConfigKeys.PRIORITY, config.linkConfig.getPriority());
+        nbt.putInt(ConfigKeys.KEEP_STOCK, config.linkConfig.getKeepStock());
 
         try {
-            nbt.put("filter_upgrades", config.filterConfig.getUpgrades().serializeNBT(p));
+            nbt.put(ConfigKeys.FILTER_UPGRADES, config.filterConfig.getUpgrades().serializeNBT(p));
         } catch (Exception e) {
             LOGGER.error("Failed to serialize filter upgrades for face config", e);
-            nbt.put("filter_upgrades", new CompoundTag());
+            nbt.put(ConfigKeys.FILTER_UPGRADES, new CompoundTag());
         }
-        nbt.putInt("selected_types_mask", config.getSelectedTypesMask());
+        TransferTypeSelection.writeIds(nbt, ConfigKeys.SELECTED_TYPES, config.getSelectedTypeIds());
+        nbt.putInt(ConfigKeys.SELECTED_TYPES_MASK, config.getSelectedTypesMask());
         return nbt;
     }
 
     public static void deserializeNBT(FaceConfigComposite config, HolderLookup.Provider p, CompoundTag nbt) {
         // 先读老格式 group_id（单个字符串），再读新格式 group_ids（逗号分隔集合），合并去重
-        String oldGroupId = nbt.getString("group_id");
+        String oldGroupId = nbt.getString(ConfigKeys.GROUP_ID);
         if (!oldGroupId.isEmpty()) config.faceConfig.addGroupId(oldGroupId);
-        String groupIdsStr = nbt.getString("group_ids");
+        String groupIdsStr = nbt.getString(ConfigKeys.GROUP_IDS);
         if (!groupIdsStr.isEmpty()) {
             for (String gid : groupIdsStr.split(",")) {
                 String trimmed = gid.trim();
@@ -62,16 +63,16 @@ public class ConfigSerializer {
             }
         }
 
-        UUID ownerUuid = nbt.hasUUID("owner") ? nbt.getUUID("owner") : null;
-        String ownerName = nbt.contains("owner_name") ? nbt.getString("owner_name") : "Unknown";
-        if (nbt.contains("owner_profile"))
-            config.faceConfig.setOwnerProfileTag(nbt.getCompound("owner_profile"));
+        UUID ownerUuid = nbt.hasUUID(ConfigKeys.OWNER) ? nbt.getUUID(ConfigKeys.OWNER) : null;
+        String ownerName = nbt.contains(ConfigKeys.OWNER_NAME) ? nbt.getString(ConfigKeys.OWNER_NAME) : "Unknown";
+        if (nbt.contains(ConfigKeys.OWNER_PROFILE))
+            config.faceConfig.setOwnerProfileTag(nbt.getCompound(ConfigKeys.OWNER_PROFILE));
         if (ownerUuid != null) config.faceConfig.setOwner(ownerUuid, ownerName);
 
-        config.linkConfig.setInputChannel(nbt.getInt("input_channel"));
-        config.linkConfig.setOutputChannel(nbt.getInt("output_channel"));
+        config.linkConfig.setInputChannel(nbt.getInt(ConfigKeys.INPUT_CHANNEL));
+        config.linkConfig.setOutputChannel(nbt.getInt(ConfigKeys.OUTPUT_CHANNEL));
         try {
-            String stratName = nbt.getString("strategy");
+            String stratName = nbt.getString(ConfigKeys.STRATEGY);
             // 迁移旧 SLOT_ROUND_ROBIN → ROUND_ROBIN
             if ("SLOT_ROUND_ROBIN".equals(stratName)) {
                 config.linkConfig.setStrategy(
@@ -85,21 +86,23 @@ public class ConfigSerializer {
             config.linkConfig.setStrategy(
                 com.coobird.staticlogistics.logic.DistributionStrategyRegistry.SEQUENTIAL);
         }
-        if (nbt.contains("extraction_mode")) {
+        if (nbt.contains(ConfigKeys.EXTRACTION_MODE)) {
             try {
-                config.linkConfig.setExtractionMode(ExtractionMode.valueOf(nbt.getString("extraction_mode")));
+                config.linkConfig.setExtractionMode(ExtractionMode.valueOf(nbt.getString(ConfigKeys.EXTRACTION_MODE)));
             } catch (Exception e) {
                 config.linkConfig.setExtractionMode(ExtractionMode.SEQUENTIAL);
             }
         }
-        config.linkConfig.setPriority(nbt.getInt("priority"));
-        config.linkConfig.setKeepStock(nbt.getInt("keep_stock"));
+        config.linkConfig.setPriority(nbt.getInt(ConfigKeys.PRIORITY));
+        config.linkConfig.setKeepStock(nbt.getInt(ConfigKeys.KEEP_STOCK));
 
-        if (nbt.contains("filter_upgrades")) {
-            config.filterConfig.getUpgrades().deserializeNBT(p, nbt.getCompound("filter_upgrades"));
+        if (nbt.contains(ConfigKeys.FILTER_UPGRADES)) {
+            config.filterConfig.getUpgrades().deserializeNBT(p, nbt.getCompound(ConfigKeys.FILTER_UPGRADES));
         }
-        if (nbt.contains("selected_types_mask")) {
-            config.setSelectedTypesMask(nbt.getInt("selected_types_mask"));
+        if (nbt.contains(ConfigKeys.SELECTED_TYPES)) {
+            config.setSelectedTypeIds(TransferTypeSelection.readIds(nbt, ConfigKeys.SELECTED_TYPES));
+        } else if (nbt.contains(ConfigKeys.SELECTED_TYPES_MASK)) {
+            config.setSelectedTypesMask(nbt.getInt(ConfigKeys.SELECTED_TYPES_MASK));
         }
     }
 }

@@ -7,7 +7,11 @@ import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.item.UpgradeItem;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.logic.UpgradeType;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
+import com.coobird.staticlogistics.network.ConfigEditKeys;
 import com.coobird.staticlogistics.registry.SLMenuTypes;
+import com.coobird.staticlogistics.storage.ConfigKeys;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
@@ -17,6 +21,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -29,7 +34,9 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class NodeConfiguratorMenu extends AbstractContainerMenu {
     private static final int FILTER_SLOTS = 2;
@@ -51,6 +58,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
     private final Player player;
     private FaceConfigComposite faceConfig;
     private ContainerConfig containerConfig;
+    private List<ResourceLocation> selectedTypeIds = List.of();
 
     private final DataSlot globalInputSlot = DataSlot.standalone();
     private final DataSlot globalOutputSlot = DataSlot.standalone();
@@ -70,15 +78,22 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
     private final ItemStack[] lastUpgradeStacks = new ItemStack[UPGRADE_SLOTS];
 
     public NodeConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
-        this(containerId, playerInventory, buf.readBlockPos(), buf.readEnum(Direction.class));
+        this(containerId, playerInventory, buf.readBlockPos(), buf.readEnum(Direction.class), readInitialTypeIds(buf));
     }
 
     public NodeConfiguratorMenu(int containerId, Inventory playerInventory,
                                 @Nullable BlockPos pos, @Nullable Direction face) {
+        this(containerId, playerInventory, pos, face, List.of());
+    }
+
+    private NodeConfiguratorMenu(int containerId, Inventory playerInventory,
+                                 @Nullable BlockPos pos, @Nullable Direction face,
+                                 List<ResourceLocation> initialTypeIds) {
         super(SLMenuTypes.NODE_CONFIGURATOR_MENU.get(), containerId);
         this.pos = pos;
         this.face = face;
         this.player = playerInventory.player;
+        this.selectedTypeIds = initialTypeIds;
 
         this.addDataSlot(globalInputSlot);
         this.addDataSlot(globalOutputSlot);
@@ -133,6 +148,28 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
         addPlayerInventory(playerInventory);
     }
 
+    private static List<ResourceLocation> readInitialTypeIds(FriendlyByteBuf buf) {
+        if (buf.readableBytes() <= 0) return List.of();
+        buf.readResourceLocation(); // 兼容旧的初始类型字段，当前菜单不再直接使用。
+        if (buf.readableBytes() <= 0) return List.of();
+
+        int size = buf.readVarInt();
+        List<ResourceLocation> ids = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            ids.add(buf.readResourceLocation());
+        }
+        return TransferTypeSelection.sanitize(ids);
+    }
+
+    public static void writeInitialTypeData(FriendlyByteBuf buf, ResourceLocation initialTypeId, FaceConfigComposite config) {
+        buf.writeResourceLocation(initialTypeId);
+        List<ResourceLocation> ids = config == null ? List.of() : config.getSelectedTypeIds();
+        buf.writeVarInt(ids.size());
+        for (ResourceLocation id : ids) {
+            buf.writeResourceLocation(id);
+        }
+    }
+
 
     public boolean isGlobalInputEnabled() {
         return globalInputSlot.get() == 1;
@@ -171,7 +208,15 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
     }
 
     public int getSelectedTypesMask() {
-        return selectedTypesMaskSlot.get();
+        return TransferTypeSelection.toMask(selectedTypeIds, TransferRegistries.getAllActive());
+    }
+
+    public List<ResourceLocation> getSelectedTypeIds() {
+        return selectedTypeIds;
+    }
+
+    public boolean isTypeSelected(LogisticsResource<?> type) {
+        return TransferTypeSelection.isSelected(selectedTypeIds, type);
     }
 
     public int getSpeedMultiplier() {
@@ -258,17 +303,22 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
     }
 
     public void setSelectedTypesMask(int mask) {
-        selectedTypesMaskSlot.set(mask);
+        setSelectedTypeIds(TransferTypeSelection.fromMask(mask, TransferRegistries.getAllActive()));
+    }
+
+    public void setSelectedTypeIds(List<ResourceLocation> ids) {
+        List<ResourceLocation> sanitized = TransferTypeSelection.sanitize(ids);
+        selectedTypeIds = sanitized;
+        selectedTypesMaskSlot.set(TransferTypeSelection.toMask(sanitized, TransferRegistries.getAllActive()));
         if (faceConfig != null) {
-            faceConfig.setSelectedTypesMask(mask);
+            faceConfig.setSelectedTypeIds(sanitized);
             faceConfig.markDirty();
             broadcastChanges();
         }
     }
 
     public void toggleTypeSelection(LogisticsResource<?> type) {
-        int current = getSelectedTypesMask();
-        setSelectedTypesMask(current ^ type.getFlag());
+        setSelectedTypeIds(TransferTypeSelection.toggle(selectedTypeIds, type));
     }
 
     // --- Sync ---
@@ -283,6 +333,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
         extractionModeSlot.set(faceConfig.linkConfig.getExtractionMode().ordinal());
         prioritySlot.set(faceConfig.linkConfig.getPriority());
         keepStockSlot.set(faceConfig.linkConfig.getKeepStock());
+        selectedTypeIds = faceConfig.getSelectedTypeIds();
         selectedTypesMaskSlot.set(faceConfig.getSelectedTypesMask());
     }
 
@@ -322,7 +373,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
         boolean changed = false;
         for (String key : tag.getAllKeys()) {
             changed |= switch (key) {
-                case "globalInput" -> {
+                case ConfigEditKeys.GLOBAL_INPUT -> {
                     boolean v = tag.getBoolean(key);
                     if (v != isGlobalInputEnabled()) {
                         setGlobalInputEnabled(v);
@@ -330,7 +381,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "globalOutput" -> {
+                case ConfigEditKeys.GLOBAL_OUTPUT -> {
                     boolean v = tag.getBoolean(key);
                     if (v != isGlobalOutputEnabled()) {
                         setGlobalOutputEnabled(v);
@@ -338,7 +389,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "inputChannel" -> {
+                case ConfigEditKeys.INPUT_CHANNEL -> {
                     int v = Math.clamp(tag.getInt(key), 1, 16);
                     if (v != getInputChannel()) {
                         setInputChannel(v);
@@ -346,7 +397,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "outputChannel" -> {
+                case ConfigEditKeys.OUTPUT_CHANNEL -> {
                     int v = Math.clamp(tag.getInt(key), 1, 16);
                     if (v != getOutputChannel()) {
                         setOutputChannel(v);
@@ -354,7 +405,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "priority" -> {
+                case ConfigEditKeys.PRIORITY -> {
                     int v = tag.getInt(key);
                     if (v != getPriority()) {
                         setPriority(v);
@@ -362,7 +413,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "keep_stock" -> {
+                case ConfigEditKeys.KEEP_STOCK -> {
                     int v = tag.getInt(key);
                     if (v != getKeepStock()) {
                         setKeepStock(v);
@@ -370,7 +421,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "strategy" -> {
+                case ConfigEditKeys.STRATEGY -> {
                     DistributionStrategy v = DistributionStrategyRegistry.byName(tag.getString(key));
                     if (!v.equals(getStrategy())) {
                         setStrategy(v);
@@ -378,7 +429,7 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "extractionMode" -> {
+                case ConfigEditKeys.EXTRACTION_MODE -> {
                     ExtractionMode v = ExtractionMode.byName(tag.getString(key), ExtractionMode.SEQUENTIAL);
                     if (v != getExtractionMode()) {
                         setExtractionMode(v);
@@ -386,7 +437,18 @@ public class NodeConfiguratorMenu extends AbstractContainerMenu {
                     }
                     yield false;
                 }
-                case "selected_types_mask" -> {
+                case ConfigEditKeys.SELECTED_TYPES -> {
+                    List<ResourceLocation> v = TransferTypeSelection.readIds(tag, key);
+                    if (!selectedTypeIds.equals(v)) {
+                        setSelectedTypeIds(v);
+                        yield true;
+                    }
+                    yield false;
+                }
+                case ConfigKeys.SELECTED_TYPES_MASK -> {
+                    if (tag.contains(ConfigEditKeys.SELECTED_TYPES)) {
+                        yield false;
+                    }
                     int v = tag.getInt(key);
                     if (getSelectedTypesMask() != v) {
                         setSelectedTypesMask(v);

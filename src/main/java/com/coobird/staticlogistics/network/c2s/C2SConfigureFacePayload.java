@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logic.group.GroupService;
+import com.coobird.staticlogistics.network.ConfigEditKeys;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
@@ -51,11 +52,13 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
 
             CompoundTag tag = payload.data();
 
-            if (tag.contains("open_filter")) {
+            if (tag.contains(ConfigEditKeys.OPEN_FILTER) || tag.contains("open_filter")) {
                 if (player.containerMenu instanceof NodeConfiguratorMenu faceMenu) {
                     BlockPos pos = faceMenu.getPos();
                     Direction face = faceMenu.getFace();
-                    boolean isInput = tag.getBoolean("is_input");
+                    boolean isInput = tag.contains(ConfigEditKeys.IS_INPUT)
+                        ? tag.getBoolean(ConfigEditKeys.IS_INPUT)
+                        : tag.getBoolean("is_input");
                     int slotIndex = isInput ? 0 : 1;
                     ItemStack upgradeStack = faceMenu.getSlot(slotIndex).getItem();
                     player.openMenu(
@@ -75,7 +78,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                 return;
             }
 
-            if (tag.contains("open_face_config")) {
+            if (tag.contains(ConfigEditKeys.OPEN_FACE_CONFIG) || tag.contains("open_face_config")) {
                 if (player.containerMenu instanceof FilterConfiguratorMenu filterMenu) {
                     BlockPos pos = filterMenu.getPos();
                     Direction face = filterMenu.getFace();
@@ -85,6 +88,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                         buf -> {
                             buf.writeBlockPos(pos);
                             buf.writeEnum(face);
+                            NodeConfiguratorMenu.writeInitialTypeData(buf, StaticLogistics.asResource("item"), config);
                         }
                     );
                 }

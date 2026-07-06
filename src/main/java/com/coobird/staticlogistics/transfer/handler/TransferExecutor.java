@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.transfer.handler;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.LogisticsResource;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.strategy.TargetSelector;

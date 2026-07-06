@@ -1,4 +1,4 @@
-package com.coobird.staticlogistics.logic;
+package com.coobird.staticlogistics.logic.type;
 
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsResource;
@@ -6,9 +6,6 @@ import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.TransferContext;
 import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
 import com.coobird.staticlogistics.transfer.handler.ResourceAdapterHandler;
-import com.coobird.staticlogistics.transfer.resource.EnergyResource;
-import com.coobird.staticlogistics.transfer.resource.FluidResource;
-import com.coobird.staticlogistics.transfer.resource.ItemResource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -24,34 +21,43 @@ import java.util.function.Supplier;
 
 /**
  * 传输类型注册中心 —— 管理所有 {@link LogisticsResource} 实例。
- * bitOffset 由注册顺序自动分配，无需手动指定。
+ * 资源类型 bitOffset 必须显式分配；0-31 同时用于兼容旧 int 掩码。
  */
 public class TransferRegistries {
     private static final Map<ResourceLocation, LogisticsResource<?>> RESOURCES = new LinkedHashMap<>();
     private static final Map<ResourceLocation, ITransferHandler> HANDLERS = new LinkedHashMap<>();
-    private static int nextBitOffset = 0;
     private static int generation = 0;
 
-    public static void init() {
-        registerAdapter(new ItemResource());
-        registerAdapter(new FluidResource());
-        registerAdapter(new EnergyResource());
-    }
-
     /**
-     * 注册一个 {@link LogisticsResource} 适配器，自动分配 bitOffset。
+     * 注册一个显式分配稳定 bitOffset 的资源适配器。
      */
-    public static <C> void registerAdapter(LogisticsResource<C> adapter) {
-        ResourceLocation id = adapter.typeId();
-        int assignedOffset = nextBitOffset++;
-        LogisticsResource<C> wrapped = new BitOffsetWrapper<>(adapter, assignedOffset);
-        if (RESOURCES.containsKey(id)) {
-            RESOURCES.remove(id);
-            HANDLERS.remove(id);
+    public static <C> void registerAdapter(LogisticsResource<C> adapter, int bitOffset) {
+        if (bitOffset < 0) {
+            throw new IllegalArgumentException("bitOffset must be non-negative for logistics resource type " + adapter.typeId());
         }
+
+        ResourceLocation id = adapter.typeId();
+        ensureBitOffsetAvailable(id, bitOffset);
+
+        LogisticsResource<C> wrapped = new BitOffsetWrapper<>(adapter, bitOffset);
         RESOURCES.put(id, wrapped);
         HANDLERS.put(id, new ResourceAdapterHandler<>(wrapped));
         generation++;
+    }
+
+    private static void ensureBitOffsetAvailable(ResourceLocation id, int bitOffset) {
+        LogisticsResource<?> existing = RESOURCES.get(id);
+        if (existing != null && existing.bitOffset() != bitOffset) {
+            throw new IllegalArgumentException("Resource type " + id + " is already assigned to bitOffset "
+                + existing.bitOffset() + "; cannot reassign it to " + bitOffset);
+        }
+
+        for (LogisticsResource<?> resource : RESOURCES.values()) {
+            if (resource.bitOffset() == bitOffset && !resource.typeId().equals(id)) {
+                throw new IllegalArgumentException("bitOffset " + bitOffset + " is already used by "
+                    + resource.typeId() + "; cannot assign it to " + id);
+            }
+        }
     }
 
     @Nullable
@@ -73,7 +79,7 @@ public class TransferRegistries {
     }
 
     /**
-     * 包装器：覆写 bitOffset() 为注册时自动分配的值。
+     * 包装器：覆写 bitOffset() 为注册时分配的稳定值。
      */
     private record BitOffsetWrapper<C>(LogisticsResource<C> delegate,
                                        int assignedOffset) implements LogisticsResource<C> {

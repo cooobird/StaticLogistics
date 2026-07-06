@@ -2,12 +2,14 @@ package com.coobird.staticlogistics.gui.screen.component;
 
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,14 +29,14 @@ public class TransferTypeGrid {
     private static final int START_Y_OFFSET = 18;
 
     public static void render(GuiGraphics g, ItemStack stack, int leftPos, int topPos, int mx, int my) {
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
         List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
+        List<ResourceLocation> selectedTypeIds = getSelectedTypeIds(stack, types);
         int startX = leftPos + START_X_OFFSET;
         int startY = topPos + START_Y_OFFSET;
 
         for (int i = 0; i < types.size(); i++) {
             LogisticsResource<?> type = types.get(i);
-            boolean isSelected = (mask & type.getFlag()) != 0;
+            boolean isSelected = TransferTypeSelection.isSelected(selectedTypeIds, type);
             int row = i / PER_ROW;
             int col = i % PER_ROW;
             int baseX = startX + col * (BTN_WIDTH + SPACING);
@@ -66,11 +68,11 @@ public class TransferTypeGrid {
         List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
         int startX = leftPos + START_X_OFFSET;
         int startY = topPos + START_Y_OFFSET;
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+        List<ResourceLocation> selectedTypeIds = getSelectedTypeIds(stack, types);
 
         for (int i = 0; i < types.size(); i++) {
             LogisticsResource<?> type = types.get(i);
-            boolean isSelected = (mask & type.getFlag()) != 0;
+            boolean isSelected = TransferTypeSelection.isSelected(selectedTypeIds, type);
             int row = i / PER_ROW;
             int col = i % PER_ROW;
             int baseX = startX + col * (BTN_WIDTH + SPACING);
@@ -110,10 +112,20 @@ public class TransferTypeGrid {
         if (idx < 0 || idx >= types.size()) return null;
 
         LogisticsResource<?> clicked = types.get(idx);
-        int mask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-        int newMask = mask ^ clicked.getFlag();
-        stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), newMask);
+        List<ResourceLocation> selectedTypeIds = getSelectedTypeIds(stack, types);
+        List<ResourceLocation> newSelection = TransferTypeSelection.toggle(selectedTypeIds, clicked);
+        stack.set(SLDataComponents.SELECTED_TYPES.get(), newSelection);
+        stack.set(SLDataComponents.SELECTED_TYPES_MASK.get(), TransferTypeSelection.toMask(newSelection, types));
         return clicked;
+    }
+
+    private static List<ResourceLocation> getSelectedTypeIds(ItemStack stack, List<LogisticsResource<?>> activeTypes) {
+        List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
+        if (selectedTypeIds != null) {
+            return selectedTypeIds;
+        }
+        int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+        return TransferTypeSelection.fromMask(legacyMask, activeTypes);
     }
 
     public static void renderTooltip(GuiGraphics g, Font font, LogisticsResource<?> type, int mx, int my) {

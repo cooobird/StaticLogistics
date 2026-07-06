@@ -5,10 +5,12 @@ import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.item.handler.*;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import com.coobird.staticlogistics.logic.ToolMode;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -55,18 +57,28 @@ public class LinkConfiguratorItem extends Item {
         ));
     }
 
-    public record ToolSettings(ToolMode mode, int typeMask, String group, List<LogisticsNode> storedNodes,
+    public record ToolSettings(ToolMode mode, List<ResourceLocation> selectedTypeIds, String group,
+                               List<LogisticsNode> storedNodes,
                                @Nullable ToolMode storedMode) {
         public List<LogisticsResource<?>> getSelectedTypes() {
-            return TransferRegistries.getAllActive().stream().filter(type -> (typeMask & type.getFlag()) != 0).toList();
+            return TransferTypeSelection.selectedTypes(selectedTypeIds, TransferRegistries.getAllActive());
+        }
+
+        public int getSelectedTypesMask() {
+            return TransferTypeSelection.toMask(selectedTypeIds, TransferRegistries.getAllActive());
         }
     }
 
     public ToolSettings getSettings(ItemStack stack) {
         Integer sModeIdx = stack.get(SLDataComponents.STORED_MODE.get());
+        List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
+        if (selectedTypeIds == null) {
+            int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
+        }
         return new ToolSettings(
             ToolMode.fromId(stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)),
-            stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0),
+            selectedTypeIds,
             stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""),
             stack.getOrDefault(SLDataComponents.STORED_NODES.get(), List.of()),
             sModeIdx != null ? ToolMode.fromId(sModeIdx) : null

@@ -1,12 +1,15 @@
-package com.coobird.staticlogistics.registry;
+package com.coobird.staticlogistics.command;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logic.group.GroupService;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.handler.CapabilityCache;
 import com.coobird.staticlogistics.transfer.log.NodeStats;
 import com.coobird.staticlogistics.transfer.log.TransferEntry;
 import com.coobird.staticlogistics.transfer.log.TransferLogManager;
@@ -37,6 +40,7 @@ import net.minecraft.world.phys.HitResult;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * 注册模组的所有命令（/sl），包括信息查询、所有权转移、重命名、清理、策略列表和统计。
@@ -80,6 +84,12 @@ public class SLCommands {
                     .executes(SLCommands::resetStats)))
             .then(Commands.literal("list")
                 .executes(SLCommands::listNodes))
+            .then(Commands.literal("debug")
+                .executes(SLCommands::showDebugOverview)
+                .then(Commands.literal("cache")
+                    .executes(SLCommands::showCacheDebug))
+                .then(Commands.literal("types")
+                    .executes(SLCommands::showTypeDebug)))
         );
     }
 
@@ -156,7 +166,14 @@ public class SLCommands {
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.output_channel", config.linkConfig.getOutputChannel()).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.strategy", config.linkConfig.getStrategy().getDisplayName()).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.priority", config.linkConfig.getPriority()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.types_mask", config.getSelectedTypesMask()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.role_version",
+                    config.determineRole().name().toLowerCase(), config.getVersion()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.selected_types",
+                    formatSelectedTypes(config)).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.present_capabilities",
+                    formatPresentTypes(level, pos, dir)).withStyle(ChatFormatting.DARK_AQUA), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes_detail",
+                    formatLinkedNodes(config)).withStyle(ChatFormatting.DARK_GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes", config.getLinkedNodes().size()).withStyle(ChatFormatting.DARK_GRAY), false);
             }
         }
@@ -164,6 +181,38 @@ public class SLCommands {
             source.sendFailure(Component.translatable("commands.staticlogistics.info.no_links"));
         }
         return 1;
+    }
+
+    private static String formatSelectedTypes(FaceConfigComposite config) {
+        if (config.getSelectedTypeIds().isEmpty()) return "-";
+        return config.getSelectedTypeIds().stream()
+            .map(Object::toString)
+            .collect(Collectors.joining(", "));
+    }
+
+    private static String formatPresentTypes(ServerLevel level, BlockPos pos, Direction face) {
+        List<String> present = new ArrayList<>();
+        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
+            try {
+                if (type.isPresent(level, pos, face)) {
+                    present.add(type.typeId().toString());
+                }
+            } catch (Exception e) {
+                present.add(type.typeId() + "=error");
+            }
+        }
+        return present.isEmpty() ? "-" : String.join(", ", present);
+    }
+
+    private static String formatLinkedNodes(FaceConfigComposite config) {
+        if (config.getLinkedNodes().isEmpty()) return "-";
+        List<String> nodes = config.getLinkedNodes().stream()
+            .limit(5)
+            .map(node -> node.gPos().dimension().location() + " "
+                + node.gPos().pos().toShortString() + " " + node.face().getName())
+            .toList();
+        String suffix = config.getLinkedNodes().size() > nodes.size() ? " ..." : "";
+        return String.join("; ", nodes) + suffix;
     }
 
     /**
@@ -413,6 +462,43 @@ public class SLCommands {
                         posStr, node.face().getName(), role.name().toLowerCase())
                     .withStyle(ChatFormatting.GRAY), false);
             }
+        }
+        return 1;
+    }
+
+    private static int showDebugOverview(CommandContext<CommandSourceStack> ctx) {
+        var source = ctx.getSource();
+        var cacheStats = CapabilityCache.snapshotStats();
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.header").withStyle(ChatFormatting.GOLD), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.transfer_types",
+            TransferRegistries.getAllActive().size(), TransferRegistries.generation()).withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache",
+                cacheStats.dimensions(), cacheStats.entries(), cacheStats.liveEntries(), cacheStats.staleEntries())
+            .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.help")
+            .withStyle(ChatFormatting.DARK_GRAY), false);
+        return 1;
+    }
+
+    private static int showCacheDebug(CommandContext<CommandSourceStack> ctx) {
+        CapabilityCache.cleanStaleEntries();
+        var stats = CapabilityCache.snapshotStats();
+        ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_header")
+            .withStyle(ChatFormatting.GOLD), false);
+        ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_stats",
+            stats.dimensions(), stats.entries(), stats.liveEntries(), stats.staleEntries()).withStyle(ChatFormatting.GRAY), false);
+        return 1;
+    }
+
+    private static int showTypeDebug(CommandContext<CommandSourceStack> ctx) {
+        var source = ctx.getSource();
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.types_header")
+            .withStyle(ChatFormatting.GOLD), false);
+        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
+            boolean hasHandler = TransferRegistries.getHandler(type) != null;
+            boolean legacyMask = type.bitOffset() >= 0 && type.bitOffset() < Integer.SIZE;
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.type_line",
+                type.typeId().toString(), type.bitOffset(), legacyMask, hasHandler).withStyle(ChatFormatting.GRAY), false);
         }
         return 1;
     }

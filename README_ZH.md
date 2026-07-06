@@ -18,7 +18,7 @@ NeoForge 1.21.1 的 Minecraft 物流模组。物品、流体、能量传输。�
 - **分组管理** — 命名分组，按组同步、转移所有权、重命名、清理
 - **FTB Teams 集成** — 基于队伍的所有权和权限
 - **蓝图系统** — 保存物流配置、旋转预览、粘贴到方块
-- **完整 /sl 命令树** — info、list、stats、transfer、rename、cleanup、strategies
+- **完整 /sl 命令树** — info、list、stats、transfer、rename、cleanup、debug
 - **可调优性能** — ticker 批处理大小、冷却间隔、缓存大小、对象池大小
 
 ## 快速上手
@@ -78,7 +78,9 @@ NeoForge 1.21.1 的 Minecraft 物流模组。物品、流体、能量传输。�
 | /sl transfer <from> group <id> <to> | 转移指定分组          |
 | /sl rename <owner> <old> <new>      | 重命名分组           |
 | /sl cleanup <owner>                 | 删除某玩家全部节点       |
-| /sl strategies [page]               | 列出注册的组件匹配策略     |
+| /sl debug                           | 查看传输注册表和能力缓存状态  |
+| /sl debug cache                     | 清理失效能力缓存并显示统计   |
+| /sl debug types                     | 列出活动传输类型和兼容 bit |
 
 ## 服务端配置
 

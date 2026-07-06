@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * 将 {@link LogisticsResource} 适配为 {@link ITransferHandler} 的通用处理器。
  *
- * <p>通过 {@code TransferRegistries.registerAdapter()} 注册时自动创建。
+ * <p>通过 {@code TransferRegistries.registerAdapter(adapter, bitOffset)} 注册时自动创建。
  * 内部委托给 {@link TransferUtils#doTransferNodes}，统一管线：
  * 能力缓存、维度/距离/区块检查、脏链接清理、传输日志。
  *

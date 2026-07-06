@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.blueprint.BlueprintData;
 import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.storage.ConfigKeys;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -174,10 +175,10 @@ public class BlueprintRegionRenderer {
                 Direction rotatedFace = BlueprintItem.rotateDirection(faceEntry.getKey(), rot);
                 BlueprintData.FaceEntry fe = faceEntry.getValue();
                 CompoundTag ft = fe.faceConfig();
-                int inCh = ft.getInt("input_channel");
-                int outCh = ft.getInt("output_channel");
-                boolean hasIn = ft.getBoolean("global_input");
-                boolean hasOut = ft.getBoolean("global_output");
+                int inCh = ft.getInt(ConfigKeys.INPUT_CHANNEL);
+                int outCh = ft.getInt(ConfigKeys.OUTPUT_CHANNEL);
+                boolean hasIn = ft.getBoolean(ConfigKeys.GLOBAL_INPUT);
+                boolean hasOut = ft.getBoolean(ConfigKeys.GLOBAL_OUTPUT);
                 if (vis) {
                     LogisticsRenderHelper.drawFaceStatus(bc, mat, absPos, rotatedFace,
                         inCh, outCh, hasIn, hasOut, pulse);
@@ -192,8 +193,8 @@ public class BlueprintRegionRenderer {
                         // 在目标方块上找匹配的输入面（同频道）
                         for (var dstFaceEntry : dstEntry.faces().entrySet()) {
                             CompoundTag dstFt = dstFaceEntry.getValue().faceConfig();
-                            if (!dstFt.getBoolean("global_input")) continue;
-                            if (dstFt.getInt("input_channel") != outCh) continue;
+                            if (!dstFt.getBoolean(ConfigKeys.GLOBAL_INPUT)) continue;
+                            if (dstFt.getInt(ConfigKeys.INPUT_CHANNEL) != outCh) continue;
                             Direction dstRotatedFace = BlueprintItem.rotateDirection(dstFaceEntry.getKey(), rot);
                             Vec3 s = Vec3.atCenterOf(absPos)
                                 .add(Vec3.atLowerCornerOf(rotatedFace.getNormal()).scale(0.52));

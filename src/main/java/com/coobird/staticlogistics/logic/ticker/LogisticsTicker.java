@@ -5,7 +5,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.CooldownManager;

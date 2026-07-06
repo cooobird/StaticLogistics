@@ -7,7 +7,9 @@ import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.component.NodeConfigControls;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
+import com.coobird.staticlogistics.network.ConfigEditKeys;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
 import com.coobird.staticlogistics.util.LogisticsCalculator;
@@ -49,8 +51,8 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         this.titleLabelX = this.imageWidth - this.font.width(this.title) - 8;
         this.titleLabelY = 6;
         this.inventoryLabelY = 1000;
-        priorityBox = makeBox(RARITY_BOX_X, ROW3_Y, "priority", menu.getPriority(), "-?[0-9]*", 10);
-        keepStockBox = makeBox(STOCK_BOX_X, ROW4_Y, "keep_stock", menu.getKeepStock(), "[0-9]*", 6);
+        priorityBox = makeBox(RARITY_BOX_X, ROW3_Y, ConfigEditKeys.PRIORITY, menu.getPriority(), "-?[0-9]*", 10);
+        keepStockBox = makeBox(STOCK_BOX_X, ROW4_Y, ConfigEditKeys.KEEP_STOCK, menu.getKeepStock(), "[0-9]*", 6);
         addRenderableWidget(priorityBox);
         addRenderableWidget(keepStockBox);
         priorityBox.setVisible(false);
@@ -66,7 +68,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         b.setResponder(s -> {
             try {
                 int v = s.isEmpty() ? 0 : Integer.parseInt(s);
-                if (v != (key.equals("priority") ? menu.getPriority() : menu.getKeepStock())) send(key, v);
+                if (v != (key.equals(ConfigEditKeys.PRIORITY) ? menu.getPriority() : menu.getKeepStock())) send(key, v);
             } catch (NumberFormatException ignored) {
             }
         });
@@ -101,8 +103,8 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
     }
 
     @Override
-    protected int getSelectedTypesMask() {
-        return menu.getSelectedTypesMask();
+    protected boolean isTypeSelected(LogisticsResource<?> type) {
+        return menu.isTypeSelected(type);
     }
 
     @Override
@@ -375,21 +377,21 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
     public boolean mouseClicked(double mx, double my, int button) {
         int lx = leftPos, ty = topPos;
         if (NodeConfigControls.hitToggle(mx, my, lx + INPUT_TOGGLE_X, ty + ROW1_Y)) {
-            send("globalInput", !menu.isGlobalInputEnabled());
+            send(ConfigEditKeys.GLOBAL_INPUT, !menu.isGlobalInputEnabled());
             playClickSound();
             return true;
         }
         if (NodeConfigControls.hitToggle(mx, my, lx + OUTPUT_TOGGLE_X, ty + ROW1_Y)) {
-            send("globalOutput", !menu.isGlobalOutputEnabled());
+            send(ConfigEditKeys.GLOBAL_OUTPUT, !menu.isGlobalOutputEnabled());
             playClickSound();
             return true;
         }
         if (NodeConfigControls.hitChannel(mx, my, lx + INPUT_CHANNEL_X, ty + CHANNEL_Y)) {
-            cycleCh("inputChannel", menu.getInputChannel(), button);
+            cycleCh(ConfigEditKeys.INPUT_CHANNEL, menu.getInputChannel(), button);
             return true;
         }
         if (NodeConfigControls.hitChannel(mx, my, lx + OUTPUT_CHANNEL_X, ty + CHANNEL_Y)) {
-            cycleCh("outputChannel", menu.getOutputChannel(), button);
+            cycleCh(ConfigEditKeys.OUTPUT_CHANNEL, menu.getOutputChannel(), button);
             return true;
         }
 
@@ -419,14 +421,14 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
                 int curIdx = vs.indexOf(menu.getStrategy());
                 if (curIdx < 0) curIdx = 0;
                 int n = button == 1 ? (curIdx - 1 + vs.size()) % vs.size() : (curIdx + 1) % vs.size();
-                send("strategy", vs.get(n).getSerializedName());
+                send(ConfigEditKeys.STRATEGY, vs.get(n).getSerializedName());
                 playClickSound();
                 return true;
             }
             if (NodeConfigControls.hitCycleBtn(mx, my, lx + EXTRACTION_X, ty + EXTRACTION_Y, menu.getExtractionMode().getDisplayName(), font)) {
                 ExtractionMode[] vs = ExtractionMode.values();
                 int n = button == 1 ? (menu.getExtractionMode().ordinal() - 1 + vs.length) % vs.length : (menu.getExtractionMode().ordinal() + 1) % vs.length;
-                send("extractionMode", vs[n].getSerializedName());
+                send(ConfigEditKeys.EXTRACTION_MODE, vs[n].getSerializedName());
                 playClickSound();
                 return true;
             }
@@ -447,8 +449,8 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         if (s == null || !s.isActive() || s.getItem().isEmpty()) return;
         if (NodeConfigControls.hitFilterCfgBtn(mx, my, sx, sy)) {
             CompoundTag t = new CompoundTag();
-            t.putBoolean("open_filter", true);
-            t.putBoolean("is_input", si == 0);
+            t.putBoolean(ConfigEditKeys.OPEN_FILTER, true);
+            t.putBoolean(ConfigEditKeys.IS_INPUT, si == 0);
             PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), t));
         }
     }
@@ -477,7 +479,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         if (hasShiftDown() && hasControlDown()) d *= 64;
         else if (hasShiftDown()) d *= 10;
         else if (hasControlDown()) d *= 5;
-        send("priority", menu.getPriority() + d);
+        send(ConfigEditKeys.PRIORITY, menu.getPriority() + d);
     }
 
     private void adjKeepStock(int d) {
@@ -485,7 +487,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
         if (hasShiftDown() && hasControlDown()) d *= 64;
         else if (hasShiftDown()) d *= 10;
         else if (hasControlDown()) d *= 5;
-        send("keep_stock", menu.getKeepStock() + d);
+        send(ConfigEditKeys.KEEP_STOCK, menu.getKeepStock() + d);
     }
 
     private void unfocus(EditBox b, double mx, double my) {
@@ -506,7 +508,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
 
     private void syncType() {
         CompoundTag t = new CompoundTag();
-        t.putInt("selected_types_mask", menu.getSelectedTypesMask());
+        TransferTypeSelection.writeIds(t, ConfigEditKeys.SELECTED_TYPES, menu.getSelectedTypeIds());
         PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), t));
     }
 }

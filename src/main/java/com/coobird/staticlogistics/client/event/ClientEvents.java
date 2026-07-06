@@ -9,6 +9,8 @@ import com.coobird.staticlogistics.gui.screen.NodeConfiguratorScreen;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
@@ -19,6 +21,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -32,6 +35,8 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.util.List;
 
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
@@ -72,14 +77,18 @@ public class ClientEvents {
             event.setCanceled(true);
             String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
             int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
-            int typeMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
+            if (selectedTypeIds == null) {
+                int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+                selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
+            }
 
             ToolMode mode = ToolMode.fromId(currentMode);
             ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
             int nextMode = newMode.getId();
 
             stack.set(SLDataComponents.TOOL_MODE.get(), nextMode);
-            PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(currentGroup, nextMode, typeMask));
+            PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(currentGroup, nextMode, selectedTypeIds));
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
             return;
         }

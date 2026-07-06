@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.mojang.logging.LogUtils;
 import mekanism.api.heat.IHeatHandler;
 import mekanism.common.registries.MekanismBlocks;
@@ -108,10 +107,5 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
             LOGGER.error("Mekanism heat insert failed", e);
             return 0;
         }
-    }
-
-    public static void register() {
-        TransferRegistries.registerAdapter(new MekanismHeatResource());
-        LOGGER.info("Registered Mekanism heat transfer support");
     }
 }
