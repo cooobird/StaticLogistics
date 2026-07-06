@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.item.handler;
 
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
 import com.coobird.staticlogistics.storage.link.LinkManager;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.TransferUtils;

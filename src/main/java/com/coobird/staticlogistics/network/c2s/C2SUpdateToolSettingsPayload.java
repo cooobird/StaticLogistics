@@ -5,6 +5,8 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -20,13 +22,14 @@ import org.mesdag.portlib.network.codec.PortStreamCodec;
 import java.util.List;
 
 public record C2SUpdateToolSettingsPayload(String groupId, int mode,
-                                           int typeMask) implements IPortPacket.C2S {
+                                           List<ResourceLocation> selectedTypeIds) implements IPortPacket.C2S {
     public static final ResourceLocation ID = StaticLogistics.asResource("update_tool_settings");
     public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SUpdateToolSettingsPayload> STREAM_CODEC = new PortStreamCodec<>() {
         @Override
         public C2SUpdateToolSettingsPayload decode(PortRegistryFriendlyByteBuf buffer) {
             FriendlyByteBuf fbuf = buffer;
-            return new C2SUpdateToolSettingsPayload(fbuf.readUtf(), fbuf.readVarInt(), fbuf.readVarInt());
+            return new C2SUpdateToolSettingsPayload(fbuf.readUtf(), fbuf.readVarInt(),
+                fbuf.readList(FriendlyByteBuf::readResourceLocation));
         }
 
         @Override
@@ -34,7 +37,7 @@ public record C2SUpdateToolSettingsPayload(String groupId, int mode,
             FriendlyByteBuf fbuf = buffer;
             fbuf.writeUtf(value.groupId());
             fbuf.writeVarInt(value.mode());
-            fbuf.writeVarInt(value.typeMask());
+            fbuf.writeCollection(value.selectedTypeIds(), FriendlyByteBuf::writeResourceLocation);
         }
     };
 
@@ -56,8 +59,10 @@ public record C2SUpdateToolSettingsPayload(String groupId, int mode,
         String safeId = rawId.replaceAll("[^\\p{L}\\p{N}_\\- ]", "");
         String finalId = safeId.isEmpty() ? "" : safeId.substring(0, Math.min(safeId.length(), 32));
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP, finalId);
-        int finalMask = typeMask;
-        PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_TYPES_MASK, finalMask);
+        List<ResourceLocation> finalTypes = TransferTypeSelection.sanitize(selectedTypeIds);
+        PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_TYPES.get(), finalTypes);
+        PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_TYPES_MASK.get(),
+            TransferTypeSelection.toMask(finalTypes, TransferRegistries.getAllActive()));
         int vMode = Mth.clamp(mode, 0, ToolMode.values().length - 1);
         int currentMode = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE, 0);
         if (currentMode != vMode) {

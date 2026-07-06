@@ -106,7 +106,7 @@ public final class SLConfig {
     private static volatile int MekHeatStack = 1000;
     private static volatile int ArsSourceStack = 100;
     private static volatile int BotaniaManaStack = 1000;
-    private static volatile int GTCEUStack = 512;
+    private static volatile int GTCEUStack = 1024;
 
     // 升级倍率缓存值
     private static volatile int ironMultCache = 2;

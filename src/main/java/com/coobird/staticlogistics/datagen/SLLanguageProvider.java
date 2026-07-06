@@ -4,9 +4,9 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.logic.UpgradeTier;
 import com.coobird.staticlogistics.logic.UpgradeType;
+import com.coobird.staticlogistics.logic.type.TransferTypeBootstrap;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;
 import net.minecraft.data.PackOutput;
 import net.minecraft.network.chat.Component;
@@ -40,7 +40,7 @@ public class SLLanguageProvider extends LanguageProvider {
 
     @Override
     protected void addTranslations() {
-        TransferRegistries.init();
+        TransferTypeBootstrap.init();
 
         addCreativeTab(SLCreativeTabs.TAB_STATIC_LOGISTICS, "Static Logistics", "静态物流");
 
@@ -255,6 +255,10 @@ public class SLLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.info.output_channel", "Output Channel: %d", "输出频道：%d");
         add("commands.staticlogistics.info.strategy", "Strategy: %s", "分发策略：%s");
         add("commands.staticlogistics.info.priority", "Priority: %d", "优先级：%d");
+        add("commands.staticlogistics.info.role_version", "Role: %s, Version: %s", "角色：%s，版本：%s");
+        add("commands.staticlogistics.info.selected_types", "Selected Types: %s", "已选传输类型：%s");
+        add("commands.staticlogistics.info.present_capabilities", "Present Capabilities: %s", "当前可用能力：%s");
+        add("commands.staticlogistics.info.linked_nodes_detail", "Linked Nodes: %s", "已连接节点：%s");
         add("commands.staticlogistics.info.linked_nodes", "Linked Nodes: %d", "已连接节点数：%d");
         add("commands.staticlogistics.info.enabled", "Enabled", "启用");
         add("commands.staticlogistics.info.disabled", "Disabled", "禁用");
@@ -264,10 +268,14 @@ public class SLLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.list.group_entry", "Group: %s (%d nodes)", "分组：%s（共 %d 个节点）");
         add("commands.staticlogistics.list.node_entry", "  - %s %s (%s)", "  - %s %s（角色：%s）");
         add("commands.staticlogistics.info.not_found", "No logistics data found at this position.", "此位置未找到物流数据。");
-        add("commands.staticlogistics.strategies.header", "--- Data Component Strategies (Page %s/%s) ---", "--- 数据组件匹配策略 (第%s/%s页) ---");
-        add("commands.staticlogistics.strategies.line", "%s -> %s", "%s -> %s");
-        add("commands.staticlogistics.strategies.next_page", "Use /sl strategies %s for next page.", "输入 /sl strategies %s 查看下一页。");
-
+        add("commands.staticlogistics.debug.header", "StaticLogistics Debug", "StaticLogistics 调试信息");
+        add("commands.staticlogistics.debug.transfer_types", "Transfer Types: %s, Generation: %s", "传输类型：%s，版本代：%s");
+        add("commands.staticlogistics.debug.cache", "Capability Cache: dimensions=%s, entries=%s, live=%s, stale=%s", "能力缓存：维度=%s，条目=%s，有效=%s，失效=%s");
+        add("commands.staticlogistics.debug.help", "Use /sl debug types or /sl debug cache for details.", "使用 /sl debug types 或 /sl debug cache 查看详情。");
+        add("commands.staticlogistics.debug.cache_header", "Capability Cache", "能力缓存");
+        add("commands.staticlogistics.debug.cache_stats", "Dimensions: %s, Entries: %s, Live: %s, Stale: %s", "维度：%s，条目：%s，有效：%s，失效：%s");
+        add("commands.staticlogistics.debug.types_header", "Transfer Types", "传输类型");
+        add("commands.staticlogistics.debug.type_line", "%s bitOffset=%s legacyMask=%s handler=%s", "%s bitOffset=%s 旧掩码=%s 处理器=%s");
 
         add("commands.staticlogistics.stats.header", "═════ StaticLogistics Stats ═════", "═════ StaticLogistics 传输统计 ═════");
         add("commands.staticlogistics.stats.total", "Total Transfers: %s", "总传输次数：%s");

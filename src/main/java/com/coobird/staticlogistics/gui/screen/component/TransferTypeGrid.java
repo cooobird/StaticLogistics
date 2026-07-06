@@ -3,12 +3,14 @@ package com.coobird.staticlogistics.gui.screen.component;
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,14 +30,14 @@ public class TransferTypeGrid {
     private static final int START_Y_OFFSET = 18;
 
     public static void render(GuiGraphics g, ItemStack stack, int leftPos, int topPos, int mx, int my) {
-        int mask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK, 0);
         List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
+        List<ResourceLocation> selectedTypeIds = getSelectedTypeIds(stack, types);
         int startX = leftPos + START_X_OFFSET;
         int startY = topPos + START_Y_OFFSET;
 
         for (int i = 0; i < types.size(); i++) {
             LogisticsResource<?> type = types.get(i);
-            boolean isSelected = (mask & type.getFlag()) != 0;
+            boolean isSelected = TransferTypeSelection.isSelected(selectedTypeIds, type);
             int row = i / PER_ROW;
             int col = i % PER_ROW;
             int baseX = startX + col * (BTN_WIDTH + SPACING);
@@ -67,11 +69,11 @@ public class TransferTypeGrid {
         List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
         int startX = leftPos + START_X_OFFSET;
         int startY = topPos + START_Y_OFFSET;
-        int mask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK, 0);
+        List<ResourceLocation> selectedTypeIds = getSelectedTypeIds(stack, types);
 
         for (int i = 0; i < types.size(); i++) {
             LogisticsResource<?> type = types.get(i);
-            boolean isSelected = (mask & type.getFlag()) != 0;
+            boolean isSelected = TransferTypeSelection.isSelected(selectedTypeIds, type);
             int row = i / PER_ROW;
             int col = i % PER_ROW;
             int baseX = startX + col * (BTN_WIDTH + SPACING);
@@ -111,10 +113,17 @@ public class TransferTypeGrid {
         if (idx < 0 || idx >= types.size()) return null;
 
         LogisticsResource<?> clicked = types.get(idx);
-        int mask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK, 0);
-        int newMask = mask ^ clicked.getFlag();
-        PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_TYPES_MASK, newMask);
+        List<ResourceLocation> newSelection = TransferTypeSelection.toggle(getSelectedTypeIds(stack, types), clicked);
+        PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_TYPES.get(), newSelection);
+        PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), TransferTypeSelection.toMask(newSelection, types));
         return clicked;
+    }
+
+    private static List<ResourceLocation> getSelectedTypeIds(ItemStack stack, List<LogisticsResource<?>> activeTypes) {
+        List<ResourceLocation> selectedTypeIds = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_TYPES.get());
+        if (selectedTypeIds != null) return selectedTypeIds;
+        int legacyMask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+        return TransferTypeSelection.fromMask(legacyMask, activeTypes);
     }
 
     public static void renderTooltip(GuiGraphics g, Font font, LogisticsResource<?> type, int mx, int my) {

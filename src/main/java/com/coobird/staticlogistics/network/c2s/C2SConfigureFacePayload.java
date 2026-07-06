@@ -90,6 +90,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
                     buf -> {
                         buf.writeBlockPos(pos);
                         buf.writeEnum(face);
+                        NodeConfiguratorMenu.writeInitialTypeData(buf, StaticLogistics.asResource("item"), config);
                     });
             }
             return;

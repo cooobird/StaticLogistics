@@ -3,11 +3,13 @@ package com.coobird.staticlogistics.logic.event;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.storage.link.LinkManager;
+import com.coobird.staticlogistics.transfer.handler.CapabilityCache;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -25,6 +27,7 @@ public class SLLevelEvents {
         if (event.isCanceled()) return;
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         try {
+            CapabilityCache.clearPositionAndNeighbors(level, event.getPos());
             LinkManager mgr = LinkManager.get(level);
             mgr.onBlockRemoved(event.getPos());
             mgr.markOrphanScanNeeded();
@@ -39,6 +42,9 @@ public class SLLevelEvents {
         List<BlockPos> affected = event.getAffectedBlocks();
         if (affected.isEmpty()) return;
         try {
+            for (BlockPos pos : affected) {
+                CapabilityCache.clearPositionAndNeighbors(level, pos);
+            }
             LinkManager mgr = LinkManager.get(level);
             mgr.onBlocksRemovedBulk(affected);
             mgr.markOrphanScanNeeded();
@@ -51,11 +57,27 @@ public class SLLevelEvents {
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (!event.getLevel().isClientSide()) {
             if (event.getLevel() instanceof ServerLevel serverLevel) {
+                CapabilityCache.clearDimension(serverLevel);
                 LinkManager mgr = LinkManager.get(serverLevel);
                 if (mgr != null) {
                     mgr.shutdown();
                 }
             }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
+        if (event.isCanceled()) return;
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        CapabilityCache.clearPosition(level, event.getPos());
+        event.getNotifiedSides().forEach(side -> CapabilityCache.clearPosition(level, event.getPos().relative(side)));
+    }
+
+    @SubscribeEvent
+    public static void onChunkUnload(ChunkEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            CapabilityCache.clearChunk(level, event.getChunk().getPos());
         }
     }
 

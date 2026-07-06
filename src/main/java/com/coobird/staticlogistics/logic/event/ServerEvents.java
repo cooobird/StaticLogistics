@@ -4,13 +4,14 @@ import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtens
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
+import com.coobird.staticlogistics.command.SLCommands;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logic.ToolMode;
-import com.coobird.staticlogistics.registry.SLCommands;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.link.LinkManager;
+import com.coobird.staticlogistics.transfer.handler.CapabilityCache;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -132,6 +133,7 @@ public class ServerEvents {
         if (event.getLevel().isClientSide()) return;
         if (!(event.getEntity() instanceof Player player)) return;
         if (!(event.getLevel() instanceof Level level)) return;
+        CapabilityCache.clearPositionAndNeighbors(level, event.getPos());
 
         ItemStack stack = player.getMainHandItem();
         if (!PortItemStackExtension.hasData(stack, SLDataComponents.STORED_BE_NBT.get())) {
@@ -159,6 +161,7 @@ public class ServerEvents {
             }
             newBe.setChanged();
             level.sendBlockUpdated(pos, level.getBlockState(pos), level.getBlockState(pos), 3);
+            CapabilityCache.clearPositionAndNeighbors(level, pos);
 
             if (!player.getAbilities().instabuild) {
                 PortItemStackExtension.removeData(stack, SLDataComponents.STORED_BE_NBT.get());

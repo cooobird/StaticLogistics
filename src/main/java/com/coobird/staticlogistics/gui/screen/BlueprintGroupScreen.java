@@ -288,7 +288,7 @@ public class BlueprintGroupScreen extends Screen {
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP.get(), groupId);
         SelectionContext.setSelection(groupId, 0);
         SLNetwork.HANDLER.sendToServer(
-            new C2SUpdateToolSettingsPayload(groupId, 0, 0));
+            new C2SUpdateToolSettingsPayload(groupId, 0, java.util.List.of()));
         playClickSound();
     }
 

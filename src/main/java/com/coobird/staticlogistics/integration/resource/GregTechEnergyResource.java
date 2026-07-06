@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.gregtechceu.gtceu.api.capability.GTCapability;
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
 import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
@@ -133,10 +132,5 @@ public class GregTechEnergyResource implements LogisticsResource<IEnergyContaine
             LOGGER.error("GregTech EU insert failed", e);
             return 0;
         }
-    }
-
-    public static void register() {
-        TransferRegistries.registerAdapter(new GregTechEnergyResource());
-        LOGGER.info("Registered GregTech EU energy transfer support");
     }
 }

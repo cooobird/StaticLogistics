@@ -9,6 +9,7 @@ import com.coobird.staticlogistics.util.LogisticsCalculator;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,10 +27,10 @@ public class FaceConfigComposite {
     public final FaceConfig faceConfig;
     public final LinkConfig linkConfig;
     public final FilterConfig filterConfig;
+    public final TransferTypeSelectionConfig typeSelectionConfig;
     public ContainerConfig sharedContainerConfig;
 
     private final Set<LogisticsNode> linkedNodes = new LinkedHashSet<>();
-    private int selectedTypesMask = 0;
     private long version = 0;
     private Consumer<FaceConfigComposite> onDirty = (c) -> {
     };
@@ -43,6 +44,7 @@ public class FaceConfigComposite {
         this.faceConfig = new FaceConfig();
         this.linkConfig = new LinkConfig();
         this.filterConfig = new FilterConfig();
+        this.typeSelectionConfig = new TransferTypeSelectionConfig();
         setupDirtyCallback();
     }
 
@@ -52,6 +54,7 @@ public class FaceConfigComposite {
         this.faceConfig.setOnDirty(c -> markDirty());
         this.linkConfig.setOnDirty(c -> markDirty());
         this.filterConfig.setOnDirty(c -> markDirty());
+        this.typeSelectionConfig.setOnDirty(c -> markDirty());
     }
 
     public BulkEdit beginBulkEdit() {
@@ -232,21 +235,26 @@ public class FaceConfigComposite {
     public boolean isDefault() {
         return faceConfig.isDefault() && linkConfig.isDefault() && filterConfig.isDefault() &&
             (sharedContainerConfig == null || sharedContainerConfig.isDefault()) &&
-            linkedNodes.isEmpty() && !globalInputEnabled && !globalOutputEnabled;
+            linkedNodes.isEmpty() && typeSelectionConfig.isDefault() && !globalInputEnabled && !globalOutputEnabled;
+    }
+
+    public List<ResourceLocation> getSelectedTypeIds() {
+        return typeSelectionConfig.getSelectedTypeIds();
+    }
+
+    public void setSelectedTypeIds(java.util.Collection<ResourceLocation> ids) {
+        typeSelectionConfig.setSelectedTypeIds(ids);
     }
 
     public int getSelectedTypesMask() {
-        return selectedTypesMask;
+        return typeSelectionConfig.getLegacyMask();
     }
 
     public void setSelectedTypesMask(int mask) {
-        if (this.selectedTypesMask != mask) {
-            this.selectedTypesMask = mask;
-            markDirty();
-        }
+        typeSelectionConfig.setLegacyMask(mask);
     }
 
     public boolean isTypeSelected(LogisticsResource<?> type) {
-        return (selectedTypesMask & type.getFlag()) != 0;
+        return typeSelectionConfig.isTypeSelected(type);
     }
 }

@@ -6,12 +6,14 @@ import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.item.handler.*;
 import com.coobird.staticlogistics.item.util.LinkOperationHelper;
 import com.coobird.staticlogistics.logic.ToolMode;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -65,10 +67,15 @@ public class LinkConfiguratorItem extends Item {
         return super.getDefaultAttributeModifiers(slot);
     }
 
-    public record ToolSettings(ToolMode mode, int typeMask, String group, List<LogisticsNode> storedNodes,
+    public record ToolSettings(ToolMode mode, List<ResourceLocation> selectedTypeIds, String group,
+                               List<LogisticsNode> storedNodes,
                                @Nullable ToolMode storedMode) {
         public List<LogisticsResource<?>> getSelectedTypes() {
-            return TransferRegistries.getAllActive().stream().filter(type -> (typeMask & type.getFlag()) != 0).toList();
+            return TransferTypeSelection.selectedTypes(selectedTypeIds, TransferRegistries.getAllActive());
+        }
+
+        public int getSelectedTypesMask() {
+            return TransferTypeSelection.toMask(selectedTypeIds, TransferRegistries.getAllActive());
         }
     }
 
@@ -76,16 +83,21 @@ public class LinkConfiguratorItem extends Item {
         try {
             Integer sModeIdx = PortItemStackExtension.getData(stack, SLDataComponents.STORED_MODE.get());
             List<LogisticsNode> storedNodes = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.STORED_NODES.get(), List.of());
+            List<ResourceLocation> selectedTypeIds = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_TYPES.get());
+            if (selectedTypeIds == null) {
+                int legacyMask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+                selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
+            }
             return new ToolSettings(
                 ToolMode.fromId(PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE.get(), 0)),
-                PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0),
+                selectedTypeIds,
                 PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), ""),
                 storedNodes,
                 sModeIdx != null ? ToolMode.fromId(sModeIdx) : null
             );
         } catch (Exception e) {
             // Registry objects may not be present during early loading (e.g. creative tab search tree building)
-            return new ToolSettings(ToolMode.WRENCH, 0, "", List.of(), null);
+            return new ToolSettings(ToolMode.WRENCH, List.of(), "", List.of(), null);
         }
     }
 

@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.transfer.handler;
 
 import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferContext;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;

@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.hollingsworth.arsnouveau.api.source.ISourceTile;
 import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
 import com.mojang.logging.LogUtils;
@@ -96,10 +95,5 @@ public class ArsSourceResource implements LogisticsResource<ISourceTile> {
             LOGGER.error("Ars source insert failed", e);
             return 0;
         }
-    }
-
-    public static void register() {
-        TransferRegistries.registerAdapter(new ArsSourceResource());
-        LOGGER.info("Registered Ars Nouveau source transfer support");
     }
 }

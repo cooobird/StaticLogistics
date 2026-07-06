@@ -10,6 +10,8 @@ import com.coobird.staticlogistics.gui.screen.NodeConfiguratorScreen;
 import com.coobird.staticlogistics.item.BlueprintItem;
 import com.coobird.staticlogistics.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logic.ToolMode;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
@@ -21,6 +23,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -34,6 +37,8 @@ import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.mesdag.portlib.event.client.PortRegisterMenuScreensEvent;
+
+import java.util.List;
 
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
@@ -74,14 +79,18 @@ public class ClientEvents {
             event.setCanceled(true);
             String currentGroup = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP, "");
             int currentMode = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE, 0);
-            int typeMask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK, 0);
+            List<ResourceLocation> selectedTypeIds = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_TYPES.get());
+            if (selectedTypeIds == null) {
+                int legacyMask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+                selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
+            }
 
             ToolMode mode = ToolMode.fromId(currentMode);
             ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
             int nextMode = newMode.getId();
 
             PortItemStackExtension.setData(stack, SLDataComponents.TOOL_MODE, nextMode);
-            SLNetwork.HANDLER.sendToServer(new C2SUpdateToolSettingsPayload(currentGroup, nextMode, typeMask));
+            SLNetwork.HANDLER.sendToServer(new C2SUpdateToolSettingsPayload(currentGroup, nextMode, selectedTypeIds));
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.get(), 1.2f, 0.4f));
             return;
         }

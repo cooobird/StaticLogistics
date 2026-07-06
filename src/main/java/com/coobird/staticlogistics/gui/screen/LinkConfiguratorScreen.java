@@ -5,6 +5,8 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.gui.screen.component.*;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.C2SCreateEmptyGroupPayload;
 import com.coobird.staticlogistics.network.c2s.C2SDeleteGroupPayload;
@@ -15,9 +17,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.List;
 import java.util.Objects;
 
 public class LinkConfiguratorScreen extends Screen {
@@ -226,8 +230,12 @@ public class LinkConfiguratorScreen extends Screen {
         SelectionContext.setSelection(groupId, modeIdx);
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP.get(), groupId);
         PortItemStackExtension.setData(stack, SLDataComponents.TOOL_MODE.get(), modeIdx);
-        int typeMask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-        SLNetwork.HANDLER.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, typeMask));
+        List<ResourceLocation> selectedTypeIds = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_TYPES.get());
+        if (selectedTypeIds == null) {
+            int legacyMask = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
+        }
+        SLNetwork.HANDLER.sendToServer(new C2SUpdateToolSettingsPayload(groupId, modeIdx, selectedTypeIds));
 
         if (playSound) playClickSound();
     }

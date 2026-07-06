@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
 import com.mojang.logging.LogUtils;
@@ -97,9 +96,5 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
         if (!(value instanceof GasStack stack) || stack.isEmpty()) return false;
         GasStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
         return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
-    }
-
-    public static void register() {
-        TransferRegistries.registerAdapter(new MekanismGasResource());
     }
 }

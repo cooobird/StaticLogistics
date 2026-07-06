@@ -4,8 +4,8 @@ import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtens
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.filter.FilterData;
-import com.coobird.staticlogistics.logic.TransferRegistries;
 import com.coobird.staticlogistics.logic.group.GroupService;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
 import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
 import com.coobird.staticlogistics.registry.SLDataComponents;
 import com.coobird.staticlogistics.storage.link.LinkManager;

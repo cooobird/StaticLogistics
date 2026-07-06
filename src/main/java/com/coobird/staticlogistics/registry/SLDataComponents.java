@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.filter.FilterData;
 import com.coobird.staticlogistics.item.blueprint.BlueprintData;
 import com.mojang.serialization.Codec;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import org.mesdag.portlib.component.PortDataComponentType;
 import org.mesdag.portlib.network.codec.PortByteBufCodecs;
 import org.mesdag.portlib.registries.PortDataComponentRegistration;
@@ -25,6 +26,10 @@ public class SLDataComponents {
 
     public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<Integer>> SELECTED_TYPES_MASK =
         DATA_COMPONENT_TYPES.builder("selected_types_mask", b -> b.persistent(Codec.INT).networkSynchronized(PortByteBufCodecs.VAR_INT));
+
+    public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<List<ResourceLocation>>> SELECTED_TYPES =
+        DATA_COMPONENT_TYPES.builder("selected_types", b -> b.persistent(Codec.list(ResourceLocation.CODEC))
+            .networkSynchronized(PortByteBufCodecs.fromCodecWithRegistries(Codec.list(ResourceLocation.CODEC))));
 
     public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<Integer>> TOOL_MODE =
         DATA_COMPONENT_TYPES.builder("tool_mode", b -> b.persistent(Codec.INT).networkSynchronized(PortByteBufCodecs.VAR_INT));

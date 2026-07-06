@@ -7,7 +7,9 @@ import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
 import com.coobird.staticlogistics.gui.screen.component.NodeConfigControls;
 import com.coobird.staticlogistics.logic.DistributionStrategyRegistry;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
+import com.coobird.staticlogistics.network.ConfigEditKeys;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
 import com.coobird.staticlogistics.storage.model.ContainerConfig;
@@ -506,7 +508,7 @@ public class NodeConfiguratorScreen extends AbstractConfiguratorScreen<NodeConfi
 
     private void syncType() {
         CompoundTag t = new CompoundTag();
-        t.putInt("selected_types_mask", menu.getSelectedTypesMask());
+        TransferTypeSelection.writeIds(t, ConfigEditKeys.SELECTED_TYPES, menu.getSelectedTypeIds());
         SLNetwork.HANDLER.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(), t));
     }
 }

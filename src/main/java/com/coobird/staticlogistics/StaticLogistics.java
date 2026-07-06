@@ -3,10 +3,10 @@ package com.coobird.staticlogistics;
 import com.coobird.staticlogistics.client.event.ClientEvents;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.datagen.SLLanguageProvider;
-import com.coobird.staticlogistics.integration.ExtendedTypeRegisterHandler;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
-import com.coobird.staticlogistics.logic.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferRegistries;
+import com.coobird.staticlogistics.logic.type.TransferTypeBootstrap;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.registry.SLCreativeTabs;
 import com.coobird.staticlogistics.registry.SLDataComponents;
@@ -58,8 +58,7 @@ public class StaticLogistics {
         LOGGER.info("Static Logistics: Starting common setup...");
         event.enqueueWork(() -> {
             SLTags.init();
-            TransferRegistries.init();
-            ExtendedTypeRegisterHandler.init();
+            TransferTypeBootstrap.init();
             LOGGER.info("Static Logistics: Logistics system successfully initialized with {} active transfer types.", TransferRegistries.getAllActive().size());
         });
     }
