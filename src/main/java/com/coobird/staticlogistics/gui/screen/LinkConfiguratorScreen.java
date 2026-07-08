@@ -108,7 +108,7 @@ public class LinkConfiguratorScreen extends Screen {
             newGroupWidget.cancelEdit();
         this.setFocused(null);
 
-        int clickedMode = LeftSidebar.getClickedMode(mx, my, leftPos, topPos, modeIdx);
+        int clickedMode = LeftSidebar.getClickedMode(mx, my, leftPos, topPos);
         if (clickedMode >= 0) {
             this.modeIdx = clickedMode;
             syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), true);

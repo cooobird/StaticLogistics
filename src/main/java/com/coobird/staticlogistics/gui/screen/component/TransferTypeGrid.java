@@ -98,20 +98,9 @@ public class TransferTypeGrid {
         List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
         if (types.isEmpty()) return null;
 
-        int startX = leftPos + START_X_OFFSET;
-        int startY = topPos + START_Y_OFFSET;
-        int rows = (types.size() + PER_ROW - 1) / PER_ROW;
+        LogisticsResource<?> clicked = getHoveredType(mx, my, stack, leftPos, topPos);
+        if (clicked == null) return null;
 
-        if (mx < startX || mx >= startX + PER_ROW * (BTN_WIDTH + SPACING)
-            || my < startY || my >= startY + rows * ROW_SPACING)
-            return null;
-
-        int col = (int) ((mx - startX) / (BTN_WIDTH + SPACING));
-        int row = (int) ((my - startY) / ROW_SPACING);
-        int idx = row * PER_ROW + col;
-        if (idx < 0 || idx >= types.size()) return null;
-
-        LogisticsResource<?> clicked = types.get(idx);
         List<ResourceLocation> selectedTypeIds = getSelectedTypeIds(stack, types);
         List<ResourceLocation> newSelection = TransferTypeSelection.toggle(selectedTypeIds, clicked);
         stack.set(SLDataComponents.SELECTED_TYPES.get(), newSelection);

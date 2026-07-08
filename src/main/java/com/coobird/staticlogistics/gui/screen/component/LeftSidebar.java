@@ -15,12 +15,14 @@ import java.util.List;
 public class LeftSidebar {
 
     public static final int MODE_COUNT = 5;
+    private static final int MODE_Y = 13;
+    private static final int MODE_STEP = 19;
 
     // ---- 渲染 ----
 
     public static void render(GuiGraphics g, Font font, int leftPos, int topPos, int modeIdx) {
         for (int i = 0; i < MODE_COUNT; i++) {
-            int ry = topPos + 13 + (i * 19);
+            int ry = topPos + MODE_Y + (i * MODE_STEP);
             boolean sel = (i == modeIdx);
             int bw = sel ? SLGuiTextures.Button.Middle.SELECTED_WIDTH : SLGuiTextures.Button.Middle.WIDTH;
             int bh = sel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
@@ -57,18 +59,20 @@ public class LeftSidebar {
     /**
      * 检测鼠标是否点击了某个模式标签，返回索引（0..MODE_COUNT-1），未命中返回 -1。
      */
-    public static int getClickedMode(double mx, double my, int leftPos, int topPos, int modeIdx) {
-        if (mx < leftPos - 25 || mx >= leftPos) return -1;
+    public static int getClickedMode(double mx, double my, int leftPos, int topPos) {
         for (int i = 0; i < MODE_COUNT; i++) {
-            int ry = topPos + 7 + (i * 19);
-            boolean isSel = (i == modeIdx);
-            int bh = isSel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
-            int by = isSel ? ry - 1 : ry;
-            if (my >= by && my < by + bh) {
+            if (isModeHit(mx, my, leftPos, topPos, i)) {
                 return i;
             }
         }
         return -1;
+    }
+
+    private static boolean isModeHit(double mx, double my, int leftPos, int topPos, int index) {
+        int x = leftPos - SLGuiTextures.Button.Middle.SELECTED_WIDTH;
+        int y = topPos + MODE_Y + (index * MODE_STEP) - 1;
+        return mx >= x && mx < leftPos
+            && my >= y && my < y + SLGuiTextures.Button.Middle.SELECTED_HEIGHT;
     }
 
     // ---- Tooltip ----
@@ -76,10 +80,7 @@ public class LeftSidebar {
     public static void renderTooltip(GuiGraphics g, Font font, int mx, int my,
                                      int leftPos, int topPos) {
         for (int i = 0; i < MODE_COUNT; i++) {
-            int ry = topPos + 13 + (i * 19);
-            int bw = SLGuiTextures.Button.Middle.WIDTH;
-            int bh = SLGuiTextures.Button.Middle.HEIGHT;
-            if (mx >= leftPos - 25 + bw - 26 && mx < leftPos && my >= ry - 1 && my < ry - 1 + bh) {
+            if (isModeHit(mx, my, leftPos, topPos, i)) {
                 List<Component> tooltip = new ArrayList<>();
                 String key = switch (i) {
                     case 0 -> "mode.staticlogistics.wrench";
