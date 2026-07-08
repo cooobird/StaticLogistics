@@ -58,7 +58,7 @@ public class LinkConfiguratorScreen extends Screen {
 
         TitleBar.render(g, this.font, leftPos, topPos,
             SLGuiTextures.Background.WIDTH, this.title.getString());
-        LeftSidebar.render(g, this.font, leftPos, topPos, modeIdx);
+        LeftSidebar.render(g, leftPos, topPos, modeIdx);
         groupPanel.render(g, this.font, stack, leftPos, topPos, mx, my, pt);
         newGroupWidget.render(g, this.font, leftPos, topPos, mx, my, pt);
         TransferTypeGrid.render(g, stack, leftPos, topPos, mx, my);
@@ -109,7 +109,7 @@ public class LinkConfiguratorScreen extends Screen {
             newGroupWidget.cancelEdit();
         this.setFocused(null);
 
-        int clickedMode = LeftSidebar.getClickedMode(mx, my, leftPos, topPos, modeIdx);
+        int clickedMode = LeftSidebar.getClickedMode(mx, my, leftPos, topPos);
         if (clickedMode >= 0) {
             this.modeIdx = clickedMode;
             syncSettings(PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), ""), true);

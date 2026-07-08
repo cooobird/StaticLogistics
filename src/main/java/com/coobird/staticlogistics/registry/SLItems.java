@@ -19,14 +19,7 @@ import static com.coobird.staticlogistics.StaticLogistics.chineseProviders;
  * 注册模组的所有物品，包括连接配置器、各种升级插件（速度/范围/堆叠/过滤）。
  */
 public class SLItems {
-    /**
-     * 物品延迟注册器
-     */
-    public static final DeferredRegister ITEMS = DeferredRegister.create(net.minecraft.core.registries.Registries.ITEM, StaticLogistics.MODID);
-    /**
-     * 方块物品延迟注册器（方块对应的物品形态）
-     */
-    public static final DeferredRegister BLOCK_ITEMS = DeferredRegister.create(net.minecraft.core.registries.Registries.ITEM, StaticLogistics.MODID);
+    public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(net.minecraft.core.registries.Registries.ITEM, StaticLogistics.MODID);
 
     /**
      * 连接配置器：核心工具，用于配置物流节点之间的连接
@@ -147,11 +140,7 @@ public class SLItems {
         return item;
     }
 
-    /**
-     * 将所有物品和方块物品注册到事件总线
-     */
     public static void register(IEventBus eventBus) {
         ITEMS.register(eventBus);
-        BLOCK_ITEMS.register(eventBus);
     }
 }

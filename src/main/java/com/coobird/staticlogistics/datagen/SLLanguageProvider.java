@@ -13,7 +13,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.Block;
 import net.minecraftforge.common.data.LanguageProvider;
 import net.minecraftforge.registries.RegistryObject;
 
@@ -523,11 +522,7 @@ public class SLLanguageProvider extends LanguageProvider {
         super.add(key, this.locale.equals("zh_cn") ? zh : en);
     }
 
-    public void addBlock(RegistryObject<Block> key, String zh) {
-        this.add(key.get().getDescriptionId(), toTitleCase(key.get().getDescriptionId()), zh);
-    }
-
-    public void addItem(RegistryObject<Item> key, String zh) {
+    public void addItem(RegistryObject<? extends Item> key, String zh) {
         this.add(key.get().getDescriptionId(), toTitleCase(key.get().getDescriptionId()), zh);
     }
 
