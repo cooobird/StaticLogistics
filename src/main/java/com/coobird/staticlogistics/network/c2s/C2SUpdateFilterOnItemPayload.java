@@ -1,17 +1,13 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
-import com.coobird.staticlogistics.filter.FilterData;
-import com.coobird.staticlogistics.logic.group.GroupService;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
-import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.NodeMutationService;
+import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.GlobalPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -19,7 +15,6 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record C2SUpdateFilterOnItemPayload(
@@ -50,31 +45,26 @@ public record C2SUpdateFilterOnItemPayload(
 
     public static void handle(final C2SUpdateFilterOnItemPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            var player = context.player();
-            if (!(player.level() instanceof ServerLevel serverLevel)) return;
+            if (!(context.player() instanceof ServerPlayer player)
+                || !(player.level() instanceof ServerLevel serverLevel)
+                || !ServerPacketRateLimiter.allow(
+                    player, ServerPacketRateLimiter.Action.FILTER_UPDATE)) return;
 
-            LinkManager manager = LinkManager.get(serverLevel);
-            long key = LinkManager.posToKey(payload.pos(), payload.face());
-            FaceConfigComposite config = manager.getFaceConfig(key);
-            if (config == null) return;
-            if (!config.canPlayerModify(player)) return;
-
-            LogisticsResource<?> type = TransferRegistries.get(payload.typeId());
-            if (type == null) return;
-
-            int slotIndex = payload.isInput() ? 0 : 1;
-            ItemStack upgradeStack = config.filterConfig.getUpgrades().getStackInSlot(slotIndex);
-            if (upgradeStack.isEmpty()) return;
-
-            upgradeStack.set(SLDataComponents.FILTER_DATA.get(), payload.filter());
-            config.markDirty();
-            manager.refreshLocalCache(key, payload.pos(), payload.face(), config);
-            manager.syncConfigToClients(payload.pos());
-
-            manager.activateNode(key, payload.pos(), payload.face(), config);
-            if (player instanceof ServerPlayer serverPlayer) {
-                S2CSyncFaceConfigPayload syncPacket = new S2CSyncFaceConfigPayload(GlobalPos.of(serverLevel.dimension(), payload.pos()), payload.face(), config);
-                GroupService.syncToTeamMembers(serverPlayer, syncPacket);
+            NodeMutationService mutations = new NodeMutationService();
+            NodeMutationService.ValidatedNode node = mutations.resolve(
+                player, payload.pos(), payload.face());
+            if (node != null) {
+                int slotIndex = payload.isInput() ? 0 : 1;
+                var upgradeStack = node.config().filterConfig.getUpgrades().getStackInSlot(slotIndex);
+                if (player.containerMenu instanceof FilterConfiguratorMenu menu
+                    && NodeInteractionRules.matchesTarget(
+                        menu.getPos(), menu.getFace(), payload.pos(), payload.face())
+                    && menu.isInput() == payload.isInput()
+                    && menu.getTransferType() != null
+                    && menu.getTransferType().typeId().equals(payload.typeId())
+                    && mutations.updateFilter(node, payload.typeId(), payload.isInput(), payload.filter())) {
+                    menu.commitFilterData(payload.filter(), upgradeStack);
+                }
             }
         });
     }

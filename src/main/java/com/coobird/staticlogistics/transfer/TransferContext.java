@@ -2,12 +2,14 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
-import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.util.LogisticsConstants;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -63,6 +65,28 @@ public final class TransferContext implements ITransferContext {
         return ctx;
     }
 
+    /**
+     * 从公开只读上下文建立一次 core 执行快照，不依赖调用方的具体实现类。
+     */
+    @Nullable
+    public static TransferContext copyOf(ITransferContext source, LogisticsResource<?> expectedType) {
+        if (source == null || expectedType == null || source.level() == null
+            || source.sourceNode() == null || source.typeId() == null
+            || !expectedType.typeId().equals(source.typeId()) || source.limit() <= 0L) {
+            return null;
+        }
+        ServerLevel sourceLevel = source.level().getServer().getLevel(
+            source.sourceNode().gPos().dimension());
+        if (sourceLevel == null) return null;
+        LinkManager manager = LinkManager.get(sourceLevel);
+        FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(source.sourceNode()));
+        if (config == null) return null;
+        TransferContext copied = obtain(sourceLevel, source.sourceNode(), config, expectedType,
+            source.limit(), source.isPullMode(), source.currentTick(), manager);
+        copied.depth = Math.max(0, source.depth()) + 1;
+        return copied;
+    }
+
     public void recycle() {
         this.level = null;
         this.sourceNode = null;
@@ -73,7 +97,7 @@ public final class TransferContext implements ITransferContext {
         this.currentTick = 0;
         this.depth = 0;
         this.linkManager = null;
-        if (POOL.size() < Math.min(LogisticsConstants.Performance.getTransferContextPoolSize(), 200)) {
+        if (POOL.size() < LogisticsConstants.Performance.getTransferContextPoolSize()) {
             POOL.offer(this);
         }
     }
@@ -89,7 +113,7 @@ public final class TransferContext implements ITransferContext {
     }
 
     public int[] getSlotCursor() {
-        return GlobalLogisticsManager.get(level.getServer()).getCursor(sourceNode.toKey(), type);
+        return GlobalLogisticsManager.get(level.getServer()).getCursor(sourceNode, type.typeId());
     }
 
     public ServerLevel level() {
@@ -106,6 +130,11 @@ public final class TransferContext implements ITransferContext {
 
     public LogisticsResource<?> type() {
         return type;
+    }
+
+    @Override
+    public ResourceLocation typeId() {
+        return type.typeId();
     }
 
     public long limit() {

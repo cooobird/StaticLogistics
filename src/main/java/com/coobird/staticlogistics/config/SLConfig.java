@@ -62,14 +62,14 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue CACHE_PROVIDER_SIZE;
     // 缓存哈希表的负载因子
     public static ModConfigSpec.DoubleValue CACHE_LOAD_FACTOR;
-    // 每个面缓存的目标最大数量
-    public static ModConfigSpec.IntValue CACHE_TARGET_SIZE;
 
     // 批量同步数据包每包最大条目数
     public static ModConfigSpec.IntValue NETWORK_MAX_BULK_ENTRIES;
 
-    // 每 tick 处理的节点数量
+    // 每 tick 扫描的节点批次基数
     public static ModConfigSpec.IntValue PERF_TICKER_BATCH_SIZE;
+    // 单维度物流调度的软时间预算（微秒）
+    public static ModConfigSpec.IntValue PERF_TICKER_TIME_BUDGET_US;
     // 冷却清理间隔（tick）
     public static ModConfigSpec.IntValue PERF_CLEAN_INTERVAL;
     // 传输失败后的默认冷却时间（tick）
@@ -108,12 +108,12 @@ public final class SLConfig {
     // 缓存设置缓存值
     private static volatile int cacheProviderSize = 1000;
     private static volatile double cacheLoadFactor = 0.75;
-    private static volatile int cacheTargetSize = 50;
     // 网络设置缓存值
     private static volatile int networkMaxBulkEntries = 100;
 
     // 性能设置缓存值
     private static volatile int perfTickerBatchSize = 50;
+    private static volatile int perfTickerTimeBudgetUs = 1_500;
     private static volatile int perfCleanInterval = 200;
     private static volatile int perfDefaultCooldown = 10;
     private static volatile int perfBatchCleanThreshold = 500;
@@ -136,7 +136,7 @@ public final class SLConfig {
             .define("auto_clean_stored_nodes", autoCleanStoredNodes);
         DEFAULT_ITEM_STACK = builder
             .translation("config.staticlogistics.item_stack_size")
-            .defineInRange("item_stack_size", DefaultItemStack, 1, 64);
+            .defineInRange("item_stack_size", DefaultItemStack, 1, Integer.MAX_VALUE);
         DEFAULT_FLUID_STACK = builder
             .translation("config.staticlogistics.fluid_stack_size")
             .defineInRange("fluid_stack_size", DefaultFluidStack, 1, Integer.MAX_VALUE);
@@ -160,24 +160,24 @@ public final class SLConfig {
         builder.push("performance");
         CACHE_PROVIDER_SIZE = builder
             .translation("config.staticlogistics.cache.provider_size")
-            .comment("Maximum number of provider cache entries. Larger values use more memory but improve cache hit rate.")
+            .comment("Expected active provider count used to size the scheduler index. This does not limit active nodes.")
             .defineInRange("provider_size", 1000, 100, 10000);
         CACHE_LOAD_FACTOR = builder
             .translation("config.staticlogistics.cache.load_factor")
             .comment("Cache load factor. Controls when hash tables resize. 0.75 is standard.")
             .defineInRange("load_factor", 0.75, 0.1, 1.0);
-        CACHE_TARGET_SIZE = builder
-            .translation("config.staticlogistics.cache.target_size")
-            .comment("Maximum number of targets cached per face.")
-            .defineInRange("target_size", 50, 10, 200);
         NETWORK_MAX_BULK_ENTRIES = builder
             .translation("config.staticlogistics.network.max_bulk_entries")
             .comment("Maximum entries per bulk sync packet. Larger values may cause network issues.")
             .defineInRange("max_bulk_entries", 100, 10, 1000);
         PERF_TICKER_BATCH_SIZE = builder
             .translation("config.staticlogistics.performance.ticker_batch_size")
-            .comment("Number of nodes processed per tick. Smaller values reduce lag but increase delay.")
+            .comment("Base number of node/type candidates scanned per tick.")
             .defineInRange("ticker_batch_size", 50, 10, 200);
+        PERF_TICKER_TIME_BUDGET_US = builder
+            .translation("config.staticlogistics.performance.ticker_time_budget_us")
+            .comment("Soft scheduler time budget per dimension tick in microseconds.")
+            .defineInRange("ticker_time_budget_us", 1_500, 100, 10_000);
         PERF_CLEAN_INTERVAL = builder
             .translation("config.staticlogistics.performance.clean_interval")
             .comment("Cooldown cleanup interval in ticks.")
@@ -257,11 +257,11 @@ public final class SLConfig {
     private static void loadPerformanceConfig() {
         cacheProviderSize = CACHE_PROVIDER_SIZE.get();
         cacheLoadFactor = CACHE_LOAD_FACTOR.get();
-        cacheTargetSize = CACHE_TARGET_SIZE.get();
 
         networkMaxBulkEntries = NETWORK_MAX_BULK_ENTRIES.get();
 
         perfTickerBatchSize = PERF_TICKER_BATCH_SIZE.get();
+        perfTickerTimeBudgetUs = PERF_TICKER_TIME_BUDGET_US.get();
         perfCleanInterval = PERF_CLEAN_INTERVAL.get();
         perfDefaultCooldown = PERF_DEFAULT_COOLDOWN.get();
         perfBatchCleanThreshold = PERF_BATCH_CLEAN_THRESHOLD.get();
@@ -328,16 +328,16 @@ public final class SLConfig {
         return (float) cacheLoadFactor;
     }
 
-    public static int getCacheTargetSize() {
-        return cacheTargetSize;
-    }
-
     public static int getNetworkMaxBulkEntries() {
         return networkMaxBulkEntries;
     }
 
     public static int getPerfTickerBatchSize() {
         return perfTickerBatchSize;
+    }
+
+    public static long getPerfTickerTimeBudgetNanos() {
+        return perfTickerTimeBudgetUs * 1_000L;
     }
 
     public static int getPerfCleanInterval() {
@@ -369,7 +369,7 @@ public final class SLConfig {
 
     private static CompoundTag buildConfigTag() {
         CompoundTag tag = new CompoundTag();
-        // general
+        // 通用设置。
         tag.putInt("defaultRadius", DefaultRadius);
         tag.putInt("defaultTickInterval", DefaultTickInterval);
         tag.putInt("itemStack", DefaultItemStack);
@@ -380,18 +380,18 @@ public final class SLConfig {
         tag.putInt("arsSourceStack", ArsSourceStack);
         tag.putInt("botaniaManaStack", BotaniaManaStack);
         tag.putBoolean("autoCleanStoredNodes", autoCleanStoredNodes);
-        // upgrades
+        // 升级设置。
         tag.putInt("ironMult", ironMultCache);
         tag.putInt("goldMult", goldMultCache);
         tag.putInt("diamondMult", diamondMultCache);
         tag.putInt("netheriteMult", netheriteMultCache);
         tag.putInt("netherStarMult", netherStarMultCache);
-        // performance
+        // 性能设置。
         tag.putInt("cacheProviderSize", cacheProviderSize);
         tag.putDouble("cacheLoadFactor", cacheLoadFactor);
-        tag.putInt("cacheTargetSize", cacheTargetSize);
         tag.putInt("networkMaxBulkEntries", networkMaxBulkEntries);
         tag.putInt("tickerBatchSize", perfTickerBatchSize);
+        tag.putInt("tickerTimeBudgetUs", perfTickerTimeBudgetUs);
         tag.putInt("cleanInterval", perfCleanInterval);
         tag.putInt("defaultCooldown", perfDefaultCooldown);
         tag.putInt("batchCleanThreshold", perfBatchCleanThreshold);
@@ -422,9 +422,10 @@ public final class SLConfig {
         netherStarMultCache = tag.getInt("netherStarMult");
         cacheProviderSize = tag.getInt("cacheProviderSize");
         cacheLoadFactor = tag.getDouble("cacheLoadFactor");
-        cacheTargetSize = tag.getInt("cacheTargetSize");
         networkMaxBulkEntries = tag.getInt("networkMaxBulkEntries");
         perfTickerBatchSize = tag.getInt("tickerBatchSize");
+        perfTickerTimeBudgetUs = tag.contains("tickerTimeBudgetUs")
+            ? tag.getInt("tickerTimeBudgetUs") : 1_500;
         perfCleanInterval = tag.getInt("cleanInterval");
         perfDefaultCooldown = tag.getInt("defaultCooldown");
         perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");

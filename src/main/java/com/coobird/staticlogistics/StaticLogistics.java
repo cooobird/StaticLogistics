@@ -4,12 +4,15 @@ import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.datagen.SLLanguageProvider;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.logic.type.TransferTypeBootstrap;
-import com.coobird.staticlogistics.registry.SLCreativeTabs;
-import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.registry.SLItems;
-import com.coobird.staticlogistics.registry.SLMenuTypes;
+import com.coobird.staticlogistics.integration.resource.IntegrationResourceBootstrap;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
+import com.coobird.staticlogistics.content.registry.SLCreativeTabs;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.node.sync.TopologySyncPort;
+import com.coobird.staticlogistics.network.sync.NetworkSyncManager;
+import com.coobird.staticlogistics.content.registry.SLItems;
+import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
@@ -34,6 +37,7 @@ public class StaticLogistics {
     public static final List<Consumer<SLLanguageProvider>> chineseProviders = new CopyOnWriteArrayList<>();
 
     public StaticLogistics(IEventBus modEventBus, ModContainer modContainer) {
+        TopologySyncPort.install(NetworkSyncManager::new);
         SLConfig.register(modContainer);
         if (FMLEnvironment.dist.isClient())
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
@@ -52,6 +56,7 @@ public class StaticLogistics {
         LOGGER.info("Static Logistics: Starting common setup...");
         event.enqueueWork(() -> {
             TransferTypeBootstrap.init();
+            IntegrationResourceBootstrap.init();
             LOGGER.info("Static Logistics: Logistics system successfully initialized with {} active transfer types.", TransferRegistries.getAllActive().size());
         });
     }

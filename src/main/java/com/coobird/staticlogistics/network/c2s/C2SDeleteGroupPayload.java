@@ -1,28 +1,29 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPayload;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
+import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
  * 客户端请求删除指定分组及其所有链接。
  */
-public record C2SDeleteGroupPayload(String groupId) implements CustomPacketPayload {
+public record C2SDeleteGroupPayload(GroupKey groupKey) implements CustomPacketPayload {
 
     public static final Type<C2SDeleteGroupPayload> TYPE = new Type<>(StaticLogistics.asResource("delete_group"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SDeleteGroupPayload> STREAM_CODEC =
-        StreamCodec.composite(
-            ByteBufCodecs.STRING_UTF8, C2SDeleteGroupPayload::groupId,
-            C2SDeleteGroupPayload::new
-        );
+        StreamCodec.composite(GroupKey.STREAM_CODEC, C2SDeleteGroupPayload::groupKey,
+            C2SDeleteGroupPayload::new);
 
     @Override
     public Type<? extends CustomPacketPayload> type() {
@@ -33,22 +34,18 @@ public record C2SDeleteGroupPayload(String groupId) implements CustomPacketPaylo
         context.enqueueWork(() -> {
             var player = context.player();
             if (!(player instanceof ServerPlayer sp)) return;
+            boolean holdsTool = sp.getMainHandItem().getItem() instanceof LinkConfiguratorItem
+                || sp.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
+            if (!holdsTool) return;
             var server = sp.getServer();
             if (server == null) return;
 
-            GlobalLogisticsManager manager = GlobalLogisticsManager.get(server);
-
-            var faceEntries = manager.collectGroupFaceConfigs(payload.groupId());
-
-            // 统一删除分组（包括空分组和有内容的分组）
-            manager.removeGroup(player.getUUID(), payload.groupId());
-
-            if (!faceEntries.isEmpty()) {
-                var s2cEntries = faceEntries.stream()
-                    .map(e -> new S2CRemoveBulkFaceConfigPayload.Entry(e.pos(), e.face()))
-                    .toList();
-                PacketDistributor.sendToPlayer(sp,
-                    new S2CRemoveBulkFaceConfigPayload(s2cEntries));
+            var target = PlayerGroupStore.get(server).findGroup(payload.groupKey());
+            if (target != null && new GroupCommandService(server).delete(sp, payload.groupKey())) {
+                LinkConfiguratorSelection.clearIfSelected(sp, target.key(), target.displayName());
+                TeamPacketSync.send(sp, new S2CGroupDirectoryPayload(
+                    payload.groupKey().ownerId(),
+                    PlayerGroupStore.get(server).getGroupRefs(payload.groupKey().ownerId())));
             }
         });
     }

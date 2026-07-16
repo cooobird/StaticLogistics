@@ -1,7 +1,10 @@
 package com.coobird.staticlogistics.integration.resource;
 
+import com.coobird.staticlogistics.logistics.util.SaturatedMath;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
+
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.hollingsworth.arsnouveau.api.source.ISourceCap;
 import com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry;
@@ -54,8 +57,8 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     }
 
     @Override
-    public boolean isSimpleResource() {
-        return true;
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
     }
 
     @Override
@@ -64,9 +67,14 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     }
 
     @Override
+    public net.neoforged.neoforge.capabilities.BlockCapability<ISourceCap, Direction> blockCapability() {
+        return CapabilityRegistry.SOURCE_CAPABILITY;
+    }
+
+    @Override
     public long extract(ISourceCap handle, long amount, boolean simulate) {
         try {
-            return handle.extractSource((int) amount, simulate);
+            return handle.extractSource(SaturatedMath.toNonNegativeInt(amount), simulate);
         } catch (Exception e) {
             LOGGER.error("Ars source extract failed", e);
             return 0;
@@ -76,7 +84,7 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     @Override
     public long insert(ISourceCap handle, long amount, boolean simulate) {
         try {
-            return handle.receiveSource((int) amount, simulate);
+            return handle.receiveSource(SaturatedMath.toNonNegativeInt(amount), simulate);
         } catch (Exception e) {
             LOGGER.error("Ars source insert failed", e);
             return 0;

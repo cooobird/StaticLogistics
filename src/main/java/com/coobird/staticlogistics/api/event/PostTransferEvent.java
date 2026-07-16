@@ -1,64 +1,25 @@
 package com.coobird.staticlogistics.api.event;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.Event;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
+/** 传输提交后发布的不可变独立事件。 */
+public final class PostTransferEvent extends Event {
+    private final LogisticsNode sourceNode;
+    private final LogisticsNode targetNode;
+    private final ResourceLocation resourceTypeId;
+    private final long transferredAmount;
+    private final boolean success;
 
-/**
- * 传输完成后触发的事件。
- *
- * <p>监听此事件可以实现：
- * <ul>
- *   <li>传输日志记录</li>
- *   <li>传输统计</li>
- *   <li>传输奖励（如成就系统）</li>
- *   <li>联动效果（如传输触发红石信号）</li>
- * </ul>
- *
- * <p>在服务器主线程的传输管线中触发，监听器应尽快返回。
- */
-public class PostTransferEvent extends Event {
-    private static final Deque<PostTransferEvent> POOL = new ArrayDeque<>(64);
-
-    private LogisticsNode sourceNode;
-    private LogisticsNode targetNode;
-    private LogisticsResource<?> resource;
-    private long transferredAmount;
-    private boolean success;
-
-    private PostTransferEvent() {
-    }
-
-    /**
-     * 从对象池获取或创建新实例。
-     */
-    public static PostTransferEvent obtain(LogisticsNode sourceNode, LogisticsNode targetNode,
-                                           LogisticsResource<?> resource, long transferredAmount, boolean success) {
-        PostTransferEvent event = POOL.poll();
-        if (event == null) event = new PostTransferEvent();
-        event.sourceNode = sourceNode;
-        event.targetNode = targetNode;
-        event.resource = resource;
-        event.transferredAmount = transferredAmount;
-        event.success = success;
-        return event;
-    }
-
-    /**
-     * 回收到对象池。
-     */
-    public void recycle() {
-        this.sourceNode = null;
-        this.targetNode = null;
-        this.resource = null;
-        this.transferredAmount = 0;
-        this.success = false;
-        if (POOL.size() < 64) {
-            POOL.offer(this);
-        }
+    public PostTransferEvent(LogisticsNode sourceNode, LogisticsNode targetNode,
+                             ResourceLocation resourceTypeId, long transferredAmount,
+                             boolean success) {
+        this.sourceNode = sourceNode;
+        this.targetNode = targetNode;
+        this.resourceTypeId = resourceTypeId;
+        this.transferredAmount = transferredAmount;
+        this.success = success;
     }
 
     public LogisticsNode getSourceNode() {
@@ -69,8 +30,8 @@ public class PostTransferEvent extends Event {
         return targetNode;
     }
 
-    public LogisticsResource<?> getResource() {
-        return resource;
+    public ResourceLocation getResourceTypeId() {
+        return resourceTypeId;
     }
 
     public long getTransferredAmount() {

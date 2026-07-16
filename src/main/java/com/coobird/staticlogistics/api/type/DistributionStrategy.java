@@ -7,7 +7,7 @@ import net.minecraft.util.StringRepresentable;
 /**
  * 物品分发策略 —— 决定物品按什么顺序分给多个目标节点。
  * <p>
- * 注册和查找由 {@link DistributionStrategyRegistry} 管理。
+ * 注册和查找由 Static Logistics 的策略注册中心管理。
  */
 public record DistributionStrategy(ResourceLocation id, GroupSorter sorter) implements StringRepresentable {
 

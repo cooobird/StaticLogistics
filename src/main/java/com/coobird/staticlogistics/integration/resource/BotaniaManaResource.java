@@ -1,7 +1,8 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -54,8 +55,8 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
-    public boolean isSimpleResource() {
-        return true;
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
     }
 
     /**

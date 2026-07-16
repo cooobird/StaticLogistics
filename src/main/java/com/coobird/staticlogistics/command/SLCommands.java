@@ -1,19 +1,23 @@
 package com.coobird.staticlogistics.command;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logic.group.GroupService;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.ContainerConfig;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.handler.CapabilityCache;
-import com.coobird.staticlogistics.transfer.log.NodeStats;
-import com.coobird.staticlogistics.transfer.log.TransferEntry;
-import com.coobird.staticlogistics.transfer.log.TransferLogManager;
-import com.coobird.staticlogistics.transfer.log.TypeStats;
+import com.coobird.staticlogistics.transfer.NodeQueryService;
+import com.coobird.staticlogistics.transfer.NodeQuerySnapshot;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.ContainerConfig;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
+import com.coobird.staticlogistics.transfer.NodeStats;
+import com.coobird.staticlogistics.transfer.TransferEntry;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
+import com.coobird.staticlogistics.transfer.LogisticsTicker;
+import com.coobird.staticlogistics.transfer.TypeStats;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -102,18 +106,6 @@ public class SLCommands {
     }
 
     /**
-     * 刷新单个节点的本地缓存并同步到客户端
-     */
-    private static void refreshNode(LinkManager manager, long key, FaceConfigComposite config) {
-        BlockPos pos = LogisticsNode.keyToPos(key);
-        Direction face = LogisticsNode.keyToFace(key);
-        manager.refreshLocalCache(key, pos, face, config);
-        manager.syncConfigToClients(pos);
-        manager.markDirtyBatch(() -> {
-        });
-    }
-
-    /**
      * 显示指定位置的容器配置和面配置信息
      */
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
@@ -143,38 +135,37 @@ public class SLCommands {
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_configs_title").withStyle(ChatFormatting.GOLD), false);
         boolean found = false;
         for (Direction dir : Direction.values()) {
-            long key = LinkManager.posToKey(pos, dir);
-            FaceConfigComposite config = manager.getFaceConfig(key);
-            if (config != null && !config.isDefault()) {
+            NodeQuerySnapshot snapshot = NodeQueryService.query(level, pos, dir).orElse(null);
+            if (snapshot != null) {
                 found = true;
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_direction", dir.getName()).withStyle(ChatFormatting.AQUA), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.group",
-                    config.faceConfig.getGroupId()).withStyle(ChatFormatting.WHITE), false);
-                UUID ownerUuid = config.faceConfig.getOwner();
+                    snapshot.groups().isEmpty() ? "" : snapshot.groups().getFirst()).withStyle(ChatFormatting.WHITE), false);
+                UUID ownerUuid = snapshot.ownerId();
                 Component ownerText = (ownerUuid == null)
                     ? Component.translatable("msg.staticlogistics.unknown_owner")
-                    : Component.literal(config.faceConfig.getOwnerName());
+                    : Component.literal(snapshot.ownerName());
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.owner", ownerText.copy()), false);
 
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.global_input",
-                    config.isGlobalInputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
+                    snapshot.inputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
                 ).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.global_output",
-                    config.isGlobalOutputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
+                    snapshot.outputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
                 ).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.input_channel", config.linkConfig.getInputChannel()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.output_channel", config.linkConfig.getOutputChannel()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.strategy", config.linkConfig.getStrategy().getDisplayName()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.priority", config.linkConfig.getPriority()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.input_channel", snapshot.inputChannel()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.output_channel", snapshot.outputChannel()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.strategy", Component.translatable(snapshot.strategyDescriptionId())).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.priority", snapshot.priority()).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.role_version",
-                    config.determineRole().name().toLowerCase(), config.getVersion()).withStyle(ChatFormatting.GRAY), false);
+                    snapshot.role().name().toLowerCase(), snapshot.version()).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.selected_types",
-                    formatSelectedTypes(config)).withStyle(ChatFormatting.GRAY), false);
+                    formatTypes(snapshot.selectedTypeIds())).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.present_capabilities",
-                    formatPresentTypes(level, pos, dir)).withStyle(ChatFormatting.DARK_AQUA), false);
+                    formatTypes(snapshot.presentTypeIds())).withStyle(ChatFormatting.DARK_AQUA), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes_detail",
-                    formatLinkedNodes(config)).withStyle(ChatFormatting.DARK_GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes", config.getLinkedNodes().size()).withStyle(ChatFormatting.DARK_GRAY), false);
+                    formatLinkedNodes(snapshot.linkedNodes())).withStyle(ChatFormatting.DARK_GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes", snapshot.linkedNodes().size()).withStyle(ChatFormatting.DARK_GRAY), false);
             }
         }
         if (!found) {
@@ -183,36 +174,23 @@ public class SLCommands {
         return 1;
     }
 
-    private static String formatSelectedTypes(FaceConfigComposite config) {
-        if (config.getSelectedTypeIds().isEmpty()) return "-";
-        return config.getSelectedTypeIds().stream()
+    private static String formatTypes(List<net.minecraft.resources.ResourceLocation> typeIds) {
+        if (typeIds.isEmpty()) return "-";
+        return typeIds.stream()
             .map(Object::toString)
             .collect(Collectors.joining(", "));
     }
 
-    private static String formatPresentTypes(ServerLevel level, BlockPos pos, Direction face) {
-        List<String> present = new ArrayList<>();
-        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
-            try {
-                if (type.isPresent(level, pos, face)) {
-                    present.add(type.typeId().toString());
-                }
-            } catch (Exception e) {
-                present.add(type.typeId() + "=error");
-            }
+    private static Component formatLinkedNodes(List<LogisticsNode> linkedNodes) {
+        if (linkedNodes.isEmpty()) return Component.literal("-");
+        List<LogisticsNode> nodes = linkedNodes.stream().limit(5).toList();
+        var result = Component.empty();
+        for (int index = 0; index < nodes.size(); index++) {
+            if (index > 0) result.append(Component.literal("; "));
+            result.append(NodeDisplayText.details(nodes.get(index)));
         }
-        return present.isEmpty() ? "-" : String.join(", ", present);
-    }
-
-    private static String formatLinkedNodes(FaceConfigComposite config) {
-        if (config.getLinkedNodes().isEmpty()) return "-";
-        List<String> nodes = config.getLinkedNodes().stream()
-            .limit(5)
-            .map(node -> node.gPos().dimension().location() + " "
-                + node.gPos().pos().toShortString() + " " + node.face().getName())
-            .toList();
-        String suffix = config.getLinkedNodes().size() > nodes.size() ? " ..." : "";
-        return String.join("; ", nodes) + suffix;
+        if (linkedNodes.size() > nodes.size()) result.append(Component.literal(" ..."));
+        return result;
     }
 
     /**
@@ -224,23 +202,13 @@ public class SLCommands {
         ServerPlayer toPlayer = EntityArgument.getPlayer(context, "to");
         MinecraftServer server = context.getSource().getServer();
 
-        int count = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager manager = LinkManager.get(level);
-            for (long key : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
-                if (config != null && fromProfile.getId().equals(config.faceConfig.getOwner())) {
-                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName(), toPlayer.getGameProfile());
-                    refreshNode(manager, key, config);
-                    count++;
-                }
-            }
-        }
-
-        int finalCount = count;
+        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(server);
+        int finalCount = new com.coobird.staticlogistics.logistics.group.OwnershipTransferService(
+            server, globalManager).transfer(context.getSource(), fromProfile.getId(), toPlayer, null);
+        if (finalCount == 0) return 0;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.success",
             finalCount, fromProfile.getName(), toPlayer.getDisplayName()), true);
-        return count;
+        return finalCount;
     }
 
     /**
@@ -253,23 +221,13 @@ public class SLCommands {
         ServerPlayer toPlayer = EntityArgument.getPlayer(context, "to");
         MinecraftServer server = context.getSource().getServer();
 
-        int count = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager manager = LinkManager.get(level);
-            for (long key : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
-                if (config != null && fromProfile.getId().equals(config.faceConfig.getOwner()) && groupId.equals(config.faceConfig.getGroupId())) {
-                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName(), toPlayer.getGameProfile());
-                    refreshNode(manager, key, config);
-                    count++;
-                }
-            }
-        }
-
-        int finalCount = count;
+        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(server);
+        int finalCount = new com.coobird.staticlogistics.logistics.group.OwnershipTransferService(
+            server, globalManager).transfer(context.getSource(), fromProfile.getId(), toPlayer, groupId);
+        if (finalCount == 0) return 0;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.group_success",
             finalCount, groupId, toPlayer.getDisplayName()), true);
-        return count;
+        return finalCount;
     }
 
     /**
@@ -286,7 +244,13 @@ public class SLCommands {
         if (player == null) return 0;
 
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
-        GroupService.renameGroup(level, player, oldGroup, newGroup, globalManager);
+        boolean renamed = GroupService.renameGroupAsAdmin(
+            level, player, profile.getId(), oldGroup, newGroup, globalManager);
+        if (!renamed) {
+            context.getSource().sendFailure(Component.translatable(
+                "commands.staticlogistics.rename.failed", oldGroup, profile.getName()));
+            return 0;
+        }
 
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.rename.success",
             oldGroup, newGroup, profile.getName()), true);
@@ -304,7 +268,7 @@ public class SLCommands {
         int count = 0;
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager manager = LinkManager.get(level);
-            for (long key : new ArrayList<>(manager.getAllConfigKeys())) {
+            for (FaceAddress key : new ArrayList<>(manager.getAllConfigKeys())) {
                 FaceConfigComposite config = manager.getFaceConfig(key);
                 if (config != null && profile.getId().equals(config.faceConfig.getOwner())) {
                     manager.removeFaceConfig(key);
@@ -346,7 +310,7 @@ public class SLCommands {
      * /sl stats：显示传输统计总览（总次数、总量、失败数、按类型分）
      */
     private static int showStatsOverview(CommandContext<CommandSourceStack> ctx) {
-        var mgr = TransferLogManager.get();
+        var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.header").withStyle(ChatFormatting.GOLD), false);
@@ -373,7 +337,7 @@ public class SLCommands {
      * /sl stats recent：显示最近N条传输记录
      */
     private static int showRecentTransfers(CommandContext<CommandSourceStack> ctx, int count) {
-        var mgr = TransferLogManager.get();
+        var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
         var recent = mgr.getRecent(count);
         int size = recent.size();
@@ -396,7 +360,7 @@ public class SLCommands {
      * /sl stats top：显示发送/接收最多的前N个节点排行
      */
     private static int showTopNodes(CommandContext<CommandSourceStack> ctx, int count) {
-        var mgr = TransferLogManager.get();
+        var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_send").withStyle(ChatFormatting.GOLD), false);
@@ -404,7 +368,7 @@ public class SLCommands {
         for (var entry : mgr.getTopNodes(count, true)) {
             NodeStats ns = entry.getValue();
             int r = rArr[0];
-            String posStr = String.format("%d,%d,%d", ns.posX, ns.posY, ns.posZ);
+            String posStr = String.format("%s %d,%d,%d", ns.dim, ns.posX, ns.posY, ns.posZ);
             long sc = ns.sentCount;
             long sa = ns.sentAmount;
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_line", r, ns.face, posStr, sc, sa)
@@ -417,7 +381,7 @@ public class SLCommands {
         for (var entry : mgr.getTopNodes(count, false)) {
             NodeStats ns = entry.getValue();
             int r = rArr[0];
-            String posStr = String.format("%d,%d,%d", ns.posX, ns.posY, ns.posZ);
+            String posStr = String.format("%s %d,%d,%d", ns.dim, ns.posX, ns.posY, ns.posZ);
             long rc = ns.receivedCount;
             long ra = ns.receivedAmount;
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_recv_line", r, ns.face, posStr, rc, ra)
@@ -431,7 +395,7 @@ public class SLCommands {
      * /sl stats reset：重置所有传输统计数据
      */
     private static int resetStats(CommandContext<CommandSourceStack> ctx) {
-        TransferLogManager.get().reset();
+        TransferLogManager.get(ctx.getSource().getServer()).reset();
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.reset").withStyle(ChatFormatting.GREEN), true);
         return 1;
     }
@@ -468,12 +432,17 @@ public class SLCommands {
 
     private static int showDebugOverview(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
-        var cacheStats = CapabilityCache.snapshotStats();
+        var cacheStats = collectCapabilityStats(source.getServer());
+        var schedulerStats = collectSchedulerStats(source.getServer());
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.header").withStyle(ChatFormatting.GOLD), false);
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.transfer_types",
             TransferRegistries.getAllActive().size(), TransferRegistries.generation()).withStyle(ChatFormatting.GRAY), false);
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache",
-                cacheStats.dimensions(), cacheStats.entries(), cacheStats.liveEntries(), cacheStats.staleEntries())
+                cacheStats.dimensions(), cacheStats.entries(), cacheStats.queries(), cacheStats.invalidations())
+            .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.scheduler",
+                schedulerStats.lastMicros(), schedulerStats.peakMicros(), schedulerStats.averageMicros(),
+                schedulerStats.candidates(), schedulerStats.attempts(), schedulerStats.budgetStops())
             .withStyle(ChatFormatting.GRAY), false);
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.help")
             .withStyle(ChatFormatting.DARK_GRAY), false);
@@ -481,13 +450,57 @@ public class SLCommands {
     }
 
     private static int showCacheDebug(CommandContext<CommandSourceStack> ctx) {
-        CapabilityCache.cleanStaleEntries();
-        var stats = CapabilityCache.snapshotStats();
+        var stats = collectCapabilityStats(ctx.getSource().getServer());
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_header")
             .withStyle(ChatFormatting.GOLD), false);
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_stats",
-            stats.dimensions(), stats.entries(), stats.liveEntries(), stats.staleEntries()).withStyle(ChatFormatting.GRAY), false);
+            stats.dimensions(), stats.entries(), stats.queries(), stats.invalidations()).withStyle(ChatFormatting.GRAY), false);
         return 1;
+    }
+
+    private static CapabilityStats collectCapabilityStats(MinecraftServer server) {
+        int dimensions = 0;
+        int entries = 0;
+        long queries = 0;
+        long invalidations = 0;
+        for (ServerLevel level : server.getAllLevels()) {
+            dimensions++;
+            var stats = LinkManager.get(level).getCapabilityCacheStats();
+            entries += stats.entries();
+            queries += stats.queries();
+            invalidations += stats.invalidations();
+        }
+        return new CapabilityStats(dimensions, entries, queries, invalidations);
+    }
+
+    private record CapabilityStats(int dimensions, int entries, long queries, long invalidations) {
+    }
+
+    private static SchedulerDebugStats collectSchedulerStats(MinecraftServer server) {
+        int dimensions = 0;
+        long lastNanos = 0;
+        long peakNanos = 0;
+        long averageNanos = 0;
+        long budgetStops = 0;
+        int candidates = 0;
+        int attempts = 0;
+        for (ServerLevel level : server.getAllLevels()) {
+            dimensions++;
+            var stats = LogisticsTicker.getSchedulerStats(server, level.dimension());
+            lastNanos += stats.lastNanos();
+            peakNanos = Math.max(peakNanos, stats.peakNanos());
+            averageNanos += stats.averageNanos();
+            budgetStops += stats.budgetStops();
+            candidates += stats.candidates();
+            attempts += stats.attempts();
+        }
+        long averageMicros = dimensions == 0 ? 0 : averageNanos / dimensions / 1_000L;
+        return new SchedulerDebugStats(lastNanos / 1_000L, peakNanos / 1_000L,
+            averageMicros, budgetStops, candidates, attempts);
+    }
+
+    private record SchedulerDebugStats(long lastMicros, long peakMicros, long averageMicros,
+                                       long budgetStops, int candidates, int attempts) {
     }
 
     private static int showTypeDebug(CommandContext<CommandSourceStack> ctx) {

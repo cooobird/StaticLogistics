@@ -1,8 +1,11 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.filter.FilterData;
-import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.content.item.UpgradeItem;
+import com.coobird.staticlogistics.content.menu.HandFilterMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -29,8 +32,13 @@ public record C2SUpdateFilterOnHandPayload(FilterData filter) implements CustomP
     public static void handle(final C2SUpdateFilterOnHandPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer sp) {
-                ItemStack stack = sp.getMainHandItem();
+                if (!ServerPacketRateLimiter.allow(
+                    sp, ServerPacketRateLimiter.Action.FILTER_UPDATE)) return;
+                if (!(sp.containerMenu instanceof HandFilterMenu menu) || !menu.stillValid(sp)) return;
+                ItemStack stack = menu.getBoundStack();
+                if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
                 stack.set(SLDataComponents.FILTER_DATA.get(), payload.filter());
+                menu.broadcastChanges();
                 sp.inventoryMenu.broadcastChanges();
             }
         });

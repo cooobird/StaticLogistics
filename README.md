@@ -6,10 +6,10 @@ A Minecraft logistics mod for NeoForge 1.21.1. Item, fluid, energy transfer. Cro
 
 ## Features
 
-- **Unified transfer pipeline** — All resource types (Item/Fluid/Energy/Chemical/Heat/Source/Mana) go through a single `LogisticsResource<C>` interface and `doTransferNodes` pipeline with capability caching, dimension/range/chunk checks, dirty link cleanup, and transfer logging
+- **Unified transfer pipeline** — Built-in resources share one internal pipeline; third-party resources use the public type-safe `ResourceAdapter<C, V>` SPI with capability caching, dimension/range/chunk checks, dirty link cleanup, and transfer logging
 - **Cross-dimension transfer** — Dimension upgrade for inter-dimensional logistics
 - **5 tool modes** — Wrench, Link as Input, Link as Output, Remove Links, Node Config
-- **Per-face configuration** — each of 6 block faces has independent: channels (1–16), priority, distribution strategy, extraction mode, input/output toggle, type mask
+- **Per-face configuration** — each of 6 block faces has independent channels (0/1–16), priority, distribution strategy, extraction mode, input/output toggle, and resource type ID selection
 - **7 upgrade types, 5 tiers each** — Speed, Range, Stack (Iron → Gold → Diamond → Netherite → Nether Star), plus Dimension, Basic Filter, Tag Filter, NBT Filter
 - **Smart filtering** — Basic (item whitelist/blacklist), Tag (item + fluid tags), NBT (exact/partial NBT matching) with 4 match strategies: EXACT, CONTAINS, SMART_CONTAINS, IGNORE
 - **2 extraction modes** — Sequential, Slot Round-Robin
@@ -23,7 +23,7 @@ A Minecraft logistics mod for NeoForge 1.21.1. Item, fluid, energy transfer. Cro
 ## Getting Started
 
 1. Craft the **Link Configurator**
-2. Open GUI (right-click in air) → create or select a group
+2. Hold the Link Configurator and right-click in air → create or select a group
 3. Switch tool mode via left sidebar → right-click block faces to link
 4. Add upgrades and configure filters in the **Node Config** screen (mode 4)
 
@@ -78,7 +78,7 @@ Requires permission level 2.
 | /sl rename <owner> <old> <new>      | Rename a group                                      |
 | /sl cleanup <owner>                 | Delete all nodes owned by a player                  |
 | /sl debug                           | Show transfer registry and capability cache status  |
-| /sl debug cache                     | Clean stale capability cache entries and show stats |
+| /sl debug cache                     | Show per-dimension capability cache statistics      |
 | /sl debug types                     | List active transfer types and legacy bit offsets   |
 
 ## Server Config
@@ -98,9 +98,8 @@ ars_source_stack_size = 100
 botania_mana_stack_size = 1000
 
 [performance]
-provider_size = 1000           # Provider cache entries
+provider_size = 1000           # Expected provider index capacity (not a node limit)
 load_factor = 0.75             # Cache load factor
-target_size = 50               # Targets cached per face
 max_bulk_entries = 100         # Max entries per sync packet
 ticker_batch_size = 50         # Nodes per tick
 clean_interval = 200           # Cooldown cleanup interval (ticks)
@@ -122,14 +121,14 @@ component_strategy_overrides = []  # Format: "namespace:id=STRATEGY"
 
 ## Mod Integrations
 
-| Mod         | Transfer types               | Implementation                                                           |
-|-------------|------------------------------|--------------------------------------------------------------------------|
-| Mekanism    | Chemical, Heat               | `LogisticsResource<IChemicalHandler>`, `LogisticsResource<IHeatHandler>` |
-| Ars Nouveau | Source                       | `LogisticsResource<ISourceCap>`                                          |
-| Botania     | Mana                         | `LogisticsResource<ManaHandle>`                                          |
-| FTB Teams   | Team permissions & ownership | `FTBEventHandlers`                                                       |
+| Mod         | Transfer types               | Implementation                     |
+|-------------|------------------------------|------------------------------------|
+| Mekanism    | Chemical, Heat               | Internal `ResourceAdapter` bridges |
+| Ars Nouveau | Source                       | Internal `ResourceAdapter` bridge  |
+| Botania     | Mana                         | Internal `ResourceAdapter` bridge  |
+| FTB Teams   | Team permissions & ownership | `FTBEventHandlers`                 |
 
-All external mod integrations use the unified `LogisticsResource<C>` interface. See [docs/INTEGRATION.md](docs/INTEGRATION.md) for details on how to add your own.
+Third-party integrations use the public `ResourceAdapter<C, V>` SPI. Built-in optional integrations use the internal bridge directly. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 ## License
 

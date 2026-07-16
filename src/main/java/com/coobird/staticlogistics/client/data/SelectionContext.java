@@ -1,12 +1,14 @@
 package com.coobird.staticlogistics.client.data;
 
-import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * 客户端选择上下文 —— 追踪当前手持连接配置器选中的组 ID 和工具模式。
+ * 客户端选择上下文 —— 追踪当前手持连接配置器选中的稳定分组身份和工具模式。
  *
  * <p>由 {@link com.coobird.staticlogistics.client.render.LinkWorldRenderer}
  * 在渲染前通过 {@link #syncFromItem} 从 ItemStack 同步到静态字段，
@@ -15,15 +17,22 @@ import net.neoforged.api.distmarker.OnlyIn;
 @OnlyIn(Dist.CLIENT)
 public class SelectionContext {
     private static String selectedGroupId = "";
+    private static GroupKey selectedGroupKey;
     private static int selectedMode = 0;
 
-    public static void setSelection(String groupId, int mode) {
+    public static void setSelection(String groupId, @Nullable GroupKey groupKey, int mode) {
         selectedGroupId = groupId;
+        selectedGroupKey = groupKey;
         selectedMode = mode;
     }
 
     public static String getSelectedGroupId() {
         return selectedGroupId;
+    }
+
+    @Nullable
+    public static GroupKey getSelectedGroupKey() {
+        return selectedGroupKey;
     }
 
     public static int getSelectedMode() {
@@ -32,11 +41,13 @@ public class SelectionContext {
 
     public static void syncFromItem(ItemStack stack) {
         selectedGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+        selectedGroupKey = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
         selectedMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
     }
 
     public static void clear() {
         selectedGroupId = "";
+        selectedGroupKey = null;
         selectedMode = 0;
     }
 }

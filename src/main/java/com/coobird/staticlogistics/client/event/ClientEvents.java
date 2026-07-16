@@ -3,20 +3,24 @@ package com.coobird.staticlogistics.client.event;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.gui.screen.FilterConfiguratorScreen;
-import com.coobird.staticlogistics.gui.screen.HandFilterScreen;
-import com.coobird.staticlogistics.gui.screen.NodeConfiguratorScreen;
-import com.coobird.staticlogistics.item.BlueprintItem;
-import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logic.ToolMode;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.logic.type.TransferTypeSelection;
+import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
+import com.coobird.staticlogistics.client.gui.screen.HandFilterScreen;
+import com.coobird.staticlogistics.client.gui.screen.NodeConfiguratorScreen;
+import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
+import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.content.item.BlueprintClientHooks;
+import com.coobird.staticlogistics.client.gui.screen.BlueprintGroupScreen;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorClientHooks;
+import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
-import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.registry.SLMenuTypes;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
@@ -58,8 +62,51 @@ public class ClientEvents {
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
+        event.register(SLKeyMappings.TOOL_MODE_SCROLL);
         event.register(SLKeyMappings.BLUEPRINT_UNDO);
         event.register(SLKeyMappings.CLEAR_STORED_NODES);
+        event.register(SLKeyMappings.QUICK_FILTER_MARK);
+        event.register(SLKeyMappings.PRIORITY_X10);
+        event.register(SLKeyMappings.PRIORITY_X5);
+        event.register(SLKeyMappings.GROUP_DETAILS_AND_EXPORT);
+        LinkConfiguratorClientHooks.install(
+            stack -> Minecraft.getInstance().setScreen(new LinkConfiguratorScreen(stack)));
+        BlueprintClientHooks.install(
+            stack -> Minecraft.getInstance().setScreen(new BlueprintGroupScreen(stack)),
+            (stack, tooltip) -> {
+                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                    "tooltip.staticlogistics.blueprint.use",
+                    net.minecraft.network.chat.Component.keybind("key.sneak")
+                ).withStyle(net.minecraft.ChatFormatting.GRAY));
+                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                    "tooltip.staticlogistics.blueprint.scroll",
+                    SLKeyMappings.BLUEPRINT_PREVIEW_MOVE.getTranslatedKeyMessage(),
+                    SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE.getTranslatedKeyMessage(),
+                    SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y.getTranslatedKeyMessage()
+                ).withStyle(net.minecraft.ChatFormatting.GRAY));
+                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                    "tooltip.staticlogistics.blueprint.undo",
+                    SLKeyMappings.BLUEPRINT_UNDO.getTranslatedKeyMessage()
+                ).withStyle(net.minecraft.ChatFormatting.GRAY));
+                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                    "tooltip.staticlogistics.blueprint.clear",
+                    net.minecraft.network.chat.Component.keybind("key.sneak")
+                ).withStyle(net.minecraft.ChatFormatting.GRAY));
+            },
+            itemId -> {
+                Player player = Minecraft.getInstance().player;
+                if (player == null) return 0;
+                int count = 0;
+                for (int index = 0; index < player.getInventory().getContainerSize(); index++) {
+                    ItemStack slot = player.getInventory().getItem(index);
+                    if (!slot.isEmpty() && net.minecraft.core.registries.BuiltInRegistries.ITEM
+                        .getKey(slot.getItem()).toString().equals(itemId)) {
+                        count += slot.getCount();
+                    }
+                }
+                return count;
+            }
+        );
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -73,22 +120,25 @@ public class ClientEvents {
         ItemStack stack = mc.player.getMainHandItem();
 
         if (stack.getItem() instanceof LinkConfiguratorItem) {
-            if (!mc.player.isShiftKeyDown()) return;
+            if (!SLKeyMappings.TOOL_MODE_SCROLL.isDown()) return;
             event.setCanceled(true);
             String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
             int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
             List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
-            if (selectedTypeIds == null) {
-                int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-                selectedTypeIds = TransferTypeSelection.fromMask(legacyMask, TransferRegistries.getAllActive());
-            }
+            int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            selectedTypeIds = TransferTypeSelection.mergeIdsWithMask(
+                selectedTypeIds == null ? List.of() : selectedTypeIds,
+                legacyMask, TransferRegistries.getAllActive());
 
             ToolMode mode = ToolMode.fromId(currentMode);
             ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
             int nextMode = newMode.getId();
 
             stack.set(SLDataComponents.TOOL_MODE.get(), nextMode);
-            PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(currentGroup, nextMode, selectedTypeIds));
+            PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
+                currentGroup, stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()), nextMode,
+                selectedTypeIds,
+                stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0)));
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
             return;
         }
@@ -132,7 +182,7 @@ public class ClientEvents {
         if (mc.player == null || mc.screen != null) return;
         if (event.getAction() != 1) return;
 
-        if (SLKeyMappings.CLEAR_STORED_NODES.consumeClick() && mc.player.isShiftKeyDown()) {
+        if (SLKeyMappings.CLEAR_STORED_NODES.consumeClick()) {
             ItemStack stack = mc.player.getMainHandItem();
             if (!(stack.getItem() instanceof LinkConfiguratorItem))
                 stack = mc.player.getOffhandItem();
@@ -141,7 +191,7 @@ public class ClientEvents {
             }
         }
 
-        if (SLKeyMappings.BLUEPRINT_UNDO.consumeClick() && net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+        if (SLKeyMappings.BLUEPRINT_UNDO.consumeClick()) {
             ItemStack stack = mc.player.getMainHandItem();
             if (stack.getItem() instanceof BlueprintItem) {
                 PacketDistributor.sendToServer(new C2SBlueprintUndoPayload());

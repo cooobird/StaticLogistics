@@ -1,12 +1,18 @@
 # StaticLogistics 模组集成指南
 
+## 运行语义与兼容边界
+
+- 当前调度器只主动执行 push；`isPullMode` 仅为旧接口与未来扩展保留，不代表存在独立 pull 调度循环。
+- 服务端保存的节点、分组、菜单目标与权限是最终权威。客户端坐标、分组名和配置数据只能作为请求，集成代码不得据此绕过服务端校验。
+- 适配器必须分别实现模拟、提交和缩量，并如实声明事务能力；不能反向写入源端时，必须保证同 tick 的提交结果严格兑现模拟结果。
+
 ## 概述
 
-StaticLogistics 通过 `LogisticsResource<C>` 接口将任意模组的资源类型接入统一物流管线。  
-所有资源均以**可传输**（extract/insert）为设计目标。
+第三方模组通过公开的 `ResourceAdapter<C, V>` SPI 接入统一物流管线；
+`LogisticsResource<C>` 是本模组内部桥接接口，不属于外部集成契约。
 
 所有传输类型（物品、流体、能量、化学品、魔源、热量、魔力）统一走 `TransferUtils.doTransferNodes` 管线，自动获得：
-- WeakRef 能力缓存
+- NeoForge `BlockCapabilityCache`（失效后自动释放条目）
 - 维度/距离/区块加载检查
 - 脏链接清理
 - 传输日志
@@ -17,8 +23,8 @@ StaticLogistics 通过 `LogisticsResource<C>` 接口将任意模组的资源类�
 ## 快速开始
 
 ```java
-// 1. 实现 LogisticsResource<你的句柄类型>
-public class MyResource implements LogisticsResource<MyHandle> {
+// 1. 实现公开的类型安全 ResourceAdapter<句柄, 资源值>
+public class MyResource implements ResourceAdapter<MyHandle, MyValue> {
     // 定义类型 ID 常量
     private static final ResourceLocation TYPE_ID = ResourceLocation.fromNamespaceAndPath("mymod", "my_type");
 
@@ -28,138 +34,97 @@ public class MyResource implements LogisticsResource<MyHandle> {
     @Override public String translationKey() { return "transfer_type.mymod.my_type"; }
     @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(MyItems.ICON); }
     @Override public IntSupplier baseStackSizeSupplier() { return MyConfig::getStackSize; }
+    @Override public Class<MyValue> valueType() { return MyValue.class; }
+    @Override public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactCompensating();
+    }
 
     // ── 传输逻辑 ──
     @Override
     public @Nullable MyHandle resolve(ServerLevel level, BlockPos pos, Direction face) {
-        // 返回该位置的操作句柄，不可用时返回 null
         return level.getCapability(MyCapabilities.MY_CAP, pos, face);
     }
 
     @Override
-    public long extract(MyHandle handle, long amount, boolean simulate) {
-        // 从句柄提取资源
-        return handle.extract(amount, simulate);
+    public BlockCapability<MyHandle, Direction> blockCapability() {
+        return MyCapabilities.MY_CAP; // 可选；声明后自动使用失效缓存
     }
 
     @Override
-    public long insert(MyHandle handle, long amount, boolean simulate) {
-        // 向句柄注入资源
-        return handle.receive(amount, simulate);
+    public SimulationResult<MyValue> simulateExtract(MyHandle source, TransferRequest request) {
+        return source.simulateExtract(request.limit());
     }
 
+    @Override
+    public CommitResult<MyValue> commitExtract(MyHandle source,
+                                                SimulationResult<MyValue> simulation,
+                                                TransferRequest request) {
+        return source.commitExtract(simulation, request.limit());
+    }
+
+    @Override
+    public long simulateInsert(MyHandle target, ResourceValue<MyValue> value,
+                               TransferRequest request) {
+        return target.insert(value.value(), value.amount(), true);
+    }
+
+    @Override
+    public long commitInsert(MyHandle target, ResourceValue<MyValue> value,
+                             TransferRequest request) {
+        return target.insert(value.value(), value.amount(), false);
+    }
+
+    @Override
+    public ResourceValue<MyValue> resize(ResourceValue<MyValue> value, long amount) {
+        return new ResourceValue<>(value.value(), amount);
+    }
+
+    @Override
+    public long rollback(MyHandle source, ResourceValue<MyValue> value,
+                         TransferRequest request) {
+        return source.restore(value.value(), value.amount());
+    }
 }
+
+// 2. 在双方约定的注册阶段分配稳定 bitOffset
+StaticLogisticsApi.resourceAdapters().register(new MyResource(), 10);
 ```
 
 ---
 
-## 实现层级
+## 事务适配契约
 
-### 简单资源（能量/魔源/热量等数值资源）
+`ResourceAdapter<C, V>` 使用明确的两阶段协议：
 
-覆写 `extract` / `insert`，返回 `long`。
+1. `simulateExtract` 生成带类型的候选资源；
+2. `simulateInsert` 计算目标可接收量；
+3. `commitExtract` 按候选结果执行真实提取；
+4. `commitInsert` 执行真实插入；
+5. `resize` 构造指定数量的不可变资源值；
+6. 支持反向写入的源端在后续提交失败时，由 `rollback` 把余量补偿回源端。
 
-```java
-@Override
-public long extract(MyHandle handle, long amount, boolean simulate) {
-    return handle.extract(amount, simulate);
-}
+`TransactionCapabilities` 必须如实声明句柄是否提供精确模拟和补偿能力。不能可靠补偿、但能严格兑现模拟结果的单向能力应声明 `exactSimulationOnly()`；不能可靠补偿的适配器不得声明 `exactCompensating()`。
 
-@Override
-public long insert(MyHandle handle, long amount, boolean simulate) {
-    return handle.receive(amount, simulate);
-}
-```
-
-**注意**：底层 API 的参数类型决定实际传输上限。例如 NeoForge 的 `IEnergyStorage.extractEnergy(int, boolean)` 参数是 `int`，所以能量传输上限为 `Integer.MAX_VALUE`。直接传 `(int) amount` 即可，让 API 自己截断。
-
-### 类型化资源（化学品等需要携带类型信息的资源）
-
-覆写 `extractTyped` / `insertTyped` / `isEmptyResult`。
-
-```java
-@Override
-public ExtractionResult<ChemicalStack> extractTyped(IChemicalHandler handle, long amount, boolean simulate) {
-    ChemicalStack extracted = handle.extractChemical(amount, simulate ? Action.SIMULATE : Action.EXECUTE);
-    return ExtractionResult.of(extracted);
-}
-
-@Override
-public long insertTyped(IChemicalHandler handle, Object value, boolean simulate) {
-    if (!(value instanceof ChemicalStack stack) || stack.isEmpty()) return 0;
-    ChemicalStack remainder = handle.insertChemical(stack, simulate ? Action.SIMULATE : Action.EXECUTE);
-    return stack.getAmount() - remainder.getAmount();
-}
-
-@Override
-public boolean isEmptyResult(@Nullable Object value) {
-    if (value == null) return true;
-    if (value instanceof ChemicalStack chem) return chem.isEmpty();
-    return false;
-}
-```
-
-### 上下文感知资源（物品/流体等需要过滤器检查的资源）
-
-覆写带 `FaceConfigComposite` / `TransferContext` 参数的重载。
-
-```java
-@Override
-public ExtractionResult<?> extractTyped(MyHandle handle, long amount, boolean simulate,
-                                         @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                         @Nullable TransferContext context) {
-    // 输出过滤器检查
-    if (sourceCfg != null && !isAllowed(sourceCfg, handle, isPullMode)) {
-        return ExtractionResult.of(EMPTY);
-    }
-    return ExtractionResult.of(handle.extract(amount, simulate));
-}
-
-@Override
-public long insertTyped(MyHandle handle, Object value, boolean simulate,
-                         @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                         @Nullable TransferContext context) {
-    // 输入过滤器检查
-    if (sourceCfg != null && !isAllowed(sourceCfg, value, isPullMode)) return 0;
-    return handle.insert(value, simulate);
-}
-
-@Override
-public boolean canInsertToTarget(MyHandle handle, Object value, FaceConfigComposite targetCfg) {
-    // 目标端过滤器检查 + 存量维持
-    return FilterEvaluator.isAllowed(value, targetCfg);
-}
-
-@Override
-public void commitExtract(MyHandle handle, ExtractionResult<?> result, long actual,
-                           @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                           @Nullable TransferContext context) {
-    // 从 ExtractionResult.context() 获取槽位索引进行精确提取
-    if (result.context() instanceof Integer slotIdx) {
-        handle.extractFromSlot(slotIdx, (int) actual);
-    }
-}
-```
+底层能力使用 `int` 参数时，适配器应自行做非负饱和转换；公共 SPI 不暴露内部节点配置或传输上下文对象，过滤、权限和存量维持由统一管线处理。
 
 ---
 
 ## 注册参数
 
-资源类只负责实现能力解析和传输逻辑；稳定的类型位偏移在 `TransferTypeBootstrap` 中显式分配：
+资源类只负责实现能力解析和事务传输逻辑；第三方通过公开 API 显式分配稳定类型位偏移：
 
 ```java
 public static final int BIT_MY_TYPE = 10;
-
-TransferRegistries.registerAdapter(new MyResource(), BIT_MY_TYPE);
+StaticLogisticsApi.resourceAdapters().register(new MyResource(), BIT_MY_TYPE);
 ```
 
-`LogisticsResource` 接口的元数据方法：
+`ResourceAdapter` 的主要元数据方法：
 
 | 方法                        | 说明                       | 约束                         |
 |---------------------------|--------------------------|----------------------------|
 | `typeId()`                | ResourceLocation 格式的唯一标识 | `"modid:type_name"`        |
 | `color()`                 | ARGB 颜色值                 | `0xAARRGGBB`               |
-| `bitOffset()`             | 稳定类型序号，由注册中心包装赋值         | 非负且唯一；0-31 会额外写入旧 mask 兼容值 |
+| 注册参数 `stableBitOffset` | 稳定类型序号                    | 非负且唯一；0-31 会额外写入旧 mask 兼容值 |
 | `translationKey()`        | GUI 显示文本                 | 需提供 lang 文件                |
 | `iconSupplier()`          | 类型图标的 ItemStack          | —                          |
 | `baseStackSizeSupplier()` | 单次基础传输量                  | 读取 config 配置               |
@@ -177,8 +142,6 @@ TransferRegistries.registerAdapter(new MyResource(), BIT_MY_TYPE);
 | 4         | 热量 (mek_heat)       |
 | 5         | 魔源 (ars_source)     |
 | 6         | 魔力 (botania_mana)   |
-| 5         | 热量 (mek_heat)       |
-| 6         | 魔力 (botania_mana)   |
 | 7+        | 自定义第三方类型            |
 
 ---
@@ -191,22 +154,25 @@ TransferRegistries.registerAdapter(new MyResource(), BIT_MY_TYPE);
 LogisticsTicker.tick()
   └─ TransferExecutor.executeTransfer(context)
        └─ ResourceAdapterHandler.performTransfer(context, targets)
-            └─ ResourceAdapterProtocol（携带 sourceCfg + isPullMode + TransferContext）
+            └─ ResourceAdapterProtocol（每次调用独立创建，携带不可覆盖的上下文）
                  └─ TransferUtils.doTransferNodes(...)
-                      ├─ getCachedCapability (WeakRef 缓存)
+                      ├─ 原生能力缓存（适配器声明 blockCapability 时）
                       ├─ 维度/距离/区块检查
                       ├─ dirty target 清理 + 反向索引增量更新
                       ├─ Fire PreTransferEvent（可取消）
-                      ├─ simulateExtract → adapter.extractTyped
-                      ├─ canInsert → adapter.canInsertToTarget
-                      ├─ executeInsert → adapter.insertTyped
-                      ├─ commitExtract → adapter.commitExtract
+                      ├─ adapter.simulateExtract
+                      ├─ adapter.simulateInsert
+                      ├─ adapter.commitExtract
+                      ├─ adapter.commitInsert
+                      ├─ adapter.resize
+                      ├─ 失败补偿 → adapter.rollback
                       ├─ Fire PostTransferEvent
                       └─ TransferLogManager.logTransfer
 ```
 
 ### ResourceAdapterHandler 自动处理的能力
 
+- **能力缓存**：声明 `blockCapability()` 的原生能力使用 NeoForge 自动失效缓存；自定义句柄直接调用 `resolve`
 - **重入保护**：ThreadLocal 防止同一处理器递归调用
 - **递归深度限制**：防止传输链路循环
 - **维度/距离/区块加载检查**：按容器升级配置
@@ -277,89 +243,6 @@ TransferFailureReason.register(
 
 ---
 
-## 完整示例 — Mekanism 化学品
+## 完整示例
 
-```java
-public class MekanismChemicalResource implements LogisticsResource<IChemicalHandler> {
-    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_chemicals");
-
-    @Override public ResourceLocation typeId() { return TYPE_ID; }
-    @Override public int color() { return 0xFF66FF66; }
-    @Override public String translationKey() { return "transfer_type.staticlogistics.mek_chemicals"; }
-    @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(MekanismBlocks.BASIC_CHEMICAL_TANK.get()); }
-    @Override public IntSupplier baseStackSizeSupplier() { return SLConfig::getMekChemicalStack; }
-
-    @Override
-    public @Nullable IChemicalHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
-        return level.getCapability(mekanism.common.capabilities.Capabilities.CHEMICAL.block(), pos, face);
-    }
-
-    @Override
-    public ExtractionResult<ChemicalStack> extractTyped(IChemicalHandler handle, long amount, boolean simulate) {
-        ChemicalStack extracted = handle.extractChemical(amount, simulate ? Action.SIMULATE : Action.EXECUTE);
-        return ExtractionResult.of(extracted);
-    }
-
-    @Override
-    public long insertTyped(IChemicalHandler handle, Object value, boolean simulate) {
-        if (!(value instanceof ChemicalStack stack) || stack.isEmpty()) return 0;
-        ChemicalStack remainder = handle.insertChemical(stack, simulate ? Action.SIMULATE : Action.EXECUTE);
-        return stack.getAmount() - remainder.getAmount();
-    }
-
-    @Override
-    public boolean isEmptyResult(@Nullable Object value) {
-        if (value == null) return true;
-        if (value instanceof ChemicalStack chem) return chem.isEmpty();
-        return false;
-    }
-
-    @Override
-    public boolean canInsertToTarget(IChemicalHandler handle, Object value, FaceConfigComposite targetCfg) {
-        if (!(value instanceof ChemicalStack stack) || stack.isEmpty()) return false;
-        // 直接模拟插入，insertChemical 内部会检查类型和空间
-        ChemicalStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
-        return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
-    }
-
-}
-```
-
----
-
-## 完整示例 — 简单能量资源
-
-```java
-public class EnergyResource implements LogisticsResource<IEnergyStorage> {
-    private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("energy");
-
-    @Override public ResourceLocation typeId() { return TYPE_ID; }
-    @Override public int color() { return 0xFFFFFF00; }
-    @Override public String translationKey() { return "transfer_type.staticlogistics.energy"; }
-    @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(Items.REDSTONE); }
-    @Override public IntSupplier baseStackSizeSupplier() { return SLConfig::getEnergyStack; }
-
-    @Override
-    public boolean requiresCooldown() { return false; }
-
-    @Override
-    public boolean requiresValidLinks() { return false; }
-
-    @Override
-    public @Nullable IEnergyStorage resolve(ServerLevel level, BlockPos pos, Direction face) {
-        return level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, face);
-    }
-
-    @Override
-    public long extract(IEnergyStorage handle, long amount, boolean simulate) {
-        // NeoForge API 参数是 int，直接截断
-        return handle.extractEnergy((int) amount, simulate);
-    }
-
-    @Override
-    public long insert(IEnergyStorage handle, long amount, boolean simulate) {
-        return handle.receiveEnergy((int) amount, simulate);
-    }
-
-}
-```
+本页“快速开始”代码就是完整的公共 SPI 骨架。内建 Mekanism、能量等实现属于模组内部桥接，不是第三方可依赖的 API；集成方只应导入 `com.coobird.staticlogistics.api.transfer` 与 `StaticLogisticsApi`。

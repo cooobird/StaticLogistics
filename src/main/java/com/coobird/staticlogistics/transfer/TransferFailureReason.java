@@ -14,15 +14,18 @@ import java.util.Map;
  */
 public record TransferFailureReason(ResourceLocation id, String translationKey) {
 
+    // 注册表必须先于内置原因初始化。
+    private static final Map<ResourceLocation, TransferFailureReason> REGISTRY = new LinkedHashMap<>();
+
     // 内置原因
     public static final TransferFailureReason NO_DIMENSION_UPGRADE = register(StaticLogistics.asResource("no_dim"), "failure.staticlogistics.no_dim");
     public static final TransferFailureReason OUT_OF_RANGE = register(StaticLogistics.asResource("out_of_range"), "failure.staticlogistics.out_of_range");
     public static final TransferFailureReason CHUNK_UNLOADED = register(StaticLogistics.asResource("chunk_unloaded"), "failure.staticlogistics.chunk_unloaded");
     public static final TransferFailureReason CAPABILITY_NULL = register(StaticLogistics.asResource("no_capability"), "failure.staticlogistics.no_capability");
+    public static final TransferFailureReason TARGET_REJECTED = register(StaticLogistics.asResource("target_rejected"), "failure.staticlogistics.target_rejected");
     public static final TransferFailureReason EVENT_CANCELLED = register(StaticLogistics.asResource("event_cancelled"), "failure.staticlogistics.event_cancelled");
-
-    // 注册表
-    private static final Map<ResourceLocation, TransferFailureReason> REGISTRY = new LinkedHashMap<>();
+    public static final TransferFailureReason SOURCE_COMMIT_FAILED = register(StaticLogistics.asResource("source_commit_failed"), "failure.staticlogistics.source_commit_failed");
+    public static final TransferFailureReason ROLLBACK_FAILED = register(StaticLogistics.asResource("rollback_failed"), "failure.staticlogistics.rollback_failed");
 
     public static TransferFailureReason register(ResourceLocation id, String translationKey) {
         TransferFailureReason reason = new TransferFailureReason(id, translationKey);

@@ -1,7 +1,8 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.gui.menu.HandFilterMenu;
+import com.coobird.staticlogistics.content.menu.HandFilterMenu;
+import com.coobird.staticlogistics.content.item.UpgradeItem;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
@@ -28,10 +29,15 @@ public record C2SOpenHandFilterPayload() implements CustomPacketPayload {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer sp) {
                 ItemStack stack = sp.getMainHandItem();
+                if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
+                int inventorySlot = sp.getInventory().selected;
                 sp.openMenu(new SimpleMenuProvider(
-                    (id, inv, p) -> new HandFilterMenu(id, inv, stack),
+                    (id, inv, p) -> new HandFilterMenu(id, inv, stack, inventorySlot),
                     Component.translatable("gui.staticlogistics.hand_filter")
-                ), buf -> ItemStack.STREAM_CODEC.encode(buf, stack));
+                ), buf -> {
+                    buf.writeVarInt(inventorySlot);
+                    ItemStack.STREAM_CODEC.encode(buf, stack);
+                });
             }
         });
     }

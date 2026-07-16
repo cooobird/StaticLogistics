@@ -1,9 +1,10 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
+import com.coobird.staticlogistics.logistics.node.NodeOpenService;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -28,8 +29,8 @@ public record C2SOpenNodeConfigPayload(BlockPos pos, Direction face) implements 
     public static void handle(final C2SOpenNodeConfigPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer sp)) return;
-            FaceConfigComposite config = LinkManager.get((net.minecraft.server.level.ServerLevel) sp.level())
-                .getOrCreateFaceConfig(payload.pos(), payload.face());
+            FaceConfigComposite config = new NodeOpenService().resolve(sp, payload.pos(), payload.face());
+            if (config == null) return;
             var title = sp.level().getBlockState(payload.pos()).getBlock().getName().copy();
             sp.openMenu(new SimpleMenuProvider(
                     (id, inv, p) -> new NodeConfiguratorMenu(id, inv, payload.pos(), payload.face()), title),

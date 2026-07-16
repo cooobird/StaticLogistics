@@ -1,7 +1,8 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.mojang.logging.LogUtils;
 import mekanism.api.heat.IHeatHandler;
@@ -53,13 +54,18 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
-    public boolean isSimpleResource() {
-        return true;
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
     }
 
     @Override
     public @Nullable IHeatHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         return level.getCapability(mekanism.common.capabilities.Capabilities.HEAT, pos, face);
+    }
+
+    @Override
+    public net.neoforged.neoforge.capabilities.BlockCapability<IHeatHandler, Direction> blockCapability() {
+        return mekanism.common.capabilities.Capabilities.HEAT;
     }
 
     @Override

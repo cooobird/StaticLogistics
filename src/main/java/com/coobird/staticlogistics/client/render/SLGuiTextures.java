@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.content.menu.MenuLayout;
 import net.minecraft.resources.ResourceLocation;
 
 public class SLGuiTextures {
@@ -10,13 +11,15 @@ public class SLGuiTextures {
 
     public static final class Background {
         public static final int U = 0, V = 0;
-        public static final int WIDTH = 210, HEIGHT = 127;
+        public static final int WIDTH = MenuLayout.BACKGROUND_WIDTH;
+        public static final int HEIGHT = MenuLayout.BACKGROUND_HEIGHT;
         public static final int BY_GROUP_WIDTH = 99, BY_GROUP_HEIGHT = 127;
     }
 
     public static final class Inventory {
         public static final int U = 0, V = 272;
-        public static final int WIDTH = 176, HEIGHT = 94;
+        public static final int WIDTH = MenuLayout.INVENTORY_WIDTH;
+        public static final int HEIGHT = MenuLayout.INVENTORY_HEIGHT;
         public static final int SLOT_U = 286, SLOT_V = 1;
         public static final int SLOT_WIDTH = 18, SLOT_HEIGHT = 18;
     }

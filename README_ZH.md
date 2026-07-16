@@ -6,10 +6,10 @@ NeoForge 1.21.1 的 Minecraft 物流模组。物品、流体、能量传输。�
 
 ## 特性
 
-- **统一传输管线** — 所有资源类型（物品/流体/能量/化学品/热量/魔源/魔力）统一走 `LogisticsResource<C>` 接口和 `doTransferNodes` 管线，自动获得能力缓存、维度/距离/区块检查、脏链接清理和传输日志
+- **统一传输管线** — 内置资源共用同一内部管线；第三方资源通过公开的类型安全 `ResourceAdapter<C, V>` SPI 接入，并获得能力缓存、维度/距离/区块检查、脏链接清理和传输日志
 - **跨维度传输** — 维度升级插件启用跨维度物流
 - **5 种工具模式** — 扳手、链接为输入、链接为输出、移除链接、节点配置
-- **每面独立配置** — 6 个方块面各有独立设置：频道（1–16）、优先级、分发策略、提取模式、输入/输出开关、类型掩码
+- **每面独立配置** — 6 个方块面各有独立设置：频道（1–16）、优先级、分发策略、提取模式、输入/输出开关、资源类型 ID 选择
 - **7 种升级 × 5 等级** — 速度、范围、堆叠（铁 → 金 → 钻石 → 下界合金 → 下界之星），加维度升级、基础过滤、标签过滤、NBT 过滤
 - **智能过滤** — 基础过滤（物品白名单/黑名单）、标签过滤（物品+流体标签）、NBT 过滤（精确/部分 NBT 匹配），4 种匹配策略：EXACT、CONTAINS、SMART_CONTAINS、IGNORE
 - **2 种提取模式** — 顺序提取、槽位轮询
@@ -24,7 +24,7 @@ NeoForge 1.21.1 的 Minecraft 物流模组。物品、流体、能量传输。�
 ## 快速上手
 
 1. 合成**链接配置器**
-2. 空手右键打开 GUI → 创建或选择分组
+2. 手持链接配置器右键空气打开 GUI → 创建或选择分组
 3. 左侧边栏切换工具模式 → 右键方块面进行链接
 4. 在**节点配置**界面（模式 4）添加升级和配置过滤器
 
@@ -99,9 +99,8 @@ ars_source_stack_size = 100
 botania_mana_stack_size = 1000
 
 [performance]
-provider_size = 1000           # 提供者缓存条目数
+provider_size = 1000           # 活跃提供者索引预期容量（不限制节点数）
 load_factor = 0.75             # 缓存加载因子
-target_size = 50               # 每面目标缓存数
 max_bulk_entries = 100         # 同步包最大条目
 ticker_batch_size = 50         # 每 tick 处理节点数
 clean_interval = 200           # 冷却清理间隔（tick）
@@ -123,14 +122,14 @@ component_strategy_overrides = []  # 格式："命名空间:组件ID=策略"
 
 ## 模组集成
 
-| 模组          | 传输类型     | 实现方式                                                                    |
-|-------------|----------|-------------------------------------------------------------------------|
-| Mekanism    | 化学品、热量   | `LogisticsResource<IChemicalHandler>`、`LogisticsResource<IHeatHandler>` |
-| Ars Nouveau | 魔源       | `LogisticsResource<ISourceCap>`                                         |
-| Botania     | 魔力       | `LogisticsResource<ManaHandle>`                                         |
-| FTB Teams   | 队伍权限和所有权 | `FTBEventHandlers`                                                      |
+| 模组          | 传输类型     | 实现方式                    |
+|-------------|----------|-------------------------|
+| Mekanism    | 化学品、热量   | 内部 `ResourceAdapter` 桥接 |
+| Ars Nouveau | 魔源       | 内部 `ResourceAdapter` 桥接 |
+| Botania     | 魔力       | 内部 `ResourceAdapter` 桥接 |
+| FTB Teams   | 队伍权限和所有权 | `FTBEventHandlers`      |
 
-所有外部模组集成均使用统一的 `LogisticsResource<C>` 接口。详见 [docs/INTEGRATION.md](docs/INTEGRATION.md) 了解如何添加自定义集成。
+第三方集成统一使用公开的 `ResourceAdapter<C, V>` SPI；内置可选联动直接使用内部桥接层。详见 [docs/INTEGRATION.md](docs/INTEGRATION.md)。
 
 ## 许可证
 

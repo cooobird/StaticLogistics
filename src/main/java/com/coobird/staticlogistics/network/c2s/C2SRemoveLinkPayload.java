@@ -1,13 +1,13 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record C2SRemoveLinkPayload(LogisticsNode node) implements CustomPacketPayload {
@@ -25,21 +25,18 @@ public record C2SRemoveLinkPayload(LogisticsNode node) implements CustomPacketPa
 
     public static void handle(final C2SRemoveLinkPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            var player = context.player();
+            if (!(context.player() instanceof ServerPlayer player)) return;
             var server = player.getServer();
             if (server == null) return;
 
             ServerLevel targetLevel = server.getLevel(payload.node().gPos().dimension());
             if (targetLevel == null) return;
 
-            LinkManager manager = LinkManager.get(targetLevel);
-            long key = payload.node().toKey();
-
-            FaceConfigComposite config = manager.getFaceConfig(key);
-            if (config != null) {
-                if (!config.canPlayerModify(player)) return;
-                manager.removeFaceConfig(key);
-            }
+            if (targetLevel != player.level()) return;
+            NodeMutationService mutations = new NodeMutationService();
+            NodeMutationService.ValidatedNode node = mutations.resolve(
+                player, payload.node().gPos().pos(), payload.node().face());
+            if (node != null) mutations.remove(node);
         });
     }
 }

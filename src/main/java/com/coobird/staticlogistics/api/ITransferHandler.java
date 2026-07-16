@@ -6,11 +6,7 @@ import java.util.List;
  * 传输处理器，执行一次物流传输。
  *
  * <p>这是传输管线的最底层抽象。第三方模组通常不需要直接实现此接口，
- * 推荐通过 {@link LogisticsResource} + {@code registerAdapter(adapter, bitOffset)}
- * 或 {@link TransferProvider} + {@code registerProvider()} 接入。
- *
- * @see LogisticsResource 推荐的集成方式
- * @see TransferProvider 简化集成方式
+ * 推荐通过资源适配 SPI 接入；处理器接口只负责执行已排序的目标集合。
  */
 @FunctionalInterface
 public interface ITransferHandler {

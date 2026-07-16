@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.datagen;
 
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.registry.SLItems;
+import com.coobird.staticlogistics.content.registry.SLItems;
 import net.minecraft.data.PackOutput;
 import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.client.model.generators.ItemModelProvider;

@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.integration.jei;
 
-import com.coobird.staticlogistics.gui.screen.BaseFilterScreen;
+import com.coobird.staticlogistics.client.gui.screen.BaseFilterScreen;
 import mezz.jei.api.gui.handlers.IGhostIngredientHandler;
 import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.neoforge.NeoForgeTypes;

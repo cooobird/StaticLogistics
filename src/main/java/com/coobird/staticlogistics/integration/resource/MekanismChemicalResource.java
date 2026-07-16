@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.ExtractionResult;
 import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
 import mekanism.api.chemical.ChemicalStack;
@@ -30,6 +31,11 @@ import java.util.function.Supplier;
 public class MekanismChemicalResource implements LogisticsResource<IChemicalHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_chemicals");
+
+    @Override
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
+    }
 
     @Override
     public ResourceLocation typeId() {
@@ -62,6 +68,11 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
     }
 
     @Override
+    public net.neoforged.neoforge.capabilities.BlockCapability<IChemicalHandler, Direction> blockCapability() {
+        return mekanism.common.capabilities.Capabilities.CHEMICAL.block();
+    }
+
+    @Override
     public ExtractionResult<ChemicalStack> extractTyped(IChemicalHandler handle, long amount, boolean simulate) {
         try {
             ChemicalStack extracted = handle.extractChemical(amount, simulate ? Action.SIMULATE : Action.EXECUTE);
@@ -89,6 +100,16 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
         if (value == null) return true;
         if (value instanceof ChemicalStack chem) return chem.isEmpty();
         return false;
+    }
+
+    @Override
+    public long amountOf(Object value) {
+        return value instanceof ChemicalStack stack ? stack.getAmount() : -1L;
+    }
+
+    @Override
+    public Object withAmount(Object value, long amount) {
+        return value instanceof ChemicalStack stack ? stack.copyWithAmount(Math.max(0L, amount)) : null;
     }
 
     @Override

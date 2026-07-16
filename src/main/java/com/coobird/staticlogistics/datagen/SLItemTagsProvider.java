@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.datagen;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.registry.SLItems;
+import com.coobird.staticlogistics.content.registry.SLItems;
 import com.simibubi.create.AllTags;
 import mekanism.common.tags.MekanismTags;
 import net.minecraft.core.HolderLookup;

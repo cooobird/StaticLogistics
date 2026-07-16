@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.client.render;
 
-import com.coobird.staticlogistics.client.util.RenderConstants;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
