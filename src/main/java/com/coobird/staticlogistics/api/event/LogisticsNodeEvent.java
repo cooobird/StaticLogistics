@@ -2,6 +2,8 @@ package com.coobird.staticlogistics.api.event;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.eventbus.api.Event;
 
@@ -26,14 +28,22 @@ public class LogisticsNodeEvent extends Event {
         CHANGED  // 节点信息被修改了
     }
 
-    // 受影响的节点条目：记录频道 ID、节点本体、以及节点的角色
-    public record NodeEntry(String groupId, LogisticsNode node, NodeRole role) {
+    // 受影响的节点条目：记录稳定分组键、显示名、节点本体和节点角色
+    public record NodeEntry(GroupKey groupKey, String displayName,
+                            LogisticsNode node, NodeRole role) {
+        public NodeEntry(GroupKey groupKey, LogisticsNode node, NodeRole role) {
+            this(groupKey, groupKey.toString(), node, role);
+        }
+
+        public NodeEntry(GroupRef group, LogisticsNode node, NodeRole role) {
+            this(group.key(), group.displayName(), node, role);
+        }
     }
 
     // 构造函数——批量节点变动（一次性多个节点一起触发）
     public LogisticsNodeEvent(MinecraftServer server, Collection<NodeEntry> entries, ChangeType type) {
         this.server = server;
-        this.affectedEntries = entries;
+        this.affectedEntries = java.util.List.copyOf(entries);
         this.type = type;
     }
 

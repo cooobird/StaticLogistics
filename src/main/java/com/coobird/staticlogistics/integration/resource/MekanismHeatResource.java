@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import mekanism.api.heat.IHeatHandler;
 import mekanism.common.registries.MekanismBlocks;
@@ -19,8 +20,8 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * Mekanism 热量资源适配�?(Forge 1.20.1)�? *
- * <p>通过 {@link mekanism.common.capabilities.Capabilities#HEAT_HANDLER} capability 访问�? * 热量使用 double，多电容按比例分配提取�?
+ * 通过 {@link mekanism.common.capabilities.Capabilities#HEAT_HANDLER} 访问 Mekanism 热量。
+ * 热量使用 double，多电容按比例分配提取量。
  */
 public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -52,15 +53,16 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
-    public boolean isSimpleResource() {
-        return true;
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
     }
 
     @Override
     public @Nullable IHeatHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
-        return be.getCapability(mekanism.common.capabilities.Capabilities.HEAT_HANDLER, face).orElse(null);
+        return com.coobird.staticlogistics.transfer.CapabilityCache.get(
+            level, pos, face, mekanism.common.capabilities.Capabilities.HEAT_HANDLER);
     }
 
     @Override

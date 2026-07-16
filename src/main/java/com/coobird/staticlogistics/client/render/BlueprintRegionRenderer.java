@@ -2,13 +2,16 @@ package com.coobird.staticlogistics.client.render;
 
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.item.BlueprintItem;
-import com.coobird.staticlogistics.item.blueprint.BlueprintData;
-import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintGeometry;
+import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -26,6 +29,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
+import org.slf4j.Logger;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -33,6 +37,7 @@ import java.util.Set;
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class BlueprintRegionRenderer {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final RenderType BP_BOX = RenderType.create(
         "staticlogistics:blueprint_box", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
         RenderType.CompositeState.builder()
@@ -81,7 +86,7 @@ public class BlueprintRegionRenderer {
 
             renderBox(event, a, b, green, 0.3f, 0.6f, 1f, 0.7f);
         } catch (Exception e) {
-            System.out.println("[SL-Render] blueprint render error: " + e.getMessage());
+            LOGGER.debug("Blueprint rendering failed", e);
         }
     }
 
@@ -113,15 +118,18 @@ public class BlueprintRegionRenderer {
     }
 
     private static void renderPreview(RenderLevelStageEvent event, BlueprintData data, BlockPos anchor, int rot) {
-        BlockPos c2 = BlueprintItem.rotateRelToAbs(data.corner2().subtract(data.anchor()), anchor, rot);
+        BlockPos c2 = BlueprintGeometry.rotateToAbsolute(
+            data.corner2().subtract(data.anchor()), anchor, rot);
         int cx1 = Math.min(anchor.getX(), c2.getX()), cy1 = Math.min(anchor.getY(), c2.getY()), cz1 = Math.min(anchor.getZ(), c2.getZ());
         int cx2 = Math.max(anchor.getX(), c2.getX()), cy2 = Math.max(anchor.getY(), c2.getY()), cz2 = Math.max(anchor.getZ(), c2.getZ());
 
         // 构建绝对坐标 → BlockEntry 的快速查找表
         var entryMap = new java.util.HashMap<BlockPos, BlueprintData.BlockEntry>();
+        var relativeEntryMap = new java.util.HashMap<BlockPos, BlueprintData.BlockEntry>();
         for (BlueprintData.BlockEntry e : data.blocks()) {
-            BlockPos abs = BlueprintItem.rotateRelToAbs(e.relativePos(), anchor, rot);
+            BlockPos abs = BlueprintGeometry.rotateToAbsolute(e.relativePos(), anchor, rot);
             entryMap.put(abs, e);
+            relativeEntryMap.put(e.relativePos(), e);
         }
 
         PoseStack ps = event.getPoseStack();
@@ -161,13 +169,13 @@ public class BlueprintRegionRenderer {
 
             // 面指示器
             for (var faceEntry : be.faces().entrySet()) {
-                Direction rotatedFace = BlueprintItem.rotateDirection(faceEntry.getKey(), rot);
+                Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey(), rot);
                 BlueprintData.FaceEntry fe = faceEntry.getValue();
                 CompoundTag ft = fe.faceConfig();
-                int inCh = ft.getInt("input_channel");
-                int outCh = ft.getInt("output_channel");
-                boolean hasIn = ft.getBoolean("global_input");
-                boolean hasOut = ft.getBoolean("global_output");
+                int inCh = ft.getInt(ConfigKeys.INPUT_CHANNEL);
+                int outCh = ft.getInt(ConfigKeys.OUTPUT_CHANNEL);
+                boolean hasIn = ft.getBoolean(ConfigKeys.GLOBAL_INPUT);
+                boolean hasOut = ft.getBoolean(ConfigKeys.GLOBAL_OUTPUT);
                 if (vis) {
                     LogisticsRenderHelper.drawFaceStatus(bc, mat, absPos, rotatedFace,
                         inCh, outCh, hasIn, hasOut, pulse);
@@ -175,16 +183,18 @@ public class BlueprintRegionRenderer {
 
                 // 流动粒子
                 if (hasOut && outCh >= 1 && outCh <= 16) {
-                    for (BlockPos relLink : be.linkedTo()) {
-                        BlockPos linkAbs = BlueprintItem.rotateRelToAbs(relLink, anchor, rot);
+                    for (BlueprintData.LinkEntry exactLink : BlueprintGeometry.resolveLinks(
+                        be, fe, relativeEntryMap)) {
+                        BlockPos linkAbs = BlueprintGeometry.rotateToAbsolute(
+                            exactLink.relativePos(), anchor, rot);
                         BlueprintData.BlockEntry dstEntry = entryMap.get(linkAbs);
                         if (dstEntry == null) continue;
-                        // 在目标方块上找匹配的输入面（同频道）
-                        for (var dstFaceEntry : dstEntry.faces().entrySet()) {
-                            CompoundTag dstFt = dstFaceEntry.getValue().faceConfig();
-                            if (!dstFt.getBoolean("global_input")) continue;
-                            if (dstFt.getInt("input_channel") != outCh) continue;
-                            Direction dstRotatedFace = BlueprintItem.rotateDirection(dstFaceEntry.getKey(), rot);
+                        BlueprintData.FaceEntry destination = dstEntry.faces().get(exactLink.face());
+                        if (destination != null) {
+                            CompoundTag dstFt = destination.faceConfig();
+                            if (!dstFt.getBoolean(ConfigKeys.GLOBAL_INPUT)
+                                || dstFt.getInt(ConfigKeys.INPUT_CHANNEL) != outCh) continue;
+                            Direction dstRotatedFace = BlueprintGeometry.rotateDirection(exactLink.face(), rot);
                             Vec3 s = Vec3.atCenterOf(absPos)
                                 .add(Vec3.atLowerCornerOf(rotatedFace.getNormal()).scale(0.52));
                             Vec3 t = Vec3.atCenterOf(linkAbs)

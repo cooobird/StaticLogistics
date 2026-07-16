@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.api;
 
-import com.coobird.staticlogistics.util.LogisticsConstants;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
@@ -60,24 +59,4 @@ public record LogisticsNode(GlobalPos gPos, Direction face) {
         return this.gPos.dimension().equals(dimension);
     }
 
-    public static long posToKey(BlockPos pos, Direction face) {
-        return (pos.asLong() << LogisticsConstants.Storage.FACE_BITS)
-            | (face.get3DDataValue() & LogisticsConstants.Storage.FACE_MASK);
-    }
-
-    public static BlockPos keyToPos(long key) {
-        return BlockPos.of(key >> LogisticsConstants.Storage.FACE_BITS);
-    }
-
-    public static Direction keyToFace(long key) {
-        return Direction.from3DDataValue((int) (key & LogisticsConstants.Storage.FACE_MASK));
-    }
-
-    public long toKey() {
-        return posToKey(gPos.pos(), face);
-    }
-
-    public static LogisticsNode fromKey(long key, ResourceKey<Level> dim) {
-        return new LogisticsNode(GlobalPos.of(dim, keyToPos(key)), keyToFace(key));
-    }
 }

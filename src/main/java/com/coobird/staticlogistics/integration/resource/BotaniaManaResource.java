@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -20,8 +21,9 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * Botania 魔力资源适配�?(Forge 1.20.1)�? *
- * <p>Botania 1.20.1 �?BlockEntity 直接实现 {@link ManaReceiver} 接口�? * 不需�?Forge Capability 查找�? * 产能�?({@link GeneratingFlowerBlockEntity}) 作为源，ManaReceiver 作为目标�?
+ * Botania 魔力资源适配器（Forge 1.20.1）。
+ * 方块实体直接实现 {@link ManaReceiver}，无需 Forge Capability；
+ * {@link GeneratingFlowerBlockEntity} 作为源，ManaReceiver 作为目标。
  */
 public class BotaniaManaResource implements LogisticsResource<BotaniaManaResource.ManaHandle> {
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("botania_mana");
@@ -52,12 +54,12 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
-    public boolean isSimpleResource() {
-        return true;
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
     }
 
     /**
-     * 魔力句柄，区分源（产能花）和目标（ManaReceiver）�?
+     * 魔力句柄，区分源（产能花）和目标（ManaReceiver）。
      */
     public static final class ManaHandle {
         private final @Nullable GeneratingFlowerBlockEntity flower;

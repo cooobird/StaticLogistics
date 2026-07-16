@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.datagen;
 
-import com.coobird.staticlogistics.registry.SLItems;
+import com.coobird.staticlogistics.content.registry.SLItems;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.recipes.*;
 import net.minecraft.resources.ResourceLocation;
@@ -211,7 +211,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.BASIC_FILTER_UPGRADE.get())
                 .requires(SLItems.BASIC_FILTER_UPGRADE.get())
                 .unlockedBy("has_basic_filter", has(SLItems.BASIC_FILTER_UPGRADE.get()))
-                .save(writer, new ResourceLocation(SLItems.BASIC_FILTER_UPGRADE.getId().getNamespace(),
+                .save(writer, ResourceLocation.fromNamespaceAndPath(SLItems.BASIC_FILTER_UPGRADE.getId().getNamespace(),
                     "clear_" + SLItems.BASIC_FILTER_UPGRADE.getId().getPath()));
         }
 
@@ -219,7 +219,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.TAG_FILTER_UPGRADE.get())
                 .requires(SLItems.TAG_FILTER_UPGRADE.get())
                 .unlockedBy("has_tag_filter", has(SLItems.TAG_FILTER_UPGRADE.get()))
-                .save(writer, new ResourceLocation(SLItems.TAG_FILTER_UPGRADE.getId().getNamespace(),
+                .save(writer, ResourceLocation.fromNamespaceAndPath(SLItems.TAG_FILTER_UPGRADE.getId().getNamespace(),
                     "clear_" + SLItems.TAG_FILTER_UPGRADE.getId().getPath()));
         }
 
@@ -227,7 +227,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.NBT_FILTER_UPGRADE.get())
                 .requires(SLItems.NBT_FILTER_UPGRADE.get())
                 .unlockedBy("has_nbt_filter", has(SLItems.NBT_FILTER_UPGRADE.get()))
-                .save(writer, new ResourceLocation(SLItems.NBT_FILTER_UPGRADE.getId().getNamespace(),
+                .save(writer, ResourceLocation.fromNamespaceAndPath(SLItems.NBT_FILTER_UPGRADE.getId().getNamespace(),
                     "clear_" + SLItems.NBT_FILTER_UPGRADE.getId().getPath()));
         }
     }

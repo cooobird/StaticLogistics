@@ -2,18 +2,22 @@ package com.coobird.staticlogistics.integration.jade;
 
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
-import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.log.NodeStats;
-import com.coobird.staticlogistics.transfer.log.TransferLogManager;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.transfer.NodeQueryService;
+import com.coobird.staticlogistics.transfer.NodeQuerySnapshot;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
@@ -26,9 +30,6 @@ import snownee.jade.api.*;
 import snownee.jade.api.config.IPluginConfig;
 import snownee.jade.api.ui.BoxStyle;
 import snownee.jade.api.ui.IElementHelper;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Jade 集成：指向有物流连接的方块时显示面数据。
@@ -56,6 +57,7 @@ public class SLJadePlugin implements IWailaPlugin {
 
         @Override
         public void appendServerData(CompoundTag tag, BlockAccessor accessor) {
+            tag.remove("sl_faces");
             BlockEntity be = accessor.getBlockEntity();
             if (be == null) return;
             Level level = be.getLevel();
@@ -65,76 +67,87 @@ public class SLJadePlugin implements IWailaPlugin {
             // 获取玩家手持配置器的选中组
             var player = accessor.getPlayer();
             String selectedGroup = "";
+            GroupKey selectedGroupKey = null;
             if (player != null) {
                 ItemStack mainHand = player.getMainHandItem();
                 if (mainHand.getItem() instanceof LinkConfiguratorItem) {
                     selectedGroup = PortItemStackExtension.getDataOrDefault(mainHand, SLDataComponents.SELECTED_GROUP, "");
+                    selectedGroupKey = PortItemStackExtension.getData(
+                        mainHand, SLDataComponents.SELECTED_GROUP_KEY.get());
                 }
                 if (selectedGroup.isEmpty()) {
                     ItemStack offHand = player.getOffhandItem();
                     if (offHand.getItem() instanceof LinkConfiguratorItem) {
                         selectedGroup = PortItemStackExtension.getDataOrDefault(offHand, SLDataComponents.SELECTED_GROUP, "");
+                        selectedGroupKey = PortItemStackExtension.getData(
+                            offHand, SLDataComponents.SELECTED_GROUP_KEY.get());
                     }
                 }
             }
 
             // 没有选中组则不显示
             if (selectedGroup.isEmpty()) return;
+            if (selectedGroupKey == null) {
+                if (player == null) return;
+                var migratedGroup = PlayerGroupStore.get(serverLevel.getServer())
+                    .findGroup(player.getUUID(), selectedGroup);
+                if (migratedGroup == null) return;
+                selectedGroupKey = migratedGroup.key();
+            }
 
-            LinkManager mgr = LinkManager.get(serverLevel);
             CompoundTag facesTag = new CompoundTag();
 
             for (Direction face : Direction.values()) {
-                long key = LinkManager.posToKey(pos, face);
-                FaceConfigComposite cfg = mgr.getFaceConfig(key);
-                if (cfg == null || cfg.isDefault()) continue;
+                NodeQuerySnapshot snapshot = NodeQueryService.query(serverLevel, pos, face).orElse(null);
+                if (snapshot == null) continue;
+                if (player == null || !GroupService.canAccess(snapshot.ownerId(), player)) continue;
                 // 只显示属于选中组的面
-                if (!cfg.faceConfig.getGroupIds().contains(selectedGroup)) continue;
+                if (!snapshot.groupKeys().contains(selectedGroupKey)) continue;
 
                 CompoundTag faceTag = new CompoundTag();
-                String groups = String.join(", ", cfg.faceConfig.getGroupIds());
+                String groups = String.join(", ", snapshot.groups());
                 faceTag.putString("groups", groups);
 
-                if (cfg.isGlobalOutputEnabled() && cfg.isGlobalInputEnabled()) {
+                if (snapshot.outputEnabled() && snapshot.inputEnabled()) {
                     faceTag.putString("role", "both");
-                } else if (cfg.isGlobalOutputEnabled()) {
+                } else if (snapshot.outputEnabled()) {
                     faceTag.putString("role", "output");
-                } else if (cfg.isGlobalInputEnabled()) {
+                } else if (snapshot.inputEnabled()) {
                     faceTag.putString("role", "input");
                 }
 
-                List<String> activeTypes = new ArrayList<>();
-                for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
-                    if (cfg.isTypeSelected(type)) {
-                        activeTypes.add(type.typeId().getPath());
-                    }
+                ListTag outputTypes = new ListTag();
+                for (ResourceLocation typeId : snapshot.outputTypeIds()) {
+                    outputTypes.add(StringTag.valueOf(typeId.toString()));
                 }
-                faceTag.putString("types", String.join(",", activeTypes));
-                faceTag.putInt("linked", cfg.getLinkedNodes().size());
-                int keepStock = cfg.linkConfig.getKeepStock();
+                ListTag acceptedTypes = new ListTag();
+                for (ResourceLocation typeId : snapshot.acceptedTypeIds()) {
+                    acceptedTypes.add(StringTag.valueOf(typeId.toString()));
+                }
+                faceTag.put("output_type_ids", outputTypes);
+                faceTag.put("accepted_type_ids", acceptedTypes);
+                faceTag.putInt("linked", snapshot.linkedNodes().size());
+                int keepStock = snapshot.keepStock();
                 if (keepStock > 0) faceTag.putInt("keep_stock", keepStock);
 
                 // 频道、策略、优先级、所有者
-                int inCh = cfg.linkConfig.getInputChannel();
-                int outCh = cfg.linkConfig.getOutputChannel();
+                int inCh = snapshot.inputChannel();
+                int outCh = snapshot.outputChannel();
                 if (inCh > 0) faceTag.putInt("in_channel", inCh);
                 if (outCh > 0) faceTag.putInt("out_channel", outCh);
-                faceTag.putString("strategy", cfg.linkConfig.getStrategy().getDescriptionId());
-                faceTag.putString("extraction_mode", cfg.linkConfig.getExtractionMode().getDescriptionId());
-                faceTag.putInt("priority", cfg.linkConfig.getPriority());
-                if (cfg.faceConfig.getOwner() != null) {
-                    faceTag.putString("owner", cfg.faceConfig.getOwnerName());
+                faceTag.putString("strategy", snapshot.strategyDescriptionId());
+                faceTag.putString("extraction_mode", snapshot.extractionDescriptionId());
+                faceTag.putInt("priority", snapshot.priority());
+                if (snapshot.ownerId() != null) {
+                    faceTag.putString("owner", snapshot.ownerName());
                 }
 
                 // 传输统计
-                long faceKey = LinkManager.posToKey(pos, face);
-                NodeStats nodeStats = TransferLogManager.get().getPerNodeStats(faceKey);
-                if (nodeStats != null) {
-                    faceTag.putLong("sent", nodeStats.sentAmount);
-                    faceTag.putLong("received", nodeStats.receivedAmount);
-                    faceTag.putDouble("rate", nodeStats.getTransfersPerMinute());
-                    long timeSince = nodeStats.lastTransferTime > 0 ? System.currentTimeMillis() - nodeStats.lastTransferTime : -1;
-                    faceTag.putLong("last_ms", timeSince);
+                faceTag.putLong("sent", snapshot.sentAmount());
+                faceTag.putLong("received", snapshot.receivedAmount());
+                faceTag.putDouble("rate", snapshot.transfersPerMinute());
+                if (snapshot.lastTransferAgeTicks() >= 0) {
+                    faceTag.putLong("last_ms", snapshot.lastTransferAgeTicks() * 50L);
                 }
 
                 facesTag.put(face.getName(), faceTag);
@@ -217,6 +230,7 @@ public class SLJadePlugin implements IWailaPlugin {
 
             if (hasIn) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
+                addResourceTypeLine(boxContent, "jade.staticlogistics.receive_types", faceTag, "accepted_type_ids");
                 if (inCh > 0) {
                     boxContent.add(Component.literal("  ")
                         .append(Component.translatable("jade.staticlogistics.channel", inCh))
@@ -234,6 +248,7 @@ public class SLJadePlugin implements IWailaPlugin {
 
             if (hasOut) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
+                addResourceTypeLine(boxContent, "jade.staticlogistics.transfer_types", faceTag, "output_type_ids");
                 if (outCh > 0) {
                     boxContent.add(Component.literal("  ")
                         .append(Component.translatable("jade.staticlogistics.channel", outCh))
@@ -271,7 +286,7 @@ public class SLJadePlugin implements IWailaPlugin {
             // 面速率
             double rate = faceTag.getDouble("rate");
             long lastMs = faceTag.getLong("last_ms");
-            if (rate > 0 || lastMs > 0) {
+            if (rate > 0 || faceTag.contains("last_ms", Tag.TAG_LONG)) {
                 String rateStr = String.format("%.1f", rate);
                 String lastStr = formatDuration(lastMs);
                 boxContent.add(Component.literal("  ")
@@ -282,6 +297,34 @@ public class SLJadePlugin implements IWailaPlugin {
             if (!boxContent.isEmpty()) {
                 tooltip.add(IElementHelper.get().box(boxContent, BoxStyle.DEFAULT));
             }
+        }
+
+        private static Component buildResourceTypeList(CompoundTag faceTag, String listKey) {
+            ListTag typeIds = faceTag.getList(listKey, Tag.TAG_STRING);
+            MutableComponent result = Component.empty();
+            boolean hasType = false;
+            for (int index = 0; index < typeIds.size(); index++) {
+                ResourceLocation typeId = ResourceLocation.tryParse(typeIds.getString(index));
+                if (typeId == null) continue;
+
+                if (hasType) result.append(Component.literal(", ").withStyle(ChatFormatting.GRAY));
+                LogisticsResource<?> type = TransferRegistries.get(typeId);
+                if (type == null) {
+                    result.append(Component.literal(typeId.toString()).withStyle(ChatFormatting.DARK_GRAY));
+                } else {
+                    result.append(Component.translatable(type.translationKey())
+                        .withStyle(style -> style.withColor(type.color())));
+                }
+                hasType = true;
+            }
+            return hasType ? result : Component.translatable("jade.staticlogistics.no_resource_types");
+        }
+
+        private static void addResourceTypeLine(ITooltip tooltip, String translationKey,
+                                                CompoundTag faceTag, String listKey) {
+            tooltip.add(Component.literal("  ")
+                .append(Component.translatable(translationKey, buildResourceTypeList(faceTag, listKey)))
+                .withStyle(ChatFormatting.GRAY));
         }
     }
 }

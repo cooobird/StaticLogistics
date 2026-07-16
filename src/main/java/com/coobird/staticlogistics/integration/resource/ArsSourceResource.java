@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.hollingsworth.arsnouveau.api.source.ISourceTile;
 import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
 import com.mojang.logging.LogUtils;
@@ -19,8 +20,8 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * Ars Nouveau 魔源资源适配�?(Forge 1.20.1)�? * <p>
- * 物流系统直接检�?BlockEntity 是否实现 ISourceTile，然后调用其方法�?
+ * Ars Nouveau 魔源资源适配器（Forge 1.20.1）。
+ * 直接检查方块实体是否实现 {@link ISourceTile}。
  */
 public class ArsSourceResource implements LogisticsResource<ISourceTile> {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -52,8 +53,8 @@ public class ArsSourceResource implements LogisticsResource<ISourceTile> {
     }
 
     @Override
-    public boolean isSimpleResource() {
-        return true;
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
     }
 
     @Override

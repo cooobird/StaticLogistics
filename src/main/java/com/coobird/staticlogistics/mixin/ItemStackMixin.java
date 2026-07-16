@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.mixin;
 
-import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logic.ToolMode;
-import com.coobird.staticlogistics.tags.SLTags;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.content.registry.SLTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;

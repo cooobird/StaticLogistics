@@ -2,8 +2,11 @@ package com.coobird.staticlogistics.network.c2s;
 
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.filter.FilterData;
-import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.content.item.UpgradeItem;
+import com.coobird.staticlogistics.content.menu.HandFilterMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -34,8 +37,13 @@ public record C2SUpdateFilterOnHandPayload(FilterData filter) implements IPortPa
 
     @Override
     public void work(ServerPlayer player) {
-        ItemStack stack = player.getMainHandItem();
+        if (!ServerPacketRateLimiter.allow(
+            player, ServerPacketRateLimiter.Action.FILTER_UPDATE)) return;
+        if (!(player.containerMenu instanceof HandFilterMenu menu) || !menu.stillValid(player)) return;
+        ItemStack stack = menu.getBoundStack();
+        if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
         PortItemStackExtension.setData(stack, SLDataComponents.FILTER_DATA.get(), filter);
+        menu.broadcastChanges();
         player.inventoryMenu.broadcastChanges();
     }
 }

@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.network.c2s;
 
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.item.BlueprintItem;
-import com.coobird.staticlogistics.registry.SLDataComponents;
+import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;

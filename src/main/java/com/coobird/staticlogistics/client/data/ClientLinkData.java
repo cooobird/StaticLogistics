@@ -1,11 +1,13 @@
 package com.coobird.staticlogistics.client.data;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import net.minecraft.core.BlockPos;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
@@ -14,247 +16,450 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 客户端物流投影。
+ *
+ * <p>长期状态只保存分组目录和轻量拓扑；完整面配置仅在配置界面自己的菜单数据中存在。
+ * 权威快照必须收齐全部页面后才会原子替换当前投影。
+ */
 @OnlyIn(Dist.CLIENT)
 public enum ClientLinkData {
     INSTANCE;
 
-    private final Map<ResourceKey<Level>, Map<Long, FaceConfigComposite>> dimensionConfigs = new ConcurrentHashMap<>();
-    private final Map<UUID, Set<String>> knownGroupIds = new ConcurrentHashMap<>();
-    private final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
-    private final Map<UUID, CompoundTag> knownOwnerProfiles = new ConcurrentHashMap<>();
-    private final Map<UUID, Set<String>> serverEmptyGroups = new ConcurrentHashMap<>();
-    private int dataVersion = 0;
+    private static final int MAX_ASSEMBLY_PAGES = 16_384;
+    private static final int MAX_ASSEMBLY_ENTRIES = 1_000_000;
+    private static final long ASSEMBLY_TIMEOUT_NANOS = 30_000_000_000L;
+
+    private final AtomicInteger dataVersion = new AtomicInteger();
+    private volatile ProjectionState projection = new ProjectionState();
+    private long committedSnapshotSequence = Long.MIN_VALUE;
+    private SnapshotAssembly stagingSnapshot;
+    private long committedUpdateSequence = Long.MIN_VALUE;
+    private TopologyUpdateAssembly stagingUpdate;
+
+    private record FaceKey(ResourceKey<Level> dimension, FaceAddress address) {
+        static FaceKey of(LogisticsNode node) {
+            return new FaceKey(node.gPos().dimension(), FaceAddress.of(node));
+        }
+
+        LogisticsNode toNode() {
+            return address.toNode(dimension);
+        }
+    }
+
+    private static final class ProjectionState {
+        final Map<ResourceKey<Level>, Map<FaceAddress, FaceTopology>> topologyByDimension = new ConcurrentHashMap<>();
+        final Map<GroupKey, GroupRef> knownGroupRefs = new ConcurrentHashMap<>();
+        final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
+        final Map<UUID, Set<GroupRef>> groupDirectoryByOwner = new ConcurrentHashMap<>();
+        final Map<GroupKey, Set<FaceKey>> groupFaces = new ConcurrentHashMap<>();
+        final Map<FaceKey, Set<GroupKey>> faceGroups = new ConcurrentHashMap<>();
+        final Map<GroupKey, Map<LogisticsNode, Set<LogisticsNode>>> scopedLinks = new ConcurrentHashMap<>();
+        final VersionGate<FaceKey> versionGate = new VersionGate<>();
+    }
+
+    private static final class SnapshotAssembly {
+        final long sequence;
+        final int pageCount;
+        final long startedNanos = System.nanoTime();
+        final BitSet receivedPages;
+        final Map<FaceKey, FaceTopology> faces = new LinkedHashMap<>();
+        final Set<ScopedTopologyLink> links = new LinkedHashSet<>();
+        final Map<GroupKey, GroupRef> groups = new LinkedHashMap<>();
+
+        SnapshotAssembly(long sequence, int pageCount) {
+            this.sequence = sequence;
+            this.pageCount = pageCount;
+            this.receivedPages = new BitSet(pageCount);
+        }
+
+        boolean expired() {
+            return System.nanoTime() - startedNanos > ASSEMBLY_TIMEOUT_NANOS;
+        }
+    }
+
+    private static final class TopologyUpdateAssembly {
+        final long sequence;
+        final int pageCount;
+        final long startedNanos = System.nanoTime();
+        final BitSet receivedPages;
+        final Map<FaceKey, FaceTopology> faces = new LinkedHashMap<>();
+        final Set<ScopedTopologyLink> links = new LinkedHashSet<>();
+
+        TopologyUpdateAssembly(long sequence, int pageCount) {
+            this.sequence = sequence;
+            this.pageCount = pageCount;
+            this.receivedPages = new BitSet(pageCount);
+        }
+
+        boolean expired() {
+            return System.nanoTime() - startedNanos > ASSEMBLY_TIMEOUT_NANOS;
+        }
+    }
 
     public int getDataVersion() {
-        return dataVersion;
+        return dataVersion.get();
     }
 
-    private Map<Long, FaceConfigComposite> getOrCreateDimMap(ResourceKey<Level> dim) {
-        return dimensionConfigs.computeIfAbsent(dim, k -> new ConcurrentHashMap<>());
+    private void incrementDataVersion() {
+        dataVersion.incrementAndGet();
     }
 
-    private long posToKey(BlockPos pos, Direction face) {
-        return LogisticsNode.posToKey(pos, face);
+    private Map<FaceAddress, FaceTopology> getOrCreateTopologyMap(
+        ProjectionState state,
+        ResourceKey<Level> dimension
+    ) {
+        return state.topologyByDimension.computeIfAbsent(dimension, ignored -> new ConcurrentHashMap<>());
     }
 
-    private BlockPos keyToPos(long key) {
-        return LogisticsNode.keyToPos(key);
-    }
+    public void removeFaceTopology(GlobalPos pos, Direction face, long version) {
+        ProjectionState state = projection;
+        LogisticsNode node = new LogisticsNode(pos, face);
+        FaceKey key = FaceKey.of(node);
+        if (!state.versionGate.acceptRemoval(key, version)) return;
 
-    private Direction keyToFace(long key) {
-        return LogisticsNode.keyToFace(key);
-    }
-
-    /**
-     * 更新面配置。服务端是唯一数据源，按序到达，客户端无条件接受。
-     */
-    public void setFaceConfig(GlobalPos pos, Direction face, FaceConfigComposite config, long version) {
-        long key = posToKey(pos.pos(), face);
-        Map<Long, FaceConfigComposite> dimMap = getOrCreateDimMap(pos.dimension());
-        if (config.isDefault()) {
-            FaceConfigComposite removed = dimMap.remove(key);
-            if (removed != null) {
-                dataVersion++;
-                cleanupStaleKnownGroups(removed);
-            }
-            return;
-        }
-        dimMap.put(key, config);
-        dataVersion++;
-
-        UUID owner = config.faceConfig.getOwner();
-        if (owner != null && config.faceConfig.hasGroup()) {
-            for (String gid : config.faceConfig.getGroupIds()) {
-                addKnownGroup(owner, config.faceConfig.getOwnerName(), gid);
-                if (!config.faceConfig.getOwnerProfileTag().isEmpty())
-                    knownOwnerProfiles.put(owner, config.faceConfig.getOwnerProfileTag());
-            }
-        }
-    }
-
-    public void removeFaceConfig(GlobalPos pos, Direction face) {
-        long key = posToKey(pos.pos(), face);
-        Map<Long, FaceConfigComposite> dimMap = dimensionConfigs.get(pos.dimension());
-        if (dimMap != null) {
-            FaceConfigComposite removed = dimMap.remove(key);
-            if (removed != null) {
-                dataVersion++;
-                cleanupStaleKnownGroups(removed);
-            }
-        }
-    }
-
-    /**
-     * 当面配置被移除时，清理 knownGroupIds 中不再被任何面配置引用的组
-     */
-    private void cleanupStaleKnownGroups(FaceConfigComposite removed) {
-        if (removed == null || !removed.faceConfig.hasGroup()) return;
-        UUID owner = removed.faceConfig.getOwner();
-        if (owner == null) return;
-        for (String gid : removed.faceConfig.getGroupIds()) {
-            if (!isGroupInDimensionConfigs(gid)) {
-                Set<String> known = knownGroupIds.get(owner);
-                if (known != null) {
-                    known.remove(gid);
-                    if (known.isEmpty()) knownGroupIds.remove(owner);
-                }
-            }
-        }
+        Map<FaceAddress, FaceTopology> dimension = state.topologyByDimension.get(pos.dimension());
+        if (dimension == null || dimension.remove(key.address()) == null) return;
+        if (dimension.isEmpty()) state.topologyByDimension.remove(pos.dimension(), dimension);
+        unindexFace(state, key);
+        removeIncidentLinks(state, node);
+        incrementDataVersion();
     }
 
     public void invalidate() {
-        dimensionConfigs.clear();
-        knownGroupIds.clear();
-        knownOwnerNames.clear();
-        knownOwnerProfiles.clear();
-        serverEmptyGroups.clear();
-        dataVersion++;
+        synchronized (this) {
+            committedSnapshotSequence = Long.MIN_VALUE;
+            stagingSnapshot = null;
+            committedUpdateSequence = Long.MIN_VALUE;
+            stagingUpdate = null;
+            projection = new ProjectionState();
+        }
+        incrementDataVersion();
     }
 
     /**
-     * 从服务端同步空分组数据
+     * 收齐全部页面后一次性替换当前投影；缺页和旧页永远不会暴露给界面。
      */
-    public void setEmptyGroups(UUID playerId, Set<String> emptyGroups) {
-        if (emptyGroups.isEmpty()) {
-            serverEmptyGroups.remove(playerId);
-        } else {
-            serverEmptyGroups.put(playerId, new HashSet<>(emptyGroups));
+    public synchronized void acceptAuthoritativeSnapshotPage(
+        long sequence,
+        int pageIndex,
+        int pageCount,
+        List<FaceTopology> pageFaces,
+        List<ScopedTopologyLink> pageLinks,
+        List<GroupRef> pageGroups
+    ) {
+        if (sequence <= Math.max(committedSnapshotSequence, committedUpdateSequence)) return;
+        if (stagingUpdate != null) {
+            if (sequence < stagingUpdate.sequence) return;
+            if (sequence == stagingUpdate.sequence) {
+                throw new IllegalStateException("Topology sequence reused across stream types");
+            }
+            stagingUpdate = null;
         }
-        dataVersion++;
-    }
+        if (pageCount < 1 || pageCount > MAX_ASSEMBLY_PAGES
+            || pageIndex < 0 || pageIndex >= pageCount) {
+            throw new IllegalArgumentException("Invalid authoritative snapshot page");
+        }
+        if (stagingSnapshot != null && stagingSnapshot.expired()) stagingSnapshot = null;
+        if (stagingSnapshot == null || sequence > stagingSnapshot.sequence) {
+            stagingSnapshot = new SnapshotAssembly(sequence, pageCount);
+        } else if (sequence < stagingSnapshot.sequence) {
+            return;
+        } else if (stagingSnapshot.pageCount != pageCount) {
+            throw new IllegalStateException("Authoritative snapshot page count changed");
+        }
+        if (stagingSnapshot.receivedPages.get(pageIndex)) return;
+        long assembledEntries = (long) stagingSnapshot.faces.size()
+            + stagingSnapshot.links.size() + stagingSnapshot.groups.size()
+            + pageFaces.size() + pageLinks.size() + pageGroups.size();
+        if (assembledEntries > MAX_ASSEMBLY_ENTRIES) {
+            stagingSnapshot = null;
+            throw new IllegalStateException("Authoritative snapshot assembly is too large");
+        }
 
-    public Map<LogisticsNode, FaceConfigComposite> getActiveNodesWithConfig(ResourceKey<Level> dimension) {
-        Map<Long, FaceConfigComposite> dimMap = dimensionConfigs.get(dimension);
-        if (dimMap == null || dimMap.isEmpty()) return Collections.emptyMap();
-        Map<LogisticsNode, FaceConfigComposite> result = new HashMap<>();
-        dimMap.forEach((key, config) -> {
-            BlockPos pos = keyToPos(key);
-            Direction face = keyToFace(key);
-            result.put(new LogisticsNode(GlobalPos.of(dimension, pos), face), config);
-        });
-        return result;
-    }
-
-    public List<String> getGroupsByOwners(Collection<UUID> owners) {
-        Set<String> groups = new HashSet<>();
-        // 从已同步的面配置中收集组（权威数据源）
-        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
-            for (FaceConfigComposite cfg : dimMap.values()) {
-                if (owners.contains(cfg.faceConfig.getOwner()) && cfg.faceConfig.hasGroup()) {
-                    groups.addAll(cfg.faceConfig.getGroupIds());
-                }
+        for (FaceTopology face : pageFaces) {
+            FaceKey key = FaceKey.of(face.node());
+            if (stagingSnapshot.faces.putIfAbsent(key, face) != null) {
+                throw new IllegalStateException("Duplicate face in authoritative snapshot");
             }
         }
-        // 补充 knownGroupIds（包含刚创建还没链接的组）
-        // 过期条目已由 cleanupStaleKnownGroups 在面配置删除时清理
-        for (UUID owner : owners) {
-            Set<String> known = knownGroupIds.get(owner);
-            if (known != null) groups.addAll(known);
+        for (ScopedTopologyLink link : pageLinks) {
+            if (!stagingSnapshot.links.add(link)) {
+                throw new IllegalStateException("Duplicate link in authoritative snapshot");
+            }
         }
-        // 补充服务端同步的空分组（持久化的）
-        for (UUID owner : owners) {
-            Set<String> empty = serverEmptyGroups.get(owner);
-            if (empty != null) groups.addAll(empty);
+        for (GroupRef group : pageGroups) {
+            GroupRef previous = stagingSnapshot.groups.putIfAbsent(group.key(), group);
+            if (previous != null) {
+                throw new IllegalStateException(previous.equals(group)
+                    ? "Duplicate group in authoritative snapshot"
+                    : "Conflicting group in authoritative snapshot");
+            }
         }
-        return new ArrayList<>(groups);
+
+        stagingSnapshot.receivedPages.set(pageIndex);
+        if (stagingSnapshot.receivedPages.cardinality() == stagingSnapshot.pageCount) {
+            commitAuthoritativeSnapshot(stagingSnapshot);
+        }
+    }
+
+    private void commitAuthoritativeSnapshot(SnapshotAssembly snapshot) {
+        ProjectionState next = new ProjectionState();
+        for (var entry : snapshot.faces.entrySet()) {
+            FaceKey key = entry.getKey();
+            FaceTopology topology = entry.getValue();
+            getOrCreateTopologyMap(next, key.dimension()).put(key.address(), topology);
+            next.versionGate.seed(key, topology.version());
+            indexFace(next, key, topology);
+            rememberTopologyDirectory(next, topology);
+        }
+        snapshot.links.forEach(link -> putScopedLink(next, link));
+        for (GroupRef group : snapshot.groups.values()) {
+            next.knownGroupRefs.put(group.key(), group);
+            next.groupDirectoryByOwner.computeIfAbsent(
+                group.key().ownerId(), ignored -> ConcurrentHashMap.newKeySet()).add(group);
+        }
+        projection = next;
+        committedSnapshotSequence = snapshot.sequence;
+        committedUpdateSequence = Math.max(committedUpdateSequence, snapshot.sequence);
+        stagingSnapshot = null;
+        stagingUpdate = null;
+        incrementDataVersion();
     }
 
     /**
-     * 检查某个组 ID 是否还存在于任何已同步的面配置中（不检查 knownGroupIds）
+     * 收齐一次拓扑增量的全部页面后，按面版本原子替换涉及的节点和出边。
      */
-    private boolean isGroupInDimensionConfigs(String groupId) {
-        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
-            for (FaceConfigComposite cfg : dimMap.values()) {
-                if (cfg.faceConfig.hasGroup() && cfg.faceConfig.getGroupIds().contains(groupId)) {
-                    return true;
-                }
+    public synchronized void acceptTopologyUpdatePage(
+        long sequence,
+        int pageIndex,
+        int pageCount,
+        List<FaceTopology> pageFaces,
+        List<ScopedTopologyLink> pageLinks
+    ) {
+        if (sequence <= Math.max(committedSnapshotSequence, committedUpdateSequence)) return;
+        if (stagingSnapshot != null) {
+            if (sequence < stagingSnapshot.sequence) return;
+            if (sequence == stagingSnapshot.sequence) {
+                throw new IllegalStateException("Topology sequence reused across stream types");
+            }
+            stagingSnapshot = null;
+        }
+        if (pageCount < 1 || pageCount > MAX_ASSEMBLY_PAGES
+            || pageIndex < 0 || pageIndex >= pageCount) {
+            throw new IllegalArgumentException("Invalid topology update page");
+        }
+        if (stagingUpdate != null && stagingUpdate.expired()) stagingUpdate = null;
+        if (stagingUpdate == null || sequence > stagingUpdate.sequence) {
+            stagingUpdate = new TopologyUpdateAssembly(sequence, pageCount);
+        } else if (sequence < stagingUpdate.sequence) {
+            return;
+        } else if (stagingUpdate.pageCount != pageCount) {
+            throw new IllegalStateException("Topology update page count changed");
+        }
+        if (stagingUpdate.receivedPages.get(pageIndex)) return;
+        long assembledEntries = (long) stagingUpdate.faces.size() + stagingUpdate.links.size()
+            + pageFaces.size() + pageLinks.size();
+        if (assembledEntries > MAX_ASSEMBLY_ENTRIES) {
+            stagingUpdate = null;
+            throw new IllegalStateException("Topology update assembly is too large");
+        }
+
+        for (FaceTopology face : pageFaces) {
+            if (stagingUpdate.faces.putIfAbsent(FaceKey.of(face.node()), face) != null) {
+                throw new IllegalStateException("Duplicate face in topology update");
             }
         }
-        return false;
+        for (ScopedTopologyLink link : pageLinks) {
+            if (!stagingUpdate.links.add(link)) {
+                throw new IllegalStateException("Duplicate link in topology update");
+            }
+        }
+        stagingUpdate.receivedPages.set(pageIndex);
+        if (stagingUpdate.receivedPages.cardinality() == stagingUpdate.pageCount) {
+            commitTopologyUpdate(stagingUpdate);
+        }
     }
 
-    public void addKnownGroup(UUID owner, String ownerName, String groupId) {
-        if (groupId == null || groupId.isEmpty()) return;
-        knownGroupIds.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet()).add(groupId);
+    private void commitTopologyUpdate(TopologyUpdateAssembly update) {
+        ProjectionState state = projection;
+        Set<LogisticsNode> acceptedSources = new LinkedHashSet<>();
+        for (var entry : update.faces.entrySet()) {
+            FaceKey key = entry.getKey();
+            FaceTopology topology = entry.getValue();
+            if (!state.versionGate.acceptUpdate(key, topology.version())) continue;
+            unindexFace(state, key);
+            removeSourceLinks(state, topology.node());
+            getOrCreateTopologyMap(state, key.dimension()).put(key.address(), topology);
+            indexFace(state, key, topology);
+            rememberTopologyDirectory(state, topology);
+            acceptedSources.add(topology.node());
+        }
+        update.links.stream()
+            .filter(link -> acceptedSources.contains(link.source()))
+            .forEach(link -> putScopedLink(state, link));
+        committedUpdateSequence = update.sequence;
+        committedSnapshotSequence = Math.max(committedSnapshotSequence, update.sequence);
+        stagingUpdate = null;
+        stagingSnapshot = null;
+        if (!acceptedSources.isEmpty()) incrementDataVersion();
+    }
+
+    /**
+     * 替换某位所有者的权威分组目录；其中也包含没有节点的空分组。
+     */
+    public void replaceGroupDirectory(UUID owner, Set<GroupRef> groups) {
+        ProjectionState state = projection;
+        Set<GroupRef> previous = state.groupDirectoryByOwner.remove(owner);
+        if (!groups.isEmpty()) {
+            Set<GroupRef> owned = ConcurrentHashMap.newKeySet();
+            owned.addAll(groups);
+            state.groupDirectoryByOwner.put(owner, owned);
+            owned.forEach(group -> state.knownGroupRefs.put(group.key(), group));
+        }
+        if (previous != null) {
+            previous.forEach(group -> retireGroupIfUnreferenced(state, group.key()));
+        }
+        incrementDataVersion();
+    }
+
+    /**
+     * 返回服务端已经按读取权限过滤后的权威分组集合。
+     */
+    public List<GroupRef> getAccessibleGroupRefs() {
+        return List.copyOf(projection.knownGroupRefs.values());
+    }
+
+    public Map<LogisticsNode, FaceTopology> getActiveTopology(ResourceKey<Level> dimension) {
+        Map<FaceAddress, FaceTopology> values = projection.topologyByDimension.get(dimension);
+        if (values == null || values.isEmpty()) return Collections.emptyMap();
+        Map<LogisticsNode, FaceTopology> result = new LinkedHashMap<>();
+        values.values().forEach(topology -> result.put(topology.node(), topology));
+        return Collections.unmodifiableMap(result);
+    }
+
+    public Set<LogisticsNode> getLinkedNodes(GroupKey groupKey, LogisticsNode source) {
+        Map<LogisticsNode, Set<LogisticsNode>> sources = projection.scopedLinks.get(groupKey);
+        if (sources == null) return Set.of();
+        Set<LogisticsNode> targets = sources.get(source);
+        return targets == null ? Set.of() : Set.copyOf(targets);
+    }
+
+    public void addKnownGroup(GroupRef group, String ownerName) {
+        ProjectionState state = projection;
+        state.knownGroupRefs.put(group.key(), group);
         if (ownerName != null && !ownerName.isEmpty()) {
-            knownOwnerNames.putIfAbsent(owner, ownerName);
+            state.knownOwnerNames.putIfAbsent(group.key().ownerId(), ownerName);
         }
-        dataVersion++;
+        incrementDataVersion();
     }
 
-    public void removeKnownGroup(UUID owner, String groupId) {
-        if (groupId == null || groupId.isEmpty()) return;
-        Set<String> set = knownGroupIds.get(owner);
-        if (set != null && set.remove(groupId)) dataVersion++;
+    @Nullable
+    public GroupRef findGroupRef(UUID owner, String displayName) {
+        return projection.knownGroupRefs.values().stream()
+            .filter(group -> group.key().ownerId().equals(owner)
+                && group.displayName().equals(displayName))
+            .findFirst().orElse(null);
+    }
+
+    @Nullable
+    public GroupRef findGroupRef(GroupKey key) {
+        return projection.knownGroupRefs.get(key);
     }
 
     /**
-     * 从服务端同步的空分组中移除指定分组
+     * 仅在显示名称唯一时为旧物品解析身份，避免同名不同所有者的分组串线。
      */
-    public void removeServerEmptyGroup(UUID owner, String groupId) {
-        if (groupId == null || groupId.isEmpty()) return;
-        Set<String> set = serverEmptyGroups.get(owner);
-        if (set != null && set.remove(groupId)) {
-            if (set.isEmpty()) serverEmptyGroups.remove(owner);
-            dataVersion++;
+    @Nullable
+    public GroupKey resolveUniqueGroupKey(String displayName) {
+        GroupKey match = null;
+        for (GroupRef group : projection.knownGroupRefs.values()) {
+            if (!group.displayName().equals(displayName)) continue;
+            if (match != null && !match.equals(group.key())) return null;
+            match = group.key();
+        }
+        return match;
+    }
+
+    /**
+     * 返回完整节点身份，保留维度与具体面。
+     */
+    public List<LogisticsNode> getNodesForGroup(GroupKey groupKey) {
+        Set<FaceKey> faces = projection.groupFaces.get(groupKey);
+        if (faces == null || faces.isEmpty()) return List.of();
+        return faces.stream().map(FaceKey::toNode).toList();
+    }
+
+    private void rememberTopologyDirectory(ProjectionState state, FaceTopology topology) {
+        topology.groups().forEach(group -> state.knownGroupRefs.put(group.key(), group));
+        if (topology.ownerId() != null && !"Unknown".equals(topology.ownerName())) {
+            state.knownOwnerNames.putIfAbsent(topology.ownerId(), topology.ownerName());
         }
     }
 
-    public List<BlockPos> getPositionsForGroup(String groupId) {
-        List<BlockPos> positions = new ArrayList<>();
-        dimensionConfigs.values().forEach(dimMap -> {
-            dimMap.forEach((key, config) -> {
-                if (config.faceConfig.getGroupIds().contains(groupId)) {
-                    positions.add(keyToPos(key));
-                }
-            });
+    private void indexFace(ProjectionState state, FaceKey face, FaceTopology topology) {
+        Set<GroupKey> keys = topology.groupKeys();
+        if (keys.isEmpty()) return;
+        state.faceGroups.put(face, keys);
+        for (GroupKey key : keys) {
+            state.groupFaces.computeIfAbsent(key, ignored -> ConcurrentHashMap.newKeySet()).add(face);
+        }
+    }
+
+    private void unindexFace(ProjectionState state, FaceKey face) {
+        Set<GroupKey> keys = state.faceGroups.remove(face);
+        if (keys == null) return;
+        for (GroupKey key : keys) {
+            Set<FaceKey> faces = state.groupFaces.get(key);
+            if (faces != null && faces.remove(face) && faces.isEmpty()) {
+                state.groupFaces.remove(key, faces);
+                retireGroupIfUnreferenced(state, key);
+            }
+        }
+    }
+
+    /**
+     * 分组目录与拓扑共同持有显示身份；两侧都不再引用时才回收。
+     */
+    private void retireGroupIfUnreferenced(ProjectionState state, GroupKey key) {
+        if (state.groupFaces.containsKey(key)) return;
+        Set<GroupRef> directory = state.groupDirectoryByOwner.get(key.ownerId());
+        if (directory != null && directory.stream().anyMatch(group -> group.key().equals(key))) return;
+        state.knownGroupRefs.remove(key);
+    }
+
+    private void putScopedLink(ProjectionState state, ScopedTopologyLink link) {
+        state.scopedLinks
+            .computeIfAbsent(link.groupKey(), ignored -> new ConcurrentHashMap<>())
+            .computeIfAbsent(link.source(), ignored -> ConcurrentHashMap.newKeySet())
+            .add(link.target());
+    }
+
+    private void removeSourceLinks(ProjectionState state, LogisticsNode source) {
+        state.scopedLinks.entrySet().removeIf(group -> {
+            group.getValue().remove(source);
+            return group.getValue().isEmpty();
         });
-        return positions;
     }
 
-    @Nullable
-    public CompoundTag getOwnerProfileForGroup(String groupId) {
-        UUID uuid = getOwnerUUIDForGroup(groupId);
-        return uuid != null ? knownOwnerProfiles.get(uuid) : null;
+    private void removeIncidentLinks(ProjectionState state, LogisticsNode node) {
+        state.scopedLinks.entrySet().removeIf(group -> {
+            Map<LogisticsNode, Set<LogisticsNode>> sources = group.getValue();
+            sources.remove(node);
+            sources.entrySet().removeIf(entry -> {
+                Set<LogisticsNode> targets = entry.getValue();
+                targets.remove(node);
+                return targets.isEmpty();
+            });
+            return sources.isEmpty();
+        });
     }
 
-    public String getOwnerNameForGroup(String groupId) {
-        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
-            for (FaceConfigComposite cfg : dimMap.values()) {
-                if (cfg.faceConfig.getGroupIds().contains(groupId)) {
-                    String name = cfg.faceConfig.getOwnerName();
-                    if (name != null && !name.isEmpty() && !"Unknown".equals(name)) return name;
-                }
-            }
-        }
-        for (var entry : knownGroupIds.entrySet()) {
-            if (entry.getValue().contains(groupId)) {
-                String name = knownOwnerNames.get(entry.getKey());
-                if (name != null && !name.isEmpty()) return name;
-                return entry.getKey().toString();
-            }
-        }
-        return "";
+    public String getOwnerName(UUID owner) {
+        String known = projection.knownOwnerNames.get(owner);
+        return known == null || known.isEmpty() ? owner.toString() : known;
     }
 
-    @Nullable
-    public UUID getOwnerUUIDForGroup(String groupId) {
-        for (Map<Long, FaceConfigComposite> dimMap : dimensionConfigs.values()) {
-            for (FaceConfigComposite cfg : dimMap.values()) {
-                if (cfg.faceConfig.getGroupIds().contains(groupId)) {
-                    UUID owner = cfg.faceConfig.getOwner();
-                    if (owner != null) return owner;
-                }
-            }
-        }
-        for (var entry : knownGroupIds.entrySet()) {
-            if (entry.getValue().contains(groupId)) return entry.getKey();
-        }
-        // 检查服务端同步的空分组
-        for (var entry : serverEmptyGroups.entrySet()) {
-            if (entry.getValue().contains(groupId)) return entry.getKey();
-        }
-        return null;
-    }
 }

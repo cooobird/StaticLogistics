@@ -1,30 +1,36 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.network.SLNetwork;
-import com.coobird.staticlogistics.network.s2c.S2CRemoveBulkFaceConfigPayload;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
-public record C2SDeleteGroupPayload(String groupId) implements IPortPacket.C2S {
+/**
+ * 客户端请求删除指定分组及其全部链接。
+ */
+public record C2SDeleteGroupPayload(GroupKey groupKey) implements IPortPacket.C2S {
     public static final ResourceLocation ID = StaticLogistics.asResource("delete_group");
-    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SDeleteGroupPayload> STREAM_CODEC = new PortStreamCodec<>() {
-        @Override
-        public C2SDeleteGroupPayload decode(PortRegistryFriendlyByteBuf buffer) {
-            net.minecraft.network.FriendlyByteBuf fbuf = buffer;
-            return new C2SDeleteGroupPayload(fbuf.readUtf());
-        }
+    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SDeleteGroupPayload> STREAM_CODEC =
+        new PortStreamCodec<>() {
+            @Override
+            public C2SDeleteGroupPayload decode(PortRegistryFriendlyByteBuf buffer) {
+                return new C2SDeleteGroupPayload(GroupKey.STREAM_CODEC.decode(buffer));
+            }
 
-        @Override
-        public void encode(PortRegistryFriendlyByteBuf buffer, C2SDeleteGroupPayload value) {
-            net.minecraft.network.FriendlyByteBuf fbuf = buffer;
-            fbuf.writeUtf(value.groupId());
-        }
-    };
+            @Override
+            public void encode(PortRegistryFriendlyByteBuf buffer, C2SDeleteGroupPayload value) {
+                GroupKey.STREAM_CODEC.encode(buffer, value.groupKey());
+            }
+        };
 
     @Override
     public ResourceLocation identifier() {
@@ -33,18 +39,15 @@ public record C2SDeleteGroupPayload(String groupId) implements IPortPacket.C2S {
 
     @Override
     public void work(ServerPlayer player) {
-        var server = player.getServer();
-        if (server == null) return;
-        GlobalLogisticsManager manager = GlobalLogisticsManager.get(server);
-        var faceEntries = manager.collectGroupFaceConfigs(groupId());
-        // 统一删除分组（包括空分组和有内容的分组）
-        manager.removeGroup(player.getUUID(), groupId());
-        if (!faceEntries.isEmpty()) {
-            var s2cEntries = faceEntries.stream()
-                .map(e -> new S2CRemoveBulkFaceConfigPayload.Entry(e.pos(), e.face()))
-                .toList();
-            SLNetwork.HANDLER.sendToPlayer(player,
-                new S2CRemoveBulkFaceConfigPayload(s2cEntries));
+        boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
+            || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
+        if (!holdsTool || player.getServer() == null) return;
+        var store = PlayerGroupStore.get(player.getServer());
+        var target = store.findGroup(groupKey());
+        if (target != null && new GroupCommandService(player.getServer()).delete(player, groupKey())) {
+            LinkConfiguratorSelection.clearIfSelected(player, target.key(), target.displayName());
+            TeamPacketSync.send(player, new S2CGroupDirectoryPayload(
+                groupKey().ownerId(), store.getGroupRefs(groupKey().ownerId())));
         }
     }
 }

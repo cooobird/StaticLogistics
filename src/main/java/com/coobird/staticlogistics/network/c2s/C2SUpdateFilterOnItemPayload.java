@@ -1,23 +1,16 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
-import com.coobird.staticlogistics.filter.FilterData;
-import com.coobird.staticlogistics.logic.group.GroupService;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
-import com.coobird.staticlogistics.registry.SLDataComponents;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
+import com.coobird.staticlogistics.logistics.node.NodeMutationService;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.GlobalPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.ItemStack;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
@@ -58,23 +51,20 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos,
 
     @Override
     public void work(ServerPlayer player) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) return;
-        LinkManager manager = LinkManager.get(serverLevel);
-        long key = LinkManager.posToKey(pos, face);
-        FaceConfigComposite config = manager.getFaceConfig(key);
-        if (config == null) return;
-        if (!config.canPlayerModify(player)) return;
-        LogisticsResource<?> type = TransferRegistries.get(typeId);
-        if (type == null) return;
+        if (!ServerPacketRateLimiter.allow(
+            player, ServerPacketRateLimiter.Action.FILTER_UPDATE)) return;
+        if (!(player.containerMenu instanceof FilterConfiguratorMenu menu)
+            || !NodeInteractionRules.matchesTarget(menu.getPos(), menu.getFace(), pos, face)
+            || menu.isInput() != isInput
+            || !menu.getTransferType().typeId().equals(typeId)) return;
+
+        NodeMutationService mutations = new NodeMutationService();
+        NodeMutationService.ValidatedNode node = mutations.resolve(player, pos, face);
+        if (node == null) return;
         int slotIndex = isInput ? 0 : 1;
-        ItemStack upgradeStack = config.filterConfig.getUpgrades().getStackInSlot(slotIndex);
-        if (upgradeStack.isEmpty()) return;
-        PortItemStackExtension.setData(upgradeStack, SLDataComponents.FILTER_DATA, filter);
-        config.markDirty();
-        manager.refreshLocalCache(key, pos, face, config);
-        manager.syncConfigToClients(pos);
-        manager.activateNode(key, pos, face, config);
-        S2CSyncFaceConfigPayload syncPacket = new S2CSyncFaceConfigPayload(GlobalPos.of(serverLevel.dimension(), pos), face, config);
-        GroupService.syncToTeamMembers(player, syncPacket);
+        var upgradeStack = node.config().filterConfig.getUpgrades().getStackInSlot(slotIndex);
+        if (mutations.updateFilter(node, typeId, isInput, filter)) {
+            menu.commitFilterData(filter, upgradeStack);
+        }
     }
 }

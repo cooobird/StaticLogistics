@@ -2,13 +2,12 @@ package com.coobird.staticlogistics.datagen;
 
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.registry.SLItems;
+import com.coobird.staticlogistics.content.registry.SLItems;
 import net.minecraft.data.PackOutput;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.client.model.generators.ItemModelProvider;
 import net.minecraftforge.common.data.ExistingFileHelper;
 import net.minecraftforge.registries.DeferredRegister;
-import net.minecraftforge.registries.RegistryObject;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -27,10 +26,8 @@ public class SLItemModelProvider extends ItemModelProvider {
         simpleItem(SLItems.ITEMS);
     }
 
-    protected void simpleItem(DeferredRegister register) {
-        for (var entry : register.getEntries()) {
-            @SuppressWarnings("unchecked")
-            RegistryObject<Item> item = (RegistryObject<Item>) entry;
+    protected void simpleItem(DeferredRegister<Item> register) {
+        for (var item : register.getEntries()) {
             if (skip.contains(item.get())) continue;
 
             String path = item.getId().getPath();

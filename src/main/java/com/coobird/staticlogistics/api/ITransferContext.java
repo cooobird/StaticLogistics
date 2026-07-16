@@ -1,16 +1,21 @@
 package com.coobird.staticlogistics.api;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 
 /**
- * 传输上下文只读接口 —— 供 ITransferHandler 实现读取传输参数。
+ * 传输上下文只读接口，供 {@link ITransferHandler} 读取传输参数。
  */
 public interface ITransferContext {
+
     ServerLevel level();
 
     LogisticsNode sourceNode();
 
-    LogisticsResource<?> type();
+    /**
+     * 本次传输的资源类型。
+     */
+    ResourceLocation typeId();
 
     long limit();
 

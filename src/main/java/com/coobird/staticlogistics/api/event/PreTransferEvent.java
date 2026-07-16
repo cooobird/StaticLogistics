@@ -1,23 +1,24 @@
 package com.coobird.staticlogistics.api.event;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.eventbus.api.Event;
 
 /**
- * 传输开始前触发的事件。可取消以阻止传输。
+ * 传输开始前发布的独立可取消事件；发布后字段不会被框架清空或复用。
  */
-public class PreTransferEvent extends Event {
+public final class PreTransferEvent extends Event {
     private final LogisticsNode sourceNode;
     private final LogisticsNode targetNode;
-    private final LogisticsResource<?> resource;
+    private final ResourceLocation resourceTypeId;
     private final long requestedAmount;
     private boolean canceled;
 
-    public PreTransferEvent(LogisticsNode sourceNode, LogisticsNode targetNode, LogisticsResource<?> resource, long requestedAmount) {
+    public PreTransferEvent(LogisticsNode sourceNode, LogisticsNode targetNode,
+                            ResourceLocation resourceTypeId, long requestedAmount) {
         this.sourceNode = sourceNode;
         this.targetNode = targetNode;
-        this.resource = resource;
+        this.resourceTypeId = resourceTypeId;
         this.requestedAmount = requestedAmount;
     }
 
@@ -29,8 +30,8 @@ public class PreTransferEvent extends Event {
         return targetNode;
     }
 
-    public LogisticsResource<?> getResource() {
-        return resource;
+    public ResourceLocation getResourceTypeId() {
+        return resourceTypeId;
     }
 
     public long getRequestedAmount() {

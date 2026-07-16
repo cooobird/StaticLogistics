@@ -1,19 +1,15 @@
 package com.coobird.staticlogistics.command;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logic.group.GroupService;
-import com.coobird.staticlogistics.logic.type.TransferRegistries;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.ContainerConfig;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.handler.CapabilityCache;
-import com.coobird.staticlogistics.transfer.log.NodeStats;
-import com.coobird.staticlogistics.transfer.log.TransferEntry;
-import com.coobird.staticlogistics.transfer.log.TransferLogManager;
-import com.coobird.staticlogistics.transfer.log.TypeStats;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.OwnershipTransferService;
+import com.coobird.staticlogistics.logistics.node.ContainerConfig;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.transfer.*;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -102,18 +98,6 @@ public class SLCommands {
     }
 
     /**
-     * 刷新单个节点的本地缓存并同步到客户端
-     */
-    private static void refreshNode(LinkManager manager, long key, FaceConfigComposite config) {
-        BlockPos pos = LogisticsNode.keyToPos(key);
-        Direction face = LogisticsNode.keyToFace(key);
-        manager.refreshLocalCache(key, pos, face, config);
-        manager.syncConfigToClients(pos);
-        manager.markDirtyBatch(() -> {
-        });
-    }
-
-    /**
      * 显示指定位置的容器配置和面配置信息
      */
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
@@ -143,7 +127,7 @@ public class SLCommands {
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_configs_title").withStyle(ChatFormatting.GOLD), false);
         boolean found = false;
         for (Direction dir : Direction.values()) {
-            long key = LinkManager.posToKey(pos, dir);
+            FaceAddress key = FaceAddress.of(pos, dir);
             FaceConfigComposite config = manager.getFaceConfig(key);
             if (config != null && !config.isDefault()) {
                 found = true;
@@ -224,18 +208,8 @@ public class SLCommands {
         ServerPlayer toPlayer = EntityArgument.getPlayer(context, "to");
         MinecraftServer server = context.getSource().getServer();
 
-        int count = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager manager = LinkManager.get(level);
-            for (long key : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
-                if (config != null && fromProfile.getId().equals(config.faceConfig.getOwner())) {
-                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName(), toPlayer.getGameProfile());
-                    refreshNode(manager, key, config);
-                    count++;
-                }
-            }
-        }
+        int count = new OwnershipTransferService(server, GlobalLogisticsManager.get(server))
+            .transfer(context.getSource(), fromProfile.getId(), toPlayer, null);
 
         int finalCount = count;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.success",
@@ -253,18 +227,8 @@ public class SLCommands {
         ServerPlayer toPlayer = EntityArgument.getPlayer(context, "to");
         MinecraftServer server = context.getSource().getServer();
 
-        int count = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager manager = LinkManager.get(level);
-            for (long key : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
-                if (config != null && fromProfile.getId().equals(config.faceConfig.getOwner()) && groupId.equals(config.faceConfig.getGroupId())) {
-                    config.faceConfig.setOwner(toPlayer.getUUID(), toPlayer.getGameProfile().getName(), toPlayer.getGameProfile());
-                    refreshNode(manager, key, config);
-                    count++;
-                }
-            }
-        }
+        int count = new OwnershipTransferService(server, GlobalLogisticsManager.get(server))
+            .transfer(context.getSource(), fromProfile.getId(), toPlayer, groupId);
 
         int finalCount = count;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.group_success",
@@ -286,7 +250,8 @@ public class SLCommands {
         if (player == null) return 0;
 
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
-        GroupService.renameGroup(level, player, oldGroup, newGroup, globalManager);
+        if (!GroupService.renameGroupAsAdmin(
+            level, player, profile.getId(), oldGroup, newGroup, globalManager)) return 0;
 
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.rename.success",
             oldGroup, newGroup, profile.getName()), true);
@@ -304,7 +269,7 @@ public class SLCommands {
         int count = 0;
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager manager = LinkManager.get(level);
-            for (long key : new ArrayList<>(manager.getAllConfigKeys())) {
+            for (FaceAddress key : new ArrayList<>(manager.getAllConfigKeys())) {
                 FaceConfigComposite config = manager.getFaceConfig(key);
                 if (config != null && profile.getId().equals(config.faceConfig.getOwner())) {
                     manager.removeFaceConfig(key);
@@ -346,7 +311,7 @@ public class SLCommands {
      * /sl stats：显示传输统计总览（总次数、总量、失败数、按类型分）
      */
     private static int showStatsOverview(CommandContext<CommandSourceStack> ctx) {
-        var mgr = TransferLogManager.get();
+        var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.header").withStyle(ChatFormatting.GOLD), false);
@@ -373,7 +338,7 @@ public class SLCommands {
      * /sl stats recent：显示最近N条传输记录
      */
     private static int showRecentTransfers(CommandContext<CommandSourceStack> ctx, int count) {
-        var mgr = TransferLogManager.get();
+        var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
         var recent = mgr.getRecent(count);
         int size = recent.size();
@@ -396,7 +361,7 @@ public class SLCommands {
      * /sl stats top：显示发送/接收最多的前N个节点排行
      */
     private static int showTopNodes(CommandContext<CommandSourceStack> ctx, int count) {
-        var mgr = TransferLogManager.get();
+        var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_send").withStyle(ChatFormatting.GOLD), false);
@@ -431,7 +396,7 @@ public class SLCommands {
      * /sl stats reset：重置所有传输统计数据
      */
     private static int resetStats(CommandContext<CommandSourceStack> ctx) {
-        TransferLogManager.get().reset();
+        TransferLogManager.get(ctx.getSource().getServer()).reset();
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.reset").withStyle(ChatFormatting.GREEN), true);
         return 1;
     }
@@ -469,11 +434,17 @@ public class SLCommands {
     private static int showDebugOverview(CommandContext<CommandSourceStack> ctx) {
         var source = ctx.getSource();
         var cacheStats = CapabilityCache.snapshotStats();
+        var schedulerStats = collectSchedulerStats(source.getServer());
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.header").withStyle(ChatFormatting.GOLD), false);
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.transfer_types",
             TransferRegistries.getAllActive().size(), TransferRegistries.generation()).withStyle(ChatFormatting.GRAY), false);
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache",
                 cacheStats.dimensions(), cacheStats.entries(), cacheStats.liveEntries(), cacheStats.staleEntries())
+            .withStyle(ChatFormatting.GRAY), false);
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.scheduler",
+                schedulerStats.lastMicros(), schedulerStats.peakMicros(),
+                schedulerStats.averageMicros(), schedulerStats.candidates(),
+                schedulerStats.attempts(), schedulerStats.budgetStops())
             .withStyle(ChatFormatting.GRAY), false);
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.help")
             .withStyle(ChatFormatting.DARK_GRAY), false);
@@ -488,6 +459,46 @@ public class SLCommands {
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_stats",
             stats.dimensions(), stats.entries(), stats.liveEntries(), stats.staleEntries()).withStyle(ChatFormatting.GRAY), false);
         return 1;
+    }
+
+    private static SchedulerDebugStats collectSchedulerStats(MinecraftServer server) {
+        int dimensions = 0;
+        long lastNanos = 0L;
+        long peakNanos = 0L;
+        long averageNanos = 0L;
+        long budgetStops = 0L;
+        int candidates = 0;
+        int attempts = 0;
+        for (ServerLevel level : server.getAllLevels()) {
+            dimensions++;
+            var stats = LogisticsTicker.getSchedulerStats(server, level.dimension());
+            lastNanos += stats.lastNanos();
+            peakNanos = Math.max(peakNanos, stats.peakNanos());
+            averageNanos += stats.averageNanos();
+            budgetStops += stats.budgetStops();
+            candidates += stats.candidates();
+            attempts += stats.attempts();
+        }
+        long averageMicros = dimensions == 0 ? 0L
+            : averageNanos / dimensions / 1_000L;
+        return new SchedulerDebugStats(
+            lastNanos / 1_000L,
+            peakNanos / 1_000L,
+            averageMicros,
+            budgetStops,
+            candidates,
+            attempts
+        );
+    }
+
+    private record SchedulerDebugStats(
+        long lastMicros,
+        long peakMicros,
+        long averageMicros,
+        long budgetStops,
+        int candidates,
+        int attempts
+    ) {
     }
 
     private static int showTypeDebug(CommandContext<CommandSourceStack> ctx) {

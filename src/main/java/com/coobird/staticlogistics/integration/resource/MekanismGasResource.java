@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.ExtractionResult;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
 import mekanism.api.chemical.gas.GasStack;
@@ -23,7 +24,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * Mekanism 气体资源适配�?(Forge 1.20.1)�? * 通过 {@link mekanism.common.capabilities.Capabilities#GAS_HANDLER} 访问�?
+ * 通过 {@link mekanism.common.capabilities.Capabilities#GAS_HANDLER} 访问 Mekanism 气体。
  */
 public class MekanismGasResource implements LogisticsResource<IGasHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -55,10 +56,16 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
     }
 
     @Override
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
+    }
+
+    @Override
     public @Nullable IGasHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
-        return be.getCapability(mekanism.common.capabilities.Capabilities.GAS_HANDLER, face).orElse(null);
+        return com.coobird.staticlogistics.transfer.CapabilityCache.get(
+            level, pos, face, mekanism.common.capabilities.Capabilities.GAS_HANDLER);
     }
 
     @Override
@@ -96,5 +103,18 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
         if (!(value instanceof GasStack stack) || stack.isEmpty()) return false;
         GasStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
         return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
+    }
+
+    @Override
+    public long amountOf(Object value) {
+        return value instanceof GasStack stack ? stack.getAmount() : -1L;
+    }
+
+    @Override
+    public Object withAmount(Object value, long amount) {
+        if (!(value instanceof GasStack stack)) return null;
+        GasStack copy = stack.copy();
+        copy.setAmount(Math.max(0L, amount));
+        return copy;
     }
 }

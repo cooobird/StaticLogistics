@@ -1,49 +1,70 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.gui.menu.FilterConfiguratorMenu;
-import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
-import com.coobird.staticlogistics.logic.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logic.group.GroupService;
-import com.coobird.staticlogistics.network.s2c.S2CSyncFaceConfigPayload;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.node.FaceConfigurationEdit;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
+import com.coobird.staticlogistics.logistics.node.NodeMutationService;
+import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
+import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
+import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
+import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.EncoderException;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.GlobalPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.SimpleMenuProvider;
-import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.network.NetworkHooks;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
-public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag data) implements IPortPacket.C2S {
-    public static final ResourceLocation ID = StaticLogistics.asResource("configure_face");
-    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SConfigureFacePayload> STREAM_CODEC = new PortStreamCodec<>() {
-        @Override
-        public C2SConfigureFacePayload decode(PortRegistryFriendlyByteBuf buffer) {
-            net.minecraft.network.FriendlyByteBuf fbuf = buffer;
-            BlockPos pos = fbuf.readBlockPos();
-            Direction face = fbuf.readEnum(Direction.class);
-            CompoundTag data = fbuf.readNbt();
-            return new C2SConfigureFacePayload(pos, face, data);
-        }
+import java.util.Objects;
 
-        @Override
-        public void encode(PortRegistryFriendlyByteBuf buffer, C2SConfigureFacePayload value) {
-            net.minecraft.network.FriendlyByteBuf fbuf = buffer;
-            fbuf.writeBlockPos(value.pos());
-            fbuf.writeEnum(value.face());
-            fbuf.writeNbt(value.data());
-        }
-    };
+/**
+ * 客户端提交的单项面配置修改。
+ */
+public record C2SConfigureFacePayload(
+    BlockPos pos,
+    Direction face,
+    FaceConfigurationEdit edit
+) implements IPortPacket.C2S {
+    private static final int GLOBAL_INPUT = 0;
+    private static final int GLOBAL_OUTPUT = 1;
+    private static final int INPUT_CHANNEL = 2;
+    private static final int OUTPUT_CHANNEL = 3;
+    private static final int PRIORITY = 4;
+    private static final int KEEP_STOCK = 5;
+    private static final int STRATEGY = 6;
+    private static final int EXTRACTION_MODE = 7;
+    private static final int SELECTED_TYPES = 8;
+
+    public static final ResourceLocation ID = StaticLogistics.asResource("configure_face");
+    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SConfigureFacePayload> STREAM_CODEC =
+        new PortStreamCodec<>() {
+            @Override
+            public C2SConfigureFacePayload decode(PortRegistryFriendlyByteBuf buffer) {
+                return new C2SConfigureFacePayload(
+                    buffer.readBlockPos(), buffer.readEnum(Direction.class), decodeEdit(buffer));
+            }
+
+            @Override
+            public void encode(PortRegistryFriendlyByteBuf buffer, C2SConfigureFacePayload payload) {
+                buffer.writeBlockPos(payload.pos());
+                buffer.writeEnum(payload.face());
+                encodeEdit(buffer, payload.edit());
+            }
+        };
+
+    public C2SConfigureFacePayload {
+        Objects.requireNonNull(pos, "Block position must not be null");
+        Objects.requireNonNull(face, "Face must not be null");
+        Objects.requireNonNull(edit, "Face configuration edit must not be null");
+    }
 
     @Override
     public ResourceLocation identifier() {
@@ -52,62 +73,99 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, CompoundTag 
 
     @Override
     public void work(ServerPlayer player) {
-        if (!(player.level() instanceof ServerLevel serverLevel)) return;
-        LinkManager manager = LinkManager.get(serverLevel);
-        long key = LinkManager.posToKey(pos(), face());
-        FaceConfigComposite config = manager.getFaceConfig(key);
-        if (config == null) return;
-        if (!config.canPlayerModify(player)) return;
-        CompoundTag tag = data();
-        if (tag.contains("open_filter")) {
-            if (player.containerMenu instanceof NodeConfiguratorMenu faceMenu) {
-                BlockPos pos = faceMenu.getPos();
-                Direction face = faceMenu.getFace();
-                boolean isInput = tag.getBoolean("is_input");
-                int slotIndex = isInput ? 0 : 1;
-                ItemStack upgradeStack = faceMenu.getSlot(slotIndex).getItem();
-                NetworkHooks.openScreen(player,
-                    new SimpleMenuProvider((id, inv, p) -> new FilterConfiguratorMenu(id, inv, pos, face, null, config, isInput, upgradeStack),
-                        Component.translatable("gui.staticlogistics.filter.title")),
-                    buf -> {
-                        buf.writeBlockPos(pos);
-                        buf.writeEnum(face);
-                        buf.writeResourceLocation(com.coobird.staticlogistics.StaticLogistics.asResource("item"));
-                        buf.writeNbt(config.serializeNBT(null));
-                        buf.writeBoolean(isInput);
-                        buf.writeItem(upgradeStack);
-                    });
-            }
-            return;
+        if (!ServerPacketRateLimiter.allow(player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
+            || !(player.containerMenu instanceof NodeConfiguratorMenu menu)
+            || !menu.stillValid(player)
+            || !NodeInteractionRules.matchesTarget(menu.getPos(), menu.getFace(), pos(), face())) return;
+
+        NodeMutationService mutations = new NodeMutationService();
+        NodeMutationService.ValidatedNode node = mutations.resolve(player, pos(), face());
+        if (node == null || !mutations.configure(node, edit())) return;
+        menu.syncFaceSlots();
+        menu.broadcastChanges();
+        TeamPacketSync.sendTopology(player, java.util.List.of(
+            S2CTopologyUpdatePayload.FaceUpdate.from(node.node(), node.config())));
+    }
+
+    private static FaceConfigurationEdit decodeEdit(PortRegistryFriendlyByteBuf buffer) {
+        int operation = buffer.readUnsignedByte();
+        try {
+            return switch (operation) {
+                case GLOBAL_INPUT -> new FaceConfigurationEdit.BooleanEdit(
+                    FaceConfigurationEdit.BooleanField.GLOBAL_INPUT, buffer.readBoolean());
+                case GLOBAL_OUTPUT -> new FaceConfigurationEdit.BooleanEdit(
+                    FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT, buffer.readBoolean());
+                case INPUT_CHANNEL -> new FaceConfigurationEdit.ChannelEdit(
+                    FaceConfigurationEdit.ChannelField.INPUT, buffer.readVarInt());
+                case OUTPUT_CHANNEL -> new FaceConfigurationEdit.ChannelEdit(
+                    FaceConfigurationEdit.ChannelField.OUTPUT, buffer.readVarInt());
+                case PRIORITY -> new FaceConfigurationEdit.NumberEdit(
+                    FaceConfigurationEdit.NumberField.PRIORITY, buffer.readVarInt());
+                case KEEP_STOCK -> new FaceConfigurationEdit.NumberEdit(
+                    FaceConfigurationEdit.NumberField.KEEP_STOCK, buffer.readVarInt());
+                case STRATEGY -> decodeStrategy(buffer);
+                case EXTRACTION_MODE -> decodeExtractionMode(buffer);
+                case SELECTED_TYPES -> decodeSelectedTypes(buffer);
+                default -> throw new DecoderException(
+                    "Unknown face configuration operation: " + operation);
+            };
+        } catch (IllegalArgumentException exception) {
+            throw new DecoderException("Invalid face configuration edit", exception);
         }
-        if (tag.contains("open_face_config")) {
-            if (player.containerMenu instanceof FilterConfiguratorMenu filterMenu) {
-                BlockPos pos = filterMenu.getPos();
-                Direction face = filterMenu.getFace();
-                NetworkHooks.openScreen(player,
-                    new SimpleMenuProvider((id, inv, p) -> new NodeConfiguratorMenu(id, inv, pos, face),
-                        Component.translatable("gui.staticlogistics.face_config")),
-                    buf -> {
-                        buf.writeBlockPos(pos);
-                        buf.writeEnum(face);
-                        NodeConfiguratorMenu.writeInitialTypeData(buf, StaticLogistics.asResource("item"), config);
-                    });
-            }
-            return;
+    }
+
+    private static FaceConfigurationEdit decodeStrategy(PortRegistryFriendlyByteBuf buffer) {
+        ResourceLocation id = buffer.readResourceLocation();
+        DistributionStrategy strategy = DistributionStrategyRegistry.byName(id.toString());
+        if (!strategy.id().equals(id)) {
+            throw new DecoderException("Unknown distribution strategy: " + id);
         }
-        boolean[] changed = {false};
-        if (player.containerMenu instanceof NodeConfiguratorMenu menu) {
-            changed[0] = menu.applyFromTag(tag);
+        return new FaceConfigurationEdit.StrategyEdit(strategy);
+    }
+
+    private static FaceConfigurationEdit decodeExtractionMode(PortRegistryFriendlyByteBuf buffer) {
+        int ordinal = buffer.readUnsignedByte();
+        ExtractionMode[] modes = ExtractionMode.values();
+        if (ordinal >= modes.length) {
+            throw new DecoderException("Unknown extraction mode: " + ordinal);
         }
-        if (changed[0]) {
-            config.markDirty();
-            LogisticsNode selfNode = new LogisticsNode(GlobalPos.of(serverLevel.dimension(), pos()), face());
-            for (String gid : config.faceConfig.getGroupIds()) {
-                GlobalLogisticsManager.get(serverLevel.getServer()).syncGroupLinks(serverLevel, gid, selfNode);
+        return new FaceConfigurationEdit.ExtractionEdit(modes[ordinal]);
+    }
+
+    private static FaceConfigurationEdit decodeSelectedTypes(PortRegistryFriendlyByteBuf buffer) {
+        var ids = BoundedNetworkCodecs.TRANSFER_TYPE_IDS.decode(buffer);
+        for (ResourceLocation id : ids) {
+            if (TransferRegistries.get(id) == null) {
+                throw new DecoderException("Unknown transfer type: " + id);
             }
-            manager.activateNode(key, pos(), face(), config);
-            S2CSyncFaceConfigPayload syncPacket = new S2CSyncFaceConfigPayload(GlobalPos.of(serverLevel.dimension(), pos()), face(), config);
-            GroupService.syncToTeamMembers(player, syncPacket);
+        }
+        return new FaceConfigurationEdit.SelectedTypesEdit(ids);
+    }
+
+    private static void encodeEdit(PortRegistryFriendlyByteBuf buffer, FaceConfigurationEdit edit) {
+        if (edit instanceof FaceConfigurationEdit.BooleanEdit value) {
+            buffer.writeByte(value.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT
+                ? GLOBAL_INPUT : GLOBAL_OUTPUT);
+            buffer.writeBoolean(value.enabled());
+        } else if (edit instanceof FaceConfigurationEdit.ChannelEdit value) {
+            buffer.writeByte(value.field() == FaceConfigurationEdit.ChannelField.INPUT
+                ? INPUT_CHANNEL : OUTPUT_CHANNEL);
+            buffer.writeVarInt(value.channel());
+        } else if (edit instanceof FaceConfigurationEdit.NumberEdit value) {
+            buffer.writeByte(value.field() == FaceConfigurationEdit.NumberField.PRIORITY
+                ? PRIORITY : KEEP_STOCK);
+            buffer.writeVarInt(value.value());
+        } else if (edit instanceof FaceConfigurationEdit.StrategyEdit value) {
+            buffer.writeByte(STRATEGY);
+            buffer.writeResourceLocation(value.strategy().id());
+        } else if (edit instanceof FaceConfigurationEdit.ExtractionEdit value) {
+            buffer.writeByte(EXTRACTION_MODE);
+            buffer.writeByte(value.mode().ordinal());
+        } else if (edit instanceof FaceConfigurationEdit.SelectedTypesEdit value) {
+            buffer.writeByte(SELECTED_TYPES);
+            BoundedNetworkCodecs.TRANSFER_TYPE_IDS.encode(buffer, value.typeIds());
+        } else {
+            throw new EncoderException("Unsupported face configuration edit: " + edit.getClass());
         }
     }
 }

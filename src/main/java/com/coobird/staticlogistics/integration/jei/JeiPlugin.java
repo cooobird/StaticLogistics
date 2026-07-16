@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.integration.jei;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.gui.screen.BaseFilterScreen;
+import com.coobird.staticlogistics.client.gui.screen.BaseFilterScreen;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
 import net.minecraft.resources.ResourceLocation;

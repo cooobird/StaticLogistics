@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.gui.menu.NodeConfiguratorMenu;
-import com.coobird.staticlogistics.storage.link.LinkManager;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.NodeOpenService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -38,8 +38,9 @@ public record C2SOpenNodeConfigPayload(BlockPos pos, Direction face) implements 
 
     @Override
     public void work(ServerPlayer player) {
+        FaceConfigComposite config = new NodeOpenService().resolve(player, pos(), face());
+        if (config == null) return;
         var title = player.level().getBlockState(pos()).getBlock().getName().copy();
-        FaceConfigComposite config = LinkManager.get(player.serverLevel()).getFaceConfig(LinkManager.posToKey(pos(), face()));
         NetworkHooks.openScreen(player, new SimpleMenuProvider(
             (id, inv, p) -> new NodeConfiguratorMenu(id, inv, pos(), face()), title), buf -> {
             buf.writeBlockPos(pos());

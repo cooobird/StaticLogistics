@@ -12,19 +12,20 @@ import java.util.Map;
  */
 public record TransferFailureReason(ResourceLocation id, String translationKey) {
 
+    private static final Map<ResourceLocation, TransferFailureReason> REGISTRY = new LinkedHashMap<>();
+
     public static final TransferFailureReason NO_DIMENSION_UPGRADE = register(StaticLogistics.asResource("no_dim"), "failure.staticlogistics.no_dim");
     public static final TransferFailureReason OUT_OF_RANGE = register(StaticLogistics.asResource("out_of_range"), "failure.staticlogistics.out_of_range");
     public static final TransferFailureReason CHUNK_UNLOADED = register(StaticLogistics.asResource("chunk_unloaded"), "failure.staticlogistics.chunk_unloaded");
     public static final TransferFailureReason CAPABILITY_NULL = register(StaticLogistics.asResource("no_capability"), "failure.staticlogistics.no_capability");
     public static final TransferFailureReason EVENT_CANCELLED = register(StaticLogistics.asResource("event_cancelled"), "failure.staticlogistics.event_cancelled");
-
-    private static final Map<ResourceLocation, TransferFailureReason> REGISTRY = new LinkedHashMap<>();
+    public static final TransferFailureReason TARGET_REJECTED = register(StaticLogistics.asResource("target_rejected"), "failure.staticlogistics.target_rejected");
+    public static final TransferFailureReason SOURCE_COMMIT_FAILED = register(StaticLogistics.asResource("source_commit_failed"), "failure.staticlogistics.source_commit_failed");
+    public static final TransferFailureReason ROLLBACK_FAILED = register(StaticLogistics.asResource("rollback_failed"), "failure.staticlogistics.rollback_failed");
 
     public static TransferFailureReason register(ResourceLocation id, String translationKey) {
         TransferFailureReason reason = new TransferFailureReason(id, translationKey);
-        if (REGISTRY != null) {
-            REGISTRY.put(id, reason);
-        }
+        REGISTRY.put(id, reason);
         return reason;
     }
 
@@ -40,10 +41,4 @@ public record TransferFailureReason(ResourceLocation id, String translationKey) 
         return Collections.unmodifiableCollection(REGISTRY.values());
     }
 
-    /**
-     * 兼容旧代码的 getId() 方法
-     */
-    public String getId() {
-        return id.toString();
-    }
 }

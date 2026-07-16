@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.handler.ExtractionResult;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.ExtractionResult;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
 import mekanism.api.chemical.slurry.ISlurryHandler;
@@ -23,7 +24,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * Mekanism 浆液资源适配�?(Forge 1.20.1)�? * 通过 {@link mekanism.common.capabilities.Capabilities#SLURRY_HANDLER} 访问�?
+ * 通过 {@link mekanism.common.capabilities.Capabilities#SLURRY_HANDLER} 访问 Mekanism 浆液。
  */
 public class MekanismSlurryResource implements LogisticsResource<ISlurryHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -56,10 +57,16 @@ public class MekanismSlurryResource implements LogisticsResource<ISlurryHandler>
     }
 
     @Override
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactSimulationOnly();
+    }
+
+    @Override
     public @Nullable ISlurryHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
-        return be.getCapability(mekanism.common.capabilities.Capabilities.SLURRY_HANDLER, face).orElse(null);
+        return com.coobird.staticlogistics.transfer.CapabilityCache.get(
+            level, pos, face, mekanism.common.capabilities.Capabilities.SLURRY_HANDLER);
     }
 
     @Override
@@ -97,5 +104,19 @@ public class MekanismSlurryResource implements LogisticsResource<ISlurryHandler>
         if (!(value instanceof SlurryStack stack) || stack.isEmpty()) return false;
         SlurryStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
         return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
+    }
+
+    @Override
+    public long amountOf(Object value) {
+        return value instanceof mekanism.api.chemical.slurry.SlurryStack stack
+            ? stack.getAmount() : -1L;
+    }
+
+    @Override
+    public Object withAmount(Object value, long amount) {
+        if (!(value instanceof mekanism.api.chemical.slurry.SlurryStack stack)) return null;
+        mekanism.api.chemical.slurry.SlurryStack copy = stack.copy();
+        copy.setAmount(Math.max(0L, amount));
+        return copy;
     }
 }

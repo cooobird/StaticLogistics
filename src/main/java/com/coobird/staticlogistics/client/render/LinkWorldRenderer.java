@@ -2,12 +2,14 @@ package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
-import com.coobird.staticlogistics.item.BlueprintItem;
-import com.coobird.staticlogistics.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logic.ToolMode;
-import com.coobird.staticlogistics.storage.model.FaceConfigComposite;
+import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.LinkConfig;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -32,11 +34,24 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 世界内链接渲染器 —— 持连接配置器/蓝图时，在世界中渲染物流网络的可视化。
+ *
+ * <p>渲染内容：
+ * <ul>
+ *   <li>存储节点高亮（选中的面 + 方块线框）</li>
+ *   <li>选中组的所有节点：面状态指示器（输入/输出频道颜色）</li>
+ *   <li>链接流动粒子（从输出面流向输入面的彩色粒子）</li>
+ * </ul>
+ *
+ * <p>使用 X-Ray 渲染（穿透方块），在 {@link RenderLevelStageEvent.Stage#AFTER_TRANSLUCENT_BLOCKS} 阶段绘制。
+ * 只在手持连接配置器或蓝图时激活。
+ */
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
 
     public static final RenderType PIPE_XRAY = RenderType.create(
-        "staticlogistics:pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
+        "pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
         RenderType.CompositeState.builder()
             .setShaderState(new RenderType.ShaderStateShard(GameRenderer::getPositionColorShader))
             .setTransparencyState(RenderType.TRANSLUCENT_TRANSPARENCY)
@@ -62,7 +77,11 @@ public class LinkWorldRenderer {
         if (stack.isEmpty()) return;
 
         SelectionContext.syncFromItem(stack);
-        String groupId = SelectionContext.getSelectedGroupId();
+        GroupKey groupKey = SelectionContext.getSelectedGroupKey();
+        if (groupKey == null) {
+            groupKey = ClientLinkData.INSTANCE.resolveUniqueGroupKey(
+                SelectionContext.getSelectedGroupId());
+        }
 
         PoseStack ps = event.getPoseStack();
         Vec3 cam = event.getCamera().getPosition();
@@ -77,24 +96,14 @@ public class LinkWorldRenderer {
         float pulse = (float) Math.sin(System.currentTimeMillis() / 200.0) * 0.03f;
 
         // 存点预览
-        if (stack.getItem() instanceof LinkConfiguratorItem lci) {
-            try {
-                LinkConfiguratorItem.ToolSettings settings = lci.getSettings(stack);
-                if (settings != null) {
-                    boolean hasNodes = !settings.storedNodes().isEmpty();
-                    boolean hasMode = settings.storedMode() != null;
-                    if (hasNodes && hasMode) {
-                        renderStoredNodes(settings, dim, mat, b, cam, maxD2, pulse);
-                    }
-                }
-            } catch (Exception e) {
-                System.out.println("[SL-Render] storedNodes render error: " + e.getMessage());
-            }
-        }
+        LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
+            ? lci.getSettings(stack) : null;
+        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
+            renderStoredNodes(settings, dim, mat, b, cam, maxD2, pulse);
 
         // 选中分组的所有链接
-        if (!groupId.isEmpty())
-            renderGroupLinks(groupId, dim, mat, b, cam, maxD2, pulse);
+        if (groupKey != null)
+            renderGroupLinks(groupKey, dim, mat, b, cam, maxD2, pulse);
 
         ps.popPose();
         buf.endBatch(PIPE_XRAY);
@@ -119,16 +128,16 @@ public class LinkWorldRenderer {
         }
     }
 
-    private static void renderGroupLinks(String groupId, ResourceKey<Level> dim,
+    private static void renderGroupLinks(GroupKey groupKey, ResourceKey<Level> dim,
                                          Matrix4f mat, VertexConsumer b,
                                          Vec3 cam, double maxD2, float pulse) {
         Set<BlockPos> renderedFrames = new HashSet<>();
-        var nodes = ClientLinkData.INSTANCE.getActiveNodesWithConfig(dim);
+        var nodes = ClientLinkData.INSTANCE.getActiveTopology(dim);
 
         for (var entry : nodes.entrySet()) {
             LogisticsNode node = entry.getKey();
-            FaceConfigComposite cfg = entry.getValue();
-            if (cfg.isDefault() || !cfg.faceConfig.getGroupIds().contains(groupId)) continue;
+            FaceTopology topology = entry.getValue();
+            if (!topology.groupKeys().contains(groupKey)) continue;
 
             BlockPos p = node.gPos().pos();
             double d2 = p.distToCenterSqr(cam.x, cam.y, cam.z);
@@ -138,39 +147,37 @@ public class LinkWorldRenderer {
                 LogisticsRenderHelper.drawFrame(b, mat, p, 1f, 1f, 1f, 0.25f);
             if (vis)
                 LogisticsRenderHelper.drawFaceStatus(b, mat, p, node.face(),
-                    cfg.isGlobalInputEnabled() ? cfg.linkConfig.getInputChannel() : 0,
-                    cfg.isGlobalOutputEnabled() ? cfg.linkConfig.getOutputChannel() : 0,
-                    cfg.isGlobalInputEnabled(), cfg.isGlobalOutputEnabled(), pulse);
-            renderNodeFlows(node, cfg, nodes, dim, groupId, mat, b, cam, d2, vis, maxD2);
+                    topology.role().canReceive() ? topology.inputChannel() : 0,
+                    topology.role().canSend() ? topology.outputChannel() : 0,
+                    topology.role().canReceive(), topology.role().canSend(), pulse);
+            renderNodeFlows(node, topology, nodes, dim, groupKey, mat, b, cam, vis, maxD2);
         }
     }
 
-    private static void renderNodeFlows(LogisticsNode src, FaceConfigComposite srcCfg,
-                                        Map<LogisticsNode, FaceConfigComposite> all,
-                                        ResourceKey<Level> dim, String groupId,
+    private static void renderNodeFlows(LogisticsNode src, FaceTopology source,
+                                        Map<LogisticsNode, FaceTopology> all,
+                                        ResourceKey<Level> dim, GroupKey groupKey,
                                         Matrix4f mat, VertexConsumer b, Vec3 cam,
-                                        double srcD2, boolean srcVis, double maxD2) {
-        if (!srcCfg.isGlobalOutputEnabled()) return;
-        int outCh = srcCfg.linkConfig.getOutputChannel();
-        if (outCh < 1 || outCh > 16) return;
+                                        boolean srcVis, double maxD2) {
+        if (!source.role().canSend()) return;
+        int outCh = source.outputChannel();
 
         BlockPos sp = src.gPos().pos();
         double time = System.currentTimeMillis() / 1000.0;
-        boolean srcDual = srcCfg.isGlobalInputEnabled() && srcCfg.isGlobalOutputEnabled();
+        boolean srcDual = source.role().canReceive();
 
-        for (LogisticsNode dst : srcCfg.getLinkedNodes()) {
+        for (LogisticsNode dst : ClientLinkData.INSTANCE.getLinkedNodes(groupKey, src)) {
             if (!dst.gPos().dimension().equals(dim)) continue;
-            FaceConfigComposite dstCfg = all.get(dst);
-            if (dstCfg == null) continue;
-            if (!dstCfg.faceConfig.getGroupIds().contains(groupId)) continue;
-            if (!dstCfg.isGlobalInputEnabled()) continue;
-            if (dstCfg.linkConfig.getInputChannel() != outCh) continue;
+            FaceTopology target = all.get(dst);
+            if (target == null || !target.groupKeys().contains(groupKey)) continue;
+            if (!target.role().canReceive()) continue;
+            if (!LinkConfig.channelsMatch(outCh, target.inputChannel())) continue;
 
             BlockPos dp = dst.gPos().pos();
             double dstD2 = dp.distToCenterSqr(cam.x, cam.y, cam.z);
             if (!srcVis && dstD2 > maxD2) continue;
 
-            boolean dstDual = dstCfg.isGlobalInputEnabled() && dstCfg.isGlobalOutputEnabled();
+            boolean dstDual = target.role().canSend();
             // 粒子起点偏移到输出半面片（dual 时 offset=+0.3）
             Vec3 s = faceOffset(sp, src.face(), srcDual ? 0.3f : 0f);
             // 粒子终点偏移到输入半面片（dual 时 offset=-0.3）
