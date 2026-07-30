@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.logistics.filter;
 
 import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
-import com.coobird.staticlogistics.transfer.UpgradeType;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;

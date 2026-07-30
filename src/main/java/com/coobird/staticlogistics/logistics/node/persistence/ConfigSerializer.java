@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.logistics.node.persistence;
 
-import com.coobird.staticlogistics.api.type.ExtractionMode;
-import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -46,8 +47,6 @@ public class ConfigSerializer {
             nbt.put(ConfigKeys.OWNER_PROFILE, config.faceConfig.getOwnerProfileTag().copy());
         }
 
-        nbt.putInt(ConfigKeys.INPUT_CHANNEL, config.linkConfig.getInputChannel());
-        nbt.putInt(ConfigKeys.OUTPUT_CHANNEL, config.linkConfig.getOutputChannel());
         nbt.putString(ConfigKeys.STRATEGY, config.linkConfig.getStrategy().id().toString());
         nbt.putString(ConfigKeys.EXTRACTION_MODE, config.linkConfig.getExtractionMode().name());
         nbt.putInt(ConfigKeys.PRIORITY, config.linkConfig.getPriority());
@@ -59,7 +58,9 @@ public class ConfigSerializer {
         return nbt;
     }
 
-    /** 解码已经由迁移入口提升到当前版本的面配置。 */
+    /**
+     * 解码已经由迁移入口提升到当前版本的面配置。
+     */
     public static void deserializeMigratedNBT(Object permit, FaceConfigComposite config,
                                               HolderLookup.Provider p, CompoundTag nbt) {
         int schemaVersion = nbt.contains(ConfigKeys.SCHEMA_VERSION)
@@ -101,22 +102,20 @@ public class ConfigSerializer {
             }
         }
 
-        config.setInputChannel(nbt.getInt(ConfigKeys.INPUT_CHANNEL));
-        config.setOutputChannel(nbt.getInt(ConfigKeys.OUTPUT_CHANNEL));
         try {
             String stratName = nbt.getString(ConfigKeys.STRATEGY);
             // 迁移旧 SLOT_ROUND_ROBIN → ROUND_ROBIN
             if ("SLOT_ROUND_ROBIN".equals(stratName)) {
                 config.setDistributionStrategy(
-                    com.coobird.staticlogistics.transfer.DistributionStrategyRegistry.ROUND_ROBIN);
+                    DistributionStrategyRegistry.ROUND_ROBIN);
                 config.setExtractionMode(ExtractionMode.SLOT_ROUND_ROBIN);
             } else {
                 config.setDistributionStrategy(
-                    com.coobird.staticlogistics.transfer.DistributionStrategyRegistry.byName(stratName));
+                    DistributionStrategyRegistry.byName(stratName));
             }
         } catch (Exception e) {
             config.setDistributionStrategy(
-                com.coobird.staticlogistics.transfer.DistributionStrategyRegistry.SEQUENTIAL);
+                DistributionStrategyRegistry.SEQUENTIAL);
         }
         if (nbt.contains(ConfigKeys.EXTRACTION_MODE)) {
             try {

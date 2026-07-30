@@ -8,10 +8,8 @@ import net.neoforged.neoforge.items.IItemHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 节点、容器配置与升级物移交的统一生命周期用例。
@@ -39,7 +37,9 @@ public final class NodeLifecycleService {
         return handoffDepth > 0;
     }
 
-    /** 物理销毁一批方块；每个位置独立失败，其他位置继续处理。 */
+    /**
+     * 物理销毁一批方块；每个位置独立失败，其他位置继续处理。
+     */
     public RemovalReport destroyBlocks(Collection<BlockPos> positions) {
         int removed = 0;
         int failed = 0;
@@ -55,7 +55,9 @@ public final class NodeLifecycleService {
         return new RemovalReport(removed, failed);
     }
 
-    /** 显式删除一个面；过滤升级先移交，容器级升级不受影响。 */
+    /**
+     * 显式删除一个面；过滤升级先移交，容器级升级不受影响。
+     */
     public boolean removeFace(FaceAddress key) {
         FaceHandle face = findFace(key);
         if (face == null) return false;
@@ -69,7 +71,9 @@ public final class NodeLifecycleService {
         }
     }
 
-    /** 只删除真正没有边、角色和面过滤升级的孤儿面。 */
+    /**
+     * 只删除真正没有边、角色和面过滤升级的孤儿面。
+     */
     public boolean removeOrphan(LogisticsNode node, FaceConfigComposite expected) {
         if (node == null || expected == null
             || !expected.getLinkedNodes().isEmpty()
@@ -82,16 +86,84 @@ public final class NodeLifecycleService {
         return true;
     }
 
+    /**
+     * 冻结本维度待删除的孤立面、共享容器和升级来源。
+     */
+    public DisconnectedRemoval prepareDisconnectedRemoval(Collection<LogisticsNode> nodes) {
+        if (nodes == null) {
+            throw new IllegalArgumentException("Disconnected nodes are required");
+        }
+        LinkedHashSet<FaceHandle> disconnected = new LinkedHashSet<>();
+        for (LogisticsNode node : nodes) {
+            if (node == null) continue;
+            FaceHandle face = findFace(FaceAddress.of(node));
+            if (face != null && face.config().getLinkedNodes().isEmpty()) disconnected.add(face);
+        }
+        if (disconnected.isEmpty()) {
+            return new DisconnectedRemoval(List.of(), List.of(), List.of());
+        }
+
+        Set<FaceAddress> removingKeys = disconnected.stream()
+            .map(FaceHandle::key).collect(Collectors.toSet());
+        LinkedHashSet<BlockPos> positions = disconnected.stream()
+            .map(face -> face.node().gPos().pos())
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<ContainerHandle> containersToRemove = new ArrayList<>();
+        for (BlockPos pos : positions) {
+            ContainerHandle container = findContainer(pos);
+            if (container != null
+                && removingKeys.containsAll(container.config().getLinkedFaceKeys())) {
+                containersToRemove.add(container);
+            }
+        }
+        List<UpgradeSource> sources = new ArrayList<>();
+        for (FaceHandle face : disconnected) {
+            sources.add(new UpgradeSource(
+                face.node().gPos().pos(), face.config().filterConfig.getUpgrades()));
+        }
+        for (ContainerHandle container : containersToRemove) {
+            sources.add(new UpgradeSource(container.pos(), container.config().getUpgrades()));
+        }
+        return new DisconnectedRemoval(
+            List.copyOf(disconnected), List.copyOf(containersToRemove), List.copyOf(sources));
+    }
+
+    /**
+     * 应用已经冻结的孤立端删除；升级移交由外层事务统一控制。
+     */
+    public void applyDisconnectedRemoval(DisconnectedRemoval removal) {
+        if (removal == null) throw new IllegalArgumentException("Disconnected removal is required");
+        try (RemovalScope ignored = beginRemoval()) {
+            for (FaceHandle face : removal.faces()) {
+                removeFaceAfterHandoff(face, true, true);
+            }
+            for (ContainerHandle container : removal.containers()) {
+                removeContainerAfterHandoff(container);
+            }
+        } catch (RuntimeException exception) {
+            reconcile(removal.faces(), removal.containers());
+            throw exception;
+        }
+    }
+
     private boolean destroyBlock(BlockPos pos) {
         List<FaceHandle> faceHandles = findFaces(pos);
         ContainerHandle container = findContainer(pos);
         if (faceHandles.isEmpty() && container == null) return false;
 
-        executeRemoval(faceHandles, container);
+        executeRemoval(faceHandles, container == null ? List.of() : List.of(container), upgradeHandoff);
         return true;
     }
 
     private void executeRemoval(List<FaceHandle> faces, @Nullable ContainerHandle container) {
+        executeRemoval(faces, container == null ? List.of() : List.of(container), upgradeHandoff);
+    }
+
+    private void executeRemoval(
+        List<FaceHandle> faces,
+        List<ContainerHandle> containers,
+        UpgradeHandoff handoff
+    ) {
         try {
             try (RemovalScope ignored = beginRemoval()) {
                 List<UpgradeSource> sources = new ArrayList<>();
@@ -99,17 +171,21 @@ public final class NodeLifecycleService {
                     sources.add(new UpgradeSource(
                         face.node().gPos().pos(), face.config().filterConfig.getUpgrades()));
                 }
-                if (container != null) {
+                for (ContainerHandle container : containers) {
                     sources.add(new UpgradeSource(container.pos(), container.config().getUpgrades()));
                 }
-                upgradeHandoff.handoff(sources);
+                try (HandoffReceipt receipt = handoff.begin(sources)) {
+                    for (FaceHandle face : faces) {
+                        removeFaceAfterHandoff(face, true, true);
+                    }
+                    for (ContainerHandle container : containers) {
+                        removeContainerAfterHandoff(container);
+                    }
+                    receipt.commit();
+                }
             }
-            for (FaceHandle face : faces) {
-                removeFaceAfterHandoff(face, true, true);
-            }
-            if (container != null) removeContainerAfterHandoff(container);
         } catch (RuntimeException exception) {
-            reconcile(faces, container);
+            reconcile(faces, containers);
             throw exception;
         }
     }
@@ -157,12 +233,15 @@ public final class NodeLifecycleService {
         manager.markContainerDirty(container.pos().asLong());
     }
 
-    private void reconcile(Collection<FaceHandle> faceHandles, @Nullable ContainerHandle container) {
+    private void reconcile(Collection<FaceHandle> faceHandles,
+                           Collection<ContainerHandle> containers) {
         for (FaceHandle face : faceHandles) {
             if (faces.getFaceConfig(face.key()) == face.config()) face.config().markDirty();
         }
-        if (container != null && containers.get(container.pos()) == container.config()) {
-            container.config().markDirty();
+        for (ContainerHandle container : containers) {
+            if (this.containers.get(container.pos()) == container.config()) {
+                container.config().markDirty();
+            }
         }
     }
 
@@ -172,11 +251,41 @@ public final class NodeLifecycleService {
     public record ContainerHandle(BlockPos pos, ContainerConfig config) {
     }
 
-    public record UpgradeSource(BlockPos pos, IItemHandler inventory) {
+    /**
+     * 一批待移交的升级物来源。
+     *
+     * <p>默认构造器覆盖整个物品处理器；槽位范围构造器用于只移交某一侧过滤器，
+     * 避免关闭输入或输出时误取另一侧仍在使用的过滤器。</p>
+     */
+    public record UpgradeSource(
+        BlockPos pos,
+        IItemHandler inventory,
+        int firstSlot,
+        int slotLimit
+    ) {
+        public UpgradeSource(BlockPos pos, IItemHandler inventory) {
+            this(pos, inventory, 0, inventory == null ? 0 : inventory.getSlots());
+        }
+
         public UpgradeSource {
             if (pos == null || inventory == null) {
                 throw new IllegalArgumentException("Upgrade source fields must not be null");
             }
+            if (firstSlot < 0 || slotLimit < firstSlot || slotLimit > inventory.getSlots()) {
+                throw new IllegalArgumentException("Upgrade source slot range is invalid");
+            }
+        }
+    }
+
+    public record DisconnectedRemoval(
+        List<FaceHandle> faces,
+        List<ContainerHandle> containers,
+        List<UpgradeSource> sources
+    ) {
+        public DisconnectedRemoval {
+            faces = List.copyOf(faces);
+            containers = List.copyOf(containers);
+            sources = List.copyOf(sources);
         }
     }
 
@@ -185,7 +294,14 @@ public final class NodeLifecycleService {
 
     @FunctionalInterface
     public interface UpgradeHandoff {
-        void handoff(List<UpgradeSource> sources);
+        HandoffReceipt begin(List<UpgradeSource> sources);
+    }
+
+    public interface HandoffReceipt extends AutoCloseable {
+        void commit();
+
+        @Override
+        void close();
     }
 
     @FunctionalInterface

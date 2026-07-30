@@ -77,7 +77,9 @@ public class TransferLogManager {
         lastTransferTick = gameTick;
     }
 
-    /** 对同一链路、类型和原因的连续失败按游戏刻限频。 */
+    /**
+     * 对同一链路、类型和原因的连续失败按游戏刻限频。
+     */
     private boolean shouldSuppressFailure(LogisticsNode source, LogisticsNode target,
                                           LogisticsResource<?> type, TransferFailureReason reason,
                                           long gameTick) {
@@ -137,12 +139,6 @@ public class TransferLogManager {
 
     public double getAmountPerMinute() {
         return rateCalculator.getAmountPerMinute(currentTick());
-    }
-
-    /** 返回上次成功传输距今的毫秒数；无记录时返回 -1。 */
-    public long getTimeSinceLastTransfer() {
-        if (lastTransferTick < 0) return -1;
-        return Math.max(0, currentTick() - lastTransferTick) * 50L;
     }
 
     public void reset() {

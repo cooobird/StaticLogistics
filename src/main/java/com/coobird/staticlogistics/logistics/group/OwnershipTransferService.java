@@ -1,26 +1,22 @@
 package com.coobird.staticlogistics.logistics.group;
 
-import com.coobird.staticlogistics.api.group.*;
-
-import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
-/** 跨维度所有权迁移的唯一事务入口。 */
+/**
+ * 跨维度所有权迁移的唯一事务入口。
+ */
 public final class OwnershipTransferService {
     private static final OwnershipMutationPermit MUTATION_PERMIT = new OwnershipMutationPermit();
 
@@ -55,7 +51,7 @@ public final class OwnershipTransferService {
                 if (selectedGroup != null
                     && !config.faceConfig.getGroupKeys().contains(selectedGroup.key())) continue;
                 if (selectedGroup != null && config.faceConfig.getGroupKeys().size() != 1) {
-                    source.sendFailure(net.minecraft.network.chat.Component.literal(
+                    source.sendFailure(Component.literal(
                         "Cannot transfer one group from a face that belongs to multiple groups"));
                     return 0;
                 }
@@ -94,7 +90,7 @@ public final class OwnershipTransferService {
             }
             String message = "Ownership transfer failed: " + exception.getMessage();
             if (rollbackFailure != null) message += " (rollback incomplete)";
-            source.sendFailure(net.minecraft.network.chat.Component.literal(message));
+            source.sendFailure(Component.literal(message));
             return 0;
         }
     }

@@ -40,7 +40,9 @@ public record FaceAddress(long posLong, Direction face) {
         return new LogisticsNode(GlobalPos.of(dimension, pos()), face);
     }
 
-    /** 新存档键分别保存完整位置 long 与方向编号。 */
+    /**
+     * 新存档键分别保存完整位置 long 与方向编号。
+     */
     public String storageKey() {
         return posLong + String.valueOf(STORAGE_SEPARATOR) + face.get3DDataValue();
     }

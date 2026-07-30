@@ -31,9 +31,9 @@ public final class SLKeyMappings {
     public static final KeyMapping QUICK_FILTER_MARK = heldKey(
         SLKeyNames.QUICK_FILTER_MARK, SLKeyConflictContexts.FILTER_GUI, GLFW.GLFW_KEY_LEFT_SHIFT);
     public static final KeyMapping PRIORITY_X10 = heldKey(
-        SLKeyNames.PRIORITY_X10, SLKeyConflictContexts.NODE_CONFIGURATOR_GUI, GLFW.GLFW_KEY_LEFT_SHIFT);
+        SLKeyNames.PRIORITY_X10, SLKeyConflictContexts.LINK_ENDPOINT_GUI, GLFW.GLFW_KEY_LEFT_SHIFT);
     public static final KeyMapping PRIORITY_X5 = heldKey(
-        SLKeyNames.PRIORITY_X5, SLKeyConflictContexts.NODE_CONFIGURATOR_GUI, GLFW.GLFW_KEY_LEFT_CONTROL);
+        SLKeyNames.PRIORITY_X5, SLKeyConflictContexts.LINK_ENDPOINT_GUI, GLFW.GLFW_KEY_LEFT_CONTROL);
     public static final KeyMapping GROUP_DETAILS_AND_EXPORT = heldKey(
         SLKeyNames.GROUP_DETAILS_AND_EXPORT, SLKeyConflictContexts.GROUP_SCREEN, GLFW.GLFW_KEY_LEFT_SHIFT);
 

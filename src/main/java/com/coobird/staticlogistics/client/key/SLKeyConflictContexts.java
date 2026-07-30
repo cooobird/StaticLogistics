@@ -3,10 +3,11 @@ package com.coobird.staticlogistics.client.key;
 import com.coobird.staticlogistics.client.gui.screen.BaseFilterScreen;
 import com.coobird.staticlogistics.client.gui.screen.BlueprintGroupScreen;
 import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
-import com.coobird.staticlogistics.client.gui.screen.NodeConfiguratorScreen;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.client.settings.IKeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 
@@ -23,8 +24,9 @@ final class SLKeyConflictContexts {
 
     static final IKeyConflictContext FILTER_GUI = inGui(Domain.FILTER, () ->
         Minecraft.getInstance().screen instanceof BaseFilterScreen<?>);
-    static final IKeyConflictContext NODE_CONFIGURATOR_GUI = inGui(Domain.NODE_CONFIGURATOR, () ->
-        Minecraft.getInstance().screen instanceof NodeConfiguratorScreen);
+    static final IKeyConflictContext LINK_ENDPOINT_GUI = inGui(Domain.LINK_ENDPOINT, () ->
+        Minecraft.getInstance().screen instanceof LinkConfiguratorScreen screen
+            && screen.hasNodeTarget());
     static final IKeyConflictContext GROUP_SCREEN = inGui(Domain.GROUP, () ->
         Minecraft.getInstance().screen instanceof LinkConfiguratorScreen
             || Minecraft.getInstance().screen instanceof BlueprintGroupScreen);
@@ -40,21 +42,21 @@ final class SLKeyConflictContexts {
         return new ScopedContext(domain, KeyConflictContext.GUI, active);
     }
 
-    private static net.minecraft.world.item.Item mainHandItem() {
+    private static Item mainHandItem() {
         var player = Minecraft.getInstance().player;
-        return player == null ? net.minecraft.world.item.Items.AIR : player.getMainHandItem().getItem();
+        return player == null ? Items.AIR : player.getMainHandItem().getItem();
     }
 
-    private static net.minecraft.world.item.Item offhandItem() {
+    private static Item offhandItem() {
         var player = Minecraft.getInstance().player;
-        return player == null ? net.minecraft.world.item.Items.AIR : player.getOffhandItem().getItem();
+        return player == null ? Items.AIR : player.getOffhandItem().getItem();
     }
 
     private enum Domain {
         BLUEPRINT,
         LINK_CONFIGURATOR,
         FILTER,
-        NODE_CONFIGURATOR,
+        LINK_ENDPOINT,
         GROUP
     }
 

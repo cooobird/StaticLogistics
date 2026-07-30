@@ -5,7 +5,9 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.Event;
 import net.neoforged.bus.api.ICancellableEvent;
 
-/** 传输开始前发布的独立可取消事件；发布后字段不会被框架清空或复用。 */
+/**
+ * 传输开始前发布的独立可取消事件；发布后字段不会被框架清空或复用。
+ */
 public final class PreTransferEvent extends Event implements ICancellableEvent {
     private final LogisticsNode sourceNode;
     private final LogisticsNode targetNode;

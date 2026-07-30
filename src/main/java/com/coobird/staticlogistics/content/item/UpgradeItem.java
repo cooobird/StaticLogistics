@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.content.item;
 
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
 import com.coobird.staticlogistics.content.SLKeyNames;
-import com.coobird.staticlogistics.transfer.UpgradeTier;
-import com.coobird.staticlogistics.transfer.UpgradeType;
+import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
 import com.coobird.staticlogistics.network.c2s.C2SOpenHandFilterPayload;
 import com.coobird.staticlogistics.transfer.LogisticsCalculator;
+import com.coobird.staticlogistics.transfer.UpgradeTier;
+import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;

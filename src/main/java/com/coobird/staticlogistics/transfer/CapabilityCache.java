@@ -10,7 +10,9 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** 单维度原生方块能力缓存，由所属 LinkManager 控制生命周期。 */
+/**
+ * 单维度原生方块能力缓存，由所属 LinkManager 控制生命周期。
+ */
 public final class CapabilityCache {
     private static final int MAX_ENTRIES = 16_384;
     private final ServerLevel level;
@@ -59,13 +61,17 @@ public final class CapabilityCache {
         return cache.getCapability();
     }
 
-    /** 节点或方块生命周期结束时主动释放该面的全部能力缓存。 */
+    /**
+     * 节点或方块生命周期结束时主动释放该面的全部能力缓存。
+     */
     public void invalidateFace(BlockPos pos, Direction face) {
         invalidate(pos.asLong(), face);
         NodeQueryService.invalidateFace(level, pos, face);
     }
 
-    /** 方块替换、爆炸或破坏时主动释放六个面的全部能力缓存。 */
+    /**
+     * 方块替换、爆炸或破坏时主动释放六个面的全部能力缓存。
+     */
     public void invalidateBlock(BlockPos pos) {
         invalidate(pos.asLong(), null);
         NodeQueryService.invalidateBlock(level, pos);

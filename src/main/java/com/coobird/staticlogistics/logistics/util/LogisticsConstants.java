@@ -80,16 +80,11 @@ public final class LogisticsConstants {
             return SLConfig.getPerfTickerBatchSize();
         }
 
-        /** 单维度每刻物流调度的软时间预算。 */
+        /**
+         * 单维度每刻物流调度的软时间预算。
+         */
         public static long getTickerTimeBudgetNanos() {
             return SLConfig.getPerfTickerTimeBudgetNanos();
-        }
-
-        /**
-         * 冷却管理器的清理间隔（游戏刻）
-         */
-        public static int getCleanIntervalTicks() {
-            return SLConfig.getPerfCleanInterval();
         }
 
         /**

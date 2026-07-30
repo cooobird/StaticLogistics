@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;

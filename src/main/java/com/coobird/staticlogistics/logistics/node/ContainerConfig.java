@@ -2,18 +2,18 @@ package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
+import com.coobird.staticlogistics.transfer.LogisticsCalculator;
 import com.coobird.staticlogistics.transfer.UpgradeTier;
 import com.coobird.staticlogistics.transfer.UpgradeType;
-import com.coobird.staticlogistics.transfer.LogisticsCalculator;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import org.slf4j.Logger;
 
-import java.util.function.Consumer;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * 容器升级配置 —— 管理速度/范围/堆叠三种升级的倍率计算和缓存。
@@ -32,7 +32,12 @@ public class ContainerConfig {
     public static final long INFINITY_MARKER = Long.MAX_VALUE;
     private BlockPos pos = BlockPos.ZERO;
 
-    private final ItemStackHandler upgrades = new ItemStackHandler(3) {
+    public static final int SPEED_SLOT = 0;
+    public static final int RANGE_OR_DIMENSION_SLOT = 1;
+    public static final int STACK_SLOT = 2;
+    public static final int UPGRADE_SLOT_COUNT = 3;
+
+    private final ItemStackHandler upgrades = new ItemStackHandler(UPGRADE_SLOT_COUNT) {
         @Override
         protected void onContentsChanged(int slot) {
             markDirty();
@@ -142,11 +147,8 @@ public class ContainerConfig {
                         stack = multiplyWithOverflowCheck(stack, totalValue);
                     }
                 }
-                LOGGER.debug("Upgrade: type={}, tier={}, count={}, totalValue={}, range now={}",
-                    type, tier, count, totalValue, range);
             } else if (type == UpgradeType.DIMENSION) {
                 dim = true;
-                LOGGER.debug("Dimension upgrade found");
             }
         }
 
@@ -160,8 +162,6 @@ public class ContainerConfig {
         int baseInterval = SLConfig.getDefaultTickInterval();
         this.cachedActualInterval = LogisticsCalculator.calcSpeedInterval(baseInterval, cachedSpeedMult);
 
-        LOGGER.debug("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
-            cachedSpeedMult, cachedRangeMult, cachedStackMult, cachedDimEffective);
     }
 
     /**

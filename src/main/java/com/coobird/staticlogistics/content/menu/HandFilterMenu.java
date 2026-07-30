@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.content.menu;
 
 import com.coobird.staticlogistics.content.item.UpgradeItem;
-import com.coobird.staticlogistics.transfer.UpgradeType;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
+import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.Slot;
@@ -34,7 +34,9 @@ public class HandFilterMenu extends AbstractFilterMenu {
         return current.isEmpty() ? filterStack : current;
     }
 
-    /** 返回菜单打开时绑定的真实背包槽，切换当前快捷栏槽位不会改变绑定。 */
+    /**
+     * 返回菜单打开时绑定的真实背包槽，切换当前快捷栏槽位不会改变绑定。
+     */
     public ItemStack getBoundStack() {
         if (inventorySlot < 0 || inventorySlot >= player.getInventory().getContainerSize()) {
             return ItemStack.EMPTY;
@@ -72,14 +74,15 @@ public class HandFilterMenu extends AbstractFilterMenu {
     }
 
     private void addPlayerInventorySlots(Inventory playerInventory) {
-        int playerInvX = (MenuLayout.BACKGROUND_WIDTH - MenuLayout.INVENTORY_WIDTH) / 2 + 7;
-        int playerInvY = MenuLayout.BACKGROUND_HEIGHT + 8;
+        int playerInvX = (MenuLayout.BACKGROUND_WIDTH - MenuLayout.INVENTORY_WIDTH) / 2
+            + MenuLayout.INVENTORY_SLOT_X;
+        int playerInvY = MenuLayout.BACKGROUND_HEIGHT + MenuLayout.INVENTORY_SLOT_Y;
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 9; ++col) {
                 this.addSlot(new Slot(playerInventory, col + row * 9 + 9, playerInvX + col * 18, playerInvY + row * 18));
             }
         }
-        int hotbarY = playerInvY + 60;
+        int hotbarY = MenuLayout.BACKGROUND_HEIGHT + MenuLayout.HOTBAR_SLOT_Y;
         for (int col = 0; col < 9; ++col) {
             this.addSlot(new Slot(playerInventory, col, playerInvX + col * 18, hotbarY));
         }

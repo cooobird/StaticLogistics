@@ -1,9 +1,8 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-import com.coobird.staticlogistics.transfer.TransferContext;
-import com.coobird.staticlogistics.transfer.ExtractionResult;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -81,7 +80,9 @@ public interface LogisticsResource<C> {
         return true;
     }
 
-    /** 声明底层句柄可兑现的事务保证；注册中心会拒绝不满足统一管线要求的实现。 */
+    /**
+     * 声明底层句柄可兑现的事务保证；注册中心会拒绝不满足统一管线要求的实现。
+     */
     TransactionCapabilities transactionCapabilities();
 
     /**
@@ -97,8 +98,6 @@ public interface LogisticsResource<C> {
     default int getBaseStackSize() {
         return baseStackSizeSupplier().getAsInt();
     }
-
-    // ── 句柄解析 ──
 
     /**
      * 获取指定位置和面上的资源操作句柄。
@@ -123,11 +122,9 @@ public interface LogisticsResource<C> {
         BlockCapability<C, Direction> capability = blockCapability();
         return capability == null
             ? resolve(level, pos, face) != null
-            : com.coobird.staticlogistics.logistics.node.LinkManager.get(level)
-                .getCapability(pos, face, capability) != null;
+            : LinkManager.get(level)
+            .getCapability(pos, face, capability) != null;
     }
-
-    // ── 简单模式（能量/魔源/热量等 int/long 值资源）──
 
     /**
      * 从句柄中提取资源（简单模式）。
@@ -146,8 +143,6 @@ public interface LogisticsResource<C> {
     default long insert(C handle, long amount, boolean simulate) {
         return 0;
     }
-
-    // ── 类型化模式（化学品等需要携带类型信息的资源）──
 
     /**
      * 类型化提取。
@@ -232,7 +227,9 @@ public interface LogisticsResource<C> {
         return true;
     }
 
-    /** 返回目标当前允许接收的最大数量。 */
+    /**
+     * 返回目标当前允许接收的最大数量。
+     */
     default long maxInsertToTarget(C handle, Object value, FaceConfigComposite targetCfg) {
         return Long.MAX_VALUE;
     }
@@ -247,18 +244,24 @@ public interface LogisticsResource<C> {
         return extractTyped(handle, requested, false, sourceCfg, isPullMode, context);
     }
 
-    /** 返回资源值携带的数量；无法判断时返回负数。 */
+    /**
+     * 返回资源值携带的数量；无法判断时返回负数。
+     */
     default long amountOf(Object value) {
         return value instanceof Number number ? Math.max(0L, number.longValue()) : -1L;
     }
 
-    /** 创建同类型且指定数量的资源值；无法安全拆分时返回 null。 */
+    /**
+     * 创建同类型且指定数量的资源值；无法安全拆分时返回 null。
+     */
     @Nullable
     default Object withAmount(Object value, long amount) {
         return value instanceof Number ? Math.max(0L, amount) : null;
     }
 
-    /** 将未提交的资源补偿回源端。 */
+    /**
+     * 将未提交的资源补偿回源端。
+     */
     default boolean rollback(C source, Object value, long amount,
                              @Nullable FaceConfigComposite sourceConfig,
                              boolean pullMode,

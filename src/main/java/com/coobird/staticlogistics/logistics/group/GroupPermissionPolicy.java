@@ -3,7 +3,9 @@ package com.coobird.staticlogistics.logistics.group;
 import java.util.UUID;
 import java.util.function.BiPredicate;
 
-/** 与游戏对象无关的分组权限规则。 */
+/**
+ * 与游戏对象无关的分组权限规则。
+ */
 public final class GroupPermissionPolicy {
     private GroupPermissionPolicy() {
     }

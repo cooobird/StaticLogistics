@@ -1,17 +1,20 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logistics.group.GroupCommandService;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
-import com.coobird.staticlogistics.network.TeamPacketSync;
-import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
-import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CClearLinkEndpointPayload;
+import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
@@ -43,9 +46,18 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements CustomPacketPa
             var target = PlayerGroupStore.get(server).findGroup(payload.groupKey());
             if (target != null && new GroupCommandService(server).delete(sp, payload.groupKey())) {
                 LinkConfiguratorSelection.clearIfSelected(sp, target.key(), target.displayName());
-                TeamPacketSync.send(sp, new S2CGroupDirectoryPayload(
-                    payload.groupKey().ownerId(),
-                    PlayerGroupStore.get(server).getGroupRefs(payload.groupKey().ownerId())));
+                if (sp.containerMenu instanceof LinkConfiguratorMenu menu
+                    && menu.hasTarget()
+                    && payload.groupKey().equals(menu.getRemoteGroupKey())) {
+                    menu.clearTarget();
+                    PacketDistributor.sendToPlayer(
+                        sp, new S2CClearLinkEndpointPayload());
+                    menu.broadcastChanges();
+                }
+                TeamPacketSync.send(sp, payload.groupKey().ownerId(),
+                    new S2CGroupDirectoryPayload(
+                        payload.groupKey().ownerId(),
+                        PlayerGroupStore.get(server).getGroupRefs(payload.groupKey().ownerId())));
             }
         });
     }

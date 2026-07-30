@@ -1,15 +1,22 @@
 package com.coobird.staticlogistics.logistics.group;
 
-import com.coobird.staticlogistics.api.group.*;
-
+import com.coobird.staticlogistics.api.group.GroupConstraints;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.mojang.logging.LogUtils;
+import com.mojang.serialization.DataResult;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
+import org.slf4j.Logger;
 
 import java.util.*;
-import org.slf4j.Logger;
+import java.util.stream.Collectors;
 
 /**
  * 独立的玩家分组持久化存储。
@@ -22,8 +29,10 @@ public class PlayerGroupStore extends SavedData {
 
     private static final int SCHEMA_VERSION = 2;
     private static final int MAX_STORED_OWNERS = 100_000;
+    private static final int MAX_STORED_CONNECTION_NAMES = 1_000_000;
     private final Map<UUID, LinkedHashMap<UUID, String>> playerGroups = new HashMap<>();
     private final Map<UUID, Integer> playerNextGroupCounter = new HashMap<>();
+    private final Map<ConnectionKey, String> connectionNames = new HashMap<>();
     private boolean loadedFromDedicatedStorage;
 
     PlayerGroupStore() {
@@ -63,7 +72,9 @@ public class PlayerGroupStore extends SavedData {
         return new GroupRef(key, displayName);
     }
 
-    /** 解析已有分组；不存在时创建新的随机稳定身份。 */
+    /**
+     * 解析已有分组；不存在时创建新的随机稳定身份。
+     */
     public GroupRef resolveOrCreateGroup(UUID playerId, String displayName) {
         return createGroup(playerId, displayName);
     }
@@ -100,8 +111,82 @@ public class PlayerGroupStore extends SavedData {
         LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
         if (groups == null || groups.remove(key.internalId()) == null) return false;
         if (groups.isEmpty()) playerGroups.remove(key.ownerId());
+        connectionNames.keySet().removeIf(connection -> connection.groupKey().equals(key));
         setDirty();
         return true;
+    }
+
+    public String getConnectionName(ConnectionKey key) {
+        if (key == null) return "";
+        return connectionNames.getOrDefault(key, "");
+    }
+
+    /**
+     * 设置连接显示名；空名称会删除自定义值并恢复默认连接序号。
+     */
+    public boolean setConnectionName(ConnectionKey key, String displayName) {
+        if (key == null || findGroup(key.groupKey()) == null) return false;
+        String normalized;
+        try {
+            normalized = GroupConstraints.normalizeConnectionName(displayName);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+        if (normalized.isEmpty()) {
+            if (connectionNames.remove(key) != null) setDirty();
+            return true;
+        }
+        if (!connectionNames.containsKey(key)
+            && connectionNames.size() >= MAX_STORED_CONNECTION_NAMES) {
+            return false;
+        }
+        if (normalized.equals(connectionNames.put(key, normalized))) return true;
+        setDirty();
+        return true;
+    }
+
+    public void removeConnectionName(ConnectionKey key) {
+        if (key != null && connectionNames.remove(key) != null) setDirty();
+    }
+
+    /**
+     * 同一所有者分组合并时迁移连接名称。
+     *
+     * <p>目标分组已有同一连接名称时保留目标值；返回值记录完整补偿信息，供外层节点事务回滚。
+     */
+    public ConnectionNameMerge mergeConnectionNames(GroupKey source, GroupKey target) {
+        if (source == null || target == null
+            || !source.ownerId().equals(target.ownerId())
+            || findGroup(source) == null || findGroup(target) == null) {
+            throw new IllegalArgumentException("Connection name merge groups are invalid");
+        }
+        Map<ConnectionKey, String> sourceNames = new LinkedHashMap<>();
+        connectionNames.forEach((key, name) -> {
+            if (key.groupKey().equals(source)) sourceNames.put(key, name);
+        });
+        Set<ConnectionKey> insertedTargets = new LinkedHashSet<>();
+        sourceNames.forEach((sourceKey, name) -> {
+            connectionNames.remove(sourceKey);
+            ConnectionKey targetKey = new ConnectionKey(
+                target, sourceKey.first(), sourceKey.second());
+            if (!connectionNames.containsKey(targetKey)) {
+                connectionNames.put(targetKey, name);
+                insertedTargets.add(targetKey);
+            }
+        });
+        if (!sourceNames.isEmpty()) setDirty();
+        return new ConnectionNameMerge(
+            Map.copyOf(sourceNames), Set.copyOf(insertedTargets));
+    }
+
+    /**
+     * 恢复一次尚未提交的连接名称合并。
+     */
+    public void rollbackConnectionNameMerge(ConnectionNameMerge merge) {
+        if (merge == null) throw new IllegalArgumentException("Connection name merge is required");
+        merge.insertedTargets().forEach(connectionNames::remove);
+        connectionNames.putAll(merge.sourceNames());
+        if (!merge.sourceNames().isEmpty()) setDirty();
     }
 
     public boolean renameGroup(GroupKey key, String newDisplayName) {
@@ -114,7 +199,9 @@ public class PlayerGroupStore extends SavedData {
         return true;
     }
 
-    /** 仅校验重命名，不修改分组目录。 */
+    /**
+     * 仅校验重命名，不修改分组目录。
+     */
     public boolean canRenameGroup(GroupKey key, String newDisplayName) {
         if (key == null || key.isLegacyUnowned()) return false;
         try {
@@ -125,8 +212,7 @@ public class PlayerGroupStore extends SavedData {
         LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
         if (groups == null || !groups.containsKey(key.internalId())) return false;
         GroupRef collision = findGroup(key.ownerId(), newDisplayName);
-        if (collision != null && !collision.key().equals(key)) return false;
-        return true;
+        return collision == null || collision.key().equals(key);
     }
 
     public Set<String> getGroups(UUID playerId) {
@@ -145,7 +231,9 @@ public class PlayerGroupStore extends SavedData {
         return Collections.unmodifiableSet(refs);
     }
 
-    /** 校验旧版无所有者分组能否原样归入玩家，校验阶段不修改存档。 */
+    /**
+     * 校验旧版无所有者分组能否原样归入玩家，校验阶段不修改存档。
+     */
     public void validateClaimedGroups(UUID owner, Collection<GroupRef> claimedGroups) {
         if (owner == null || claimedGroups == null) {
             throw new IllegalArgumentException("Claimed group owner and groups are required");
@@ -177,7 +265,9 @@ public class PlayerGroupStore extends SavedData {
         }
     }
 
-    /** 在全部节点完成认领后提交分组目录。 */
+    /**
+     * 在全部节点完成认领后提交分组目录。
+     */
     public void registerClaimedGroups(UUID owner, Collection<GroupRef> claimedGroups) {
         validateClaimedGroups(owner, claimedGroups);
         if (claimedGroups.isEmpty()) return;
@@ -245,7 +335,9 @@ public class PlayerGroupStore extends SavedData {
         return changed;
     }
 
-    /** 将一组稳定分组身份迁移到新所有者；冲突时不修改任何状态。 */
+    /**
+     * 将一组稳定分组身份迁移到新所有者；冲突时不修改任何状态。
+     */
     public void transferGroups(UUID previousOwner, UUID newOwner, Collection<GroupRef> groupsToTransfer) {
         validateGroupTransfer(previousOwner, newOwner, groupsToTransfer);
         if (previousOwner.equals(newOwner) || groupsToTransfer.isEmpty()) return;
@@ -257,8 +349,31 @@ public class PlayerGroupStore extends SavedData {
             if (sourceGroups != null) sourceGroups.remove(group.key().internalId());
             destination.put(group.key().internalId(), group.displayName());
         }
+        Set<UUID> transferredIds = groupsToTransfer.stream()
+            .map(group -> group.key().internalId())
+            .collect(Collectors.toSet());
+        Map<ConnectionKey, String> transferredNames = new HashMap<>();
+        connectionNames.entrySet().removeIf(entry -> {
+            ConnectionKey key = entry.getKey();
+            if (!previousOwner.equals(key.groupKey().ownerId())
+                || !transferredIds.contains(key.groupKey().internalId())) return false;
+            transferredNames.put(new ConnectionKey(
+                key.groupKey().withOwner(newOwner), key.first(), key.second()), entry.getValue());
+            return true;
+        });
+        transferredNames.forEach(connectionNames::putIfAbsent);
         if (sourceGroups != null && sourceGroups.isEmpty()) playerGroups.remove(previousOwner);
         setDirty();
+    }
+
+    public record ConnectionNameMerge(
+        Map<ConnectionKey, String> sourceNames,
+        Set<ConnectionKey> insertedTargets
+    ) {
+        public ConnectionNameMerge {
+            sourceNames = Map.copyOf(sourceNames);
+            insertedTargets = Set.copyOf(insertedTargets);
+        }
     }
 
     public void validateGroupTransfer(UUID previousOwner, UUID newOwner,
@@ -346,6 +461,19 @@ public class PlayerGroupStore extends SavedData {
             }
         });
         tag.put("player_groups", groupsTag);
+
+        ListTag namesTag = new ListTag();
+        connectionNames.forEach((key, displayName) -> {
+            CompoundTag entry = new CompoundTag();
+            DataResult<Tag> encoded = ConnectionKey.CODEC.encodeStart(NbtOps.INSTANCE, key);
+            encoded.resultOrPartial(message ->
+                LOGGER.error("Failed to encode connection name key: {}", message)).ifPresent(value -> {
+                entry.put("connection", value);
+                entry.putString("name", displayName);
+                namesTag.add(entry);
+            });
+        });
+        tag.put("connection_names", namesTag);
         return tag;
     }
 
@@ -393,13 +521,38 @@ public class PlayerGroupStore extends SavedData {
                 }
             }
         }
+
+        if (migrated.contains("connection_names", Tag.TAG_LIST)) {
+            ListTag namesTag = migrated.getList("connection_names", Tag.TAG_COMPOUND);
+            int count = Math.min(namesTag.size(), MAX_STORED_CONNECTION_NAMES);
+            for (int index = 0; index < count; index++) {
+                CompoundTag entry = namesTag.getCompound(index);
+                if (!entry.contains("connection") || !entry.contains("name", Tag.TAG_STRING)) continue;
+                ConnectionKey.CODEC.parse(NbtOps.INSTANCE, entry.get("connection"))
+                    .resultOrPartial(message ->
+                        LOGGER.warn("Skipping invalid connection name key: {}", message))
+                    .ifPresent(key -> {
+                        try {
+                            String name = GroupConstraints.normalizeConnectionName(
+                                entry.getString("name"));
+                            if (!name.isEmpty() && findGroup(key.groupKey()) != null) {
+                                connectionNames.put(key, name);
+                            }
+                        } catch (IllegalArgumentException exception) {
+                            LOGGER.warn("Skipping invalid connection name");
+                        }
+                    });
+            }
+        }
     }
 
-    /** 将旧显示名键目录显式迁移为第二版稳定 UUID 键目录。 */
+    /**
+     * 将旧显示名键目录显式迁移为第二版稳定 UUID 键目录。
+     */
     private static CompoundTag migrateStoredData(CompoundTag source) {
         CompoundTag migrated = source.copy();
         if (migrated.contains("schema_version")
-            && !migrated.contains("schema_version", net.minecraft.nbt.Tag.TAG_INT)) {
+            && !migrated.contains("schema_version", Tag.TAG_INT)) {
             throw new IllegalStateException("Player group schema version must be an int");
         }
         int version = migrated.contains("schema_version")
@@ -445,6 +598,7 @@ public class PlayerGroupStore extends SavedData {
                     "Missing player group migration from version: " + version);
             }
         }
+
         return migrated;
     }
 }

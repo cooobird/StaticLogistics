@@ -7,7 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 蓝图数据从旧方块级链接到精确面链接的显式版本链。 */
+/**
+ * 蓝图数据从旧方块级链接到精确面链接的显式版本链。
+ */
 public final class BlueprintDataMigration {
     private BlueprintDataMigration() {
     }

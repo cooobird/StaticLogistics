@@ -36,6 +36,16 @@ public final class NodeDisplayText {
             direction(node.face()));
     }
 
+    /**
+     * 适合窄列表与标签页的无损简写；完整维度信息仍由悬停文本提供。
+     */
+    public static MutableComponent compact(LogisticsNode node) {
+        var pos = node.gPos().pos();
+        return Component.literal(pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
+            .append(" ")
+            .append(direction(node.face()));
+    }
+
     public static MutableComponent distanceFromPlayer(double distanceInBlocks) {
         String value = String.format(Locale.ROOT, "%.1f", distanceInBlocks);
         return Component.translatable("gui.staticlogistics.node.distance_from_player", value);

@@ -1,6 +1,8 @@
 package com.coobird.staticlogistics.api.transfer;
 
-/** 适配器对模拟、拆分和回滚的事务保证。 */
+/**
+ * 适配器对模拟、拆分和回滚的事务保证。
+ */
 public record TransactionCapabilities(
     boolean exactSimulation,
     boolean exactSplit,
@@ -20,7 +22,9 @@ public record TransactionCapabilities(
         return new TransactionCapabilities(true, true, RollbackMode.COMPENSATING);
     }
 
-    /** 用于提交结果严格等于同 tick 模拟结果、但源句柄不支持反向写入的能力。 */
+    /**
+     * 用于提交结果严格等于同 tick 模拟结果、但源句柄不支持反向写入的能力。
+     */
     public static TransactionCapabilities exactSimulationOnly() {
         return new TransactionCapabilities(true, true, RollbackMode.NONE);
     }

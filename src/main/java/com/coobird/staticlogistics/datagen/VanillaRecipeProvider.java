@@ -37,7 +37,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             "IRI"
         ), SLItems.LINK_CONFIGURATOR.toStack());
 
-        // ── 速度升级（红石主题）──
+        // 速度升级（红石主题）
         // 铁速度 (×2)：3铁锭 + 4红石
         shaped(output, "iron_", "", ShapedRecipePattern.of(
             Map.of('I', Ingredient.of(Items.IRON_INGOT), 'R', Ingredient.of(Items.REDSTONE)),
@@ -75,7 +75,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             "NNN"
         ), SLItems.SPEED_UPGRADE_NETHER_STAR.toStack());
 
-        // ── 范围升级（末影主题）──
+        // 范围升级（末影主题）
         // 铁范围 (×2)：3铁锭 + 2末影珍珠
         shaped(output, "iron_", "", ShapedRecipePattern.of(
             Map.of('I', Ingredient.of(Items.IRON_INGOT), 'E', Ingredient.of(Items.ENDER_PEARL)),
@@ -113,7 +113,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             "NNN"
         ), SLItems.RANGE_UPGRADE_NETHER_STAR.toStack());
 
-        // ── 堆叠升级（存储主题）──
+        // 堆叠升级（存储主题）
         // 铁堆叠 (×2)：2铁锭 + 箱子
         shaped(output, "iron_", "", ShapedRecipePattern.of(
             Map.of('I', Ingredient.of(Items.IRON_INGOT), 'C', Ingredient.of(Tags.Items.CHESTS)),
@@ -151,7 +151,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             "NNN"
         ), SLItems.STACK_UPGRADE_NETHER_STAR.toStack());
 
-        // ── 维度升级 ──
+        // 维度升级
         shaped(output, "", "", ShapedRecipePattern.of(
             Map.of(
                 'N', Ingredient.of(Items.NETHERITE_INGOT),
@@ -163,7 +163,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             "NEN"
         ), SLItems.DIMENSION_UPGRADE.toStack());
 
-        // ── 过滤器 ──
+        // 过滤器
         // 基础过滤：4铁锭 + 2纸 + 书 + 2红石
         shaped(output, "", "", ShapedRecipePattern.of(
             Map.of(
@@ -190,7 +190,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             Ingredient.of(Items.BOOK),
             Ingredient.of(Items.REDSTONE));
 
-        // ── 蓝图 ──
+        // 蓝图
         shaped(output, "", "", ShapedRecipePattern.of(
             Map.of(
                 'P', Ingredient.of(Items.PAPER),
@@ -201,7 +201,7 @@ public class VanillaRecipeProvider extends RecipeProvider {
             "ILI"
         ), SLItems.BLUEPRINT.toStack());
 
-        // ── 过滤器 NBT 清理（已配置 → 干净）──
+        // 将已配置的过滤器恢复为干净状态。
         shapelessSingle(output, SLItems.BASIC_FILTER_UPGRADE.toStack());
         shapelessSingle(output, SLItems.TAG_FILTER_UPGRADE.toStack());
         shapelessSingle(output, SLItems.NBT_FILTER_UPGRADE.toStack());

@@ -5,9 +5,9 @@ import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import net.minecraft.core.BlockPos;
@@ -21,7 +21,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 蓝图区域捕获用例；物品类只负责两次点击和结果提示。 */
+/**
+ * 蓝图区域捕获用例；物品类只负责两次点击和结果提示。
+ */
 public final class BlueprintCaptureService {
     private BlueprintCaptureService() {
     }
@@ -134,8 +136,6 @@ public final class BlueprintCaptureService {
 
     private static CompoundTag encodeFace(FaceConfigComposite config) {
         CompoundTag tag = new CompoundTag();
-        tag.putInt(ConfigKeys.INPUT_CHANNEL, config.linkConfig.getInputChannel());
-        tag.putInt(ConfigKeys.OUTPUT_CHANNEL, config.linkConfig.getOutputChannel());
         tag.putString(ConfigKeys.STRATEGY, config.linkConfig.getStrategy().id().toString());
         tag.putString(ConfigKeys.EXTRACTION_MODE, config.linkConfig.getExtractionMode().name());
         tag.putInt(ConfigKeys.PRIORITY, config.linkConfig.getPriority());

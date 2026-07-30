@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import com.coobird.staticlogistics.logistics.NodeConfiguratorTool;
+import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -10,14 +10,16 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.jetbrains.annotations.Nullable;
 
-/** 统一校验来自客户端的节点交互请求。 */
+/**
+ * 统一校验来自客户端的节点交互请求。
+ */
 public final class NodeInteractionValidator {
     private NodeInteractionValidator() {
     }
 
     public static boolean holdsConfigurator(ServerPlayer player) {
-        return player.getMainHandItem().getItem() instanceof NodeConfiguratorTool
-            || player.getOffhandItem().getItem() instanceof NodeConfiguratorTool;
+        return player.getMainHandItem().getItem() instanceof LinkConfiguratorTool
+            || player.getOffhandItem().getItem() instanceof LinkConfiguratorTool;
     }
 
     public static boolean isPhysicalTargetValid(ServerPlayer player, BlockPos pos, Direction face) {
@@ -30,7 +32,9 @@ public final class NodeInteractionValidator {
             && TransferUtils.hasLogisticsCapability(level, pos, face);
     }
 
-    /** 直接方块交互必须由服务端视线精确命中请求的方块面。 */
+    /**
+     * 直接方块交互必须由服务端视线精确命中请求的方块面。
+     */
     public static boolean isDirectInteractionTargetValid(ServerPlayer player, BlockPos pos, Direction face) {
         if (!isPhysicalTargetValid(player, pos, face)) return false;
         HitResult hit = player.pick(Math.sqrt(NodeInteractionRules.MAX_REACH_SQUARED), 0.0F, false);

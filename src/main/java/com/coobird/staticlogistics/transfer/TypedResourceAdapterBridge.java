@@ -1,11 +1,6 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.api.transfer.CommitResult;
-import com.coobird.staticlogistics.api.transfer.ResourceAdapter;
-import com.coobird.staticlogistics.api.transfer.ResourceValue;
-import com.coobird.staticlogistics.api.transfer.SimulationResult;
-import com.coobird.staticlogistics.api.transfer.TransferRequest;
-import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
+import com.coobird.staticlogistics.api.transfer.*;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -13,13 +8,16 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-/** 将公开的类型安全 SPI 接入 core 传输协议。 */
+/**
+ * 将公开的类型安全 SPI 接入 core 传输协议。
+ */
 final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -82,7 +80,7 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     }
 
     @Override
-    public @Nullable net.neoforged.neoforge.capabilities.BlockCapability<C, Direction> blockCapability() {
+    public @Nullable BlockCapability<C, Direction> blockCapability() {
         return adapter.blockCapability();
     }
 
@@ -126,10 +124,10 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
 
     @Override
     public ExtractionResult<?> executeExtract(C handle, ExtractionResult<?> simulated,
-                                               long requested,
-                                               @Nullable FaceConfigComposite sourceConfig,
-                                               boolean pullMode,
-                                               @Nullable TransferContext context) {
+                                              long requested,
+                                              @Nullable FaceConfigComposite sourceConfig,
+                                              boolean pullMode,
+                                              @Nullable TransferContext context) {
         if (context == null || requested <= 0L
             || !(simulated.context() instanceof SimulationResult<?> rawSimulation)) {
             return ExtractionResult.of(null);

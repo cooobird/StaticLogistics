@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
+import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;

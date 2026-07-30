@@ -2,38 +2,47 @@
 
 **[English](README.md)** | **[中文](README_ZH.md)**
 
-A Minecraft logistics mod for NeoForge 1.21.1. Item, fluid, energy transfer. Cross-dimension support. Upgrade system with 7 types across 5 tiers. Smart filtering with 4 match strategies. Group management. FTB Teams permissions. Blueprints.
+A Minecraft logistics mod for NeoForge 1.21.1 with item, fluid, energy, and integration-resource transfer, visual network management, cross-dimension links, upgrades, filters, group permissions, and blueprints.
 
 ## Features
 
-- **Unified transfer pipeline** — Built-in resources share one internal pipeline; third-party resources use the public type-safe `ResourceAdapter<C, V>` SPI with capability caching, dimension/range/chunk checks, dirty link cleanup, and transfer logging
-- **Cross-dimension transfer** — Dimension upgrade for inter-dimensional logistics
-- **5 tool modes** — Wrench, Link as Input, Link as Output, Remove Links, Node Config
-- **Per-face configuration** — each of 6 block faces has independent channels (0/1–16), priority, distribution strategy, extraction mode, input/output toggle, and resource type ID selection
+- **Unified Link Configurator** — Manage groups, connections, the network preview, endpoint settings, upgrades, filters, resource types, and player inventory from one screen
+- **Interactive network preview** — Select and drag nodes, pan, zoom, highlight links, inspect direction and range warnings, and preserve custom layouts
+- **Cross-dimension transfer** — The Dimension Upgrade removes both dimension and normal distance restrictions
+- **4 tool modes** — Wrench, Link as Input, Link as Output, Remove Links
+- **Per-face configuration** — Each endpoint controls input and output independently; input settings cover filters, priority, and stock keeping, while output settings cover filters, upgrades, distribution, extraction, and resource types
 - **7 upgrade types, 5 tiers each** — Speed, Range, Stack (Iron → Gold → Diamond → Netherite → Nether Star), plus Dimension, Basic Filter, Tag Filter, NBT Filter
 - **Smart filtering** — Basic (item whitelist/blacklist), Tag (item + fluid tags), NBT (exact/partial NBT matching) with 4 match strategies: EXACT, CONTAINS, SMART_CONTAINS, IGNORE
 - **2 extraction modes** — Sequential, Slot Round-Robin
 - **5 distribution strategies** — Sequential, Round-Robin, Nearest, Furthest, Random
 - **Transfer events** — `PreTransferEvent` (cancellable) and `PostTransferEvent` for third-party hooking
-- **Group management** — named groups for per-group sync, ownership transfer, rename, cleanup
+- **Group and connection management** — Expand grouped links, rename or remove individual entries, and merge same-owner groups
 - **FTB Teams integration** — team-based ownership and permissions
-- **Blueprints** — save logistics config, preview placement with rotation, paste to blocks
-- **Full /sl command tree** — info, list, stats, transfer, rename, cleanup, debug
+- **Blueprints** — Preview a whole group or one connection, move and rotate it, undo changes, and paste it to blocks
+- **Full /sl command tree** — info, list, stats, transfer, rename, cleanup
 - **Configurable performance** — ticker batch size, cooldown intervals, cache sizes, object pool size
 ## Getting Started
 
 1. Craft the **Link Configurator**
-2. Hold the Link Configurator and right-click in air → create or select a group
-3. Switch tool mode via left sidebar → right-click block faces to link
-4. Add upgrades and configure filters in the **Node Config** screen (mode 4)
+2. Hold the Link Configurator and right-click in air to open the unified configurator, then create or select a group
+3. Select Link as Output or Link as Input and right-click the block faces to connect
+4. Select a node from the group list or network preview, then configure its input, output, upgrades, and filters in the lower panel
 
-| Mode           | Right-click on block face                     |
-|----------------|-----------------------------------------------|
-| Wrench         | Remove logistics config (preserves block NBT) |
-| Link as Input  | Mark as receiver                              |
-| Link as Output | Mark as sender                                |
-| Remove Links   | Remove all links from this face               |
-| Node Config    | Open face settings + container upgrades       |
+| Mode           | Right-click on block face                                  |
+|----------------|------------------------------------------------------------|
+| Wrench         | Remove logistics configuration while preserving block data |
+| Link as Input  | Use the selected face as the receiving endpoint            |
+| Link as Output | Use the selected face as the sending endpoint              |
+| Remove Links   | Remove links associated with that face                     |
+
+## Configurator and Network Preview
+
+- Click a group to expand its links. Double-click groups or links to rename them, and right-click to remove them.
+- Renaming a group to an existing name merges both groups when they have the same owner.
+- Select nodes in the network preview to configure their faces, or select a connection to highlight and manage only that link.
+- Drag nodes to arrange the layout, drag empty preview space to pan, and use the mouse wheel for proportional zoom.
+- Node positions, zoom, and pan are saved with the world. Selecting a whole group or one link also controls the world preview scope.
+- Valid links use the normal line color; out-of-range links use a warning color and explain their direction and distance in a tooltip.
 
 ## Upgrades
 
@@ -77,9 +86,6 @@ Requires permission level 2.
 | /sl transfer <from> group <id> <to> | Transfer a specific group                           |
 | /sl rename <owner> <old> <new>      | Rename a group                                      |
 | /sl cleanup <owner>                 | Delete all nodes owned by a player                  |
-| /sl debug                           | Show transfer registry and capability cache status  |
-| /sl debug cache                     | Show per-dimension capability cache statistics      |
-| /sl debug types                     | List active transfer types and legacy bit offsets   |
 
 ## Server Config
 
@@ -89,7 +95,7 @@ config/staticlogistics.toml
 default_radius = 16            # Default search radius (blocks)
 default_tick_interval = 20     # Base interval between transfers (ticks)
 auto_clean_stored_nodes = true # Auto-clean stored node refs after batch linking
-item_stack_size = 8            # Items per transfer
+item_stack_size = 64           # Items per transfer
 fluid_stack_size = 250         # mB per transfer
 energy_stack_size = 1024       # FE per transfer
 mek_chemical_stack_size = 250
@@ -102,6 +108,7 @@ provider_size = 1000           # Expected provider index capacity (not a node li
 load_factor = 0.75             # Cache load factor
 max_bulk_entries = 100         # Max entries per sync packet
 ticker_batch_size = 50         # Nodes per tick
+ticker_time_budget_us = 1500   # Soft logistics scheduler budget per dimension tick (microseconds)
 clean_interval = 200           # Cooldown cleanup interval (ticks)
 default_cooldown = 10          # Cooldown after failed transfer (ticks)
 batch_clean_threshold = 500    # Cooldown entries before batch clean

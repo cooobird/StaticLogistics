@@ -1,6 +1,8 @@
 package com.coobird.staticlogistics.logistics.util;
 
-/** 为只接受整数数量的外部能力提供饱和转换。 */
+/**
+ * 为只接受整数数量的外部能力提供饱和转换。
+ */
 public final class SaturatedMath {
     private SaturatedMath() {
     }

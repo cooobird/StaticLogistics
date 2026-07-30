@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.content.item;
 
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;

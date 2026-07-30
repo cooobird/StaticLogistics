@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
-import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
 import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
@@ -18,7 +19,9 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/** 从节点配置界面打开对应方向的物品过滤器。 */
+/**
+ * 从连接配置器打开所选连接面的输入或输出过滤器。
+ */
 public record C2SOpenNodeFilterPayload(
     BlockPos pos,
     Direction face,
@@ -41,15 +44,12 @@ public record C2SOpenNodeFilterPayload(
     public static void handle(C2SOpenNodeFilterPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)
-                || !(player.containerMenu instanceof NodeConfiguratorMenu menu)
+                || !(player.containerMenu instanceof LinkConfiguratorMenu menu)
                 || !NodeInteractionRules.matchesTarget(
-                    menu.getPos(), menu.getFace(), payload.pos(), payload.face())) return;
+                menu.getPos(), menu.getFace(), payload.pos(), payload.face())) return;
 
-            NodeMutationService.ValidatedNode node = new NodeMutationService().resolve(
-                player, payload.pos(), payload.face());
+            NodeMutationService.ValidatedNode node = menu.resolveValidatedNode(player);
             if (node == null) return;
-            if (payload.input() ? !node.config().isGlobalInputEnabled()
-                : !node.config().isGlobalOutputEnabled()) return;
 
             int slotIndex = payload.input() ? 0 : 1;
             if (!menu.getSlot(slotIndex).isActive()) return;
@@ -60,8 +60,8 @@ public record C2SOpenNodeFilterPayload(
             if (transferType == null) return;
             player.openMenu(
                 new SimpleMenuProvider((id, inventory, ignored) -> new FilterConfiguratorMenu(
-                    id, inventory, payload.pos(), payload.face(), transferType,
-                    payload.input(), upgradeStack),
+                    id, inventory, menu.getTargetNode(), menu.getRemoteGroupKey(),
+                    transferType, payload.input(), upgradeStack),
                     Component.translatable("gui.staticlogistics.filter.title")),
                 buffer -> {
                     buffer.writeBlockPos(payload.pos());
@@ -69,6 +69,9 @@ public record C2SOpenNodeFilterPayload(
                     buffer.writeResourceLocation(transferType.typeId());
                     buffer.writeBoolean(payload.input());
                     ItemStack.STREAM_CODEC.encode(buffer, upgradeStack);
+                    buffer.writeResourceLocation(menu.getTargetDimension().location());
+                    GroupKey.STREAM_CODEC.encode(
+                        buffer, menu.getRemoteGroupKey());
                 });
         });
     }

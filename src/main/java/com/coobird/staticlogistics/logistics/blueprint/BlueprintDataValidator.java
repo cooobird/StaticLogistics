@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.logistics.blueprint;
 
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
 import com.coobird.staticlogistics.transfer.UpgradeTier;
 import com.coobird.staticlogistics.transfer.UpgradeType;
-import com.coobird.staticlogistics.api.group.GroupConstraints;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -90,7 +90,7 @@ public final class BlueprintDataValidator {
                 if (!upgrade.isFilterUpgrade() || stack.getCount() > 1) return false;
             } else if (slot == 0 && upgrade.getType() != UpgradeType.SPEED
                 || slot == 1 && upgrade.getType() != UpgradeType.RANGE
-                    && upgrade.getType() != UpgradeType.DIMENSION
+                && upgrade.getType() != UpgradeType.DIMENSION
                 || slot == 2 && upgrade.getType() != UpgradeType.STACK) {
                 return false;
             }
@@ -99,4 +99,5 @@ public final class BlueprintDataValidator {
         }
         return true;
     }
+
 }

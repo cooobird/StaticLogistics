@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import mekanism.api.heat.IHeatHandler;
 import mekanism.common.registries.MekanismBlocks;
@@ -12,6 +12,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -64,7 +65,7 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
-    public net.neoforged.neoforge.capabilities.BlockCapability<IHeatHandler, Direction> blockCapability() {
+    public BlockCapability<IHeatHandler, Direction> blockCapability() {
         return mekanism.common.capabilities.Capabilities.HEAT;
     }
 

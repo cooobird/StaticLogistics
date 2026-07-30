@@ -1,12 +1,14 @@
 package com.coobird.staticlogistics.content.item;
 
-import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
-import com.coobird.staticlogistics.logistics.blueprint.BlueprintUpgradeInventory;
-import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintCaptureService;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintPasteService;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintUpgradeInventory;
 import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -45,6 +47,7 @@ public class BlueprintItem extends Item {
                     stack.remove(SLDataComponents.BLUEPRINT_ANCHOR.get());
                     stack.remove(SLDataComponents.SELECTED_GROUP.get());
                     stack.remove(SLDataComponents.SELECTED_GROUP_KEY.get());
+                    stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
                     stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get());
                     stack.remove(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get());
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.cleared")
@@ -139,7 +142,7 @@ public class BlueprintItem extends Item {
 
     private void copyRegion(ServerLevel level, Player player, ItemStack stack,
                             BlockPos anchor, BlockPos corner, GroupRef selectedGroup) {
-        var result = com.coobird.staticlogistics.logistics.blueprint.BlueprintCaptureService.capture(
+        var result = BlueprintCaptureService.capture(
             level, player, anchor, corner, selectedGroup);
         switch (result.status()) {
             case TOO_LARGE -> player.displayClientMessage(
@@ -168,7 +171,7 @@ public class BlueprintItem extends Item {
                          BlockPos newAnchor, int rotation) {
         BlueprintData data = stack.getOrDefault(
             SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY);
-        com.coobird.staticlogistics.logistics.blueprint.BlueprintPasteService.paste(
+        BlueprintPasteService.paste(
             level, player, data, newAnchor, rotation);
     }
 

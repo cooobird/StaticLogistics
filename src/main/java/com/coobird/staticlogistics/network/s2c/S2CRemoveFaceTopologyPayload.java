@@ -16,7 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** 批量应用面拓扑删除墓碑。 */
+/**
+ * 批量应用面拓扑删除墓碑。
+ */
 public record S2CRemoveFaceTopologyPayload(List<Entry> entries) implements CustomPacketPayload {
     public S2CRemoveFaceTopologyPayload {
         entries = List.copyOf(Objects.requireNonNull(entries, "Topology removals must not be null"));

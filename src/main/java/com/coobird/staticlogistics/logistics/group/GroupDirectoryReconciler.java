@@ -1,23 +1,20 @@
 package com.coobird.staticlogistics.logistics.group;
 
-import com.coobird.staticlogistics.api.group.*;
-
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
-/** 服务器启动后从权威面配置收敛分组目录和全服运行时成员索引。 */
+/**
+ * 服务器启动后从权威面配置收敛分组目录和全服运行时成员索引。
+ */
 public final class GroupDirectoryReconciler {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -57,7 +54,7 @@ public final class GroupDirectoryReconciler {
                         LOGGER.error("Conflicting group metadata during reconciliation: {}", group.key());
                         continue;
                     }
-                    if (role != NodeRole.NONE) nodeGroups.put(group.key(), group);
+                    nodeGroups.put(group.key(), group);
                 }
                 if (!nodeGroups.isEmpty()) desiredNodes.put(node, new DesiredNode(role, nodeGroups));
             }

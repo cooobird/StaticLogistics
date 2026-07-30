@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
-import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
+import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -48,18 +48,20 @@ public record C2SUpdateFilterOnItemPayload(
             if (!(context.player() instanceof ServerPlayer player)
                 || !(player.level() instanceof ServerLevel serverLevel)
                 || !ServerPacketRateLimiter.allow(
-                    player, ServerPacketRateLimiter.Action.FILTER_UPDATE)) return;
+                player, ServerPacketRateLimiter.Action.FILTER_UPDATE)) return;
 
             NodeMutationService mutations = new NodeMutationService();
-            NodeMutationService.ValidatedNode node = mutations.resolve(
-                player, payload.pos(), payload.face());
+            NodeMutationService.ValidatedNode node =
+                player.containerMenu instanceof FilterConfiguratorMenu menu
+                    ? menu.resolveValidatedNode(player) : null;
             if (node != null) {
                 int slotIndex = payload.isInput() ? 0 : 1;
                 var upgradeStack = node.config().filterConfig.getUpgrades().getStackInSlot(slotIndex);
                 if (player.containerMenu instanceof FilterConfiguratorMenu menu
                     && NodeInteractionRules.matchesTarget(
-                        menu.getPos(), menu.getFace(), payload.pos(), payload.face())
+                    menu.getPos(), menu.getFace(), payload.pos(), payload.face())
                     && menu.isInput() == payload.isInput()
+                    && menu.matchesInstalledFilter(node.config())
                     && menu.getTransferType() != null
                     && menu.getTransferType().typeId().equals(payload.typeId())
                     && mutations.updateFilter(node, payload.typeId(), payload.isInput(), payload.filter())) {

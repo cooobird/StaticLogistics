@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 
 public class ContainerConfigService {
     private final ContainerRepository repository;
+
     public ContainerConfigService(ContainerRepository repository) {
         this.repository = repository;
     }
@@ -24,16 +25,9 @@ public class ContainerConfigService {
         return repository.get(pos.asLong());
     }
 
-    public boolean removeIfUnused(BlockPos pos) {
-        long posKey = pos.asLong();
-        ContainerConfig config = repository.get(posKey);
-        if (config == null || !config.getLinkedFaceKeys().isEmpty() || !config.isDefault()) return false;
-        // ContainerConfig.linkedFaceKeys 已维护了关联的面 key，直接判断是否为空
-        repository.remove(posKey);
-        return true;
-    }
-
-    /** 升级物已成功移交后，仅删除仍与快照一致的容器配置。 */
+    /**
+     * 升级物已成功移交后，仅删除仍与快照一致的容器配置。
+     */
     public boolean removeAfterHandoff(BlockPos pos, ContainerConfig expected) {
         long posKey = pos.asLong();
         ContainerConfig config = repository.get(posKey);

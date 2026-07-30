@@ -5,8 +5,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
-import org.jetbrains.annotations.Nullable;
 import net.neoforged.neoforge.capabilities.BlockCapability;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -34,7 +34,9 @@ public interface ResourceAdapter<C, V> {
 
     @Nullable C resolve(ServerLevel level, BlockPos pos, Direction face);
 
-    /** 声明原生方块能力后，传输与探测会自动使用 NeoForge 失效缓存。 */
+    /**
+     * 声明原生方块能力后，传输与探测会自动使用 NeoForge 失效缓存。
+     */
     @Nullable
     default BlockCapability<C, Direction> blockCapability() {
         return null;
@@ -51,7 +53,9 @@ public interface ResourceAdapter<C, V> {
 
     ResourceValue<V> resize(ResourceValue<V> resource, long amount);
 
-    /** 回滚到源端并返回成功恢复的数量。 */
+    /**
+     * 回滚到源端并返回成功恢复的数量。
+     */
     default long rollback(C source, ResourceValue<V> resource, TransferRequest request) {
         return 0L;
     }

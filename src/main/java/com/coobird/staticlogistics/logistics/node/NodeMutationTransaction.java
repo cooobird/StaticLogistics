@@ -2,17 +2,13 @@ package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
 import org.slf4j.Logger;
+
+import java.util.*;
 
 /**
  * 服务器级物流修改 Unit of Work。
@@ -48,7 +44,9 @@ public final class NodeMutationTransaction implements AutoCloseable {
         return new NodeMutationTransaction(current, false);
     }
 
-    /** 在当前服务器事务提交后合并执行副作用；没有事务时返回 false。 */
+    /**
+     * 在当前服务器事务提交后合并执行副作用；没有事务时返回 false。
+     */
     public static boolean defer(MinecraftServer server, Object key, Runnable action) {
         if (server == null || key == null || action == null) {
             throw new IllegalArgumentException("Deferred mutation server, key and action are required");
@@ -63,12 +61,16 @@ public final class NodeMutationTransaction implements AutoCloseable {
         return true;
     }
 
-    /** 捕获一个当前必须存在的面；重复捕获同一节点不会生成重复快照。 */
+    /**
+     * 捕获一个当前必须存在的面；重复捕获同一节点不会生成重复快照。
+     */
     public void capture(LogisticsNode node) {
         capture(node, true);
     }
 
-    /** 捕获一个面当前的存在性和内容，允许修改前尚不存在。 */
+    /**
+     * 捕获一个面当前的存在性和内容，允许修改前尚不存在。
+     */
     public void captureState(LogisticsNode node) {
         capture(node, false);
     }
@@ -100,7 +102,27 @@ public final class NodeMutationTransaction implements AutoCloseable {
         for (LogisticsNode node : nodes) capture(node);
     }
 
-    /** 注册节点快照之外的补偿动作，例如恢复分组目录。 */
+    /**
+     * 捕获容器级升级配置，供面生命周期与玩家移交共同回滚。
+     */
+    public void captureContainer(ServerLevel level, BlockPos pos) {
+        if (level == null || pos == null) {
+            throw new IllegalArgumentException("Container mutation level and position are required");
+        }
+        ContainerCaptureKey key = new ContainerCaptureKey(level, pos.immutable());
+        if (!root.capturedContainers.add(key)) return;
+        LinkManager manager = LinkManager.get(level);
+        ContainerConfig config = manager.getContainerConfig(pos);
+        boolean existed = config != null;
+        CompoundTag upgrades = existed
+            ? config.getUpgrades().serializeNBT(level.registryAccess()).copy() : null;
+        root.rollbackActions.push(() ->
+            manager.restoreContainerSnapshot(pos, existed, upgrades));
+    }
+
+    /**
+     * 注册节点快照之外的补偿动作，例如恢复分组目录。
+     */
     public void onRollback(Runnable action) {
         if (action == null) throw new IllegalArgumentException("Rollback action must not be null");
         root.rollbackActions.push(action);
@@ -114,7 +136,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
             throw new IllegalStateException("Nested mutation scope requested rollback");
         }
 
-        var actions = java.util.List.copyOf(root.afterCommit.values());
+        var actions = List.copyOf(root.afterCommit.values());
         root.afterCommit.clear();
 
         // 先确定领域状态，再发布缓存、事件和网络副作用；发布失败不得回滚已经对外可见的提交。
@@ -150,7 +172,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
                         else failure.addSuppressed(exception);
                     }
                 }
-                var reconciliation = java.util.List.copyOf(root.afterCommit.values());
+                var reconciliation = List.copyOf(root.afterCommit.values());
                 root.afterCommit.clear();
                 root.flushing = true;
                 for (Runnable action : reconciliation) {
@@ -173,6 +195,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
     private static final class RootState {
         final MinecraftServer server;
         final Set<LogisticsNode> capturedNodes = new LinkedHashSet<>();
+        final Set<ContainerCaptureKey> capturedContainers = new LinkedHashSet<>();
         final Deque<Runnable> rollbackActions = new ArrayDeque<>();
         final Map<Object, Runnable> afterCommit = new LinkedHashMap<>();
         boolean rollbackOnly;
@@ -182,5 +205,8 @@ public final class NodeMutationTransaction implements AutoCloseable {
         RootState(MinecraftServer server) {
             this.server = server;
         }
+    }
+
+    private record ContainerCaptureKey(ServerLevel level, BlockPos pos) {
     }
 }

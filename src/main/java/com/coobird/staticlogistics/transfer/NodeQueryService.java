@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -13,13 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
-import java.util.ArrayDeque;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -160,8 +154,6 @@ public final class NodeQueryService {
             config.determineRole(),
             config.isGlobalInputEnabled(),
             config.isGlobalOutputEnabled(),
-            config.linkConfig.getInputChannel(),
-            config.linkConfig.getOutputChannel(),
             config.linkConfig.getPriority(),
             config.linkConfig.getKeepStock(),
             config.linkConfig.getStrategy().id(),

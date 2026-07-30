@@ -8,10 +8,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class FTBEventHandlers {
     private static final Set<UUID> PENDING_REFRESHES = new LinkedHashSet<>();
@@ -27,11 +24,11 @@ public class FTBEventHandlers {
         TeamEvent.PLAYER_CHANGED.register(event -> {
             queuePlayers(event.getTeam().getMembers());
             event.getPreviousTeam().ifPresent(team -> queuePlayers(team.getMembers()));
-            queuePlayers(java.util.List.of(event.getPlayerId()));
+            queuePlayers(List.of(event.getPlayerId()));
         });
         TeamEvent.PLAYER_LEFT_PARTY.register(event -> {
             queuePlayers(event.getTeam().getMembers());
-            queuePlayers(java.util.List.of(event.getPlayerId()));
+            queuePlayers(List.of(event.getPlayerId()));
         });
         TeamEvent.PLAYER_JOINED_PARTY.register(event -> queuePlayers(event.getTeam().getMembers()));
         TeamEvent.OWNERSHIP_TRANSFERRED.register(event -> queuePlayers(event.getTeam().getMembers()));
@@ -41,7 +38,7 @@ public class FTBEventHandlers {
     }
 
     private static void refreshAlliance(dev.ftb.mods.ftbteams.api.event.TeamAllyEvent event) {
-        java.util.LinkedHashSet<UUID> affected = new java.util.LinkedHashSet<>(event.getTeam().getMembers());
+        LinkedHashSet<UUID> affected = new LinkedHashSet<>(event.getTeam().getMembers());
         event.getPlayers().forEach(profile -> affected.add(profile.getId()));
         queuePlayers(affected);
     }
@@ -60,7 +57,9 @@ public class FTBEventHandlers {
         }
     }
 
-    /** 同一服务器 tick 内的重复团队事件只为每名玩家重建一次权威快照。 */
+    /**
+     * 同一服务器 tick 内的重复团队事件只为每名玩家重建一次权威快照。
+     */
     private static void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
         LinkedHashSet<UUID> affected;
@@ -84,7 +83,9 @@ public class FTBEventHandlers {
         }
     }
 
-    /** 服务端停止时清除尚未消费的跨 tick 刷新请求，避免下一实例继承旧状态。 */
+    /**
+     * 服务端停止时清除尚未消费的跨 tick 刷新请求，避免下一实例继承旧状态。
+     */
     public static void clearPending() {
         synchronized (PENDING_REFRESHES) {
             PENDING_REFRESHES.clear();

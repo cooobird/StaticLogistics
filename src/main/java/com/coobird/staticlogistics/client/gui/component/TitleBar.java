@@ -5,35 +5,46 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * 标题栏组件（9-slice Button.Small 拼接）。
+ * 独立配置窗口共用的标题栏。
  */
-public class TitleBar {
+public final class TitleBar {
 
-    public static final int WIDTH = 110;
+    public static final int WIDTH = SLGuiTextures.Title.CONTENT_WIDTH;
+    public static final int HEIGHT = SLGuiTextures.Title.CONTENT_HEIGHT;
+    public static final int Y_OFFSET = -21;
     public static final int COLOR = 0x98FB98;
+
+    private TitleBar() {
+    }
+
+    public static int getX(int leftPos, int backgroundWidth) {
+        return leftPos + (backgroundWidth - WIDTH) / 2;
+    }
+
+    public static int getY(int topPos) {
+        return topPos + Y_OFFSET;
+    }
 
     public static void render(GuiGraphics g, Font font, int leftPos, int topPos,
                               int backgroundWidth, String titleText) {
-        int tw = WIDTH;
-        int tx = leftPos + (backgroundWidth - tw) / 2;
-        int ty = topPos - 8;
-
-        g.blit(SLGuiTextures.GUI_ATLAS, tx + tw - 2, ty,
-            SLGuiTextures.Title.U + SLGuiTextures.Button.Small.DISABLED_WIDTH - 2,
-            SLGuiTextures.Title.V, 2, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        g.blit(SLGuiTextures.GUI_ATLAS, tx, ty,
+        int tx = getX(leftPos, backgroundWidth);
+        int ty = getY(topPos);
+        int inset = SLGuiTextures.Title.CONTENT_INSET;
+        g.blit(SLGuiTextures.GUI_ATLAS, tx - inset, ty - inset,
             SLGuiTextures.Title.U, SLGuiTextures.Title.V,
-            2, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        g.blit(SLGuiTextures.GUI_ATLAS, tx + 2, ty,
-            tw - 4, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.Title.U + 2, SLGuiTextures.Title.V,
-            1, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
+            SLGuiTextures.Title.WIDTH, SLGuiTextures.Title.HEIGHT,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
-        int textWidth = font.width(titleText);
-        g.drawString(font, titleText,
-            tx + (tw - textWidth) / 2, ty + 4, COLOR, false);
+        String visibleTitle = font.plainSubstrByWidth(titleText, WIDTH - 12);
+        g.drawString(font, visibleTitle,
+            tx + (WIDTH - font.width(visibleTitle)) / 2, ty + 10, COLOR, false);
+    }
+
+    public static boolean contains(double mouseX, double mouseY,
+                                   int leftPos, int topPos, int backgroundWidth) {
+        int x = getX(leftPos, backgroundWidth);
+        int y = getY(topPos);
+        return mouseX >= x && mouseX < x + WIDTH
+            && mouseY >= y && mouseY < y + HEIGHT;
     }
 }

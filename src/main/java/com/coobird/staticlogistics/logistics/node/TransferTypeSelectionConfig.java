@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -16,7 +17,9 @@ import java.util.function.Consumer;
  */
 public class TransferTypeSelectionConfig {
     private List<ResourceLocation> selectedTypeIds = List.of();
-    /** 当前未注册适配器对应的旧位；必须原样跨加载/保存保留。 */
+    /**
+     * 当前未注册适配器对应的旧位；必须原样跨加载/保存保留。
+     */
     private int unresolvedLegacyMask;
     private Consumer<TransferTypeSelectionConfig> onDirty = c -> {
     };
@@ -37,7 +40,7 @@ public class TransferTypeSelectionConfig {
     public void setSelectedTypeIds(Collection<ResourceLocation> ids) {
         List<ResourceLocation> sanitized = TransferTypeSelection.sanitize(ids);
         if (unresolvedLegacyMask != 0) {
-            java.util.LinkedHashSet<ResourceLocation> restored = new java.util.LinkedHashSet<>(sanitized);
+            LinkedHashSet<ResourceLocation> restored = new LinkedHashSet<>(sanitized);
             restored.addAll(TransferTypeSelection.fromMask(
                 unresolvedLegacyMask, TransferRegistries.getAllActive()));
             sanitized = TransferTypeSelection.sanitize(restored);
@@ -66,10 +69,12 @@ public class TransferTypeSelectionConfig {
         }
     }
 
-    /** ID 列表已成为权威时，仅补回其中无法表达的未注册旧位。 */
+    /**
+     * ID 列表已成为权威时，仅补回其中无法表达的未注册旧位。
+     */
     public void loadUnresolvedLegacyMask(int mask) {
         int unresolved = mask & ~activeTypeMask();
-        java.util.LinkedHashSet<ResourceLocation> restored = new java.util.LinkedHashSet<>(selectedTypeIds);
+        LinkedHashSet<ResourceLocation> restored = new LinkedHashSet<>(selectedTypeIds);
         restored.addAll(TransferTypeSelection.fromMask(mask, TransferRegistries.getAllActive()));
         List<ResourceLocation> resolvedIds = TransferTypeSelection.sanitize(restored);
         if (!selectedTypeIds.equals(resolvedIds) || unresolvedLegacyMask != unresolved) {
@@ -83,7 +88,9 @@ public class TransferTypeSelectionConfig {
         return TransferTypeSelection.isSelected(selectedTypeIds, type);
     }
 
-    /** 以快照中的稳定类型 ID 列表替换当前选择。 */
+    /**
+     * 以快照中的稳定类型 ID 列表替换当前选择。
+     */
     void restoreSnapshot(TransferTypeSelectionConfig snapshot) {
         if (snapshot == null) throw new IllegalArgumentException("Transfer type snapshot must not be null");
         if (!selectedTypeIds.equals(snapshot.selectedTypeIds)

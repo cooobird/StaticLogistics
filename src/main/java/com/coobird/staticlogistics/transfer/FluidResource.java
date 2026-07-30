@@ -1,13 +1,11 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.logistics.util.SaturatedMath;
-import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.filter.FilterEvaluator;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.util.SaturatedMath;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -15,6 +13,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
@@ -67,7 +66,7 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
     }
 
     @Override
-    public net.neoforged.neoforge.capabilities.BlockCapability<IFluidHandler, Direction> blockCapability() {
+    public BlockCapability<IFluidHandler, Direction> blockCapability() {
         return Capabilities.FluidHandler.BLOCK;
     }
 
@@ -121,8 +120,8 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
 
     @Override
     public ExtractionResult<?> executeExtract(IFluidHandler handle, ExtractionResult<?> simulated, long requested,
-                                               @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                               @Nullable TransferContext context) {
+                                              @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+                                              @Nullable TransferContext context) {
         FluidStack drained = handle.drain(SaturatedMath.toNonNegativeInt(requested), IFluidHandler.FluidAction.EXECUTE);
         return ExtractionResult.of(drained);
     }

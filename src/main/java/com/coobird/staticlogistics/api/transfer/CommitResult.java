@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.api.transfer;
 
 import java.util.Optional;
 
-/** 真实提取的提交结果。 */
+/**
+ * 真实提取的提交结果。
+ */
 public record CommitResult<V>(Status status, Optional<ResourceValue<V>> resource) {
     public enum Status {
         SUCCESS,

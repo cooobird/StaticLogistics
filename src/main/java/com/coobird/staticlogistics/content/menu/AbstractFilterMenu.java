@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.content.menu;
 
+import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.logistics.filter.NbtMatchMode;
 import com.coobird.staticlogistics.transfer.UpgradeType;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
@@ -30,10 +30,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         syncFromStack(upgradeStack);
         this.addDataSlot(blacklistSlot);
         this.addDataSlot(ignoreDamageSlot);
-    }
-
-    public void bulkUpdate(UnaryOperator<FilterData> operator) {
-        updateFilterData(operator);
     }
 
     protected abstract ItemStack getFilterStack();
@@ -159,7 +155,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         this.ignoreDamageSlot.set(ignore ? 1 : 0);
     }
 
-    // ==================== 物品标签相关 ====================
     public Set<TagKey<Item>> getSlotTags(int slot) {
         return getFilterData().tagSlots().getOrDefault(String.valueOf(slot), Set.of());
     }
@@ -258,7 +253,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         });
     }
 
-    // ==================== 流体标签相关 ====================
     public Set<TagKey<Fluid>> getSlotFluidTags(int slot) {
         return getFilterData().fluidFilterTags().getOrDefault(String.valueOf(slot), Set.of());
     }

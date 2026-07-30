@@ -20,8 +20,6 @@ public final class DistributionStrategyRegistry {
     private static final List<DistributionStrategy> VALUES = new ArrayList<>();
     private static final Map<String, DistributionStrategy> LEGACY_MAP = new HashMap<>();
 
-    // ── 内置策略 ──
-
     public static final DistributionStrategy SEQUENTIAL = registerInternal(
         StaticLogistics.asResource("sequential"), SequentialGroupSorter.INSTANCE, "SEQUENTIAL");
     public static final DistributionStrategy ROUND_ROBIN = registerInternal(
@@ -74,7 +72,9 @@ public final class DistributionStrategyRegistry {
         return legacy != null ? legacy : SEQUENTIAL;
     }
 
-    /** 返回精确匹配的已注册策略；不存在时不进行兼容回退。 */
+    /**
+     * 返回精确匹配的已注册策略；不存在时不进行兼容回退。
+     */
     @Nullable
     public static DistributionStrategy get(ResourceLocation id) {
         return REGISTRY.get(id);
@@ -93,6 +93,6 @@ public final class DistributionStrategyRegistry {
     }
 
     public static final StreamCodec<RegistryFriendlyByteBuf, DistributionStrategy> STREAM_CODEC =
-        net.minecraft.resources.ResourceLocation.STREAM_CODEC.<RegistryFriendlyByteBuf>cast()
+        ResourceLocation.STREAM_CODEC.<RegistryFriendlyByteBuf>cast()
             .map(DistributionStrategyRegistry::byNameRl, DistributionStrategy::id);
 }

@@ -2,10 +2,10 @@ package com.coobird.staticlogistics.integration.resource;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.ExtractionResult;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
 import mekanism.api.chemical.ChemicalStack;
@@ -16,6 +16,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -68,7 +69,7 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
     }
 
     @Override
-    public net.neoforged.neoforge.capabilities.BlockCapability<IChemicalHandler, Direction> blockCapability() {
+    public BlockCapability<IChemicalHandler, Direction> blockCapability() {
         return mekanism.common.capabilities.Capabilities.CHEMICAL.block();
     }
 

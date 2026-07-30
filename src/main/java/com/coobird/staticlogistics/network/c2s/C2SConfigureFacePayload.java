@@ -1,18 +1,19 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
-import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.node.FaceConfigurationEdit;
 import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
 import com.coobird.staticlogistics.logistics.node.NodeMutationService;
-import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
+import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
 import net.minecraft.core.BlockPos;
@@ -22,13 +23,15 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import java.util.List;
 import java.util.Objects;
 
-/** 客户端提交的单项面配置修改。 */
+/**
+ * 客户端提交的单项面配置修改。
+ */
 public record C2SConfigureFacePayload(
     BlockPos pos,
     Direction face,
@@ -36,8 +39,7 @@ public record C2SConfigureFacePayload(
 ) implements CustomPacketPayload {
     private static final int GLOBAL_INPUT = 0;
     private static final int GLOBAL_OUTPUT = 1;
-    private static final int INPUT_CHANNEL = 2;
-    private static final int OUTPUT_CHANNEL = 3;
+    // 操作号 2、3 曾用于频道设置，保留空缺以避免误解旧数据包。
     private static final int PRIORITY = 4;
     private static final int KEEP_STOCK = 5;
     private static final int STRATEGY = 6;
@@ -78,24 +80,24 @@ public record C2SConfigureFacePayload(
     public static void handle(C2SConfigureFacePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)
-                || !(player.level() instanceof ServerLevel level)
                 || !ServerPacketRateLimiter.allow(
-                    player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
-                || !(player.containerMenu instanceof NodeConfiguratorMenu menu)
+                player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
+                || !(player.containerMenu instanceof LinkConfiguratorMenu menu)
                 || !NodeInteractionRules.matchesTarget(
-                    menu.getPos(), menu.getFace(), payload.pos(), payload.face())) return;
+                menu.getPos(), menu.getFace(), payload.pos(), payload.face())
+                || !menu.allowsEdit(payload.edit())) return;
 
             NodeMutationService mutations = new NodeMutationService();
-            NodeMutationService.ValidatedNode node = mutations.resolve(
-                player, payload.pos(), payload.face());
+            NodeMutationService.ValidatedNode node = menu.resolveValidatedNode(player);
             if (node == null || !mutations.configure(node, payload.edit())) return;
 
             menu.syncFaceSlots();
             menu.broadcastChanges();
-            TeamPacketSync.sendTopology(player, java.util.List.of(
+            TeamPacketSync.sendTopology(player, menu.getRemoteGroupKey().ownerId(), List.of(
                 S2CTopologyUpdatePayload.FaceUpdate.from(
-                    new com.coobird.staticlogistics.api.LogisticsNode(
-                        GlobalPos.of(level.dimension(), payload.pos()), payload.face()),
+                    node.level(),
+                    new LogisticsNode(
+                        GlobalPos.of(node.level().dimension(), payload.pos()), payload.face()),
                     node.config())));
         });
     }
@@ -108,10 +110,6 @@ public record C2SConfigureFacePayload(
                     FaceConfigurationEdit.BooleanField.GLOBAL_INPUT, buffer.readBoolean());
                 case GLOBAL_OUTPUT -> new FaceConfigurationEdit.BooleanEdit(
                     FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT, buffer.readBoolean());
-                case INPUT_CHANNEL -> new FaceConfigurationEdit.ChannelEdit(
-                    FaceConfigurationEdit.ChannelField.INPUT, buffer.readVarInt());
-                case OUTPUT_CHANNEL -> new FaceConfigurationEdit.ChannelEdit(
-                    FaceConfigurationEdit.ChannelField.OUTPUT, buffer.readVarInt());
                 case PRIORITY -> new FaceConfigurationEdit.NumberEdit(
                     FaceConfigurationEdit.NumberField.PRIORITY, buffer.readVarInt());
                 case KEEP_STOCK -> new FaceConfigurationEdit.NumberEdit(
@@ -156,11 +154,6 @@ public record C2SConfigureFacePayload(
                 buffer.writeByte(value.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT
                     ? GLOBAL_INPUT : GLOBAL_OUTPUT);
                 buffer.writeBoolean(value.enabled());
-            }
-            case FaceConfigurationEdit.ChannelEdit value -> {
-                buffer.writeByte(value.field() == FaceConfigurationEdit.ChannelField.INPUT
-                    ? INPUT_CHANNEL : OUTPUT_CHANNEL);
-                buffer.writeVarInt(value.channel());
             }
             case FaceConfigurationEdit.NumberEdit value -> {
                 buffer.writeByte(value.field() == FaceConfigurationEdit.NumberField.PRIORITY

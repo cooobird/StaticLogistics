@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.logistics.node.sync;
 
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -12,7 +12,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
-/** 物流域发布拓扑变化所依赖的网络输出端口。 */
+/**
+ * 物流域发布拓扑变化所依赖的网络输出端口。
+ */
 public interface TopologySyncPort {
     void syncToPlayer(ServerPlayer player, BlockPos pos, Direction face, FaceConfigComposite config);
 

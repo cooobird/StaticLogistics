@@ -1,17 +1,18 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
-import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
-import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record C2SGroupRenamePayload(
@@ -39,7 +40,7 @@ public record C2SGroupRenamePayload(
     public static void handle(final C2SGroupRenamePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             var player = context.player();
-            if (!(player instanceof net.minecraft.server.level.ServerPlayer serverPlayer)) return;
+            if (!(player instanceof ServerPlayer serverPlayer)) return;
             boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
                 || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
             if (!holdsTool) return;
@@ -52,8 +53,9 @@ public record C2SGroupRenamePayload(
                     .findGroup(payload.groupKey().ownerId(), payload.newGroupId());
                 LinkConfiguratorSelection.replaceIfSelected(
                     player, target.key(), target.displayName(), result);
-                TeamPacketSync.send(serverPlayer, new S2CGroupDirectoryPayload(
-                    payload.groupKey().ownerId(), PlayerGroupStore.get(server)
+                TeamPacketSync.send(serverPlayer, payload.groupKey().ownerId(),
+                    new S2CGroupDirectoryPayload(
+                        payload.groupKey().ownerId(), PlayerGroupStore.get(server)
                         .getGroupRefs(payload.groupKey().ownerId())));
             }
         });

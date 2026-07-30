@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logistics.blueprint.BlueprintPasteService;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintPasteService;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -30,7 +30,7 @@ public record C2SBlueprintUndoPayload() implements CustomPacketPayload {
             if (context.player() instanceof ServerPlayer player
                 && player.level() instanceof ServerLevel level
                 && ServerPacketRateLimiter.allow(
-                    player, ServerPacketRateLimiter.Action.BLUEPRINT_UNDO)) {
+                player, ServerPacketRateLimiter.Action.BLUEPRINT_UNDO)) {
                 boolean holdsBlueprint = player.getItemInHand(InteractionHand.MAIN_HAND).getItem() instanceof BlueprintItem
                     || player.getItemInHand(InteractionHand.OFF_HAND).getItem() instanceof BlueprintItem;
                 if (!holdsBlueprint) return;

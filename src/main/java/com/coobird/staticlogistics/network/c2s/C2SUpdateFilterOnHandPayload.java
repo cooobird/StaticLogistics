@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;

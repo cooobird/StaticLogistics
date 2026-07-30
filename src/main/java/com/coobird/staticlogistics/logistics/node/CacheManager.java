@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
+
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -57,7 +58,7 @@ public class CacheManager {
     }
 
     /**
-     * 返回缓存的 {@code long[]}，只在集合变更时重建。
+     * 返回缓存的面地址数组，只在集合变更时重建。
      * ticker 高频路径用这个，避免每 tick 分配两份拷贝。
      */
     public FaceAddress[] getActiveProviderKeysArray() {
@@ -71,10 +72,4 @@ public class CacheManager {
         }
     }
 
-    /**
-     * 快速判空，不创建快照 —— ticker 空跑时避免所有分配。
-     */
-    public boolean hasProviders() {
-        return !activeProviders.isEmpty();
-    }
 }

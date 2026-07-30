@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.client.gui.component;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.transfer.UpgradeType;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -25,6 +26,7 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -154,7 +156,7 @@ public class FilterGridWidget {
                         if (mc != null && mc.options.advancedItemTooltips) {
                             tooltip.add(Component.literal(
                                     BuiltInRegistries.FLUID.getKey(fluid).toString())
-                                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                                .withStyle(ChatFormatting.DARK_GRAY));
                         }
                         g.renderComponentTooltip(font, tooltip, mx, my);
                         return;
@@ -170,10 +172,10 @@ public class FilterGridWidget {
                             tooltip.add(Component.empty());
                             tooltip.add(Component.translatable(
                                     "gui.staticlogistics.filter.left_click_item", carriedItemName)
-                                .withStyle(net.minecraft.ChatFormatting.GRAY));
+                                .withStyle(ChatFormatting.GRAY));
                             tooltip.add(Component.translatable(
                                     "gui.staticlogistics.filter.right_click_fluid", carriedFluidName)
-                                .withStyle(net.minecraft.ChatFormatting.GRAY));
+                                .withStyle(ChatFormatting.GRAY));
                         }
                         g.renderComponentTooltip(font, tooltip, mx, my);
                         return;
@@ -183,12 +185,12 @@ public class FilterGridWidget {
                     if (!carried.isEmpty()) {
                         emptyTooltip.add(Component.translatable(
                                 "gui.staticlogistics.filter.left_click_item", carriedItemName)
-                            .withStyle(net.minecraft.ChatFormatting.GRAY));
+                            .withStyle(ChatFormatting.GRAY));
                     }
                     if (hasCarriedFluid) {
                         emptyTooltip.add(Component.translatable(
                                 "gui.staticlogistics.filter.right_click_fluid", carriedFluidName)
-                            .withStyle(net.minecraft.ChatFormatting.GRAY));
+                            .withStyle(ChatFormatting.GRAY));
                     }
                     if (!emptyTooltip.isEmpty()) {
                         g.renderComponentTooltip(font, emptyTooltip, mx, my);
@@ -198,8 +200,6 @@ public class FilterGridWidget {
             }
         }
     }
-
-    // ---- 悬停检测 ----
 
     /**
      * 返回鼠标悬停的槽位索引，-1 表示未命中
@@ -330,7 +330,7 @@ public class FilterGridWidget {
         }
         // 去重
         return all.stream().distinct()
-            .sorted(java.util.Comparator.comparing(a -> a.location().toString()))
+            .sorted(Comparator.comparing(a -> a.location().toString()))
             .toList();
     }
 }

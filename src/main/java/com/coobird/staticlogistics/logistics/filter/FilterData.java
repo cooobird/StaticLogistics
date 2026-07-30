@@ -16,12 +16,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public record FilterData(
@@ -55,7 +50,9 @@ public record FilterData(
         excludedFluidTags = copyTagSlots(excludedFluidTags, "Excluded fluid tags must not be null");
     }
 
-    /** ItemStack 本身可变，因此访问时返回深复制快照。 */
+    /**
+     * ItemStack 本身可变，因此访问时返回深复制快照。
+     */
     @Override
     public Map<String, ItemStack> items() {
         return copyItems(items);

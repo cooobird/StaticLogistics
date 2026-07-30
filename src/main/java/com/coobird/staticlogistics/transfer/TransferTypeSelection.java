@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -16,7 +15,9 @@ import java.util.*;
  * 旧掩码仍用于读取老数据和给旧 UI 同步槽提供兼容值。
  */
 public final class TransferTypeSelection {
-    /** 单个面允许选择的最大资源类型数量。 */
+    /**
+     * 单个面允许选择的最大资源类型数量。
+     */
     public static final int MAX_SELECTED_TYPES = 64;
 
     private TransferTypeSelection() {
@@ -47,7 +48,9 @@ public final class TransferTypeSelection {
         return ids;
     }
 
-    /** 将现代 ID 与仍在物品上的旧位合并；适配器恢复后可在首次读取时重新得到 ID。 */
+    /**
+     * 将现代 ID 与仍在物品上的旧位合并；适配器恢复后可在首次读取时重新得到 ID。
+     */
     public static List<ResourceLocation> mergeIdsWithMask(
         Collection<ResourceLocation> ids, int mask,
         Collection<LogisticsResource<?>> activeTypes
@@ -68,7 +71,9 @@ public final class TransferTypeSelection {
         return mask;
     }
 
-    /** 返回当前已注册类型占用的全部旧 int 位，用于保留尚未注册的历史位。 */
+    /**
+     * 返回当前已注册类型占用的全部旧 int 位，用于保留尚未注册的历史位。
+     */
     public static int activeLegacyMask(Collection<LogisticsResource<?>> activeTypes) {
         int mask = 0;
         for (LogisticsResource<?> type : activeTypes) {

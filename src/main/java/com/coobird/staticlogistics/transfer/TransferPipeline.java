@@ -4,16 +4,14 @@ import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.PostTransferEvent;
 import com.coobird.staticlogistics.api.event.PreTransferEvent;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.mojang.logging.LogUtils;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.common.NeoForge;
-import org.slf4j.Logger;
 
 import java.util.List;
 
@@ -32,8 +30,6 @@ import java.util.List;
  * <p>不负责 capability 缓存（由 {@link CapabilityCache} 处理）。
  */
 public final class TransferPipeline {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
     private TransferPipeline() {
     }
 
@@ -60,10 +56,7 @@ public final class TransferPipeline {
         long limit, TransferUtils.TransferProtocol<C, T> protocol, boolean isPullMode,
         TransferContext context
     ) {
-        if (context != null && context.isDepthExceeded()) {
-            LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
-            return false;
-        }
+        if (context != null && context.isDepthExceeded()) return false;
         if (destinations.isEmpty() || limit <= 0) return false;
 
         long remaining = limit;
@@ -75,7 +68,6 @@ public final class TransferPipeline {
         }
         if (localContainer == null) return false;
 
-        boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
         C localCap = capGetter.get(localLevel, localPos, localFace);
         if (localCap == null) return false;
 
@@ -84,14 +76,14 @@ public final class TransferPipeline {
         for (LogisticsNode remoteNode : destinations) {
             boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
 
-            // 跨维度检查
-            if (!isSameDim && !canCrossDim) {
+            LogisticsCalculator.TransferRangeAssessment range = LogisticsCalculator.assessTransferRange(GlobalPos.of(localLevel.dimension(), localPos),
+                remoteNode.gPos(), localContainer);
+            if (range.crossDimension() && !range.allowed()) {
                 if (context != null) logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
                 continue;
             }
 
-            // 距离检查
-            if (isSameDim && LogisticsCalculator.isOutOfRange(localPos, remoteNode.gPos().pos(), localContainer)) {
+            if (!range.crossDimension() && !range.allowed()) {
                 if (context != null) logFailure(context, remoteNode, TransferFailureReason.OUT_OF_RANGE);
                 continue;
             }
@@ -105,7 +97,6 @@ public final class TransferPipeline {
                 continue;
             }
 
-            // 获取远程 capability
             C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
             if (remoteCap == null) {
                 // 脏链接清理
@@ -165,15 +156,11 @@ public final class TransferPipeline {
                 movedAny = true;
             }
 
-            // 日志 + Post 事件
             if (targetAccepted > 0 && context != null) {
                 LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
                 LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                TransferLogManager.get(localLevel.getServer()).logTransfer(
-                    srcNode, dstNode, context.type(), targetAccepted, transferComplete,
-                    commitFailureReason);
-                PostTransferEvent postEvent = new PostTransferEvent(
-                    srcNode, dstNode, context.typeId(), targetAccepted, transferComplete);
+                TransferLogManager.get(localLevel.getServer()).logTransfer(srcNode, dstNode, context.type(), targetAccepted, transferComplete, commitFailureReason);
+                PostTransferEvent postEvent = new PostTransferEvent(srcNode, dstNode, context.typeId(), targetAccepted, transferComplete);
                 NeoForge.EVENT_BUS.post(postEvent);
             }
             if (remaining <= 0) break;

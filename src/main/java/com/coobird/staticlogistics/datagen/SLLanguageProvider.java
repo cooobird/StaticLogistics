@@ -3,11 +3,11 @@ package com.coobird.staticlogistics.datagen;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.content.registry.SLCreativeTabs;
 import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
+import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
 import com.coobird.staticlogistics.transfer.UpgradeTier;
 import com.coobird.staticlogistics.transfer.UpgradeType;
-import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
-import com.coobird.staticlogistics.content.registry.SLCreativeTabs;
 import net.minecraft.data.PackOutput;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
@@ -47,14 +47,84 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置器");
         add("gui.staticlogistics.search_hint", "Search...", "搜索分组...");
         add("gui.staticlogistics.add_group", "Add Group", "添加分组");
-        add("gui.staticlogistics.search_types", "Search...", "搜索类型");
+        add("gui.staticlogistics.blueprint.connection_count",
+            "Connections: %s", "连接数：%s");
+        add("gui.staticlogistics.blueprint.connection_count_compact",
+            "%s links", "%s 条连接");
+        add("gui.staticlogistics.blueprint.empty",
+            "No matching groups", "没有匹配的分组");
+        add("gui.staticlogistics.blueprint.preview_hint",
+            "Click to preview this group's links", "点击预览该分组的链接");
+        add("gui.staticlogistics.blueprint.confirm_hint",
+            "Click again to confirm and close", "再次点击以确认并关闭");
+        add("gui.staticlogistics.blueprint.previewing",
+            "Previewing group #%s — click it again to confirm",
+            "正在预览分组 #%s——再次点击即可确认");
+        add("gui.staticlogistics.blueprint.confirmed",
+            "Group #%s selected — choose the first corner",
+            "已选择分组 #%s——请选择区域的第一个角点");
         add("gui.staticlogistics.tooltip.toggle_type", "Click to enable/disable types", "点击以启用/禁用类型");
+        add("gui.staticlogistics.tooltip.type_context.tool_default",
+            "New connection default types", "新建连接的默认类型");
+        add("gui.staticlogistics.tooltip.type_context.node_output",
+            "Selected node output types", "当前节点的输出类型");
+        add("gui.staticlogistics.tooltip.type_context.node_input",
+            "Accepted types derived from connected outputs", "由相连输出端决定的接收类型");
+        add("gui.staticlogistics.tooltip.input_types_read_only",
+            "Input types are read-only", "输入侧类型不可直接修改");
+        add("gui.staticlogistics.tooltip.enable_output_to_edit_types",
+            "Enable output to edit types", "启用输出后才能修改类型");
         add("gui.staticlogistics.tooltip.group_id", "Group #%s", "分组 #%s");
         add("gui.staticlogistics.tooltip.shift_export", "%s + Click to export coordinates", "%s + 点击导出坐标");
         add("gui.staticlogistics.tooltip.shift_more", "Hold %1$s to show %2$s more...", "按住 %1$s 显示剩余 %2$s 项...");
         add("gui.staticlogistics.tooltip.rename_hint", "Double-click to rename group", "双击以重命名分组");
         add("gui.staticlogistics.tooltip.select_hint", "Click to select this group", "点击以选择该分组");
         add("gui.staticlogistics.tooltip.right_click_delete", "Right-click to delete the group and all connections it has", "右键点击以删除该分组及其拥有的所有连接");
+        add("gui.staticlogistics.connection", "Connection", "连接");
+        add("gui.staticlogistics.connection.configure", "Connection Configuration", "连接配置");
+        add("gui.staticlogistics.connection.bidirectional", "Direction: Bidirectional", "方向：双向");
+        add("gui.staticlogistics.connection.first_to_second", "Direction: First → Second", "方向：第一端 → 第二端");
+        add("gui.staticlogistics.connection.second_to_first", "Direction: Second → First", "方向：第二端 → 第一端");
+        add("gui.staticlogistics.connection.blocked", "Direction: Currently blocked", "方向：当前阻塞");
+        add("gui.staticlogistics.connection.open_hint", "Click to configure this connection", "点击配置此连接");
+        add("gui.staticlogistics.connection.rename_hint", "Double-click to rename this connection", "双击重命名此连接");
+        add("gui.staticlogistics.connection.delete_hint", "Right-click to delete this connection", "右键删除此连接");
+        add("gui.staticlogistics.connection.open_config", "Open Side Configuration", "打开此侧配置");
+        add("gui.staticlogistics.linked_node_config", "Linked Node Configuration", "连接节点配置");
+        add("gui.staticlogistics.input", "Input", "输入");
+        add("gui.staticlogistics.output", "Output", "输出");
+        add("gui.staticlogistics.groups_and_connections", "Groups and Connections", "分组与连接");
+        add("gui.staticlogistics.current_connection", "Current Connection", "当前连接");
+        add("gui.staticlogistics.node_configuration", "Node Configuration", "节点配置");
+        add("gui.staticlogistics.enabled", "Enabled", "已启用");
+        add("gui.staticlogistics.disabled", "Disabled", "已禁用");
+        add("gui.staticlogistics.filter", "Filter", "过滤器");
+        add("gui.staticlogistics.upgrades", "Upgrades", "升级");
+        add("gui.staticlogistics.receive_types", "Accepted Types: %s", "接收类型：%s");
+        add("gui.staticlogistics.transfer_types", "Transfer Types: %s", "传输类型：%s");
+        add("gui.staticlogistics.transfer_amount",
+            "  %s: Base %s → Current %s",
+            "  %s：基础 %s → 当前 %s");
+        add("gui.staticlogistics.no_resource_types", "None selected", "未选择");
+        add("gui.staticlogistics.network_preview.title",
+            "Network Preview", "网络预览");
+        add("gui.staticlogistics.network_preview.empty",
+            "No connections in this group", "此分组中没有连接");
+        add("gui.staticlogistics.network_preview.node",
+            "Unloaded Node", "未加载节点");
+        add("gui.staticlogistics.network_preview.select_hint",
+            "Select a node or connection in the preview", "请在预览中选择节点或连接");
+        add("gui.staticlogistics.network_preview.select_node_to_configure",
+            "Click a node in the preview to configure it",
+            "点击网络预览中的节点进行配置");
+        add("gui.staticlogistics.network_preview.cross_dimension_available",
+            "Cross-dimensional", "可跨维度");
+        add("gui.staticlogistics.network_preview.cross_dimension_blocked",
+            "Cross-dimensional unavailable", "无法跨维度");
+        add("gui.staticlogistics.network_preview.distance_details",
+            "Distance: %s blocks / Limit: %s blocks",
+            "距离：%s 格 / 上限：%s 格");
+        add("gui.staticlogistics.unit.blocks", "blocks", "格");
         add("gui.staticlogistics.node.details", "[%1$s: %2$s  %3$s: %4$s  %5$s: %6$s]", "[%1$s：%2$s  %3$s：%4$s  %5$s：%6$s]");
         add("gui.staticlogistics.node.dimension", "Dimension", "维度");
         add("gui.staticlogistics.node.block_position", "Block Position", "方块坐标");
@@ -74,7 +144,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.strategy", "Distribution Strategy", "分发策略");
         add("gui.staticlogistics.extraction_mode", "Extraction Mode", "提取模式");
         add("gui.staticlogistics.hint.speed", "Speed Upgrade", "速度升级");
-        add("gui.staticlogistics.hint.range", "Range/Dim Upgrade", "范围/维度升级");
+        add("gui.staticlogistics.hint.range", "Range Upgrade", "范围升级");
         add("gui.staticlogistics.hint.stack", "Stack Upgrade", "堆叠升级");
         add("gui.staticlogistics.hint.input_filter", "Input Filter", "输入过滤器");
         add("gui.staticlogistics.hint.output_filter", "Output Filter", "输出过滤器");
@@ -125,7 +195,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
         add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
         add("msg.staticlogistics.no_nodes_stored", "No nodes are stored in the configurator!", "配置器中未存储任何节点！");
-        add("msg.staticlogistics.out_of_range", "Out of Range", "超出范围");
         add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
         add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
         add("msg.staticlogistics.no_links_on_face", "No removable links found on face: %s", "在 %s 面上未发现属于你或你团队的链路");
@@ -135,7 +204,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.group_removed_from_face", "Removed group %s from this face.", "已从该面移除分组 %s。");
         add("msg.staticlogistics.group_not_on_face", "Group %s is not linked to this face.", "分组 %s 不属于该节点面。");
         add("msg.staticlogistics.select_group_to_remove", "Select a group first to remove.", "请先选取分组再移除。");
-        add("msg.staticlogistics.no_dimension_upgrade", "No dimension upgrade installed!", "未安装跨维度升级！");
         add("msg.staticlogistics.unknown_owner", "Unknown", "未知");
         add("msg.staticlogistics.tool_nodes_cleaned", "Removed %s invalid node(s) from configurator", "已从配置器中移除了 %s 个无效节点");
         add("msg.staticlogistics.wrench.no_permission", "No permission to remove this machine.", "没有权限移除此机器。");
@@ -184,8 +252,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("mode.staticlogistics.remove.desc",
             "%s + Right-click a node face to delete all links connected to it.",
             "%s+右键点击节点面，删除该面上现有的所有物流链路。");
-        add("mode.staticlogistics.node_config", "Configure Node", "配置节点");
-        add("mode.staticlogistics.node_config.desc", "%s + Right-click to configure face and container.", "%s+右键配置节点面和容器。");
 
         add("key.categories.staticlogistics", "Static Logistics", "静态物流");
         add("key.staticlogistics.blueprint_preview_move", "Blueprint Preview Move", "蓝图预览移动");
@@ -211,7 +277,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("jade.staticlogistics.face_stats", "Rate: %s/min | Last: %s ago", "速率: %s/分钟 | 上次: %s前");
         add("jade.staticlogistics.section_input", "Input:", "输入:");
         add("jade.staticlogistics.section_output", "Output:", "输出:");
-        add("jade.staticlogistics.channel", "Channel: %s", "频道: %s");
         add("jade.staticlogistics.priority", "Priority: %s", "优先级: %s");
         add("jade.staticlogistics.keep_stock", "Keep >= %s", "存量维持 >= %s");
         add("jade.staticlogistics.strategy_label", "Distribution: %s", "分发策略: %s");
@@ -253,8 +318,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.info.face_direction", "[%s]", "[%s]");
         add("commands.staticlogistics.info.global_input", "Global Input: %s", "全局输入：%s");
         add("commands.staticlogistics.info.global_output", "Global Output: %s", "全局输出：%s");
-        add("commands.staticlogistics.info.input_channel", "Input Channel: %d", "输入频道：%d");
-        add("commands.staticlogistics.info.output_channel", "Output Channel: %d", "输出频道：%d");
         add("commands.staticlogistics.info.strategy", "Strategy: %s", "分发策略：%s");
         add("commands.staticlogistics.info.priority", "Priority: %d", "优先级：%d");
         add("commands.staticlogistics.info.role_version", "Role: %s, Version: %s", "角色：%s，版本：%s");
@@ -270,15 +333,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.list.group_entry", "Group: %s (%d nodes)", "分组：%s（共 %d 个节点）");
         add("commands.staticlogistics.list.node_entry", "  - %s %s (%s)", "  - %s %s（角色：%s）");
 
-        add("commands.staticlogistics.debug.header", "StaticLogistics Debug", "StaticLogistics 调试信息");
-        add("commands.staticlogistics.debug.transfer_types", "Transfer Types: %s, Generation: %s", "传输类型：%s，版本代：%s");
-        add("commands.staticlogistics.debug.cache", "Capability Cache: dimensions=%s, entries=%s, queries=%s, invalidations=%s", "能力缓存：维度=%s，条目=%s，查询=%s，失效通知=%s");
-        add("commands.staticlogistics.debug.scheduler", "Scheduler: last=%sμs, peak=%sμs, avg/dim=%sμs, candidates=%s, attempts=%s, budget stops=%s", "调度器：上次=%sμs，峰值=%sμs，维度平均=%sμs，候选=%s，尝试=%s，预算停止=%s 次");
-        add("commands.staticlogistics.debug.help", "Use /sl debug types or /sl debug cache for details.", "使用 /sl debug types 或 /sl debug cache 查看详情。");
-        add("commands.staticlogistics.debug.cache_header", "Capability Cache", "能力缓存");
-        add("commands.staticlogistics.debug.cache_stats", "Dimensions: %s, Entries: %s, Queries: %s, Invalidations: %s", "维度：%s，条目：%s，查询：%s，失效通知：%s");
-        add("commands.staticlogistics.debug.types_header", "Transfer Types", "传输类型");
-        add("commands.staticlogistics.debug.type_line", "%s bitOffset=%s legacyMask=%s handler=%s", "%s bitOffset=%s 旧掩码=%s 处理器=%s");
 
 
         add("commands.staticlogistics.stats.header", "═════ StaticLogistics Stats ═════", "═════ StaticLogistics 传输统计 ═════");

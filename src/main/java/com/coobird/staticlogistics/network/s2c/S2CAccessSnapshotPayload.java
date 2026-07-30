@@ -6,8 +6,8 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
-import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import com.coobird.staticlogistics.network.TopologyPagePartitioner;
+import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -43,7 +43,9 @@ public record S2CAccessSnapshotPayload(
         validateWeight(faces, links, groups, false);
     }
 
-    /** 将权限快照按条目数和编码复杂度拆成有界页面。 */
+    /**
+     * 将权限快照按条目数和编码复杂度拆成有界页面。
+     */
     public static List<S2CAccessSnapshotPayload> pages(
         List<FaceTopology> faces,
         List<ScopedTopologyLink> links,

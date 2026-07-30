@@ -1,20 +1,23 @@
 package com.coobird.staticlogistics.content.item;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.logistics.NodeConfiguratorTool;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.SLKeyNames;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.api.group.GroupKey;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -33,12 +36,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
+public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
     private static final Map<ToolMode, ModeHandler> HANDLERS = new EnumMap<>(ToolMode.class);
 
     static {
         HANDLERS.put(ToolMode.WRENCH, new WrenchModeHandler());
-        HANDLERS.put(ToolMode.NODE_CONFIG, new NodeConfigModeHandler());
         HANDLERS.put(ToolMode.REMOVE, new RemoveModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_INSERT, new LinkModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_EXTRACT, new LinkModeHandler());
@@ -109,7 +111,9 @@ public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
         if (!player.isSecondaryUseActive()) {
-            if (level.isClientSide) LinkConfiguratorClientHooks.openScreen(stack);
+            if (player instanceof ServerPlayer serverPlayer) {
+                openConfigurator(serverPlayer);
+            }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         } else {
             LinkOperationHelper.clearNodes(stack, player, level);
@@ -140,7 +144,9 @@ public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
         ToolSettings settings = getSettings(stack);
 
         if (!player.isSecondaryUseActive()) {
-            if (level.isClientSide) LinkConfiguratorClientHooks.openScreen(stack);
+            if (player instanceof ServerPlayer serverPlayer) {
+                openConfigurator(serverPlayer);
+            }
             return InteractionResult.SUCCESS;
         }
 
@@ -152,5 +158,16 @@ public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
             return InteractionResult.SUCCESS;
         }
         return result;
+    }
+
+    private static void openConfigurator(ServerPlayer player) {
+        int toolSlot = LinkConfiguratorMenu.findToolSlot(player.getInventory());
+        if (toolSlot < 0) return;
+        Component title = Component.translatable("gui.staticlogistics.linker_settings");
+        player.openMenu(new SimpleMenuProvider(
+                (id, inventory, ignored) ->
+                    new LinkConfiguratorMenu(id, inventory, toolSlot),
+                title),
+            buffer -> LinkConfiguratorMenu.writeEmptyOpenData(buffer, toolSlot));
     }
 }

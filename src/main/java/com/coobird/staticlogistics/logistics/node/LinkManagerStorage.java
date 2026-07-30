@@ -2,12 +2,13 @@ package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.logistics.node.persistence.LogisticsDataMigration;
-import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
+import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.persistence.ContainerRepository;
+import com.coobird.staticlogistics.logistics.node.persistence.LogisticsDataMigration;
 import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -19,6 +20,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
+
 import java.util.Set;
 
 /**
@@ -38,7 +40,9 @@ public class LinkManagerStorage extends SavedData {
      * 每次保存只更新脏键对应的 NBT，避免全量序列化
      */
     private CompoundTag cachedTag;
-    /** 无法解码的单条记录保留原始 NBT，防止后续自动保存静默删档。 */
+    /**
+     * 无法解码的单条记录保留原始 NBT，防止后续自动保存静默删档。
+     */
     private final CompoundTag quarantinedFaces = new CompoundTag();
     private final CompoundTag quarantinedContainers = new CompoundTag();
 
@@ -60,7 +64,6 @@ public class LinkManagerStorage extends SavedData {
         if (needsFull) {
             discardQuarantinedFaceKeys(dirtyFaces, quarantinedFaces);
             discardQuarantinedKeys(dirtyContainers, quarantinedContainers);
-            LOGGER.debug("Performing full save (cachedEmpty={})", cachedTag.isEmpty());
             CompoundTag replacement = createFullSave(provider);
             cachedTag = replacement;
             linkManager.resetFullSaveCounter();
@@ -203,7 +206,7 @@ public class LinkManagerStorage extends SavedData {
         SyncManager syncManager = linkManager.getSyncManager();
         LinkChangeHandler changeHandler = linkManager.getChangeHandler();
 
-        if (migratedTag.contains("global_logistics", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
+        if (migratedTag.contains("global_logistics", Tag.TAG_COMPOUND)) {
             PlayerGroupStore.get(level.getServer()).importLegacyStorage(
                 migratedTag.getCompound("global_logistics"));
         }
@@ -279,11 +282,9 @@ public class LinkManagerStorage extends SavedData {
             if (cfg == null || cfg.isDefault()) continue;
             LogisticsNode node = linkManager.createNodeFromKey(key);
             NodeRole role = cfg.determineRole();
-            if (role != NodeRole.NONE) {
-                for (com.coobird.staticlogistics.api.group.GroupRef group : cfg.faceConfig.getGroups()) {
-                    if (!group.displayName().isEmpty()) {
-                        glm.registerNode(group, node, role);
-                    }
+            for (GroupRef group : cfg.faceConfig.getGroups()) {
+                if (!group.displayName().isEmpty()) {
+                    glm.registerNode(group, node, role);
                 }
             }
         }

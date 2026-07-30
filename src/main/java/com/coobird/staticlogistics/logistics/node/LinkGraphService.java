@@ -1,12 +1,15 @@
 package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -32,11 +35,28 @@ final class LinkGraphService {
     }
 
     void removeEdge(LogisticsNode first, LogisticsNode second) {
-        mutatePair(first, second, () -> graph.removeEdge(first, second));
+        Set<GroupKey> groups = groupsConnecting(first, second);
+        mutatePair(first, second, () -> {
+            if (graph.removeEdge(first, second)) {
+                groups.forEach(group -> deferConnectionNameRemoval(group, first, second));
+            }
+        });
     }
 
     void removeEdge(GroupKey groupKey, LogisticsNode first, LogisticsNode second) {
-        mutatePair(first, second, () -> graph.removeEdge(groupKey, first, second));
+        mutatePair(first, second, () -> {
+            if (graph.removeEdge(groupKey, first, second)) {
+                deferConnectionNameRemoval(groupKey, first, second);
+            }
+        });
+    }
+
+    void removeEdgeWithoutCleanup(GroupKey groupKey, LogisticsNode first, LogisticsNode second) {
+        mutatePair(first, second, () -> {
+            if (graph.removeEdgeWithoutCleanup(groupKey, first, second)) {
+                deferConnectionNameRemoval(groupKey, first, second);
+            }
+        });
     }
 
     void removeNodeFromGroup(GroupKey groupKey, LogisticsNode node) {
@@ -47,6 +67,9 @@ final class LinkGraphService {
             transaction.capture(node);
             captureAvailableStates(transaction, affected);
             graph.removeNodeFromGroup(groupKey, node);
+            affected.forEach(target ->
+                deferConnectionNameRemoval(groupKey, node, target));
+            deferEmptyGroupRemoval(groupKey);
             transaction.commit();
         }
     }
@@ -55,10 +78,18 @@ final class LinkGraphService {
         if (node == null || config == null) return;
         Set<LogisticsNode> counterparts = new LinkedHashSet<>(config.getLinkedNodes());
         counterparts.addAll(globalManager.getSourcesLinkedTo(node));
+        Set<GroupKey> affectedGroups =
+            Set.copyOf(config.faceConfig.getGroupKeys());
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
             transaction.capture(node);
             captureAvailableStates(transaction, counterparts);
+            Map<LogisticsNode, Set<GroupKey>> removedGroups = new LinkedHashMap<>();
+            counterparts.forEach(counterpart ->
+                removedGroups.put(counterpart, groupsConnecting(node, counterpart)));
             graph.cascadeRemove(node, counterparts);
+            removedGroups.forEach((counterpart, groups) -> groups.forEach(group ->
+                deferConnectionNameRemoval(group, node, counterpart)));
+            affectedGroups.forEach(this::deferEmptyGroupRemoval);
             globalManager.cleanupOrphanedGroupIds(config.faceConfig.getOwner());
             transaction.commit();
         }
@@ -67,10 +98,13 @@ final class LinkGraphService {
     void repairReciprocalEdges(LogisticsNode node, FaceConfigComposite config) {
         if (node == null || config == null) return;
         Set<LogisticsNode> affected = new LinkedHashSet<>(config.getLinkedNodes());
+        Set<GroupKey> affectedGroups =
+            Set.copyOf(config.faceConfig.getGroupKeys());
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
             transaction.capture(node);
             captureAvailableStates(transaction, affected);
             graph.repairReciprocalEdges(node);
+            affectedGroups.forEach(this::deferEmptyGroupRemoval);
             transaction.commit();
         }
     }
@@ -86,7 +120,9 @@ final class LinkGraphService {
         }
     }
 
-    /** 损坏拓扑中的远端可能已消失；只捕获当前可解析维度的“存在或缺失”状态。 */
+    /**
+     * 损坏拓扑中的远端可能已消失；只捕获当前可解析维度的“存在或缺失”状态。
+     */
     private void captureAvailableStates(NodeMutationTransaction transaction,
                                         Iterable<LogisticsNode> nodes) {
         for (LogisticsNode candidate : nodes) {
@@ -100,6 +136,55 @@ final class LinkGraphService {
         if (node == null) return null;
         ServerLevel level = server.getLevel(node.gPos().dimension());
         return level == null ? null : LinkManager.get(level).getFaceConfig(FaceAddress.of(node));
+    }
+
+    private Set<GroupKey> groupsConnecting(LogisticsNode first, LogisticsNode second) {
+        Set<GroupKey> groups = new LinkedHashSet<>();
+        FaceConfigComposite firstConfig = findConfig(first);
+        if (firstConfig != null) {
+            firstConfig.getLinkedNodesByGroup().forEach((group, targets) -> {
+                if (targets.contains(second)) groups.add(group);
+            });
+        }
+        FaceConfigComposite secondConfig = findConfig(second);
+        if (secondConfig != null) {
+            secondConfig.getLinkedNodesByGroup().forEach((group, targets) -> {
+                if (targets.contains(first)) groups.add(group);
+            });
+        }
+        return Set.copyOf(groups);
+    }
+
+    private void deferConnectionNameRemoval(
+        GroupKey group,
+        LogisticsNode first,
+        LogisticsNode second
+    ) {
+        ConnectionKey connection = new ConnectionKey(group, first, second);
+        boolean deferred = NodeMutationTransaction.defer(
+            server, new ConnectionNameRemoval(connection),
+            () -> PlayerGroupStore.get(server).removeConnectionName(connection));
+        if (!deferred) {
+            throw new IllegalStateException(
+                "Connection name removal requires an active node mutation");
+        }
+        deferEmptyGroupRemoval(group);
+    }
+
+    /**
+     * 将空分组清理合并到当前图事务的提交阶段。
+     *
+     * <p>判断必须发生在全部端点修改提交之后；同一分组一次事务内删除多条边时，
+     * 去重键保证只扫描一次权威拓扑。
+     */
+    private void deferEmptyGroupRemoval(GroupKey group) {
+        boolean deferred = NodeMutationTransaction.defer(
+            server, new EmptyGroupRemoval(group),
+            () -> globalManager.removeGroupIfEmpty(group));
+        if (!deferred) {
+            throw new IllegalStateException(
+                "Empty group removal requires an active node mutation");
+        }
     }
 
     private ReciprocalLinkGraph.Endpoint<LogisticsNode, GroupKey> resolveEndpoint(LogisticsNode node) {
@@ -172,5 +257,11 @@ final class LinkGraphService {
                 manager.cleanUpFaceIfNeeded(node, config);
             }
         }
+    }
+
+    private record ConnectionNameRemoval(ConnectionKey connection) {
+    }
+
+    private record EmptyGroupRemoval(GroupKey group) {
     }
 }

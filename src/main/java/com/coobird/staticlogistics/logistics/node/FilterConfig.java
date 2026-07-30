@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
-import com.coobird.staticlogistics.transfer.UpgradeType;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.ItemStackHandler;
@@ -88,7 +88,9 @@ public class FilterConfig {
         return upgrades.getStackInSlot(0).isEmpty() && upgrades.getStackInSlot(1).isEmpty();
     }
 
-    /** 以快照完整替换过滤升级物及其数据组件。 */
+    /**
+     * 以快照完整替换过滤升级物及其数据组件。
+     */
     void restoreSnapshot(HolderLookup.Provider provider, FilterConfig snapshot) {
         if (provider == null || snapshot == null) {
             throw new IllegalArgumentException("Filter snapshot provider and value are required");

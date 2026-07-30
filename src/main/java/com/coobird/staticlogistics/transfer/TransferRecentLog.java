@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
-/** 服务器会话内、仅由主线程访问的有界最近传输日志。 */
+/**
+ * 服务器会话内、仅由主线程访问的有界最近传输日志。
+ */
 class TransferRecentLog {
     private static final int MAX_ENTRIES = 200;
     private final Deque<TransferEntry> log = new ArrayDeque<>(MAX_ENTRIES);

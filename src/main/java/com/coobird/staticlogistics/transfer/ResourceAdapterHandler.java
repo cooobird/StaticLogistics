@@ -3,7 +3,6 @@ package com.coobird.staticlogistics.transfer;
 import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
@@ -38,7 +37,6 @@ public class ResourceAdapterHandler<C> implements ITransferHandler {
     @Override
     public boolean performTransfer(ITransferContext context, List<LogisticsNode> targets) {
         if (isInTransfer.get()) {
-            LOGGER.debug("Skipped reentrant transfer for {}", context.sourceNode());
             return false;
         }
 

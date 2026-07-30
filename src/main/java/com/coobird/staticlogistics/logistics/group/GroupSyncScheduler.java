@@ -19,7 +19,9 @@ public class GroupSyncScheduler {
         }
     }
 
-    /** 原子领取最多 {@code maximum} 个待同步分组。 */
+    /**
+     * 原子领取最多 {@code maximum} 个待同步分组。
+     */
     public synchronized Set<GroupKey> take(int maximum) {
         if (maximum <= 0 || current.isEmpty()) return Set.of();
         Set<GroupKey> taken = new LinkedHashSet<>();

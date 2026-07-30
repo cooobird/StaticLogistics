@@ -1,17 +1,20 @@
 package com.coobird.staticlogistics.logistics.group;
 
-import com.coobird.staticlogistics.api.group.*;
-
+import com.coobird.staticlogistics.api.group.GroupConstraints;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-
-import java.util.UUID;
-import java.util.HashMap;
-import java.util.Map;
 import org.slf4j.Logger;
 
-/** 创建、重命名和删除分组的服务端命令入口。 */
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * 创建、重命名和删除分组的服务端命令入口。
+ */
 public final class GroupCommandService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final long MUTATION_COOLDOWN_TICKS = 4L;
@@ -42,7 +45,7 @@ public final class GroupCommandService {
         if (actor == null || groupKey == null || !tryAcquireMutation(actor)) return false;
         try {
             return new GroupRenameService(
-                com.coobird.staticlogistics.logistics.group.PermissionService.getInstance(), globalManager)
+                PermissionService.getInstance(), globalManager)
                 .renameGroup(actor.level(), actor, groupKey, newDisplayName);
         } catch (RuntimeException exception) {
             LOGGER.error("Failed to rename logistics group {} for owner {}",
@@ -69,7 +72,9 @@ public final class GroupCommandService {
         }
     }
 
-    /** 限制昂贵的全图分组修改，避免同一玩家用连续数据包占满主线程。 */
+    /**
+     * 限制昂贵的全图分组修改，避免同一玩家用连续数据包占满主线程。
+     */
     private boolean tryAcquireMutation(ServerPlayer actor) {
         long now = server.overworld().getGameTime();
         RateKey key = new RateKey(server, actor.getUUID());

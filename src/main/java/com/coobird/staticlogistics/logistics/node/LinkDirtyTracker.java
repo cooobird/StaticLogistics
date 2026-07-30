@@ -1,7 +1,8 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
+
 import java.util.LinkedHashSet;
 import java.util.Set;
 

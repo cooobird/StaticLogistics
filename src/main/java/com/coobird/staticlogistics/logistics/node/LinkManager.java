@@ -1,9 +1,10 @@
 package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.content.item.LinkOperationHelper;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.persistence.ContainerRepository;
 import com.coobird.staticlogistics.logistics.node.sync.PendingSyncBuffer;
@@ -18,6 +19,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -75,7 +77,7 @@ public class LinkManager {
         this.faceConfigHandler = new FaceConfigHandler(level, faceConfigService, configRepository,
             cacheManager, changeHandler, syncManager, this);
         this.lifecycleService = new NodeLifecycleService(
-            this, faceConfigHandler, containerConfigService, dropHandler::handoffUpgrades);
+            this, faceConfigHandler, containerConfigService, dropHandler::beginHandoff);
     }
 
     // 版本管理
@@ -83,7 +85,9 @@ public class LinkManager {
         return keyVersions.merge(key, 1L, Long::sum);
     }
 
-    /** 将对象本地版本提升为该键的下一个单调版本。 */
+    /**
+     * 将对象本地版本提升为该键的下一个单调版本。
+     */
     long normalizeVersion(FaceAddress key, long observedVersion) {
         return keyVersions.compute(key, (ignored, current) -> {
             if (current == null) return Math.max(1L, observedVersion);
@@ -100,16 +104,11 @@ public class LinkManager {
         }
     }
 
-    // 脏数据追踪（委托 LinkDirtyTracker）
-
-    public void markDirtyBatch(Runnable operation) {
-        operation.run();
-        saveScheduler.scheduleSave();
-    }
     public void markFaceDirty(FaceAddress faceKey) {
         dirtyTracker.markFaceDirty(faceKey);
         saveScheduler.scheduleSave();
     }
+
     public void markContainerDirty(long containerKey) {
         dirtyTracker.markContainerDirty(containerKey);
         saveScheduler.scheduleSave();
@@ -142,19 +141,18 @@ public class LinkManager {
     void resetFullSaveCounter() {
         saveScheduler.resetFullSaveCounter();
     }
+
     public void shutdown() {
         capabilityCache.shutdown();
         saveScheduler.shutdown();
     }
-
-    // 网络同步（委托 PendingSyncBuffer）
 
     public void scheduleNetworkSync(LogisticsNode node) {
         if (NodeMutationTransaction.defer(level.getServer(), new DeferredNetworkKey(this, node),
             () -> scheduleNetworkSync(node))) return;
         FaceConfigComposite cfg = getFaceConfig(FaceAddress.of(node));
         if (cfg == null) return;
-        syncBuffer.schedule(node, cfg);
+        syncBuffer.schedule(level, node, cfg);
     }
 
     void scheduleNetworkRemoval(LogisticsNode node, long version, @Nullable UUID ownerId) {
@@ -167,7 +165,6 @@ public class LinkManager {
         syncBuffer.flush(topologySyncPort);
     }
 
-    // 面配置 CRUD（委托 FaceConfigHandler）
     FaceConfigHandler getFaceConfigHandler() {
         return faceConfigHandler;
     }
@@ -206,10 +203,12 @@ public class LinkManager {
     public LogisticsNode createNodeFromKey(FaceAddress key) {
         return key.toNode(level.dimension());
     }
+
     @Nullable
     public FaceConfigComposite getFaceConfig(FaceAddress key) {
         return faceConfigHandler.getFaceConfig(key);
     }
+
     public FaceConfigComposite getOrCreateFaceConfig(BlockPos pos, Direction face) {
         return faceConfigHandler.getOrCreateFaceConfig(pos, face);
     }
@@ -234,11 +233,13 @@ public class LinkManager {
         faceConfigHandler.mergeGroupMetadata(node, source, target);
     }
 
-    public void restoreFaceSnapshot(LogisticsNode node, net.minecraft.nbt.CompoundTag snapshot) {
+    public void restoreFaceSnapshot(LogisticsNode node, CompoundTag snapshot) {
         faceConfigHandler.restoreFaceSnapshot(node, snapshot);
     }
 
-    /** 恢复“修改前不存在此面”的状态，不移交尚未提交的升级物。 */
+    /**
+     * 恢复“修改前不存在此面”的状态，不移交尚未提交的升级物。
+     */
     public void restoreFaceAbsence(LogisticsNode node) {
         if (node == null) return;
         FaceConfigComposite config = getFaceConfig(FaceAddress.of(node));
@@ -246,7 +247,9 @@ public class LinkManager {
         faceConfigHandler.removeFaceAfterHandoff(FaceAddress.of(node), config, true, true);
     }
 
-    /** 恢复容器升级快照；修改前不存在时直接丢弃尚未提交的临时配置。 */
+    /**
+     * 恢复容器升级快照；修改前不存在时直接丢弃尚未提交的临时配置。
+     */
     public void restoreContainerSnapshot(BlockPos pos, boolean existed, @Nullable CompoundTag upgrades) {
         if (pos == null) return;
         if (existed) {
@@ -265,15 +268,33 @@ public class LinkManager {
         }
         markContainerDirty(pos.asLong());
     }
+
     public void removeLink(LogisticsNode source, LogisticsNode target) {
         linkGraphService.removeEdge(source, target);
     }
+
     public void addLink(GroupKey groupKey, LogisticsNode source, LogisticsNode target) {
         linkGraphService.addEdge(groupKey, source, target);
     }
+
     public void removeLink(GroupKey groupKey, LogisticsNode source, LogisticsNode target) {
         linkGraphService.removeEdge(groupKey, source, target);
     }
+
+    public void removeLinkWithoutCleanup(GroupKey groupKey, LogisticsNode source, LogisticsNode target) {
+        linkGraphService.removeEdgeWithoutCleanup(groupKey, source, target);
+    }
+
+    public NodeLifecycleService.DisconnectedRemoval prepareDisconnectedRemoval(
+        Collection<LogisticsNode> nodes
+    ) {
+        return lifecycleService.prepareDisconnectedRemoval(nodes);
+    }
+
+    public void applyDisconnectedRemoval(NodeLifecycleService.DisconnectedRemoval removal) {
+        lifecycleService.applyDisconnectedRemoval(removal);
+    }
+
     public void removeNodeFromGroup(GroupKey groupKey, LogisticsNode node) {
         linkGraphService.removeNodeFromGroup(groupKey, node);
     }
@@ -285,12 +306,15 @@ public class LinkManager {
     void repairReciprocalEdges(LogisticsNode node, FaceConfigComposite config) {
         linkGraphService.repairReciprocalEdges(node, config);
     }
+
     public void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
         lifecycleService.removeOrphan(node, cfg);
     }
+
     public void removeFaceConfig(FaceAddress key) {
         lifecycleService.removeFace(key);
     }
+
     public void removeFaceConfigDataOnly(FaceAddress key) {
         faceConfigHandler.removeFaceConfigDataOnly(key);
     }
@@ -317,26 +341,19 @@ public class LinkManager {
 
     public void onBlockRemoved(BlockPos pos) {
         onBlocksRemovedBulk(List.of(pos));
-        com.coobird.staticlogistics.content.item.LinkOperationHelper.cleanStoredNodesForPos(level, pos);
+        LinkOperationHelper.cleanStoredNodesForPos(level, pos);
     }
 
-    // 容器配置（委托 ContainerConfigService）
     @Nullable
     public ContainerConfig getContainerConfig(BlockPos pos) {
         return containerConfigService.get(pos);
     }
+
     public ContainerConfig getOrCreateContainerConfig(BlockPos pos) {
         ContainerConfig config = containerConfigService.getOrCreate(pos);
         config.setOnDirty(changeHandler::onContainerConfigChanged);
         return config;
     }
-
-    /** 删除没有任何关联面的临时容器配置。 */
-    public void removeContainerConfigIfUnused(BlockPos pos) {
-        if (containerConfigService.removeIfUnused(pos)) markContainerDirty(pos.asLong());
-    }
-
-    // 缓存（委托 CacheManager）
 
     public Set<FaceAddress> getActiveProviderKeys() {
         return cacheManager.getActiveProviderKeys();
@@ -345,12 +362,9 @@ public class LinkManager {
     public FaceAddress[] getActiveProviderKeysArray() {
         return cacheManager.getActiveProviderKeysArray();
     }
-    public boolean hasActiveProviders() {
-        return cacheManager.hasProviders();
-    }
 
     public <C> C getCapability(BlockPos pos, Direction face,
-                               net.neoforged.neoforge.capabilities.BlockCapability<C, Direction> capability) {
+                               BlockCapability<C, Direction> capability) {
         return capabilityCache.get(pos, face, capability);
     }
 
@@ -365,19 +379,11 @@ public class LinkManager {
     public void invalidateCapabilityCache(BlockPos pos) {
         capabilityCache.invalidateBlock(pos);
     }
+
     public Set<FaceAddress> getAllConfigKeys() {
         return faceConfigHandler.getAllConfigKeys();
     }
 
-    // 网络同步直接操作
-
-    public void syncRemovalToDimension(BlockPos pos, Direction face) {
-        LogisticsNode node = new LogisticsNode(net.minecraft.core.GlobalPos.of(level.dimension(), pos), face);
-        FaceAddress address = FaceAddress.of(pos, face);
-        FaceConfigComposite config = getFaceConfig(address);
-        UUID ownerId = config == null ? null : config.faceConfig.getOwner();
-        scheduleNetworkRemoval(node, nextVersion(address), ownerId);
-    }
     public void syncToPlayer(ServerPlayer player) {
         // 直接从 repository 收集非默认配置，避免遍历所有 key 再逐个 getFaceConfig
         List<Map.Entry<FaceAddress, FaceConfigComposite>> nonDefault = new ArrayList<>();
@@ -391,35 +397,13 @@ public class LinkManager {
             topologySyncPort.syncBulkToPlayer(player, nonDefault);
         }
     }
-    public void syncConfigToClients(BlockPos pos) {
-        for (Direction face : Direction.values()) {
-            FaceAddress address = FaceAddress.of(pos, face);
-            FaceConfigComposite cfg = getFaceConfig(address);
-            if (cfg != null) scheduleNetworkSync(createNodeFromKey(address));
-        }
-    }
-    public void syncNodeToDimensionDirect(LogisticsNode node) {
-        FaceConfigComposite cfg = getFaceConfig(FaceAddress.of(node));
-        if (cfg != null) {
-            for (ServerPlayer player : level.players()) {
-                topologySyncPort.syncToPlayer(player, node.gPos().pos(), node.face(), cfg);
-            }
-        }
-    }
-    public void syncNodeToPlayer(ServerPlayer player, LogisticsNode node) {
-        FaceConfigComposite cfg = getFaceConfig(FaceAddress.of(node));
-        if (cfg != null) topologySyncPort.syncToPlayer(player, node.gPos().pos(), node.face(), cfg);
-    }
 
-    // 批量操作
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
         if (positions.isEmpty()) return;
         for (BlockPos pos : positions) capabilityCache.invalidateBlock(pos);
         lifecycleService.destroyBlocks(positions);
         saveScheduler.scheduleSave();
     }
-
-    // 工厂
 
     public static LinkManager get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(

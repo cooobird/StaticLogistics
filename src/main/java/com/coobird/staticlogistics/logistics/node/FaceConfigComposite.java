@@ -1,18 +1,21 @@
 package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.logistics.node.persistence.LogisticsDataMigration;
-import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.group.OwnershipMutationPermit;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigSerializer;
+import com.coobird.staticlogistics.logistics.node.persistence.LogisticsDataMigration;
 import com.coobird.staticlogistics.transfer.LogisticsCalculator;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.authlib.GameProfile;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.resources.ResourceLocation;
@@ -55,7 +58,9 @@ public class FaceConfigComposite {
         setupDirtyCallback();
     }
 
-    /** 将网络数据解码到全新的快照对象，不接触任何实时节点配置。 */
+    /**
+     * 将网络数据解码到全新的快照对象，不接触任何实时节点配置。
+     */
     public static FaceConfigComposite decodeSnapshot(HolderLookup.Provider provider, CompoundTag tag) {
         FaceConfigComposite config = new FaceConfigComposite();
         config.deserializeNBT(SNAPSHOT_DECODE_PERMIT, provider, tag);
@@ -120,7 +125,9 @@ public class FaceConfigComposite {
         if (onDirty != null) onDirty.accept(this);
     }
 
-    /** 仅设置运行时位置元数据，不产生持久化变更。 */
+    /**
+     * 仅设置运行时位置元数据，不产生持久化变更。
+     */
     public void setPosition(BlockPos pos) {
         faceConfig.setPos(pos);
     }
@@ -130,12 +137,16 @@ public class FaceConfigComposite {
         return sharedContainerConfig;
     }
 
-    /** 由配置服务绑定同一方块共享的容器级配置。 */
+    /**
+     * 由配置服务绑定同一方块共享的容器级配置。
+     */
     public void attachContainerConfig(@Nullable ContainerConfig containerConfig) {
         sharedContainerConfig = containerConfig;
     }
 
-    /** 解绑共享容器配置，并同步移除其面索引。 */
+    /**
+     * 解绑共享容器配置，并同步移除其面索引。
+     */
     public void detachContainerConfig(FaceAddress faceKey) {
         if (sharedContainerConfig != null) {
             sharedContainerConfig.unlinkFace(faceKey);
@@ -184,7 +195,9 @@ public class FaceConfigComposite {
         faceConfig.renameGroup(permit, groupKey, displayName);
     }
 
-    /** 将同一所有者下的来源分组身份及其链接作用域并入目标分组。 */
+    /**
+     * 将同一所有者下的来源分组身份及其链接作用域并入目标分组。
+     */
     public void mergeGroup(LinkMutationPermit permit, GroupRef source, GroupRef target) {
         if (permit == null) throw new IllegalArgumentException("Link mutation permit is required");
         if (source == null || target == null) {
@@ -242,7 +255,9 @@ public class FaceConfigComposite {
         }
     }
 
-    /** 原子迁移面所有者，并保持全部分组内部身份和链接作用域一致。 */
+    /**
+     * 原子迁移面所有者，并保持全部分组内部身份和链接作用域一致。
+     */
     public void transferOwnership(OwnershipMutationPermit permit, UUID newOwner, String ownerName,
                                   @Nullable GameProfile profile) {
         if (permit == null) throw new IllegalArgumentException("Ownership mutation permit is required");
@@ -290,18 +305,6 @@ public class FaceConfigComposite {
         }
     }
 
-    /** 在批量认领前确认无所有者面没有混入其他所有者的链接作用域。 */
-    public void validateOwnershipClaim() {
-        if (faceConfig.getOwner() != null) {
-            throw new IllegalStateException("Ownership claim requires an unowned face");
-        }
-        boolean foreignScope = linkedNodesByGroup.keySet().stream()
-            .anyMatch(key -> !key.isLegacyUnowned());
-        if (foreignScope) {
-            throw new IllegalStateException("Unowned face contains a foreign group scope");
-        }
-    }
-
     public Set<LogisticsNode> getLinkedNodes(GroupKey groupKey) {
         Set<LogisticsNode> nodes = linkedNodesByGroup.get(groupKey);
         return nodes == null ? Set.of() : Collections.unmodifiableSet(nodes);
@@ -322,7 +325,9 @@ public class FaceConfigComposite {
         return true;
     }
 
-    /** 从所有分组作用域移除指定节点，仅供链接生命周期管理层使用。 */
+    /**
+     * 从所有分组作用域移除指定节点，仅供链接生命周期管理层使用。
+     */
     public boolean removeLinkedNode(LinkMutationPermit permit, LogisticsNode node) {
         if (permit == null) throw new IllegalArgumentException("Link mutation permit is required");
         return linkedNodes.remove(node);
@@ -333,18 +338,12 @@ public class FaceConfigComposite {
     }
 
     /**
-     * 开启全局输入。首次开启时如果频道未指定(0)，自动设到频道1。
-     * 频道=0时作为通配频道；设到1以上则按明确频道过滤已链接节点。
+     * 开启或关闭当前面的全局输入角色。
      */
     public void setGlobalInputEnabled(boolean enabled) {
-        try (BulkEdit ignored = beginBulkEdit()) {
-            if (this.globalInputEnabled != enabled) {
-                this.globalInputEnabled = enabled;
-                markDirty();
-            }
-            if (enabled && linkConfig.getInputChannel() == LinkConfig.UNSPECIFIED_CHANNEL) {
-                linkConfig.setInputChannel(LinkConfig.MIN_CHANNEL);
-            }
+        if (this.globalInputEnabled != enabled) {
+            this.globalInputEnabled = enabled;
+            markDirty();
         }
     }
 
@@ -353,34 +352,20 @@ public class FaceConfigComposite {
     }
 
     /**
-     * 开启全局输出。首次开启时如果频道未指定(0)，自动设到频道1。
-     * 频道=0时作为通配频道；设到1以上则按明确频道过滤已链接节点。
+     * 开启或关闭当前面的全局输出角色。
      */
     public void setGlobalOutputEnabled(boolean enabled) {
-        try (BulkEdit ignored = beginBulkEdit()) {
-            if (this.globalOutputEnabled != enabled) {
-                this.globalOutputEnabled = enabled;
-                markDirty();
-            }
-            if (enabled && linkConfig.getOutputChannel() == LinkConfig.UNSPECIFIED_CHANNEL) {
-                linkConfig.setOutputChannel(LinkConfig.MIN_CHANNEL);
-            }
+        if (this.globalOutputEnabled != enabled) {
+            this.globalOutputEnabled = enabled;
+            markDirty();
         }
     }
 
-    public void setInputChannel(int channel) {
-        linkConfig.setInputChannel(channel);
-    }
-
-    public void setOutputChannel(int channel) {
-        linkConfig.setOutputChannel(channel);
-    }
-
-    public void setDistributionStrategy(com.coobird.staticlogistics.api.type.DistributionStrategy strategy) {
+    public void setDistributionStrategy(DistributionStrategy strategy) {
         linkConfig.setStrategy(strategy);
     }
 
-    public void setExtractionMode(com.coobird.staticlogistics.api.type.ExtractionMode mode) {
+    public void setExtractionMode(ExtractionMode mode) {
         linkConfig.setExtractionMode(mode);
     }
 
@@ -479,7 +464,7 @@ public class FaceConfigComposite {
         if (migrated.contains("linkedNodesByGroup")) {
             CompoundTag scopedTag = migrated.getCompound("linkedNodesByGroup");
             if (scopedTag.getAllKeys().size()
-                > com.coobird.staticlogistics.api.group.GroupConstraints.MAX_GROUPS_PER_OWNER) {
+                > GroupConstraints.MAX_GROUPS_PER_OWNER) {
                 throw new IllegalStateException("Face link scope limit exceeded");
             }
             int decodedLinks = 0;
@@ -525,21 +510,27 @@ public class FaceConfigComposite {
         return typeSelectionConfig.getSelectedTypeIds();
     }
 
-    public void setSelectedTypeIds(java.util.Collection<ResourceLocation> ids) {
+    public void setSelectedTypeIds(Collection<ResourceLocation> ids) {
         typeSelectionConfig.setSelectedTypeIds(ids);
     }
 
-    /** 仅用于写出旧格式兼容投影，不作为运行时权威状态。 */
+    /**
+     * 仅用于写出旧格式兼容投影，不作为运行时权威状态。
+     */
     public int getLegacySelectedTypesMask() {
         return typeSelectionConfig.getLegacyMask();
     }
 
-    /** 仅用于没有类型 ID 列表的旧数据迁移。 */
+    /**
+     * 仅用于没有类型 ID 列表的旧数据迁移。
+     */
     public void loadLegacySelectedTypesMask(int mask) {
         typeSelectionConfig.setLegacyMask(mask);
     }
 
-    /** 已有稳定 ID 列表时，只保留当前注册表无法解析的历史位。 */
+    /**
+     * 已有稳定 ID 列表时，只保留当前注册表无法解析的历史位。
+     */
     public void loadUnresolvedLegacySelectedTypesMask(int mask) {
         typeSelectionConfig.loadUnresolvedLegacyMask(mask);
     }
@@ -548,7 +539,9 @@ public class FaceConfigComposite {
         return typeSelectionConfig.isTypeSelected(type);
     }
 
-    /** 汇总所有分组作用域的内部并集视图。对外只暴露只读包装。 */
+    /**
+     * 汇总所有分组作用域的内部并集视图。对外只暴露只读包装。
+     */
     private final class ScopedUnionSet extends AbstractSet<LogisticsNode> {
         private LinkedHashSet<LogisticsNode> snapshot() {
             LinkedHashSet<LogisticsNode> result = new LinkedHashSet<>();

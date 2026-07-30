@@ -1,9 +1,8 @@
 package com.coobird.staticlogistics.logistics.group;
 
-import com.coobird.staticlogistics.api.group.GroupKey;
-
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
+import com.coobird.staticlogistics.api.group.GroupKey;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -72,7 +71,9 @@ public class NodeGroupService {
         return groupMemberService.getNodesInGroup(groupKey);
     }
 
-    /** 从一个分组中移除节点，同时保留它的其他分组成员关系。 */
+    /**
+     * 从一个分组中移除节点，同时保留它的其他分组成员关系。
+     */
     public void unregister(GroupKey groupKey, LogisticsNode node) {
         synchronized (lock) {
             Set<GroupKey> groups = nodeToGroups.get(node);

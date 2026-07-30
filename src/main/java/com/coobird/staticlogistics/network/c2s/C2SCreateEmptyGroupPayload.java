@@ -1,16 +1,19 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.logistics.group.GroupCommandService;
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
-import com.coobird.staticlogistics.api.group.GroupConstraints;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
-import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
@@ -32,18 +35,25 @@ public record C2SCreateEmptyGroupPayload(String groupId) implements CustomPacket
     public static void handle(final C2SCreateEmptyGroupPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             var player = context.player();
-            if (!(player instanceof net.minecraft.server.level.ServerPlayer serverPlayer)) return;
+            if (!(player instanceof ServerPlayer serverPlayer)) return;
             boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
                 || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
             if (!holdsTool || player.getServer() == null) return;
+            if (!ServerPacketRateLimiter.allow(
+                serverPlayer, ServerPacketRateLimiter.Action.GROUP_CREATION)) {
+                return;
+            }
             try {
                 String groupId = GroupConstraints.normalizeName(payload.groupId());
+                PlayerGroupStore store = PlayerGroupStore.get(player.getServer());
+                boolean isNewGroup = store.findGroup(player.getUUID(), groupId) == null;
                 var created = new GroupCommandService(player.getServer()).create(serverPlayer, groupId);
                 LinkConfiguratorSelection.select(player, created);
-                var groups = com.coobird.staticlogistics.logistics.group.PlayerGroupStore.get(player.getServer())
-                    .getGroupRefs(player.getUUID());
-                TeamPacketSync.send(serverPlayer,
-                    new S2CGroupDirectoryPayload(player.getUUID(), groups));
+                if (isNewGroup) {
+                    var groups = store.getGroupRefs(player.getUUID());
+                    TeamPacketSync.send(serverPlayer, player.getUUID(),
+                        new S2CGroupDirectoryPayload(player.getUUID(), groups));
+                }
             } catch (IllegalArgumentException | IllegalStateException ignored) {
                 // 无效请求不改变服务端状态。
             }

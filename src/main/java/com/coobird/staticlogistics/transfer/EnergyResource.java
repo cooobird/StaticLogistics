@@ -1,11 +1,9 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.logistics.util.SaturatedMath;
-import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.logistics.util.SaturatedMath;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -13,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import org.jetbrains.annotations.Nullable;
@@ -74,7 +73,7 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
     }
 
     @Override
-    public net.neoforged.neoforge.capabilities.BlockCapability<IEnergyStorage, Direction> blockCapability() {
+    public BlockCapability<IEnergyStorage, Direction> blockCapability() {
         return Capabilities.EnergyStorage.BLOCK;
     }
 

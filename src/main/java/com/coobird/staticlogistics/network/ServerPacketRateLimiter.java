@@ -6,11 +6,14 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** 按玩家限制高放大倍率的客户端配置请求；弱键保证离线玩家不会被静态状态留存。 */
+/**
+ * 按玩家限制高放大倍率的客户端配置请求；弱键保证离线玩家不会被静态状态留存。
+ */
 public final class ServerPacketRateLimiter {
     public enum Action {
         FILTER_UPDATE(24),
         FACE_CONFIGURATION(80),
+        GROUP_CREATION(4),
         BLUEPRINT_UNDO(2);
 
         private final int maximumPerSecond;

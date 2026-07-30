@@ -1,6 +1,8 @@
 package com.coobird.staticlogistics.logistics.node;
 
-/** 在服务器主线程上同步登记存档脏状态。 */
+/**
+ * 在服务器主线程上同步登记存档脏状态。
+ */
 class LinkSaveScheduler {
     private static final int FULL_SAVE_INTERVAL = 100;
 

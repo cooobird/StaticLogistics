@@ -4,7 +4,9 @@ import com.coobird.staticlogistics.transfer.UpgradeTier;
 import com.coobird.staticlogistics.transfer.UpgradeType;
 import org.jetbrains.annotations.Nullable;
 
-/** 物流域读取升级物语义所需的最小契约。 */
+/**
+ * 物流域读取升级物语义所需的最小契约。
+ */
 public interface LogisticsUpgrade {
     UpgradeType getType();
 

@@ -3,12 +3,12 @@ package com.coobird.staticlogistics.transfer;
 import com.coobird.staticlogistics.api.ITransferContext;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
@@ -157,7 +157,4 @@ public final class TransferContext implements ITransferContext {
         return linkManager;
     }
 
-    public void setDepth(int depth) {
-        this.depth = depth;
-    }
 }

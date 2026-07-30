@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.logistics.blueprint;
 
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
-import com.coobird.staticlogistics.logistics.node.LinkConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 
@@ -54,15 +53,12 @@ public final class BlueprintGeometry {
         if (!sourceFace.linkedTo().isEmpty()) return sourceFace.linkedTo();
         if (sourceEntry.linkedTo().isEmpty()) return List.of();
 
-        int outputChannel = sourceFace.faceConfig().getInt(ConfigKeys.OUTPUT_CHANNEL);
         List<BlueprintData.LinkEntry> migrated = new ArrayList<>();
         for (BlockPos targetPos : sourceEntry.linkedTo()) {
             BlueprintData.BlockEntry target = entriesByRelativePos.get(targetPos);
             if (target == null) continue;
             List<Direction> candidates = target.faces().entrySet().stream()
                 .filter(entry -> entry.getValue().faceConfig().getBoolean(ConfigKeys.GLOBAL_INPUT))
-                .filter(entry -> LinkConfig.channelsMatch(outputChannel,
-                    entry.getValue().faceConfig().getInt(ConfigKeys.INPUT_CHANNEL)))
                 .map(Map.Entry::getKey)
                 .toList();
             if (candidates.size() == 1) {

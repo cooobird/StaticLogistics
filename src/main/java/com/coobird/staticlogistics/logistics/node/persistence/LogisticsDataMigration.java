@@ -1,18 +1,13 @@
 package com.coobird.staticlogistics.logistics.node.persistence;
 
-import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupConstraints;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 
-import java.util.LinkedHashSet;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * StaticLogistics 持久化数据的版本迁移入口。
@@ -37,7 +32,9 @@ public final class LogisticsDataMigration {
     private LogisticsDataMigration() {
     }
 
-    /** 迁移结果同时保留实际执行的版本步骤，供启动日志和管理员审计使用。 */
+    /**
+     * 迁移结果同时保留实际执行的版本步骤，供启动日志和管理员审计使用。
+     */
     public record MigrationResult(CompoundTag tag, int sourceVersion, int targetVersion,
                                   List<String> appliedSteps) {
         public MigrationResult {
@@ -51,7 +48,9 @@ public final class LogisticsDataMigration {
         }
     }
 
-    /** 迁移并校验一个维度的完整物流 SavedData。 */
+    /**
+     * 迁移并校验一个维度的完整物流 SavedData。
+     */
     public static CompoundTag migrateStorage(CompoundTag source) {
         return migrateStorageWithReport(source).tag();
     }
@@ -92,7 +91,9 @@ public final class LogisticsDataMigration {
         return new MigrationResult(migrated, sourceVersion, version, steps);
     }
 
-    /** 迁移单个面配置；重复调用不会继续改变结果。 */
+    /**
+     * 迁移单个面配置；重复调用不会继续改变结果。
+     */
     public static CompoundTag migrateFace(CompoundTag source) {
         return migrateFaceWithReport(source).tag();
     }

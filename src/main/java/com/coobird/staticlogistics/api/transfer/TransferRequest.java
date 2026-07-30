@@ -5,7 +5,9 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.Objects;
 
-/** 传给资源适配器的稳定、只读传输请求。 */
+/**
+ * 传给资源适配器的稳定、只读传输请求。
+ */
 public record TransferRequest(
     ResourceLocation typeId,
     LogisticsNode sourceNode,

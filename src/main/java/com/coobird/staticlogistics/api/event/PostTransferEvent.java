@@ -4,7 +4,9 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.Event;
 
-/** 传输提交后发布的不可变独立事件。 */
+/**
+ * 传输提交后发布的不可变独立事件。
+ */
 public final class PostTransferEvent extends Event {
     private final LogisticsNode sourceNode;
     private final LogisticsNode targetNode;

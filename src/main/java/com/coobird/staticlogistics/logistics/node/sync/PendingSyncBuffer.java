@@ -2,25 +2,22 @@ package com.coobird.staticlogistics.logistics.node.sync;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.util.VersionOrder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
-/** 入队时冻结轻量拓扑，同一面只保留最高版本的更新或删除墓碑。 */
+/**
+ * 入队时冻结轻量拓扑，同一面只保留最高版本的更新或删除墓碑。
+ */
 public final class PendingSyncBuffer {
     public record PendingSyncEntry(BlockPos pos, Direction face,
                                    @Nullable FaceTopology topology,
@@ -34,9 +31,13 @@ public final class PendingSyncBuffer {
             return topology == null;
         }
 
-        static PendingSyncEntry update(LogisticsNode node, FaceConfigComposite config) {
+        static PendingSyncEntry update(
+            ServerLevel level,
+            LogisticsNode node,
+            FaceConfigComposite config
+        ) {
             return new PendingSyncEntry(node.gPos().pos(), node.face(),
-                FaceTopology.from(node, config), config.getLinkedNodesByGroup(),
+                FaceTopology.from(level, node, config), config.getLinkedNodesByGroup(),
                 config.getVersion(), config.faceConfig.getOwner());
         }
 
@@ -57,8 +58,12 @@ public final class PendingSyncBuffer {
     private final Map<ResourceKey<Level>, Map<FaceAddress, PendingSyncEntry>> pending = new HashMap<>();
     private boolean flushing;
 
-    public void schedule(LogisticsNode node, FaceConfigComposite config) {
-        enqueue(node, PendingSyncEntry.update(node, config));
+    public void schedule(
+        ServerLevel level,
+        LogisticsNode node,
+        FaceConfigComposite config
+    ) {
+        enqueue(node, PendingSyncEntry.update(level, node, config));
     }
 
     public void scheduleRemoval(LogisticsNode node, long version, @Nullable UUID ownerId) {

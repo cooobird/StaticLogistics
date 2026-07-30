@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 
-/** 对单个源与目标执行不复制优先的提交协议。 */
+/**
+ * 对单个源与目标执行不复制优先的提交协议。
+ */
 public final class TransferTransaction {
     public enum Failure {
         NONE,
@@ -17,14 +19,14 @@ public final class TransferTransaction {
     }
 
     public static <C, T> Result commit(TransferUtils.TransferProtocol<C, T> protocol,
-                                      C source, C target, ExtractionResult<T> simulated,
-                                      long simulatedAccepted) {
+                                       C source, C target, ExtractionResult<T> simulated,
+                                       long simulatedAccepted) {
         return commit(protocol, source, target, simulated, simulatedAccepted, null);
     }
 
     public static <C, T> Result commit(TransferUtils.TransferProtocol<C, T> protocol,
-                                      C source, C target, ExtractionResult<T> simulated,
-                                      long simulatedAccepted, LogisticsNode targetNode) {
+                                       C source, C target, ExtractionResult<T> simulated,
+                                       long simulatedAccepted, LogisticsNode targetNode) {
         // 在真实提取前确认协议能够计量资源，旧协议因此安全地停止而不会先丢失资源。
         if (protocol.amountOf(simulated.value()) <= 0L) {
             return new Result(0L, Failure.SOURCE_COMMIT_FAILED);

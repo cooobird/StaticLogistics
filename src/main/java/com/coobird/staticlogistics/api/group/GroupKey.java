@@ -10,7 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.UUID;
 
-/** 物流分组的稳定内部身份。 */
+/**
+ * 物流分组的稳定内部身份。
+ */
 public record GroupKey(UUID ownerId, UUID internalId) {
     public static final UUID LEGACY_UNOWNED = new UUID(0L, 0L);
     public static final Codec<GroupKey> CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -46,7 +48,9 @@ public record GroupKey(UUID ownerId, UUID internalId) {
         return new GroupKey(normalizedOwner, UUID.nameUUIDFromBytes(seed));
     }
 
-    /** 更换所有者时保留分组内部身份，显示名称不参与身份计算。 */
+    /**
+     * 更换所有者时保留分组内部身份，显示名称不参与身份计算。
+     */
     public GroupKey withOwner(UUID newOwnerId) {
         return new GroupKey(Objects.requireNonNull(newOwnerId, "newOwnerId"), internalId);
     }

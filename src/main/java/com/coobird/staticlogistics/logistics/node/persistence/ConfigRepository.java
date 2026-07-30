@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.logistics.node.persistence;
 
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 
 import javax.annotation.Nullable;
 import java.util.Collection;

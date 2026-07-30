@@ -2,13 +2,10 @@ package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
-import com.coobird.staticlogistics.transfer.LogisticsCalculator;
 import com.coobird.staticlogistics.transfer.NodeQueryService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
-
-import java.util.List;
 
 /**
  * 链接变更处理器 —— 当面配置或容器配置发生变更时，负责同步链接、校验有效性、级联删除等。
@@ -53,14 +50,14 @@ public class LinkChangeHandler {
     }
 
     /**
-     * 容器配置变更回调：校验该容器所有链接是否仍在有效范围内，并刷新缓存
+     * 容器配置变更回调：保留拓扑，只刷新能力缓存与调度状态。
+     * 范围或维度能力暂时不足时，传输管线会阻止本次传输；升级恢复后原链接可直接复用。
      */
     public void onContainerConfigChanged(ContainerConfig config) {
         if (linkManager.isLifecycleRemovalInProgress()) return;
         if (NodeMutationTransaction.defer(level.getServer(),
             new ContainerChangeKey(linkManager, config), () -> onContainerConfigChanged(config))) return;
         linkManager.markContainerDirty(config.getPos().asLong());
-        validateAndCleanLinksForContainer(config);
         for (FaceAddress faceKey : config.getLinkedFaceKeys()) {
             FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
             if (faceCfg != null) {
@@ -74,48 +71,6 @@ public class LinkChangeHandler {
                     linkManager.activateNode(faceKey, pos, face, faceCfg);
                 }
                 linkManager.scheduleNetworkSync(linkManager.createNodeFromKey(faceKey));
-            }
-        }
-    }
-
-    /**
-     * 遍历该容器所有面，检查链接节点是否超出范围或跨维度无效，超出的就移除
-     */
-    private void validateAndCleanLinksForContainer(ContainerConfig containerConfig) {
-        BlockPos containerPos = containerConfig.getPos();
-        if (containerPos == null) {
-            for (FaceAddress faceKey : containerConfig.getLinkedFaceKeys()) {
-                processFace(faceKey, containerConfig);
-            }
-            return;
-        }
-        for (Direction face : Direction.values()) {
-            FaceAddress faceKey = FaceAddress.of(containerPos, face);
-            processFace(faceKey, containerConfig);
-        }
-    }
-
-    private void processFace(FaceAddress faceKey, ContainerConfig containerConfig) {
-        FaceConfigComposite faceCfg = linkManager.getFaceConfig(faceKey);
-        if (faceCfg == null) return;
-        LogisticsNode selfNode = linkManager.createNodeFromKey(faceKey);
-        BlockPos selfPos = selfNode.gPos().pos();
-        boolean changed = false;
-        for (LogisticsNode target : List.copyOf(faceCfg.getLinkedNodes())) {
-            boolean sameDim = target.isInSameDimension(level.dimension());
-            if ((!sameDim && !LogisticsCalculator.isDimensionEffective(containerConfig)) ||
-                (sameDim && LogisticsCalculator.isOutOfRange(selfPos, target.gPos().pos(), containerConfig))) {
-                linkManager.removeLink(selfNode, target);
-                changed = true;
-            }
-        }
-        if (changed) {
-            if (faceCfg.getLinkedNodes().isEmpty() && !faceCfg.isGlobalInputEnabled() && !faceCfg.isGlobalOutputEnabled()) {
-                linkManager.removeFaceConfig(faceKey);
-            } else {
-                linkManager.scheduleNetworkSync(selfNode);
-                linkManager.refreshLocalCache(faceKey, selfPos, selfNode.face(), faceCfg);
-                linkManager.markFaceDirty(faceKey);
             }
         }
     }

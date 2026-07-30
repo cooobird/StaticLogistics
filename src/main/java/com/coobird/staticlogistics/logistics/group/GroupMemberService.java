@@ -1,9 +1,8 @@
 package com.coobird.staticlogistics.logistics.group;
 
-import com.coobird.staticlogistics.api.group.GroupKey;
-
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
+import com.coobird.staticlogistics.api.group.GroupKey;
 
 import java.util.*;
 
@@ -20,10 +19,15 @@ public class GroupMemberService {
     private final Map<GroupKey, GroupMembers> groups = new HashMap<>();
 
     private static class GroupMembers {
+        /**
+         * 分组拓扑成员独立于当前传输角色；NONE 节点仍然必须留在这里。
+         */
+        final Set<LogisticsNode> nodes = new LinkedHashSet<>();
         final Set<LogisticsNode> senders = new LinkedHashSet<>();
         final Set<LogisticsNode> receivers = new LinkedHashSet<>();
 
         void addNode(LogisticsNode node, NodeRole role) {
+            nodes.add(node);
             senders.remove(node);
             receivers.remove(node);
             if (role == NodeRole.SENDER || role == NodeRole.BOTH) senders.add(node);
@@ -31,6 +35,7 @@ public class GroupMemberService {
         }
 
         void removeNode(LogisticsNode node) {
+            nodes.remove(node);
             senders.remove(node);
             receivers.remove(node);
         }
@@ -46,10 +51,10 @@ public class GroupMemberService {
 
         Map<LogisticsNode, NodeRole> getNodeMap() {
             Map<LogisticsNode, NodeRole> map = new HashMap<>();
+            for (LogisticsNode node : nodes) map.put(node, NodeRole.NONE);
             for (LogisticsNode n : senders) map.put(n, NodeRole.SENDER);
             for (LogisticsNode n : receivers) {
-                if (map.containsKey(n)) map.put(n, NodeRole.BOTH);
-                else map.put(n, NodeRole.RECEIVER);
+                map.put(n, senders.contains(n) ? NodeRole.BOTH : NodeRole.RECEIVER);
             }
             return map;
         }
@@ -63,7 +68,7 @@ public class GroupMemberService {
         }
 
         boolean isEmpty() {
-            return senders.isEmpty() && receivers.isEmpty();
+            return nodes.isEmpty();
         }
     }
 
@@ -77,14 +82,6 @@ public class GroupMemberService {
             members.removeNode(node);
             if (members.isEmpty()) groups.remove(groupKey);
         }
-    }
-
-    public NodeRole getRole(LogisticsNode node) {
-        for (GroupMembers members : groups.values()) {
-            NodeRole role = members.getRoleOf(node);
-            if (role != NodeRole.NONE) return role;
-        }
-        return NodeRole.NONE;
     }
 
     public List<LogisticsNode> getSenders(GroupKey groupKey) {

@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.client.gui.screen;
 
-import com.coobird.staticlogistics.transfer.LogisticsResource;
-import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.content.menu.AbstractFilterMenu;
 import com.coobird.staticlogistics.client.gui.component.BlacklistButton;
 import com.coobird.staticlogistics.client.gui.component.FilterGridWidget;
 import com.coobird.staticlogistics.client.gui.component.NbtModeControls;
 import com.coobird.staticlogistics.client.gui.component.TagBarWidget;
+import com.coobird.staticlogistics.client.key.SLKeyMappings;
+import com.coobird.staticlogistics.content.menu.AbstractFilterMenu;
+import com.coobird.staticlogistics.logistics.filter.NbtMatchMode;
 import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
@@ -21,7 +21,6 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -264,10 +263,10 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
 
         if (NbtModeControls.isModeBtnHovered(mx, my, leftPos, topPos)) {
             boolean isPartial = menu.getNbtMatchMode()
-                == com.coobird.staticlogistics.logistics.filter.NbtMatchMode.PARTIAL;
+                == NbtMatchMode.PARTIAL;
             menu.setNbtMatchMode(isPartial
-                ? com.coobird.staticlogistics.logistics.filter.NbtMatchMode.FULL
-                : com.coobird.staticlogistics.logistics.filter.NbtMatchMode.PARTIAL);
+                ? NbtMatchMode.FULL
+                : NbtMatchMode.PARTIAL);
             sendFilterUpdate();
             return true;
         }
@@ -340,29 +339,6 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
             }
         }
         sendFilterUpdate();
-    }
-
-    @Override
-    protected boolean isTypeSelected(LogisticsResource<?> type) {
-        return false;
-    }
-
-    @Override
-    protected List<LogisticsResource<?>> getTypeList() {
-        return List.of();
-    }
-
-    @Override
-    protected String getSearchHintKey() {
-        return "";
-    }
-
-    @Override
-    protected void renderTypeListItem(GuiGraphics g, LogisticsResource<?> type, int x, int y, boolean isSelected) {
-    }
-
-    @Override
-    protected void onTypeClicked(LogisticsResource<?> type) {
     }
 
     protected abstract void sendFilterUpdate();

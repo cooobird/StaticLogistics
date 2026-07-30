@@ -12,7 +12,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
-/** 客户端可控字符串与集合的统一网络边界。 */
+/**
+ * 客户端可控字符串与集合的统一网络边界。
+ */
 public final class BoundedNetworkCodecs {
     public static final StreamCodec<RegistryFriendlyByteBuf, String> GROUP_NAME = new StreamCodec<>() {
         @Override

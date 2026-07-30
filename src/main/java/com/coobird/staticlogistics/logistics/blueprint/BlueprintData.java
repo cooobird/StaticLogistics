@@ -1,9 +1,9 @@
 package com.coobird.staticlogistics.logistics.blueprint;
 
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import com.coobird.staticlogistics.api.group.GroupConstraints;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
 import net.minecraft.core.BlockPos;

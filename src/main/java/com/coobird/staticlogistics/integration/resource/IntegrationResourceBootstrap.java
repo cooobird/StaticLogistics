@@ -1,12 +1,14 @@
 package com.coobird.staticlogistics.integration.resource;
 
+import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
-import com.coobird.staticlogistics.integration.ModCompat;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
-/** 可选模组资源适配器的唯一注册入口。 */
+/**
+ * 可选模组资源适配器的唯一注册入口。
+ */
 public final class IntegrationResourceBootstrap {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static boolean initialized;

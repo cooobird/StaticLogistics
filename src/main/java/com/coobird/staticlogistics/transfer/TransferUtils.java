@@ -2,12 +2,10 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.node.LinkConfig;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -35,8 +33,6 @@ import java.util.Set;
 public class TransferUtils {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    // ── 向后兼容：委托给 TransferPipeline ──
-
     public static <C, T> boolean doTransferNodes(
         ServerLevel localLevel, BlockPos localPos, Direction localFace,
         List<LogisticsNode> destinations, BlockCapability<C, Direction> cap,
@@ -54,8 +50,6 @@ public class TransferUtils {
     ) {
         return TransferPipeline.execute(localLevel, localPos, localFace, destinations, capGetter, limit, protocol, isPullMode, context);
     }
-
-    // ── capability 查询工具 ──
 
     /**
      * 检查指定位置是否支持任何物流 capability。
@@ -90,7 +84,7 @@ public class TransferUtils {
 
     /**
      * 返回当前输入节点通过有效链接实际允许接收的资源类型。
-     * 结果同时受远端输出类型、双方分组与频道关系、当前面的实际能力约束。
+     * 结果同时受远端输出类型、双方分组关系与当前面的实际能力约束。
      */
     public static List<LogisticsResource<?>> getEffectiveReceiveTypes(
         ServerLevel targetLevel, LogisticsNode targetNode, FaceConfigComposite targetConfig
@@ -120,7 +114,9 @@ public class TransferUtils {
             .toList();
     }
 
-    /** 统一判断一条分组内链接当前是否可参与传输。 */
+    /**
+     * 统一判断一条分组内链接当前是否可参与传输。
+     */
     public static boolean isTransferLinkActive(
         LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
         LogisticsNode targetNode, FaceConfigComposite targetConfig, GroupKey groupKey
@@ -128,15 +124,9 @@ public class TransferUtils {
         if (!sourceConfig.isGlobalOutputEnabled() || !targetConfig.isGlobalInputEnabled()) return false;
         if (!sourceConfig.faceConfig.getGroupKeys().contains(groupKey)
             || !targetConfig.faceConfig.getGroupKeys().contains(groupKey)) return false;
-        if (!sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
-            || !targetConfig.getLinkedNodes(groupKey).contains(sourceNode)) return false;
-
-        int sourceChannel = sourceConfig.linkConfig.getOutputChannel();
-        int targetChannel = targetConfig.linkConfig.getInputChannel();
-        return LinkConfig.channelsMatch(sourceChannel, targetChannel);
+        return sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
+            && targetConfig.getLinkedNodes(groupKey).contains(sourceNode);
     }
-
-    // ── 传输协议接口 ──
 
     public interface TransferProtocol<C, T> {
         ExtractionResult<T> simulateExtract(C source, long max);

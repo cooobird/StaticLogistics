@@ -2,22 +2,24 @@ package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.transfer.LogisticsTicker;
+import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.content.item.LinkOperationHelper;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
+import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import org.jetbrains.annotations.Nullable;
 import net.neoforged.neoforge.common.NeoForge;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,7 +97,7 @@ class FaceConfigHandler {
         config.setOwner(MUTATION_PERMIT, profile.getId(), profile.getName(), profile);
     }
 
-    public void addNodeToGroup(LogisticsNode node, com.coobird.staticlogistics.api.group.GroupRef group) {
+    public void addNodeToGroup(LogisticsNode node, GroupRef group) {
         if (node == null || group == null) return;
         FaceConfigComposite config = getFaceConfig(FaceAddress.of(node));
         if (config == null) return;
@@ -110,8 +112,8 @@ class FaceConfigHandler {
     }
 
     public void mergeGroupMetadata(LogisticsNode node,
-                                   com.coobird.staticlogistics.api.group.GroupRef source,
-                                   com.coobird.staticlogistics.api.group.GroupRef target) {
+                                   GroupRef source,
+                                   GroupRef target) {
         if (node == null || source == null || target == null) return;
         FaceConfigComposite config = getFaceConfig(FaceAddress.of(node));
         if (config == null) return;
@@ -239,8 +241,8 @@ class FaceConfigHandler {
             if (level.getBlockEntity(node.gPos().pos()) == null) {
                 removedPositions.add(node.gPos().pos());
             } else {
-                for (com.coobird.staticlogistics.api.group.GroupKey groupKey
-                    : new java.util.ArrayList<>(cfg.faceConfig.getGroupKeys())) {
+                for (GroupKey groupKey
+                    : new ArrayList<>(cfg.faceConfig.getGroupKeys())) {
                     if (GlobalLogisticsManager.get(server).getNodeGroupService().getNodesInGroup(groupKey).isEmpty()) {
                         parent.removeNodeFromGroup(groupKey, node);
                     }
@@ -250,7 +252,7 @@ class FaceConfigHandler {
         if (!removedPositions.isEmpty()) {
             parent.onBlocksRemovedBulk(removedPositions);
             for (BlockPos pos : removedPositions) {
-                com.coobird.staticlogistics.content.item.LinkOperationHelper.cleanStoredNodesForPos(level, pos);
+                LinkOperationHelper.cleanStoredNodesForPos(level, pos);
             }
         }
         if (end >= orphanKeys.length) {

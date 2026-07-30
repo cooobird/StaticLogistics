@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.api.transfer;
 
 import java.util.Optional;
 
-/** 模拟提取结果；令牌只用于适配器定位同一次提交，不承载资源值。 */
+/**
+ * 模拟提取结果；令牌只用于适配器定位同一次提交，不承载资源值。
+ */
 public record SimulationResult<V>(Optional<ResourceValue<V>> resource, long token) {
     public SimulationResult {
         resource = resource == null ? Optional.empty() : resource;

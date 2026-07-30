@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -18,8 +18,6 @@ public record NodeQuerySnapshot(
     NodeRole role,
     boolean inputEnabled,
     boolean outputEnabled,
-    int inputChannel,
-    int outputChannel,
     int priority,
     int keepStock,
     ResourceLocation strategyId,
@@ -52,7 +50,7 @@ public record NodeQuerySnapshot(
 
     public NodeQuerySnapshot withStats(long sent, long received, double rate, long lastAgeTicks) {
         return new NodeQuerySnapshot(
-            groups, groupKeys, role, inputEnabled, outputEnabled, inputChannel, outputChannel,
+            groups, groupKeys, role, inputEnabled, outputEnabled,
             priority, keepStock, strategyId, strategyDescriptionId, extractionMode,
             extractionDescriptionId, ownerId, ownerName, version, selectedTypeIds,
             presentTypeIds, outputTypeIds, acceptedTypeIds, linkedNodes,

@@ -3,7 +3,9 @@ package com.coobird.staticlogistics.logistics.node;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 
-/** 节点交互中不依赖服务端状态的边界规则。 */
+/**
+ * 节点交互中不依赖服务端状态的边界规则。
+ */
 public final class NodeInteractionRules {
     public static final double MAX_REACH_SQUARED = 64.0D;
 

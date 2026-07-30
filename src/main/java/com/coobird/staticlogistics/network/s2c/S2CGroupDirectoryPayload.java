@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupConstraints;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
@@ -13,12 +13,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * 原子替换某位所有者的完整分组目录，其中同时包含空组与活跃组。

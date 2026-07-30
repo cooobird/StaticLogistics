@@ -2,12 +2,7 @@ package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 
-import java.util.AbstractMap;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * 服务器会话内的传输累计统计。

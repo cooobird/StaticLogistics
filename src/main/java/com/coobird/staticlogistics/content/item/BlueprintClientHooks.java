@@ -8,10 +8,14 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.ToIntFunction;
 
-/** 在通用物品代码与仅客户端界面代码之间提供无客户端类型的桥接。 */
+/**
+ * 在通用物品代码与仅客户端界面代码之间提供无客户端类型的桥接。
+ */
 public final class BlueprintClientHooks {
-    private static Consumer<ItemStack> screenOpener = ignored -> { };
-    private static BiConsumer<ItemStack, List<Component>> tooltipAppender = (ignored, tooltip) -> { };
+    private static Consumer<ItemStack> screenOpener = ignored -> {
+    };
+    private static BiConsumer<ItemStack, List<Component>> tooltipAppender = (ignored, tooltip) -> {
+    };
     private static ToIntFunction<String> inventoryCounter = ignored -> 0;
 
     private BlueprintClientHooks() {

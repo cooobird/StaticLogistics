@@ -11,9 +11,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
+import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 import java.util.*;
@@ -36,7 +38,9 @@ public class TagBarWidget {
         }
     }
 
-    /** 一次渲染中下拉框的权威布局，点击与滚轮必须复用同一份坐标。 */
+    /**
+     * 一次渲染中下拉框的权威布局，点击与滚轮必须复用同一份坐标。
+     */
     public record DropdownLayout(
         int row,
         int x,
@@ -130,9 +134,14 @@ public class TagBarWidget {
         for (int row = 0; row < 4; row++) {
             int y = startY + row * FilterGridWidget.SLOT_SIZE;
 
-            g.blit(SLGuiTextures.GUI_ATLAS, startX, y, btnU, btnV, 2, barHeight, 512, 512);
-            g.blit(SLGuiTextures.GUI_ATLAS, startX + barWidth - 2, y, btnU + btnW - 2, btnV, 2, barHeight, 512, 512);
-            g.blit(SLGuiTextures.GUI_ATLAS, startX + 2, y, barWidth - 4, barHeight, btnU + 2, btnV, 1, barHeight, 512, 512);
+            g.blit(SLGuiTextures.GUI_ATLAS, startX, y, btnU, btnV,
+                2, barHeight, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+            g.blit(SLGuiTextures.GUI_ATLAS, startX + barWidth - 2, y,
+                btnU + btnW - 2, btnV, 2, barHeight,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+            g.blit(SLGuiTextures.GUI_ATLAS, startX + 2, y,
+                barWidth - 4, barHeight, btnU + 2, btnV, 1, barHeight,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
             Set<TagKey<Item>> itemTags = access.getSlotTags(row);
             Set<TagKey<Fluid>> fluidTags = access.getSlotFluidTags(row);
@@ -155,16 +164,19 @@ public class TagBarWidget {
             int delBtnX = startX + barWidth + 3;
             g.blit(SLGuiTextures.GUI_ATLAS, delBtnX, y,
                 SLGuiTextures.Button.Middle.DISABLED_U, SLGuiTextures.Button.Middle.DISABLED_V,
-                19, 17, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+                SLGuiTextures.Icon.WIDTH, SLGuiTextures.Button.Middle.HEIGHT,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
             g.blit(SLGuiTextures.GUI_ATLAS, delBtnX, y,
                 SLGuiTextures.DeleteTag.U, SLGuiTextures.DeleteTag.V,
-                19, 15, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+                SLGuiTextures.DeleteTag.WIDTH, SLGuiTextures.DeleteTag.HEIGHT,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
             if (!overOpenDropdown && mx >= startX && mx < startX + barWidth
                 && my >= y && my < y + barHeight)
                 state.hoveredTagBarRow = row;
-            if (!overOpenDropdown && mx >= delBtnX && mx < delBtnX + 19
-                && my >= y && my < y + 17)
+            if (!overOpenDropdown
+                && mx >= delBtnX && mx < delBtnX + SLGuiTextures.DeleteTag.WIDTH
+                && my >= y && my < y + SLGuiTextures.Button.Middle.HEIGHT)
                 hoveredDelButtonRow = row;
         }
 
@@ -179,13 +191,10 @@ public class TagBarWidget {
             state.dropdownLayout = null;
         }
 
-        // 删除按钮 tooltip
         if (hoveredDelButtonRow >= 0) {
             g.renderTooltip(font, Component.translatable("gui.staticlogistics.clear_tags"), mx, my);
         }
     }
-
-    // 下拉框渲染
 
     private static void renderDropdown(GuiGraphics g, Font font, int leftPos, int topPos,
                                        int mx, int my, State state, TagSlotAccess access,
@@ -382,7 +391,9 @@ public class TagBarWidget {
             int delBtnX = startX + WIDTH + 3;
 
             // 删除按钮
-            if (mx >= delBtnX && mx < delBtnX + 19 && my >= y && my < y + 17) {
+            if (mx >= delBtnX
+                && mx < delBtnX + SLGuiTextures.DeleteTag.WIDTH
+                && my >= y && my < y + SLGuiTextures.Button.Middle.HEIGHT) {
                 if (button == 0) {
                     access.clearSlotTags(row);
                     access.clearSlotFluidTags(row);
@@ -498,12 +509,12 @@ public class TagBarWidget {
         if (stack.isEmpty()) return List.of();
         List<EnhancedTagOption> all = new ArrayList<>();
         stack.getTags().forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.ITEM)));
-        if (stack.getItem() instanceof net.minecraft.world.item.BlockItem blockItem) {
+        if (stack.getItem() instanceof BlockItem blockItem) {
             blockItem.getBlock().defaultBlockState().getTags()
                 .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.BLOCK)));
         }
         var fluidHandler = stack.getCapability(
-            net.neoforged.neoforge.capabilities.Capabilities.FluidHandler.ITEM);
+            Capabilities.FluidHandler.ITEM);
         if (fluidHandler != null) {
             for (int i = 0; i < fluidHandler.getTanks(); i++) {
                 FluidStack fs = fluidHandler.getFluidInTank(i);

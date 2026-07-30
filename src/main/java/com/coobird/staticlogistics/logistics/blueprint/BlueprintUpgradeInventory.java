@@ -58,7 +58,9 @@ public final class BlueprintUpgradeInventory {
         return missing;
     }
 
-    /** 统计即将被蓝图覆盖的权威升级物。 */
+    /**
+     * 统计即将被蓝图覆盖的权威升级物。
+     */
     public static void tallyInventory(Map<String, Integer> tally, IItemHandler inventory) {
         for (int slot = 0; slot < inventory.getSlots(); slot++) {
             ItemStack stack = inventory.getStackInSlot(slot);
@@ -66,14 +68,18 @@ public final class BlueprintUpgradeInventory {
         }
     }
 
-    /** 只有目标最终仍包含现有材料时才允许覆盖，避免旧升级物被静默吞掉。 */
+    /**
+     * 只有目标最终仍包含现有材料时才允许覆盖，避免旧升级物被静默吞掉。
+     */
     public static boolean isCoveredByDesired(Map<String, Integer> existing,
                                              Map<String, Integer> desired) {
         return existing.entrySet().stream()
             .allMatch(entry -> entry.getValue() <= desired.getOrDefault(entry.getKey(), 0));
     }
 
-    /** 返回在复用现有升级物之后仍需从玩家背包扣除的净增量。 */
+    /**
+     * 返回在复用现有升级物之后仍需从玩家背包扣除的净增量。
+     */
     public static Map<String, Integer> requiredDelta(Map<String, Integer> desired,
                                                      Map<String, Integer> existing) {
         Map<String, Integer> result = new LinkedHashMap<>();

@@ -1,11 +1,10 @@
 package com.coobird.staticlogistics.integration.resource;
 
-import com.coobird.staticlogistics.logistics.util.SaturatedMath;
-import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.logistics.util.SaturatedMath;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.hollingsworth.arsnouveau.api.source.ISourceCap;
 import com.hollingsworth.arsnouveau.setup.registry.CapabilityRegistry;
 import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
@@ -15,6 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -67,7 +67,7 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     }
 
     @Override
-    public net.neoforged.neoforge.capabilities.BlockCapability<ISourceCap, Direction> blockCapability() {
+    public BlockCapability<ISourceCap, Direction> blockCapability() {
         return CapabilityRegistry.SOURCE_CAPABILITY;
     }
 

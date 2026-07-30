@@ -9,6 +9,7 @@ import net.neoforged.bus.api.Event;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * 物流节点发生变化时触发的事件，比如新增节点、删除节点、修改节点
@@ -43,7 +44,7 @@ public class LogisticsNodeEvent extends Event {
     // 构造函数——批量节点变动（一次性多个节点一起触发）
     public LogisticsNodeEvent(MinecraftServer server, Collection<NodeEntry> entries, ChangeType type) {
         this.server = server;
-        this.affectedEntries = java.util.List.copyOf(entries);
+        this.affectedEntries = List.copyOf(entries);
         this.type = type;
     }
 

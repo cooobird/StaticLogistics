@@ -1,15 +1,14 @@
 package com.coobird.staticlogistics.integration.jade;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
-import com.coobird.staticlogistics.transfer.NodeQueryService;
-import com.coobird.staticlogistics.transfer.NodeQuerySnapshot;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.transfer.NodeQueryService;
+import com.coobird.staticlogistics.transfer.NodeQuerySnapshot;
+import com.coobird.staticlogistics.transfer.TransferTypeDisplay;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -29,6 +28,8 @@ import snownee.jade.api.*;
 import snownee.jade.api.config.IPluginConfig;
 import snownee.jade.api.ui.BoxStyle;
 import snownee.jade.api.ui.IElementHelper;
+
+import java.util.ArrayList;
 
 /**
  * Jade 集成：指向有物流连接的方块时显示面数据。
@@ -127,11 +128,7 @@ public class SLJadePlugin implements IWailaPlugin {
                 int keepStock = snapshot.keepStock();
                 if (keepStock > 0) faceTag.putInt("keep_stock", keepStock);
 
-                // 频道、策略、优先级、所有者
-                int inCh = snapshot.inputChannel();
-                int outCh = snapshot.outputChannel();
-                if (inCh > 0) faceTag.putInt("in_channel", inCh);
-                if (outCh > 0) faceTag.putInt("out_channel", outCh);
+                // 策略、优先级、所有者
                 faceTag.putString("strategy", snapshot.strategyDescriptionId());
                 faceTag.putString("extraction_mode", snapshot.extractionDescriptionId());
                 faceTag.putInt("priority", snapshot.priority());
@@ -218,8 +215,6 @@ public class SLJadePlugin implements IWailaPlugin {
             // 输入端信息
             boolean hasIn = role.equals("input") || role.equals("both");
             boolean hasOut = role.equals("output") || role.equals("both");
-            int inCh = faceTag.getInt("in_channel");
-            int outCh = faceTag.getInt("out_channel");
             int priority = faceTag.getInt("priority");
             int keepStock = faceTag.getInt("keep_stock");
             String strategyKey = faceTag.getString("strategy");
@@ -228,11 +223,6 @@ public class SLJadePlugin implements IWailaPlugin {
             if (hasIn) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
                 addResourceTypeLine(boxContent, "jade.staticlogistics.receive_types", faceTag, "accepted_type_ids");
-                if (inCh > 0) {
-                    boxContent.add(Component.literal("  ")
-                        .append(Component.translatable("jade.staticlogistics.channel", inCh))
-                        .withStyle(ChatFormatting.GRAY));
-                }
                 boxContent.add(Component.literal("  ")
                     .append(Component.translatable("jade.staticlogistics.priority", priority))
                     .withStyle(ChatFormatting.GRAY));
@@ -246,11 +236,6 @@ public class SLJadePlugin implements IWailaPlugin {
             if (hasOut) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
                 addResourceTypeLine(boxContent, "jade.staticlogistics.transfer_types", faceTag, "output_type_ids");
-                if (outCh > 0) {
-                    boxContent.add(Component.literal("  ")
-                        .append(Component.translatable("jade.staticlogistics.channel", outCh))
-                        .withStyle(ChatFormatting.GRAY));
-                }
                 if (!strategyKey.isEmpty()) {
                     boxContent.add(Component.literal("  ")
                         .append(Component.translatable("jade.staticlogistics.strategy_label",
@@ -298,23 +283,13 @@ public class SLJadePlugin implements IWailaPlugin {
 
         private static Component buildResourceTypeList(CompoundTag faceTag, String listKey) {
             ListTag typeIds = faceTag.getList(listKey, Tag.TAG_STRING);
-            MutableComponent result = Component.empty();
-            boolean hasType = false;
+            ArrayList<ResourceLocation> parsedIds = new ArrayList<>(typeIds.size());
             for (int index = 0; index < typeIds.size(); index++) {
                 ResourceLocation typeId = ResourceLocation.tryParse(typeIds.getString(index));
-                if (typeId == null) continue;
-
-                if (hasType) result.append(Component.literal(", ").withStyle(ChatFormatting.GRAY));
-                LogisticsResource<?> type = TransferRegistries.get(typeId);
-                if (type == null) {
-                    result.append(Component.literal(typeId.toString()).withStyle(ChatFormatting.DARK_GRAY));
-                } else {
-                    result.append(Component.translatable(type.translationKey())
-                        .withStyle(style -> style.withColor(type.color())));
-                }
-                hasType = true;
+                if (typeId != null) parsedIds.add(typeId);
             }
-            return hasType ? result : Component.translatable("jade.staticlogistics.no_resource_types");
+            return TransferTypeDisplay.format(
+                parsedIds, "jade.staticlogistics.no_resource_types");
         }
 
         private static void addResourceTypeLine(ITooltip tooltip, String translationKey,

@@ -4,39 +4,41 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.command.SLCommands;
-import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.logistics.blueprint.BlueprintUndoManager;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
-import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
-import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
 import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.integration.ModCompat;
+import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintUndoManager;
+import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
+import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.network.c2s.*;
 import com.coobird.staticlogistics.network.s2c.*;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.transfer.LogisticsTicker;
+import com.coobird.staticlogistics.transfer.NodeQueryService;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -61,9 +63,10 @@ public class ServerEvents {
     public static void onServerStopped(ServerStoppedEvent event) {
         if (ModList.get().isLoaded("ftbteams")) FTBEventHandlers.clearPending();
         BlueprintUndoManager.release(event.getServer());
-        com.coobird.staticlogistics.transfer.TransferLogManager.release(event.getServer());
-        com.coobird.staticlogistics.transfer.LogisticsTicker.release(event.getServer());
-        com.coobird.staticlogistics.transfer.NodeQueryService.release(event.getServer());
+        TransferLogManager.release(event.getServer());
+        LogisticsTicker.release(event.getServer());
+        NodeQueryService.release(event.getServer());
+        ConnectionCommandService.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
     }
 
@@ -75,29 +78,34 @@ public class ServerEvents {
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("6");
+        final PayloadRegistrar registrar = event.registrar("11");
 
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
         registrar.playToClient(S2CRemoveFaceTopologyPayload.TYPE, S2CRemoveFaceTopologyPayload.STREAM_CODEC, S2CRemoveFaceTopologyPayload::handle);
         registrar.playToClient(S2CGroupDirectoryPayload.TYPE, S2CGroupDirectoryPayload.STREAM_CODEC, S2CGroupDirectoryPayload::handle);
         registrar.playToClient(S2CAccessSnapshotPayload.TYPE, S2CAccessSnapshotPayload.STREAM_CODEC, S2CAccessSnapshotPayload::handle);
+        registrar.playToClient(S2CSelectLinkEndpointPayload.TYPE, S2CSelectLinkEndpointPayload.STREAM_CODEC, S2CSelectLinkEndpointPayload::handle);
+        registrar.playToClient(S2CClearLinkEndpointPayload.TYPE, S2CClearLinkEndpointPayload.STREAM_CODEC, S2CClearLinkEndpointPayload::handle);
 
-        registrar.playToServer(C2SRemoveLinkPayload.TYPE, C2SRemoveLinkPayload.STREAM_CODEC, C2SRemoveLinkPayload::handle);
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
         registrar.playToServer(C2SOpenNodeFilterPayload.TYPE, C2SOpenNodeFilterPayload.STREAM_CODEC, C2SOpenNodeFilterPayload::handle);
-        registrar.playToServer(C2SReturnToNodeConfigPayload.TYPE, C2SReturnToNodeConfigPayload.STREAM_CODEC, C2SReturnToNodeConfigPayload::handle);
+        registrar.playToServer(C2SReturnToLinkConfiguratorPayload.TYPE, C2SReturnToLinkConfiguratorPayload.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::handle);
         registrar.playToServer(C2SUpdateToolSettingsPayload.TYPE, C2SUpdateToolSettingsPayload.STREAM_CODEC, C2SUpdateToolSettingsPayload::handle);
         registrar.playToServer(C2SGroupRenamePayload.TYPE, C2SGroupRenamePayload.STREAM_CODEC, C2SGroupRenamePayload::handle);
         registrar.playToServer(C2SUpdateFilterOnItemPayload.TYPE, C2SUpdateFilterOnItemPayload.STREAM_CODEC, C2SUpdateFilterOnItemPayload::handle);
         registrar.playToServer(C2SUpdateFilterOnHandPayload.TYPE, C2SUpdateFilterOnHandPayload.STREAM_CODEC, C2SUpdateFilterOnHandPayload::handle);
         registrar.playToServer(C2SOpenHandFilterPayload.TYPE, C2SOpenHandFilterPayload.STREAM_CODEC, C2SOpenHandFilterPayload::handle);
         registrar.playToServer(C2SUpdateBlueprintPreviewPayload.TYPE, C2SUpdateBlueprintPreviewPayload.STREAM_CODEC, C2SUpdateBlueprintPreviewPayload::handle);
-        registrar.playToServer(C2SOpenNodeConfigPayload.TYPE, C2SOpenNodeConfigPayload.STREAM_CODEC, C2SOpenNodeConfigPayload::handle);
+        registrar.playToServer(C2SOpenLinkEndpointPayload.TYPE, C2SOpenLinkEndpointPayload.STREAM_CODEC, C2SOpenLinkEndpointPayload::handle);
+        registrar.playToServer(C2SSelectLinkEndpointSidePayload.TYPE, C2SSelectLinkEndpointSidePayload.STREAM_CODEC, C2SSelectLinkEndpointSidePayload::handle);
+        registrar.playToServer(C2SClearLinkEndpointPayload.TYPE, C2SClearLinkEndpointPayload.STREAM_CODEC, C2SClearLinkEndpointPayload::handle);
         registrar.playToServer(C2SClearStoredNodesPayload.TYPE, C2SClearStoredNodesPayload.STREAM_CODEC, C2SClearStoredNodesPayload::handle);
         registrar.playToServer(C2SDeleteGroupPayload.TYPE, C2SDeleteGroupPayload.STREAM_CODEC, C2SDeleteGroupPayload::handle);
         registrar.playToServer(C2SBlueprintUndoPayload.TYPE, C2SBlueprintUndoPayload.STREAM_CODEC, C2SBlueprintUndoPayload::handle);
         registrar.playToServer(C2SCreateEmptyGroupPayload.TYPE, C2SCreateEmptyGroupPayload.STREAM_CODEC, C2SCreateEmptyGroupPayload::handle);
+        registrar.playToServer(C2SRenameConnectionPayload.TYPE, C2SRenameConnectionPayload.STREAM_CODEC, C2SRenameConnectionPayload::handle);
+        registrar.playToServer(C2SDeleteConnectionPayload.TYPE, C2SDeleteConnectionPayload.STREAM_CODEC, C2SDeleteConnectionPayload::handle);
     }
 
     @SubscribeEvent

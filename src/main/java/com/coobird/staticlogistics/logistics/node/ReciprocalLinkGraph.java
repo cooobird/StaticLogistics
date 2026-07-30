@@ -38,13 +38,23 @@ public final class ReciprocalLinkGraph<N, G> {
         }
     }
 
-    public void removeEdge(N first, N second) {
-        removeEdge(null, first, second, Set.of());
+    public boolean removeEdge(N first, N second) {
+        return removeEdge(null, first, second, Set.of());
     }
 
-    public void removeEdge(G group, N first, N second) {
-        if (group == null) return;
-        removeEdge(group, first, second, Set.of());
+    public boolean removeEdge(G group, N first, N second) {
+        if (group == null) return false;
+        return removeEdge(group, first, second, Set.of());
+    }
+
+    /**
+     * 只删除互惠边并规范化端点，不立即触发生命周期清理。
+     *
+     * <p>供需要把多个孤立端点和升级物作为一个事务处理的上层用例调用。
+     */
+    public boolean removeEdgeWithoutCleanup(G group, N first, N second) {
+        if (group == null) return false;
+        return removeEdge(group, first, second, Set.of(first, second));
     }
 
     public void removeNodeFromGroup(G group, N node) {
@@ -150,7 +160,9 @@ public final class ReciprocalLinkGraph<N, G> {
         if (edit != null) edit.close();
     }
 
-    /** 由存储适配器实现的单端点受控写接口。 */
+    /**
+     * 由存储适配器实现的单端点受控写接口。
+     */
     public interface Endpoint<N, G> {
         boolean belongsTo(G group);
 
@@ -175,7 +187,9 @@ public final class ReciprocalLinkGraph<N, G> {
         void cleanup();
     }
 
-    /** 不抛受检异常的领域编辑作用域。 */
+    /**
+     * 不抛受检异常的领域编辑作用域。
+     */
     @FunctionalInterface
     public interface Edit extends AutoCloseable {
         @Override

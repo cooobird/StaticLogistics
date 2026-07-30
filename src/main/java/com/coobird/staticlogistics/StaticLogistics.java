@@ -1,25 +1,24 @@
 package com.coobird.staticlogistics;
 
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.content.registry.SLCreativeTabs;
+import com.coobird.staticlogistics.content.registry.SLItems;
+import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.datagen.SLLanguageProvider;
 import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.integration.resource.IntegrationResourceBootstrap;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
-import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
-import com.coobird.staticlogistics.content.registry.SLCreativeTabs;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.sync.TopologySyncPort;
 import com.coobird.staticlogistics.network.sync.NetworkSyncManager;
-import com.coobird.staticlogistics.content.registry.SLItems;
-import com.coobird.staticlogistics.content.registry.SLMenuTypes;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
+import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.Registry;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
@@ -52,7 +51,7 @@ public class StaticLogistics {
         }
     }
 
-    private void commonSetup(final net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent event) {
+    private void commonSetup(final FMLCommonSetupEvent event) {
         LOGGER.info("Static Logistics: Starting common setup...");
         event.enqueueWork(() -> {
             TransferTypeBootstrap.init();
@@ -63,9 +62,5 @@ public class StaticLogistics {
 
     public static ResourceLocation asResource(String path) {
         return ResourceLocation.fromNamespaceAndPath(MODID, path);
-    }
-
-    public static <T> ResourceKey<T> asResourceKey(ResourceKey<? extends Registry<T>> registryKey, String path) {
-        return ResourceKey.create(registryKey, asResource(path));
     }
 }

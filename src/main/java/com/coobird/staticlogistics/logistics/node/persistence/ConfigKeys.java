@@ -11,8 +11,6 @@ public final class ConfigKeys {
     public static final String OWNER = "owner";
     public static final String OWNER_NAME = "owner_name";
     public static final String OWNER_PROFILE = "owner_profile";
-    public static final String INPUT_CHANNEL = "input_channel";
-    public static final String OUTPUT_CHANNEL = "output_channel";
     public static final String STRATEGY = "strategy";
     public static final String EXTRACTION_MODE = "extraction_mode";
     public static final String PRIORITY = "priority";

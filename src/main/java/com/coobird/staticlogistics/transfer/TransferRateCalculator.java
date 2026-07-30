@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.transfer;
 
 import java.util.Arrays;
 
-/** 使用服务器游戏刻维护最近五分钟的传输速率。 */
+/**
+ * 使用服务器游戏刻维护最近五分钟的传输速率。
+ */
 class TransferRateCalculator {
     private static final int SLOTS = 5;
     private static final long TICKS_PER_MINUTE = 1_200L;

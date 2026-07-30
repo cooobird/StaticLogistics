@@ -1,7 +1,5 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.transfer.LogisticsResource;
-
 /**
  * 传输类型选择掩码工具。
  *

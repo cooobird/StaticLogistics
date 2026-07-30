@@ -1,23 +1,31 @@
 package com.coobird.staticlogistics.client.gui.screen;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.gui.component.*;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
-import com.coobird.staticlogistics.client.gui.component.*;
+import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
+import com.coobird.staticlogistics.logistics.node.FaceConfigurationEdit;
+import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
+import com.coobird.staticlogistics.network.c2s.*;
+import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
-import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.network.c2s.C2SCreateEmptyGroupPayload;
-import com.coobird.staticlogistics.network.c2s.C2SDeleteGroupPayload;
-import com.coobird.staticlogistics.network.c2s.C2SGroupRenamePayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
@@ -25,226 +33,579 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 import java.util.Objects;
 
-public class LinkConfiguratorScreen extends Screen {
+/**
+ * 连接配置器的唯一主界面。
+ *
+ * <p>本类只负责组织整张界面、分发输入事件和协调区域状态，不直接实现各区域
+ * 内部的复杂绘制。调整界面时按以下职责定位：
+ * <ul>
+ *     <li>{@link ToolModeBar}：顶部左侧的四个工具模式按钮；</li>
+ *     <li>{@link TransferTypeGrid}：顶部中间随所选节点切换上下文的资源类型视窗；</li>
+ *     <li>{@link NetworkPreviewPanel}：左上网络拓扑、节点和连线 Tooltip；</li>
+ *     <li>{@link GroupPanel}：右上分组、链接列表、搜索、重命名和滚动条；</li>
+ *     <li>{@link GroupPanel}：分组树末尾的内联新增分组输入；</li>
+ *     <li>{@link NodeConfigurationPanel}：左下所选连接面的输入、输出、过滤器与升级配置；</li>
+ *     <li>{@link LinkConfiguratorMenu}：真实槽位、服务端数据同步和编辑权限。</li>
+ * </ul>
+ *
+ * <p>背景区域尺寸和 atlas UV 位于 {@link SLGuiTextures.LinkConfigurator}。
+ * 输入/输出页签只修改当前 Menu 的可见侧状态，不得重新打开 Screen 或 Menu，
+ * 否则会重置鼠标、焦点和拖动状态。
+ */
+public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfiguratorMenu> {
+    private static final int TITLE_RIGHT_PADDING = 8;
+    private static final int TITLE_Y = 6;
+    private static final int HIDDEN_VANILLA_INVENTORY_LABEL_Y = 1000;
+    private static final int PREVIEW_TITLE_X = 22;
+    private static final int GROUP_TITLE_X = 316;
+    private static final int REGION_TITLE_Y = 28;
+    private static final int INVENTORY_TITLE_Y_OFFSET = 2;
 
+    // 当前连接摘要在右侧信息框中的内边距和行偏移。
+    private static final int CONNECTION_TEXT_INSET = 5;
+    private static final int CONNECTION_FIRST_LINE_Y = 13;
+    private static final int CONNECTION_SECOND_LINE_Y = 25;
+    private static final int CONNECTION_SINGLE_LINE_Y = 14;
+    private static final int CONNECTION_EMPTY_HINT_Y = 18;
+
+    private static final int COLOR_ACCENT = 0xFF98FB98;
+    private static final int COLOR_SECONDARY = 0xFF55D7FF;
+    private static final int COLOR_DISABLED = 0xFF777777;
+
+    // 区域组件分别保存自己的滚动、选择或编辑状态。
     private final ItemStack stack;
-    private int leftPos, topPos, modeIdx;
-    private GroupPanel groupPanel;
-    private NewGroupWidget newGroupWidget;
+    private final NetworkPreviewPanel preview = new NetworkPreviewPanel();
 
-    public LinkConfiguratorScreen(ItemStack stack) {
-        super(Component.translatable("gui.staticlogistics.linker_settings"));
-        this.stack = stack;
+    private int modeIdx;
+    private GroupPanel groupPanel;
+    private NodeConfigurationPanel nodeConfigurationPanel;
+
+    public LinkConfiguratorScreen(LinkConfiguratorMenu menu, Inventory inventory, Component title) {
+        super(menu, inventory, title);
+        this.stack = menu.getToolStack();
     }
 
     @Override
     protected void init() {
-        this.leftPos = (this.width - SLGuiTextures.Background.WIDTH) / 2;
-        this.topPos = (this.height - SLGuiTextures.Background.HEIGHT) / 2;
-        SelectionContext.syncFromItem(this.stack);
-        this.modeIdx = SelectionContext.getSelectedMode();
+        this.imageWidth = SLGuiTextures.LinkConfigurator.CONTENT_WIDTH;
+        this.imageHeight = SLGuiTextures.LinkConfigurator.CONTENT_HEIGHT;
+        super.init();
+        this.titleLabelX = this.imageWidth - this.font.width(this.title) - TITLE_RIGHT_PADDING;
+        this.titleLabelY = TITLE_Y;
+        // 原版物品栏标签由 atlas 区域标题替代，移出可视范围避免重复绘制。
+        this.inventoryLabelY = HIDDEN_VANILLA_INVENTORY_LABEL_Y;
+
+        // 顶部工具状态来自配置器物品。
+        SelectionContext.syncFromItem(stack);
+        modeIdx = SelectionContext.getSelectedMode();
         String initialGroup = SelectionContext.getSelectedGroupId();
-        this.stack.set(SLDataComponents.SELECTED_GROUP.get(), initialGroup);
-        this.groupPanel = new GroupPanel(this.font, leftPos, topPos);
-        this.groupPanel.setInitialState(this.stack);
-        this.newGroupWidget = new NewGroupWidget(this.font);
+        stack.set(SLDataComponents.SELECTED_GROUP.get(), initialGroup);
+
+        // 右上分组区和左上网络预览共享同一个选中分组。
+        groupPanel = new GroupPanel(font, leftPos, topPos);
+        groupPanel.setInitialState(stack);
+        preview.setGroup(stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()));
+        if (menu.hasTarget()) {
+            preview.selectNode(menu.getTargetNode());
+        }
+
+        // 左下节点区复用当前 Menu；页签切换不会创建新容器界面。
+        nodeConfigurationPanel = new NodeConfigurationPanel(
+            menu, font, this::openFilter, this::selectSide, SoundUtil::playClickSound);
+        nodeConfigurationPanel.init(leftPos, topPos, this::addRenderableWidget);
     }
 
     @Override
-    public void render(GuiGraphics g, int mx, int my, float pt) {
-        g.blit(SLGuiTextures.GUI_ATLAS, leftPos, topPos,
-            SLGuiTextures.Background.U, SLGuiTextures.Background.V,
-            SLGuiTextures.Background.WIDTH, SLGuiTextures.Background.HEIGHT,
+    protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+        int contentInset = SLGuiTextures.LinkConfigurator.CONTENT_INSET;
+        graphics.blit(SLGuiTextures.GUI_ATLAS,
+            leftPos - contentInset, topPos - contentInset,
+            SLGuiTextures.LinkConfigurator.U, SLGuiTextures.LinkConfigurator.V,
+            SLGuiTextures.LinkConfigurator.WIDTH, SLGuiTextures.LinkConfigurator.HEIGHT,
             SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+        renderTitle(graphics);
+        renderToolbarLabels(graphics);
+        ToolModeBar.render(graphics, font, leftPos, topPos, modeIdx);
+        TransferTypeGrid.render(graphics, transferTypeView(), leftPos, topPos, mouseX, mouseY);
 
-        TitleBar.render(g, this.font, leftPos, topPos,
-            SLGuiTextures.Background.WIDTH, this.title.getString());
-        LeftSidebar.render(g, this.font, leftPos, topPos, modeIdx);
-        groupPanel.render(g, this.font, stack, leftPos, topPos, mx, my, pt);
-        newGroupWidget.render(g, this.font, leftPos, topPos, mx, my, pt);
-        TransferTypeGrid.render(g, stack, leftPos, topPos, mx, my);
+        preview.render(graphics, font, previewLeft(), previewTop(),
+            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
+            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT,
+            mouseX, mouseY);
 
-        super.render(g, mx, my, pt);
-
-        g.pose().pushPose();
-        g.pose().translate(0, 0, 500);
-        var hoveredType = TransferTypeGrid.getHoveredType(mx, my, stack, leftPos, topPos);
-        if (hoveredType != null) TransferTypeGrid.renderTooltip(g, this.font, hoveredType, mx, my);
-        GroupRef hoveredGroup = groupPanel.getHoveredGroup();
-        if (hoveredGroup != null) groupPanel.renderGroupTooltip(g, this.font, mx, my, hoveredGroup,
-            SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
-        LeftSidebar.renderTooltip(g, this.font, mx, my, leftPos, topPos);
-        g.pose().popPose();
+        groupPanel.render(graphics, font, stack, preview.getSelectedConnection(),
+            leftPos, topPos, mouseX, mouseY, partialTick);
+        renderCurrentConnection(graphics);
+        nodeConfigurationPanel.render(graphics, mouseX, mouseY);
     }
 
     @Override
-    public boolean mouseClicked(double mx, double my, int button) {
-        if (groupPanel.searchBoxMouseClicked(mx, my, button)) {
-            this.setFocused(groupPanel.getSearchBox());
-            return true;
-        }
-        if (groupPanel.renameBoxMouseClicked(mx, my, button)) {
-            this.setFocused(groupPanel.getRenameBox());
-            return true;
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+
+        /*
+         * 玩家背包和快捷栏必须完整走原版容器 Tooltip 流程，才能保留物品名称、
+         * 附魔、数据组件以及其他模组追加的 Tooltip。配置槽由节点区域在原版
+         * 物品 Tooltip 后追加升级统计，因此不能在这里重复绘制。
+         */
+        Slot hoveredSlot = getSlotUnderMouse();
+        if (hoveredSlot != null
+            && !hoveredSlot.getItem().isEmpty()
+            && !menu.isConfigurationSlot(hoveredSlot)) {
+            renderTooltip(graphics, mouseX, mouseY);
+            return;
         }
 
-        if (newGroupWidget.isAddButtonHit(mx, my, leftPos, topPos)) {
-            handleNewGroupSubmit();
+        // Tooltip 必须最后绘制，否则会被节点区、分组区或真实槽位覆盖。
+        preview.renderTooltip(
+            graphics,
+            font,
+            mouseX,
+            mouseY,
+            previewLeft(),
+            previewTop(),
+            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
+            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT);
+        nodeConfigurationPanel.renderTooltips(graphics, mouseX, mouseY);
+        renderTopTooltips(graphics, mouseX, mouseY);
+    }
+
+    @Override
+    public void containerTick() {
+        super.containerTick();
+        nodeConfigurationPanel.tick();
+        if (!Objects.equals(
+            stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get()),
+            SelectionContext.getFocusedConnectionKey())) {
+            syncCurrentSettings(false);
+        }
+    }
+
+    @Override
+    public void removed() {
+        preview.flushLayout();
+        super.removed();
+    }
+
+    private void renderTitle(GuiGraphics graphics) {
+        TitleBar.render(graphics, font, leftPos, topPos,
+            SLGuiTextures.LinkConfigurator.CONTENT_WIDTH, title.getString());
+    }
+
+    private void renderToolbarLabels(GuiGraphics graphics) {
+        graphics.drawString(font, Component.translatable("gui.staticlogistics.network_preview.title"), leftPos + PREVIEW_TITLE_X, topPos + REGION_TITLE_Y, COLOR_ACCENT, false);
+        graphics.drawString(font, Component.translatable("gui.staticlogistics.groups_and_connections"), leftPos + GROUP_TITLE_X, topPos + REGION_TITLE_Y, COLOR_ACCENT, false);
+        graphics.drawString(font, playerInventoryTitle,
+            leftPos + SLGuiTextures.LinkConfigurator.INVENTORY_X,
+            topPos + SLGuiTextures.LinkConfigurator.INVENTORY_Y
+                + INVENTORY_TITLE_Y_OFFSET,
+            0xFFFFFFFF, false);
+    }
+
+    private void renderCurrentConnection(GuiGraphics graphics) {
+        int x = leftPos + SLGuiTextures.LinkConfigurator.CONNECTION_X
+            + CONNECTION_TEXT_INSET;
+        int y = topPos + SLGuiTextures.LinkConfigurator.CONNECTION_Y
+            + CONNECTION_TEXT_INSET;
+        graphics.drawString(font, Component.translatable("gui.staticlogistics.current_connection"),
+            x, y, COLOR_ACCENT, false);
+        ClientConnection connection = preview.getSelectedConnection();
+        LogisticsNode selectedNode = preview.getSelectedNode();
+        if (connection != null) {
+            String first = "A  " + compactNode(connection.first()).getString();
+            String second = "B  " + compactNode(connection.second()).getString();
+            int maximumWidth = SLGuiTextures.LinkConfigurator.CONNECTION_WIDTH - 10;
+            graphics.drawString(font, font.plainSubstrByWidth(first, maximumWidth),
+                x, y + CONNECTION_FIRST_LINE_Y, COLOR_ACCENT, false);
+            graphics.drawString(font, font.plainSubstrByWidth(second, maximumWidth),
+                x, y + CONNECTION_SECOND_LINE_Y, COLOR_SECONDARY, false);
+        } else if (selectedNode != null) {
+            graphics.drawString(font, compactNode(selectedNode),
+                x, y + CONNECTION_SINGLE_LINE_Y, COLOR_ACCENT, false);
+        } else {
+            graphics.drawString(font,
+                Component.translatable("gui.staticlogistics.network_preview.select_hint"),
+                x, y + CONNECTION_EMPTY_HINT_Y, COLOR_DISABLED, false);
+        }
+    }
+
+    private Component compactNode(LogisticsNode node) {
+        return NodeDisplayText.compact(node);
+    }
+
+    private void renderTopTooltips(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 500);
+        TransferTypeGrid.View typeView = transferTypeView();
+        var hoveredType = TransferTypeGrid.getHoveredType(mouseX, mouseY, typeView, leftPos, topPos);
+        if (hoveredType != null) {
+            TransferTypeGrid.renderTooltip(graphics, font, hoveredType, typeView, mouseX, mouseY);
+        } else {
+            renderGroupOrModeTooltip(graphics, mouseX, mouseY);
+        }
+        graphics.pose().popPose();
+    }
+
+    private void renderGroupOrModeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        GroupRef hoveredGroup = groupPanel.getHoveredGroup();
+        if (hoveredGroup != null) {
+            groupPanel.renderGroupTooltip(graphics, font, mouseX, mouseY, hoveredGroup,
+                SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
+            return;
+        }
+        ClientConnection hoveredConnection = groupPanel.getHoveredConnection();
+        if (hoveredConnection != null) {
+            groupPanel.renderConnectionTooltip(graphics, font, mouseX, mouseY, hoveredConnection);
+            return;
+        }
+        ToolModeBar.renderTooltip(graphics, font, mouseX, mouseY, leftPos, topPos);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (groupPanel.searchBoxMouseClicked(mouseX, mouseY, button)) {
+            setFocused(groupPanel.getSearchBox());
             return true;
         }
-
-        if (newGroupWidget.isTextBoxHit(mx, my, leftPos, topPos)) {
-            newGroupWidget.beginEdit();
-            this.setFocused(newGroupWidget.getEditBox());
+        if (groupPanel.renameBoxMouseClicked(mouseX, mouseY, button)) {
+            setFocused(groupPanel.getRenameBox());
             return true;
         }
-
-        var clickedType = TransferTypeGrid.handleClick(mx, my, stack, leftPos, topPos);
+        if (groupPanel.newGroupBoxMouseClicked(mouseX, mouseY, button)) {
+            setFocused(groupPanel.getNewGroupBox());
+            return true;
+        }
+        if (groupPanel.isCreateRowHit(mouseX, mouseY, leftPos, topPos)) {
+            groupPanel.beginCreateGroup();
+            setFocused(groupPanel.getNewGroupBox());
+            SoundUtil.playClickSound();
+            return true;
+        }
+        if (TransferTypeGrid.handleNavigationClick(mouseX, mouseY, leftPos, topPos)) {
+            SoundUtil.playClickSound();
+            return true;
+        }
+        TransferTypeGrid.View typeView = transferTypeView();
+        var clickedType = TransferTypeGrid.getHoveredType(mouseX, mouseY, typeView, leftPos, topPos);
         if (clickedType != null) {
-            syncCurrentSettings(true);
+            handleTypeClick(clickedType, typeView);
             return true;
         }
-
-        if (!groupPanel.getEditingGroupId().isEmpty() && !groupPanel.getRenameBox().isMouseOver(mx, my))
-            handleConfirmRename();
-        if (newGroupWidget.isEditing() && !newGroupWidget.isEditBoxMouseOver(mx, my))
-            newGroupWidget.cancelEdit();
-        this.setFocused(null);
-
-        int clickedMode = LeftSidebar.getClickedMode(mx, my, leftPos, topPos);
+        int clickedMode = ToolModeBar.getClickedMode(mouseX, mouseY, leftPos, topPos);
         if (clickedMode >= 0) {
-            this.modeIdx = clickedMode;
+            modeIdx = clickedMode;
             syncCurrentSettings(true);
+            ToolModeFeedback.show(minecraft.player, stack, ToolMode.fromId(modeIdx));
             return true;
         }
+        if (groupPanel.isRenaming()
+            && !groupPanel.getRenameBox().isMouseOver(mouseX, mouseY)) {
+            handleConfirmRename();
+        }
+        if (groupPanel.isCreatingGroup()
+            && !groupPanel.getNewGroupBox().isMouseOver(
+            mouseX, mouseY)) {
+            groupPanel.cancelCreateGroup();
+        }
+        setFocused(null);
 
-        if (groupPanel.isSearchTriggerHit(mx, my, leftPos, topPos)) {
+        if (groupPanel.isSearchTriggerHit(mouseX, mouseY, leftPos, topPos)) {
             groupPanel.triggerSearch();
             return true;
         }
-
-        if (groupPanel.handleScrollbarClick(mx, my, leftPos, topPos)) return true;
-
-        GroupPanel.ClickResult listResult = groupPanel.handleListClick(mx, my, button, leftPos, topPos, stack,
+        if (groupPanel.handleScrollbarClick(mouseX, mouseY, leftPos, topPos)) return true;
+        GroupPanel.ClickResult listResult = groupPanel.handleListClick(
+            mouseX, mouseY, button, leftPos, topPos, stack,
             SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
         if (listResult != null) {
-            switch (listResult.getAction()) {
-                case SELECT -> syncSettings(listResult.getGroup(), true);
-                case RENAME -> {
-                    groupPanel.startRename(listResult.getGroup(), leftPos, topPos);
-                    this.setFocused(groupPanel.getRenameBox());
-                }
-                case EXPORT -> {
-                    groupPanel.exportToChat(listResult.getGroup());
-                    this.onClose();
-                }
-                case DELETE -> {
-                    var player = Minecraft.getInstance().player;
-                    if (player != null) {
-                        PacketDistributor.sendToServer(
-                            new C2SDeleteGroupPayload(listResult.getGroup().key()));
-                    }
-                }
+            handleGroupResult(listResult);
+            return true;
+        }
+
+        ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();
+        if (preview.mouseClicked(mouseX, mouseY, button,
+            previewLeft(), previewTop(),
+            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
+            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT)) {
+            if (!Objects.equals(
+                focusBeforePreviewClick,
+                SelectionContext.getFocusedConnectionKey())) {
+                syncCurrentSettings(false);
+            }
+            LogisticsNode node = preview.getSelectedNode();
+            if (node != null) {
+                openNode(node);
             }
             return true;
         }
-
-        boolean inMain = mx >= leftPos && mx <= leftPos + SLGuiTextures.Background.WIDTH && my >= topPos && my <= topPos + SLGuiTextures.Background.HEIGHT;
-        boolean inSide = mx >= leftPos + GroupPanel.SIDE_PANEL_X && mx <= leftPos + GroupPanel.SIDE_PANEL_X + SLGuiTextures.Background.BY_GROUP_WIDTH && my >= topPos && my <= topPos + SLGuiTextures.Background.BY_GROUP_HEIGHT;
-        if ((inMain || inSide) && !stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "").isEmpty()) {
-            syncSettings("", false);
+        if (nodeConfigurationPanel.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
-        return super.mouseClicked(mx, my, button);
+        boolean handled = super.mouseClicked(mouseX, mouseY, button);
+        nodeConfigurationPanel.unfocusEditors(mouseX, mouseY);
+        return handled;
+    }
+
+    private void handleGroupResult(GroupPanel.ClickResult result) {
+        switch (result.getAction()) {
+            case SELECT -> {
+                SelectionContext.clearConnectionFocus();
+                syncSettings(result.getGroup(), true);
+                preview.setGroup(result.getGroup().key());
+            }
+            case RENAME -> {
+                groupPanel.startRename(result.getGroup(), leftPos, topPos);
+                setFocused(groupPanel.getRenameBox());
+            }
+            case EXPORT -> {
+                groupPanel.exportToChat(result.getGroup());
+                onClose();
+            }
+            case DELETE -> {
+                preview.removeLayout(result.getGroup().key());
+                if (preview.isShowingGroup(result.getGroup().key())) {
+                    preview.setGroup(null);
+                }
+                if (result.getGroup().key().equals(
+                    stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()))) {
+                    SelectionContext.clearConnectionFocus();
+                    syncSettings("", false);
+                }
+                if (menu.hasTarget()
+                    && result.getGroup().key().equals(menu.getRemoteGroupKey())) {
+                    // 删除分组并不等于关闭配置器，只解除菜单对该分组节点的绑定。
+                    menu.clearTarget();
+                }
+                PacketDistributor.sendToServer(
+                    new C2SDeleteGroupPayload(result.getGroup().key()));
+            }
+            case OPEN_CONNECTION -> {
+                syncSettings(result.getGroup(), false);
+                preview.setGroup(result.getGroup().key());
+                preview.selectConnection(Objects.requireNonNull(result.getConnection()));
+                syncCurrentSettings(false);
+                SoundUtil.playClickSound();
+            }
+            case RENAME_CONNECTION -> {
+                groupPanel.startRename(
+                    Objects.requireNonNull(result.getConnection()), leftPos, topPos);
+                setFocused(groupPanel.getRenameBox());
+            }
+            case DELETE_CONNECTION -> {
+                ClientConnection connection = Objects.requireNonNull(result.getConnection());
+                ClientConnection selected = preview.getSelectedConnection();
+                if (selected != null
+                    && selected.key().equals(connection.key())) {
+                    preview.selectConnection(null);
+                    syncCurrentSettings(false);
+                }
+                if (menu.hasTarget()
+                    && (menu.getTargetNode().equals(connection.first())
+                    || menu.getTargetNode().equals(connection.second()))) {
+                    menu.clearTarget();
+                }
+                PacketDistributor.sendToServer(
+                    new C2SDeleteConnectionPayload(connection.key()));
+                SoundUtil.playClickSound();
+            }
+            case CONSUME -> {
+            }
+        }
+    }
+
+    /**
+     * 网络预览选择新节点时请求服务端验证并切换权威数据源。
+     * 验证成功后由确认包更新当前 Menu，整个过程不会重建 Screen 或 Menu。
+     */
+    private void openNode(LogisticsNode node) {
+        GroupRef group = selectedGroup();
+        if (group == null) return;
+        FaceTopology topology = ClientLinkData.INSTANCE.getTopology(node);
+        boolean inputSide = topology != null
+            && topology.role().canReceive() && !topology.role().canSend();
+        PacketDistributor.sendToServer(new C2SOpenLinkEndpointPayload(
+            group.key(), node, inputSide));
+    }
+
+    /**
+     * 在同一个 Menu 内切换输入或输出页签。
+     *
+     * <p>客户端先更新可见状态以保证操作即时，服务端按网络包顺序更新活动槽位和
+     * 编辑权限；这里不得调用打开菜单的数据包。
+     */
+    private void selectSide(boolean inputSide) {
+        menu.selectVisibleSide(inputSide);
+        PacketDistributor.sendToServer(
+            new C2SSelectLinkEndpointSidePayload(inputSide));
+    }
+
+    private void openFilter() {
+        FilterConfiguratorScreen.prepareNestedOpen(this);
+        PacketDistributor.sendToServer(new C2SOpenNodeFilterPayload(
+            menu.getPos(), menu.getFace(), menu.isInputSideVisible()));
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double dx, double dy) {
-        if (groupPanel.mouseScrolled(mx, my, dy, leftPos, topPos)) return true;
-        return super.mouseScrolled(mx, my, dx, dy);
+    public boolean mouseScrolled(double mouseX, double mouseY,
+                                 double scrollX, double scrollY) {
+        if (TransferTypeGrid.mouseScrolled(
+            mouseX, mouseY, scrollY, leftPos, topPos)) return true;
+        if (groupPanel.mouseScrolled(mouseX, mouseY, scrollY, leftPos, topPos)) return true;
+        if (preview.mouseScrolled(mouseX, mouseY, scrollY,
+            previewLeft(), previewTop(),
+            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
+            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT)) return true;
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override
-    public boolean mouseDragged(double mx, double my, int b, double dx, double dy) {
-        if (groupPanel.mouseDragged(my, topPos)) return true;
-        return super.mouseDragged(mx, my, b, dx, dy);
+    public boolean mouseDragged(double mouseX, double mouseY, int button,
+                                double dragX, double dragY) {
+        if (groupPanel.mouseDragged(mouseY, topPos)) return true;
+        if (preview.mouseDragged(dragX, dragY)) return true;
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
     @Override
-    public boolean mouseReleased(double mx, double my, int b) {
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
         groupPanel.mouseReleased();
-        return super.mouseReleased(mx, my, b);
+        if (preview.mouseReleased()) return true;
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (groupPanel.getSearchBox().canConsumeInput() || groupPanel.getRenameBox().canConsumeInput()) {
-            if (keyCode == 257 || keyCode == 335) {
+        if (nodeConfigurationPanel.keyPressed(keyCode)) {
+            return true;
+        }
+        if (groupPanel.getSearchBox().canConsumeInput()
+            || groupPanel.getRenameBox().canConsumeInput()) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 if (groupPanel.isSearchBoxFocused()) groupPanel.triggerSearch();
                 else if (groupPanel.isRenameBoxVisible()) handleConfirmRename();
                 return true;
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
-        if (newGroupWidget.isEditing() && newGroupWidget.getEditBox().canConsumeInput()) {
-            if (keyCode == 257 || keyCode == 335) {
+        if (groupPanel.isCreatingGroup()
+            && groupPanel.getNewGroupBox().canConsumeInput()) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 handleNewGroupSubmit();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                groupPanel.cancelCreateGroup();
+                setFocused(null);
                 return true;
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
-        if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode) || keyCode == GLFW.GLFW_KEY_ESCAPE) {
-            this.onClose();
+        if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)
+            || keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            onClose();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     private void handleNewGroupSubmit() {
-        playClickSound();
-        String name = newGroupWidget.confirmInput();
-        if (name.isEmpty()) return;
-        var player = Minecraft.getInstance().player;
-        if (player != null) {
+        SoundUtil.playClickSound();
+        String name = groupPanel.confirmCreateGroup();
+        if (!name.isEmpty()) {
             PacketDistributor.sendToServer(new C2SCreateEmptyGroupPayload(name));
         }
-        this.setFocused(null);
+        setFocused(null);
     }
 
     private void handleConfirmRename() {
         GroupRef editingGroup = groupPanel.getEditingGroup();
-        if (editingGroup == null) return;
-        String editingId = editingGroup.displayName();
-        String newId = groupPanel.confirmRename();
-        if (newId == null) return;
-        if (!Objects.equals(editingId, newId)) {
-            var player = Minecraft.getInstance().player;
-            if (player == null) return;
+        ClientConnection editingConnection = groupPanel.getEditingConnection();
+        if (editingGroup == null && editingConnection == null) return;
+        String newName = groupPanel.confirmRename();
+        if (editingConnection != null
+            && !Objects.equals(editingConnection.displayName(), newName)) {
+            PacketDistributor.sendToServer(new C2SRenameConnectionPayload(editingConnection.key(), newName));
+        } else if (editingGroup != null && !newName.isEmpty()
+            && !Objects.equals(editingGroup.displayName(), newName)) {
             PacketDistributor.sendToServer(
-                new C2SGroupRenamePayload(editingGroup.key(), newId));
+                new C2SGroupRenamePayload(editingGroup.key(), newName));
         }
     }
 
-    private void syncCurrentSettings(boolean playSound) {
+    private GroupRef selectedGroup() {
         var key = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
-        GroupRef selected = key == null ? null : ClientLinkData.INSTANCE.findGroupRef(key);
+        return key == null ? null : ClientLinkData.INSTANCE.findGroupRef(key);
+    }
+
+    private void syncCurrentSettings(boolean playSound) {
+        GroupRef selected = selectedGroup();
         if (selected != null) syncSettings(selected, playSound);
         else syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), playSound);
+    }
+
+    private TransferTypeGrid.View transferTypeView() {
+        if (!menu.hasTarget()) {
+            return new TransferTypeGrid.View(
+                TransferTypeGrid.getToolSelectedTypeIds(stack),
+                TransferTypeGrid.Context.TOOL_DEFAULT,
+                true);
+        }
+        if (menu.isOutputSideVisible()) {
+            return new TransferTypeGrid.View(
+                menu.getSelectedTypeIds(),
+                TransferTypeGrid.Context.NODE_OUTPUT,
+                menu.isGlobalOutputEnabled());
+        }
+        FaceTopology topology = ClientLinkData.INSTANCE.getTopology(menu.getTargetNode());
+        return new TransferTypeGrid.View(
+            topology == null ? List.of() : topology.acceptedTypeIds(),
+            TransferTypeGrid.Context.NODE_INPUT,
+            false);
+    }
+
+    private void handleTypeClick(LogisticsResource<?> type, TransferTypeGrid.View view) {
+        if (!view.editable()) {
+            return;
+        }
+        if (view.context() == TransferTypeGrid.Context.TOOL_DEFAULT) {
+            TransferTypeGrid.toggleToolType(stack, type);
+            syncCurrentSettings(true);
+            return;
+        }
+        List<ResourceLocation> selection = TransferTypeSelection.toggle(
+            menu.getSelectedTypeIds(), type);
+        menu.setSelectedTypeIds(selection);
+        PacketDistributor.sendToServer(new C2SConfigureFacePayload(
+            menu.getPos(),
+            menu.getFace(),
+            new FaceConfigurationEdit.SelectedTypesEdit(selection)));
+        SoundUtil.playClickSound();
     }
 
     private void syncSettings(GroupRef group, boolean playSound) {
         syncSettings(group.displayName(), group, playSound);
     }
 
-    private void syncSettings(String groupId, boolean playSound) {
-        syncSettings(groupId, null, playSound);
+    private void syncSettings(String groupName, boolean playSound) {
+        syncSettings(groupName, null, playSound);
     }
 
-    private void syncSettings(String groupId, GroupRef group, boolean playSound) {
-        SelectionContext.setSelection(groupId, group == null ? null : group.key(), modeIdx);
-        stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
+    private void syncSettings(String groupName, GroupRef group, boolean playSound) {
+        GroupKey groupKey = group == null ? null : group.key();
+        ConnectionKey connectionKey = SelectionContext.getFocusedConnectionKey();
+        if (connectionKey != null
+            && !Objects.equals(groupKey, connectionKey.groupKey())) {
+            connectionKey = null;
+        }
+        SelectionContext.setSelection(groupName, groupKey, modeIdx, connectionKey);
+        stack.set(SLDataComponents.SELECTED_GROUP.get(), groupName);
         if (group == null) stack.remove(SLDataComponents.SELECTED_GROUP_KEY.get());
         else stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
+        if (connectionKey == null) {
+            stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        } else {
+            stack.set(SLDataComponents.SELECTED_CONNECTION_KEY.get(), connectionKey);
+        }
         stack.set(SLDataComponents.TOOL_MODE.get(), modeIdx);
         List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
         int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
@@ -252,22 +613,36 @@ public class LinkConfiguratorScreen extends Screen {
             selectedTypeIds == null ? List.of() : selectedTypeIds,
             legacyMask, TransferRegistries.getAllActive());
         PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
-            groupId, group == null ? null : group.key(), modeIdx, selectedTypeIds,
-            stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0)));
-
-        if (playSound) playClickSound();
+            groupName, group == null ? null : group.key(), modeIdx,
+            selectedTypeIds, legacyMask, connectionKey));
+        if (playSound) SoundUtil.playClickSound();
     }
 
-    private void playClickSound() {
-        com.coobird.staticlogistics.client.gui.component.SoundUtil.playClickSound();
+    private int previewLeft() {
+        return leftPos + SLGuiTextures.LinkConfigurator.PREVIEW_X;
     }
 
-    @Override
-    public void renderBackground(GuiGraphics g, int mx, int my, float pt) {
+    private int previewTop() {
+        return topPos + SLGuiTextures.LinkConfigurator.PREVIEW_Y;
     }
 
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    @Override
+    protected void renderCustomContent(GuiGraphics graphics, int mouseX, int mouseY) {
+    }
+
+    /**
+     * 新主界面的区域标题均自行定位；禁止继承旧底板的“物品栏”标签坐标。
+     */
+    @Override
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+    }
+
+    public boolean hasNodeTarget() {
+        return menu.hasTarget();
     }
 }

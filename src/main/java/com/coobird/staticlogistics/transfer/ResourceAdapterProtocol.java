@@ -1,10 +1,9 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.Nullable;
 
@@ -101,10 +100,4 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
         return targetLimit > 0L && adapter.canInsertToTarget(dest, value, targetCfg);
     }
 
-    /**
-     * 获取适配器（用于简单资源的直接传输）。
-     */
-    public LogisticsResource<C> getAdapter() {
-        return adapter;
-    }
 }

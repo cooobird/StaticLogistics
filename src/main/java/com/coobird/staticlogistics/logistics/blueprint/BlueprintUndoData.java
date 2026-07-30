@@ -14,7 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** 记录一次蓝图粘贴前后的状态，用于安全撤销。 */
+/**
+ * 记录一次蓝图粘贴前后的状态，用于安全撤销。
+ */
 public record BlueprintUndoData(
     ResourceKey<Level> dimension,
     List<FaceSnapshot> faces,
@@ -54,7 +56,9 @@ public record BlueprintUndoData(
         }
     }
 
-    /** 单个面的粘贴前快照。 */
+    /**
+     * 单个面的粘贴前快照。
+     */
     public record FaceSnapshot(
         BlockPos pos,
         Direction face,
@@ -64,7 +68,9 @@ public record BlueprintUndoData(
     ) {
     }
 
-    /** 容器配置的粘贴前快照。 */
+    /**
+     * 容器配置的粘贴前快照。
+     */
     public record ContainerSnapshot(
         BlockPos pos,
         boolean existed,
@@ -72,7 +78,9 @@ public record BlueprintUndoData(
     ) {
     }
 
-    /** 粘贴过程新增的链接。 */
+    /**
+     * 粘贴过程新增的链接。
+     */
     public record LinkSnapshot(
         LogisticsNode src,
         LogisticsNode dst,
@@ -80,7 +88,9 @@ public record BlueprintUndoData(
     ) {
     }
 
-    /** 粘贴过程新增的稳定分组关系。 */
+    /**
+     * 粘贴过程新增的稳定分组关系。
+     */
     public record GroupSnapshot(
         BlockPos pos,
         Direction face,

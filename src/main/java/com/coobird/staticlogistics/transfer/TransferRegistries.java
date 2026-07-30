@@ -4,20 +4,16 @@ import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.transfer.ResourceAdapter;
 import com.coobird.staticlogistics.api.transfer.ResourceAdapterRegistrar;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Collections;
+import java.util.*;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -54,7 +50,9 @@ public class TransferRegistries {
         generation++;
     }
 
-    /** 注册公开的类型安全资源适配器。 */
+    /**
+     * 注册公开的类型安全资源适配器。
+     */
     public static <C, V> void registerAdapter(ResourceAdapter<C, V> adapter, int bitOffset) {
         Objects.requireNonNull(adapter, "Resource adapter must not be null");
         Objects.requireNonNull(adapter.valueType(), "Resource value type must not be null");
@@ -180,7 +178,7 @@ public class TransferRegistries {
         }
 
         @Override
-        public @Nullable net.neoforged.neoforge.capabilities.BlockCapability<C, Direction> blockCapability() {
+        public @Nullable BlockCapability<C, Direction> blockCapability() {
             return delegate.blockCapability();
         }
 

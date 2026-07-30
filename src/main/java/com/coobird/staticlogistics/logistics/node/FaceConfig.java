@@ -1,21 +1,16 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import com.mojang.authlib.GameProfile;
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.logistics.group.OwnershipMutationPermit;
+import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
 
 /**
@@ -155,7 +150,9 @@ public class FaceConfig {
         groups.clear();
     }
 
-    /** 以快照中的完整元数据替换当前状态，同时保留运行时位置。 */
+    /**
+     * 以快照中的完整元数据替换当前状态，同时保留运行时位置。
+     */
     void restoreSnapshot(Object permit, FaceConfig snapshot) {
         requireMutationPermit(permit);
         if (snapshot == null) throw new IllegalArgumentException("Face snapshot must not be null");
@@ -196,21 +193,6 @@ public class FaceConfig {
         return owner;
     }
 
-    @Nullable
-    public GameProfile getOwnerProfile() {
-        if (ownerProfileTag.isEmpty()) return null;
-        UUID id = ownerProfileTag.hasUUID("Id") ? ownerProfileTag.getUUID("Id") : owner;
-        String name = ownerProfileTag.getString("Name");
-        GameProfile profile = new GameProfile(id, name.isEmpty() ? ownerName : name);
-        CompoundTag props = ownerProfileTag.getCompound("Properties");
-        props.getAllKeys().forEach(key -> {
-            CompoundTag pt = props.getCompound(key);
-            profile.getProperties().put(key,
-                new com.mojang.authlib.properties.Property(key, pt.getString("Value"), pt.contains("Signature") ? pt.getString("Signature") : null));
-        });
-        return profile;
-    }
-
     public CompoundTag getOwnerProfileTag() {
         return ownerProfileTag.copy();
     }
@@ -248,7 +230,9 @@ public class FaceConfig {
         return normalized;
     }
 
-    /** 持久化资料只保留权限显示需要的有界字段，拒绝异常 NBT 扩大内存与同步开销。 */
+    /**
+     * 持久化资料只保留权限显示需要的有界字段，拒绝异常 NBT 扩大内存与同步开销。
+     */
     private static CompoundTag sanitizeOwnerProfileTag(@Nullable CompoundTag source) {
         if (source == null || source.isEmpty()) return new CompoundTag();
         CompoundTag result = new CompoundTag();

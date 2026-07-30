@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.content.registry;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
-import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
@@ -12,7 +12,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * 注册模组的各种GUI菜单类型（面配置、容器配置、过滤器配置、手持过滤器）。
+ * 注册连接配置器及其过滤器子界面使用的菜单类型。
  */
 public class SLMenuTypes {
     /**
@@ -21,10 +21,10 @@ public class SLMenuTypes {
     public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(BuiltInRegistries.MENU, StaticLogistics.MODID);
 
     /**
-     * 节点配置器菜单：统一管理某一面的连接参数和容器升级插件
+     * 连接配置器菜单：统一承载网络预览、连接面配置与容器升级槽位。
      */
-    public static final DeferredHolder<MenuType<?>, MenuType<NodeConfiguratorMenu>> NODE_CONFIGURATOR_MENU =
-        TYPES.register("node_configurator_menu", () -> IMenuTypeExtension.create(NodeConfiguratorMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<LinkConfiguratorMenu>> LINK_CONFIGURATOR_MENU =
+        TYPES.register("link_configurator_menu", () -> IMenuTypeExtension.create(LinkConfiguratorMenu::new));
 
     /**
      * 过滤器配置菜单：配置物品过滤规则

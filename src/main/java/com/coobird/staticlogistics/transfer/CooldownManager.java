@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.transfer;
 
-import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
@@ -10,7 +10,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-/** 使用“维度 + 面 + 资源 ID”的无碰撞身份管理冷却。 */
+/**
+ * 使用“维度 + 面 + 资源 ID”的无碰撞身份管理冷却。
+ */
 public class CooldownManager {
     private record CooldownKey(FaceAddress source, ResourceLocation typeId) {
     }
