@@ -19,9 +19,9 @@ public final class MenuLayout {
      */
     public static final int NODE_FILTER_X = 104;
     public static final int NODE_SLOT_Y = 188;
-    public static final int NODE_SPEED_UPGRADE_X = 172;
-    public static final int NODE_RANGE_UPGRADE_X = 192;
-    public static final int NODE_STACK_UPGRADE_X = 212;
+    public static final int NODE_SPEED_UPGRADE_X = 144;
+    public static final int NODE_RANGE_UPGRADE_X = 164;
+    public static final int NODE_STACK_UPGRADE_X = 184;
 
     private MenuLayout() {
     }

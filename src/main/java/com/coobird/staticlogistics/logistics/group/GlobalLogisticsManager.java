@@ -415,6 +415,7 @@ public class GlobalLogisticsManager {
             groupDisplayNames.remove(groupKey);
             transaction.commit();
         }
+        GroupSelectionInvalidator.clearOnlineSelections(server, groupKey);
         return true;
     }
 
@@ -454,6 +455,7 @@ public class GlobalLogisticsManager {
             groupDisplayNames.remove(groupKey);
             transaction.commit();
         }
+        GroupSelectionInvalidator.clearOnlineSelections(server, groupKey);
         syncGroupDirectory(groupKey.ownerId());
         return true;
     }

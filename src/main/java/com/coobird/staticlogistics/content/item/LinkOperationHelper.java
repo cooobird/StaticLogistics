@@ -289,11 +289,16 @@ public class LinkOperationHelper {
                                                  String displayName, GroupKey selectedKey) {
         if (selectedKey == null) return manager.resolveOrCreateGroup(player.getUUID(), displayName);
         GroupRef selected = PlayerGroupStore.get(player.getServer()).findGroup(selectedKey);
-        if (selected == null || !selected.displayName().equals(displayName)
-            || !GroupService.canModify(selected.key().ownerId(), player)) {
+        if (selected != null) {
+            if (!GroupService.canModify(selected.key().ownerId(), player)) {
+                throw new IllegalArgumentException("Selected group is unavailable");
+            }
+            return selected;
+        }
+        if (!selectedKey.ownerId().equals(player.getUUID())) {
             throw new IllegalArgumentException("Selected group is unavailable");
         }
-        return selected;
+        return manager.resolveOrCreateGroup(player.getUUID(), displayName);
     }
 
     private static GameProfile resolveOwnerProfile(ServerLevel level, GroupRef group, Player actor) {

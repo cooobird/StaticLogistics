@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.content.SLKeyNames;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.group.GroupSelectionInvalidator;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
@@ -140,6 +141,7 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         if (player == null) return InteractionResult.PASS;
         if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
             LinkOperationHelper.validateStoredNodes(stack, serverLevel);
+            GroupSelectionInvalidator.clearInvalidSelection(serverLevel.getServer(), stack);
         }
         ToolSettings settings = getSettings(stack);
 
@@ -163,6 +165,8 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
     private static void openConfigurator(ServerPlayer player) {
         int toolSlot = LinkConfiguratorMenu.findToolSlot(player.getInventory());
         if (toolSlot < 0) return;
+        GroupSelectionInvalidator.clearInvalidSelection(
+            player.server, player.getInventory().getItem(toolSlot));
         Component title = Component.translatable("gui.staticlogistics.linker_settings");
         player.openMenu(new SimpleMenuProvider(
                 (id, inventory, ignored) ->

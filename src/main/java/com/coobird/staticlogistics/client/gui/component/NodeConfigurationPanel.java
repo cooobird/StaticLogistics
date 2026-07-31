@@ -40,7 +40,7 @@ public final class NodeConfigurationPanel {
     private static final int TOGGLE_X = 12;
     private static final int STATUS_X = 34;
     private static final int FILTER_LABEL_X = 76;
-    private static final int UPGRADE_LABEL_X = 152;
+    private static final int UPGRADE_LABEL_X = 202;
     private static final int UPGRADE_LABEL_Y_OFFSET = 3;
 
     private static final int INPUT_ROW_ONE_Y = CONFIG_Y + 52;
@@ -213,10 +213,7 @@ public final class NodeConfigurationPanel {
         renderFilterSlot(graphics, mouseX, mouseY, 1);
 
         graphics.drawString(font,
-            Component.translatable("gui.staticlogistics.upgrades"),
-            left + UPGRADE_LABEL_X,
-            top + UTILITY_Y + UPGRADE_LABEL_Y_OFFSET,
-            0xFFAAAAAA, false);
+            Component.translatable("gui.staticlogistics.upgrades"), left + UPGRADE_LABEL_X, top + UTILITY_Y + UPGRADE_LABEL_Y_OFFSET, 0xFFAAAAAA, false);
         for (int index = 2; index < 5; index++) {
             Slot slot = menu.getSlot(index);
             NodeConfigControls.drawSlotBg(
