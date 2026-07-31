@@ -6,12 +6,11 @@ import com.coobird.staticlogistics.api.event.PostTransferEvent;
 import com.coobird.staticlogistics.api.event.PreTransferEvent;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.common.MinecraftForge;
-import org.slf4j.Logger;
 
 import java.util.List;
 
@@ -19,8 +18,6 @@ import java.util.List;
  * 传输管线 —— 编排一次完整的传输流程。
  */
 public final class TransferPipeline {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
     private TransferPipeline() {
     }
 
@@ -30,10 +27,7 @@ public final class TransferPipeline {
         long limit, TransferUtils.TransferProtocol<C, T> protocol, boolean isPullMode,
         TransferContext context
     ) {
-        if (context != null && context.isDepthExceeded()) {
-            LOGGER.debug("Depth exceeded for transfer at {} (depth={})", localPos, context.depth());
-            return false;
-        }
+        if (context != null && context.isDepthExceeded()) return false;
         if (destinations.isEmpty() || limit <= 0) return false;
 
         long remaining = limit;
@@ -45,7 +39,6 @@ public final class TransferPipeline {
         }
         if (localContainer == null) return false;
 
-        boolean canCrossDim = LogisticsCalculator.isDimensionEffective(localContainer);
         C localCap = capGetter.get(localLevel, localPos, localFace);
         if (localCap == null) return false;
 
@@ -54,12 +47,14 @@ public final class TransferPipeline {
         for (LogisticsNode remoteNode : destinations) {
             boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
 
-            if (!isSameDim && !canCrossDim) {
+            LogisticsCalculator.TransferRangeAssessment range = LogisticsCalculator.assessTransferRange(
+                GlobalPos.of(localLevel.dimension(), localPos), remoteNode.gPos(), localContainer);
+            if (range.crossDimension() && !range.allowed()) {
                 if (context != null) logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
                 continue;
             }
 
-            if (isSameDim && LogisticsCalculator.isOutOfRange(localPos, remoteNode.gPos().pos(), localContainer)) {
+            if (!range.crossDimension() && !range.allowed()) {
                 if (context != null) logFailure(context, remoteNode, TransferFailureReason.OUT_OF_RANGE);
                 continue;
             }

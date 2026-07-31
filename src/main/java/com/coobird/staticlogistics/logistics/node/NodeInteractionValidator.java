@@ -1,6 +1,6 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import com.coobird.staticlogistics.logistics.NodeConfiguratorTool;
+import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -18,8 +18,8 @@ public final class NodeInteractionValidator {
     }
 
     public static boolean holdsConfigurator(ServerPlayer player) {
-        return player.getMainHandItem().getItem() instanceof NodeConfiguratorTool
-            || player.getOffhandItem().getItem() instanceof NodeConfiguratorTool;
+        return player.getMainHandItem().getItem() instanceof LinkConfiguratorTool
+            || player.getOffhandItem().getItem() instanceof LinkConfiguratorTool;
     }
 
     public static boolean isPhysicalTargetValid(ServerPlayer player, BlockPos pos, Direction face) {

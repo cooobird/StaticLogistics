@@ -40,13 +40,22 @@ public final class TopologyStreamCodecs {
         if (roleId >= roles.length) {
             throw new DecoderException("Invalid topology node role: " + roleId);
         }
-        int inputChannel = buffer.readUnsignedByte();
-        int outputChannel = buffer.readUnsignedByte();
+        int maxTransferBlocks = buffer.readVarInt();
+        boolean dimensionEffective = buffer.readBoolean();
+        long speedMultiplier = buffer.readVarLong();
+        long rangeMultiplier = buffer.readVarLong();
+        long stackMultiplier = buffer.readVarLong();
+        boolean inputFilterPresent = buffer.readBoolean();
+        boolean outputFilterPresent = buffer.readBoolean();
+        var outputTypeIds = BoundedNetworkCodecs.TRANSFER_TYPE_IDS.decode(buffer);
+        var acceptedTypeIds = BoundedNetworkCodecs.TRANSFER_TYPE_IDS.decode(buffer);
         UUID ownerId = buffer.readBoolean() ? buffer.readUUID() : null;
         String ownerName = buffer.readUtf(MAX_OWNER_NAME_LENGTH);
         long version = buffer.readLong();
         try {
-            return new FaceTopology(node, groups, roles[roleId], inputChannel, outputChannel,
+            return new FaceTopology(node, groups, roles[roleId], maxTransferBlocks,
+                dimensionEffective, speedMultiplier, rangeMultiplier, stackMultiplier,
+                inputFilterPresent, outputFilterPresent, outputTypeIds, acceptedTypeIds,
                 ownerId, ownerName, version);
         } catch (IllegalArgumentException exception) {
             throw new DecoderException("Invalid topology face", exception);
@@ -61,8 +70,15 @@ public final class TopologyStreamCodecs {
         buffer.writeVarInt(face.groups().size());
         face.groups().forEach(group -> encodeGroup(buffer, group));
         buffer.writeByte(face.role().ordinal());
-        buffer.writeByte(face.inputChannel());
-        buffer.writeByte(face.outputChannel());
+        buffer.writeVarInt(face.maxTransferBlocks());
+        buffer.writeBoolean(face.dimensionEffective());
+        buffer.writeVarLong(face.speedMultiplier());
+        buffer.writeVarLong(face.rangeMultiplier());
+        buffer.writeVarLong(face.stackMultiplier());
+        buffer.writeBoolean(face.inputFilterPresent());
+        buffer.writeBoolean(face.outputFilterPresent());
+        BoundedNetworkCodecs.TRANSFER_TYPE_IDS.encode(buffer, face.outputTypeIds());
+        BoundedNetworkCodecs.TRANSFER_TYPE_IDS.encode(buffer, face.acceptedTypeIds());
         buffer.writeBoolean(face.ownerId() != null);
         if (face.ownerId() != null) buffer.writeUUID(face.ownerId());
         buffer.writeUtf(face.ownerName(), MAX_OWNER_NAME_LENGTH);
@@ -73,7 +89,8 @@ public final class TopologyStreamCodecs {
         return new ScopedTopologyLink(
             GroupKey.STREAM_CODEC.decode(buffer),
             LogisticsNode.STREAM_CODEC.decode(buffer),
-            LogisticsNode.STREAM_CODEC.decode(buffer)
+            LogisticsNode.STREAM_CODEC.decode(buffer),
+            buffer.readUtf(GroupConstraints.MAX_CONNECTION_NAME_LENGTH)
         );
     }
 
@@ -81,6 +98,7 @@ public final class TopologyStreamCodecs {
         GroupKey.STREAM_CODEC.encode(buffer, link.groupKey());
         LogisticsNode.STREAM_CODEC.encode(buffer, link.source());
         LogisticsNode.STREAM_CODEC.encode(buffer, link.target());
+        buffer.writeUtf(link.displayName(), GroupConstraints.MAX_CONNECTION_NAME_LENGTH);
     }
 
     public static GroupRef decodeGroup(PortRegistryFriendlyByteBuf buffer) {

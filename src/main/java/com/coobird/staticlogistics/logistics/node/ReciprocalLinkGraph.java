@@ -7,8 +7,9 @@ import java.util.function.Function;
 
 /**
  * 分组作用域双向邻接图的纯领域内核。
+ *
+ * <p>该类型不依赖游戏运行时、存档或网络；调用方通过端点适配器提供实际存储和清理动作。
  */
-@SuppressWarnings("try")
 public final class ReciprocalLinkGraph<N, G> {
     private final Function<N, Endpoint<N, G>> resolver;
 
@@ -37,18 +38,30 @@ public final class ReciprocalLinkGraph<N, G> {
         }
     }
 
-    public void removeEdge(N first, N second) {
-        removeEdge(null, first, second, Set.of());
+    public boolean removeEdge(N first, N second) {
+        return removeEdge(null, first, second, Set.of());
     }
 
-    public void removeEdge(G group, N first, N second) {
-        if (group != null) removeEdge(group, first, second, Set.of());
+    public boolean removeEdge(G group, N first, N second) {
+        if (group == null) return false;
+        return removeEdge(group, first, second, Set.of());
+    }
+
+    /**
+     * 只删除互惠边并规范化端点，不立即触发生命周期清理。
+     *
+     * <p>供需要把多个孤立端点和升级物作为一个事务处理的上层用例调用。
+     */
+    public boolean removeEdgeWithoutCleanup(G group, N first, N second) {
+        if (group == null) return false;
+        return removeEdge(group, first, second, Set.of(first, second));
     }
 
     public void removeNodeFromGroup(G group, N node) {
         if (group == null || node == null) return;
         Endpoint<N, G> endpoint = resolver.apply(node);
         if (endpoint == null || !endpoint.belongsTo(group)) return;
+
         try (Edit ignored = endpoint.beginEdit()) {
             for (N target : List.copyOf(endpoint.linked(group))) {
                 removeEdge(group, node, target, Set.of(node));
@@ -80,9 +93,9 @@ public final class ReciprocalLinkGraph<N, G> {
                 Endpoint<N, G> remoteEndpoint = resolver.apply(remote);
                 if (remoteEndpoint == null || !remoteEndpoint.belongsTo(group)) {
                     prunedInvalidEdge |= removeEdge(group, node, remote, Set.of(node));
-                } else if (!remoteEndpoint.linked(group).contains(node)) {
-                    addEdge(group, node, remote);
+                    continue;
                 }
+                if (!remoteEndpoint.linked(group).contains(node)) addEdge(group, node, remote);
             }
         }
         if (prunedInvalidEdge) endpoint.cleanup();
@@ -147,6 +160,9 @@ public final class ReciprocalLinkGraph<N, G> {
         if (edit != null) edit.close();
     }
 
+    /**
+     * 由存储适配器实现的单端点受控写接口。
+     */
     public interface Endpoint<N, G> {
         boolean belongsTo(G group);
 
@@ -171,6 +187,9 @@ public final class ReciprocalLinkGraph<N, G> {
         void cleanup();
     }
 
+    /**
+     * 不抛受检异常的领域编辑作用域。
+     */
     @FunctionalInterface
     public interface Edit extends AutoCloseable {
         @Override

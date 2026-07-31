@@ -37,4 +37,3 @@ public final class VersionGate<K> {
         highestVersions.clear();
     }
 }
-

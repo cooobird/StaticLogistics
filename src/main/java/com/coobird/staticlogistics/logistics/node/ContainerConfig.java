@@ -22,17 +22,22 @@ import java.util.function.Consumer;
 public class ContainerConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private int cachedSpeedMult = 1;
-    private int cachedRangeMult = 1;
-    private int cachedStackMult = 1;
+    private long cachedSpeedMult = 1;
+    private long cachedRangeMult = 1;
+    private long cachedStackMult = 1;
     private boolean cachedDimEffective = false;
     private int cachedActualInterval = -1; // 缓存冷却间隔
     private boolean cacheDirty = true;
     private long configGenAtCache = -1; // 追踪配置代数，重载时自动失效
-    public static final int INFINITY_MARKER = Integer.MAX_VALUE;
+    public static final long INFINITY_MARKER = Long.MAX_VALUE;
     private BlockPos pos = BlockPos.ZERO;
 
-    private final ItemStackHandler upgrades = new ItemStackHandler(3) {
+    public static final int SPEED_SLOT = 0;
+    public static final int RANGE_OR_DIMENSION_SLOT = 1;
+    public static final int STACK_SLOT = 2;
+    public static final int UPGRADE_SLOT_COUNT = 3;
+
+    private final ItemStackHandler upgrades = new ItemStackHandler(UPGRADE_SLOT_COUNT) {
         @Override
         protected void onContentsChanged(int slot) {
             markDirty();
@@ -64,7 +69,7 @@ public class ContainerConfig {
     }
 
     public Set<FaceAddress> getLinkedFaceKeys() {
-        return linkedFaceKeys;
+        return Set.copyOf(linkedFaceKeys);
     }
 
     public void linkFace(FaceAddress faceKey) {
@@ -142,17 +147,14 @@ public class ContainerConfig {
                         stack = multiplyWithOverflowCheck(stack, totalValue);
                     }
                 }
-                LOGGER.debug("Upgrade: type={}, tier={}, count={}, totalValue={}, range now={}",
-                    type, tier, count, totalValue, range);
             } else if (type == UpgradeType.DIMENSION) {
                 dim = true;
-                LOGGER.debug("Dimension upgrade found");
             }
         }
 
-        this.cachedSpeedMult = (int) Math.min(speed, INFINITY_MARKER);
-        this.cachedRangeMult = (int) Math.min(range, INFINITY_MARKER);
-        this.cachedStackMult = (int) Math.min(stack, INFINITY_MARKER);
+        this.cachedSpeedMult = Math.min(speed, INFINITY_MARKER);
+        this.cachedRangeMult = Math.min(range, INFINITY_MARKER);
+        this.cachedStackMult = Math.min(stack, INFINITY_MARKER);
         this.cachedDimEffective = dim;
         this.cacheDirty = false;
 
@@ -160,8 +162,6 @@ public class ContainerConfig {
         int baseInterval = SLConfig.getDefaultTickInterval();
         this.cachedActualInterval = LogisticsCalculator.calcSpeedInterval(baseInterval, cachedSpeedMult);
 
-        LOGGER.debug("ContainerConfig cache updated: speed={}, range={}, stack={}, dim={}",
-            cachedSpeedMult, cachedRangeMult, cachedStackMult, cachedDimEffective);
     }
 
     /**
@@ -183,6 +183,7 @@ public class ContainerConfig {
      */
     public void markDirty() {
         this.cacheDirty = true;
+        this.cachedActualInterval = -1;
         if (onDirty != null) onDirty.accept(this);
     }
 

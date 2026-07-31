@@ -3,11 +3,13 @@ package com.coobird.staticlogistics.client.gui.component;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.transfer.UpgradeType;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
@@ -20,10 +22,10 @@ import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
-import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -127,10 +129,10 @@ public class FilterGridWidget {
         Component carriedItemName = null;
         Component carriedFluidName = null;
         if (!carried.isEmpty()) {
-            carriedItemName = carried.getDisplayName();
-            var fluidCapOpt = carried.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM);
-            if (fluidCapOpt.isPresent()) {
-                IFluidHandler fluidCap = fluidCapOpt.orElse(null);
+            carriedItemName = carried.getHoverName();
+            var fluidCapOptional = carried.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM);
+            if (fluidCapOptional.isPresent()) {
+                IFluidHandler fluidCap = fluidCapOptional.orElse(null);
                 FluidStack stored = fluidCap.drain(Integer.MAX_VALUE, IFluidHandler.FluidAction.SIMULATE);
                 if (!stored.isEmpty()) {
                     carriedFluidName = stored.getDisplayName();
@@ -153,8 +155,8 @@ public class FilterGridWidget {
                         tooltip.add(fs.getDisplayName());
                         if (mc != null && mc.options.advancedItemTooltips) {
                             tooltip.add(Component.literal(
-                                    ForgeRegistries.FLUIDS.getKey(fluid).toString())
-                                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                                    BuiltInRegistries.FLUID.getKey(fluid).toString())
+                                .withStyle(ChatFormatting.DARK_GRAY));
                         }
                         g.renderComponentTooltip(font, tooltip, mx, my);
                         return;
@@ -164,16 +166,15 @@ public class FilterGridWidget {
                     if (!stack.isEmpty()) {
                         TooltipFlag flag = mc.options.advancedItemTooltips
                             ? TooltipFlag.ADVANCED : TooltipFlag.NORMAL;
-                        List<Component> tooltip = stack.getTooltipLines(
-                            mc.player, flag);
+                        List<Component> tooltip = stack.getTooltipLines(mc.player, flag);
                         if (hasCarriedFluid) {
                             tooltip.add(Component.empty());
                             tooltip.add(Component.translatable(
                                     "gui.staticlogistics.filter.left_click_item", carriedItemName)
-                                .withStyle(net.minecraft.ChatFormatting.GRAY));
+                                .withStyle(ChatFormatting.GRAY));
                             tooltip.add(Component.translatable(
                                     "gui.staticlogistics.filter.right_click_fluid", carriedFluidName)
-                                .withStyle(net.minecraft.ChatFormatting.GRAY));
+                                .withStyle(ChatFormatting.GRAY));
                         }
                         g.renderComponentTooltip(font, tooltip, mx, my);
                         return;
@@ -183,12 +184,12 @@ public class FilterGridWidget {
                     if (!carried.isEmpty()) {
                         emptyTooltip.add(Component.translatable(
                                 "gui.staticlogistics.filter.left_click_item", carriedItemName)
-                            .withStyle(net.minecraft.ChatFormatting.GRAY));
+                            .withStyle(ChatFormatting.GRAY));
                     }
                     if (hasCarriedFluid) {
                         emptyTooltip.add(Component.translatable(
                                 "gui.staticlogistics.filter.right_click_fluid", carriedFluidName)
-                            .withStyle(net.minecraft.ChatFormatting.GRAY));
+                            .withStyle(ChatFormatting.GRAY));
                     }
                     if (!emptyTooltip.isEmpty()) {
                         g.renderComponentTooltip(font, emptyTooltip, mx, my);
@@ -198,8 +199,6 @@ public class FilterGridWidget {
             }
         }
     }
-
-    // ---- 悬停检测 ----
 
     /**
      * 返回鼠标悬停的槽位索引，-1 表示未命中
@@ -325,14 +324,13 @@ public class FilterGridWidget {
             for (int i = 0; i < handler.getTanks(); i++) {
                 FluidStack fs = handler.getFluidInTank(i);
                 if (!fs.isEmpty()) {
-                    ForgeRegistries.FLUIDS.getHolder(fs.getFluid())
-                        .ifPresent(holder -> holder.tags().forEach(all::add));
+                    BuiltInRegistries.FLUID.wrapAsHolder(fs.getFluid()).tags().forEach(all::add);
                 }
             }
         }
         // 去重
         return all.stream().distinct()
-            .sorted(java.util.Comparator.comparing(a -> a.location().toString()))
+            .sorted(Comparator.comparing(a -> a.location().toString()))
             .toList();
     }
 }

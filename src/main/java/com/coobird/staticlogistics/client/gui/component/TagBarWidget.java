@@ -5,16 +5,18 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -64,7 +66,7 @@ public class TagBarWidget {
 
     public static class State {
         public final int[] selectedTagIndices = new int[4];
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings("unchecked")
         public final List<EnhancedTagOption>[] tagOptionsCache = new List[4];
         public int hoveredTagBarRow = -1;
         public DropdownLayout dropdownLayout;
@@ -132,9 +134,14 @@ public class TagBarWidget {
         for (int row = 0; row < 4; row++) {
             int y = startY + row * FilterGridWidget.SLOT_SIZE;
 
-            g.blit(SLGuiTextures.GUI_ATLAS, startX, y, btnU, btnV, 2, barHeight, 512, 512);
-            g.blit(SLGuiTextures.GUI_ATLAS, startX + barWidth - 2, y, btnU + btnW - 2, btnV, 2, barHeight, 512, 512);
-            g.blit(SLGuiTextures.GUI_ATLAS, startX + 2, y, barWidth - 4, barHeight, btnU + 2, btnV, 1, barHeight, 512, 512);
+            g.blit(SLGuiTextures.GUI_ATLAS, startX, y, btnU, btnV,
+                2, barHeight, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+            g.blit(SLGuiTextures.GUI_ATLAS, startX + barWidth - 2, y,
+                btnU + btnW - 2, btnV, 2, barHeight,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+            g.blit(SLGuiTextures.GUI_ATLAS, startX + 2, y,
+                barWidth - 4, barHeight, btnU + 2, btnV, 1, barHeight,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
             Set<TagKey<Item>> itemTags = access.getSlotTags(row);
             Set<TagKey<Fluid>> fluidTags = access.getSlotFluidTags(row);
@@ -157,16 +164,19 @@ public class TagBarWidget {
             int delBtnX = startX + barWidth + 3;
             g.blit(SLGuiTextures.GUI_ATLAS, delBtnX, y,
                 SLGuiTextures.Button.Middle.DISABLED_U, SLGuiTextures.Button.Middle.DISABLED_V,
-                19, 17, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+                SLGuiTextures.Icon.WIDTH, SLGuiTextures.Button.Middle.HEIGHT,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
             g.blit(SLGuiTextures.GUI_ATLAS, delBtnX, y,
                 SLGuiTextures.DeleteTag.U, SLGuiTextures.DeleteTag.V,
-                19, 15, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+                SLGuiTextures.DeleteTag.WIDTH, SLGuiTextures.DeleteTag.HEIGHT,
+                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
 
             if (!overOpenDropdown && mx >= startX && mx < startX + barWidth
                 && my >= y && my < y + barHeight)
                 state.hoveredTagBarRow = row;
-            if (!overOpenDropdown && mx >= delBtnX && mx < delBtnX + 19
-                && my >= y && my < y + 17)
+            if (!overOpenDropdown
+                && mx >= delBtnX && mx < delBtnX + SLGuiTextures.DeleteTag.WIDTH
+                && my >= y && my < y + SLGuiTextures.Button.Middle.HEIGHT)
                 hoveredDelButtonRow = row;
         }
 
@@ -181,13 +191,11 @@ public class TagBarWidget {
             state.dropdownLayout = null;
         }
 
-        // 删除按钮 tooltip
         if (hoveredDelButtonRow >= 0) {
             g.renderTooltip(font, Component.translatable("gui.staticlogistics.clear_tags"), mx, my);
         }
     }
 
-    // 下拉框渲染
     private static void renderDropdown(GuiGraphics g, Font font, int leftPos, int topPos,
                                        int mx, int my, State state, TagSlotAccess access,
                                        FilterGridWidget.FilterSlotProvider slotProvider,
@@ -383,7 +391,9 @@ public class TagBarWidget {
             int delBtnX = startX + WIDTH + 3;
 
             // 删除按钮
-            if (mx >= delBtnX && mx < delBtnX + 19 && my >= y && my < y + 17) {
+            if (mx >= delBtnX
+                && mx < delBtnX + SLGuiTextures.DeleteTag.WIDTH
+                && my >= y && my < y + SLGuiTextures.Button.Middle.HEIGHT) {
                 if (button == 0) {
                     access.clearSlotTags(row);
                     access.clearSlotFluidTags(row);
@@ -499,20 +509,19 @@ public class TagBarWidget {
         if (stack.isEmpty()) return List.of();
         List<EnhancedTagOption> all = new ArrayList<>();
         stack.getTags().forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.ITEM)));
-        if (stack.getItem() instanceof net.minecraft.world.item.BlockItem blockItem) {
+        if (stack.getItem() instanceof BlockItem blockItem) {
             blockItem.getBlock().defaultBlockState().getTags()
                 .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.BLOCK)));
         }
-        var fluidHandlerOpt = stack.getCapability(
-            net.minecraftforge.common.capabilities.ForgeCapabilities.FLUID_HANDLER_ITEM);
-        if (fluidHandlerOpt.isPresent()) {
-            var fluidHandler = fluidHandlerOpt.orElse(null);
+        var fluidHandlerOptional = stack.getCapability(
+            ForgeCapabilities.FLUID_HANDLER_ITEM);
+        if (fluidHandlerOptional.isPresent()) {
+            var fluidHandler = fluidHandlerOptional.orElse(null);
             for (int i = 0; i < fluidHandler.getTanks(); i++) {
                 FluidStack fs = fluidHandler.getFluidInTank(i);
                 if (!fs.isEmpty()) {
-                    ForgeRegistries.FLUIDS.getHolder(fs.getFluid()).ifPresent(holder ->
-                        holder.tags().forEach(tag ->
-                            all.add(new EnhancedTagOption(tag, TagType.FLUID))));
+                    BuiltInRegistries.FLUID.wrapAsHolder(fs.getFluid()).tags()
+                        .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID)));
                 }
             }
         }
@@ -528,9 +537,8 @@ public class TagBarWidget {
     public static List<EnhancedTagOption> collectEnhancedTagOptionsForFluid(Fluid fluid) {
         if (fluid == null) return List.of();
         List<EnhancedTagOption> all = new ArrayList<>();
-        ForgeRegistries.FLUIDS.getHolder(fluid).ifPresent(holder ->
-            holder.tags().forEach(tag ->
-                all.add(new EnhancedTagOption(tag, TagType.FLUID))));
+        BuiltInRegistries.FLUID.wrapAsHolder(fluid).tags()
+            .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID)));
         Map<ResourceLocation, EnhancedTagOption> unique = new LinkedHashMap<>();
         for (EnhancedTagOption opt : all) {
             unique.putIfAbsent(opt.rawTag.location(), opt);

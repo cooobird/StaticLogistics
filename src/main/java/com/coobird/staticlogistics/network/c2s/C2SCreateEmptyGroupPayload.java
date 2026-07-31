@@ -7,6 +7,7 @@ import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -43,13 +44,18 @@ public record C2SCreateEmptyGroupPayload(String groupId) implements IPortPacket.
         boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
             || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
         if (!holdsTool || player.getServer() == null) return;
+        if (!ServerPacketRateLimiter.allow(
+            player, ServerPacketRateLimiter.Action.GROUP_CREATION)) return;
         try {
             String normalized = GroupConstraints.normalizeName(groupId());
+            PlayerGroupStore store = PlayerGroupStore.get(player.getServer());
+            boolean isNewGroup = store.findGroup(player.getUUID(), normalized) == null;
             var created = new GroupCommandService(player.getServer()).create(player, normalized);
             LinkConfiguratorSelection.select(player, created);
-            TeamPacketSync.send(player, new S2CGroupDirectoryPayload(
-                player.getUUID(), PlayerGroupStore.get(player.getServer())
-                .getGroupRefs(player.getUUID())));
+            if (isNewGroup) {
+                TeamPacketSync.send(player, player.getUUID(), new S2CGroupDirectoryPayload(
+                    player.getUUID(), store.getGroupRefs(player.getUUID())));
+            }
         } catch (IllegalArgumentException | IllegalStateException ignored) {
             // 无效请求不改变服务端状态。
         }

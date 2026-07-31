@@ -11,7 +11,6 @@ import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.*;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
-import com.coobird.staticlogistics.transfer.LogisticsCalculator;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.ChatFormatting;
@@ -154,38 +153,7 @@ public class LinkOperationHelper {
             FaceConfigComposite srcCfg = srcMgr.getFaceConfig(FaceAddress.of(srcNode));
             if (srcCfg != null && !srcCfg.canPlayerModify(player)) continue;
 
-            ContainerConfig senderContainer = srcMgr.getContainerConfig(srcNode.gPos().pos());
-            if (senderContainer == null) {
-                senderContainer = srcMgr.getOrCreateContainerConfig(srcNode.gPos().pos());
-            }
-
-            // 范围升级以发送端容器为准。存入模式下发送端是当前点击的节点（currentNode）
-            ContainerConfig rangeContainer;
-            BlockPos senderPos;
-            BlockPos receiverPos;
-            if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
-                // 存入模式：stored=输入端，current=输出端 → 范围来自输出端
-                rangeContainer = LinkManager.get(level).getOrCreateContainerConfig(currentNode.gPos().pos());
-                senderPos = currentNode.gPos().pos();
-                receiverPos = srcNode.gPos().pos();
-            } else {
-                // 提取模式：stored=输出端，current=输入端 → 范围来自输出端
-                rangeContainer = senderContainer;
-                senderPos = srcNode.gPos().pos();
-                receiverPos = currentNode.gPos().pos();
-            }
-
-            boolean sameDim = srcNode.isInSameDimension(currentNode);
-            if (!sameDim && !LogisticsCalculator.isDimensionEffective(rangeContainer)) {
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.no_dimension_upgrade").withStyle(ChatFormatting.RED), true);
-                continue;
-            }
-            if (sameDim && LogisticsCalculator.isOutOfRange(senderPos, receiverPos, rangeContainer)) {
-                double maxDist = LogisticsCalculator.getMaxTransferDistance(rangeContainer);
-                player.displayClientMessage(Component.translatable("msg.staticlogistics.out_of_range", (int) maxDist).withStyle(ChatFormatting.RED), true);
-                continue;
-            }
-
+            // 距离和跨维度升级属于传输能力，不作为创建拓扑的前置条件。
             if (performSingleLink(level, currentNode, srcNode, group, settings, player)) {
                 linkedCount++;
             }
@@ -271,9 +239,9 @@ public class LinkOperationHelper {
             transaction.commit();
         }
 
-        TeamPacketSync.sendTopology(serverPlayer, List.of(
-            S2CTopologyUpdatePayload.FaceUpdate.from(current, currentCfg),
-            S2CTopologyUpdatePayload.FaceUpdate.from(stored, storedCfg)));
+        TeamPacketSync.sendTopology(serverPlayer, group.key().ownerId(), List.of(
+            S2CTopologyUpdatePayload.FaceUpdate.from(level, current, currentCfg),
+            S2CTopologyUpdatePayload.FaceUpdate.from(storedLevel, stored, storedCfg)));
 
         return true;
     }
@@ -285,11 +253,17 @@ public class LinkOperationHelper {
                 .resolveOrCreateGroup(player.getUUID(), displayName);
         }
         GroupRef selected = PlayerGroupStore.get(player.getServer()).findGroup(selectedKey);
-        if (selected == null || !selected.displayName().equals(displayName)
-            || !GroupService.canModify(selected.key().ownerId(), player)) {
+        if (selected != null) {
+            if (!GroupService.canModify(selected.key().ownerId(), player)) {
+                throw new IllegalArgumentException("Selected group is unavailable");
+            }
+            return selected;
+        }
+        if (!selectedKey.ownerId().equals(player.getUUID())) {
             throw new IllegalArgumentException("Selected group is unavailable");
         }
-        return selected;
+        return PlayerGroupStore.get(player.getServer())
+            .resolveOrCreateGroup(player.getUUID(), displayName);
     }
 
     /**

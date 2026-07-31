@@ -18,8 +18,6 @@ public record NodeQuerySnapshot(
     NodeRole role,
     boolean inputEnabled,
     boolean outputEnabled,
-    int inputChannel,
-    int outputChannel,
     int priority,
     int keepStock,
     ResourceLocation strategyId,
@@ -52,7 +50,7 @@ public record NodeQuerySnapshot(
 
     public NodeQuerySnapshot withStats(long sent, long received, double rate, long lastAgeTicks) {
         return new NodeQuerySnapshot(
-            groups, groupKeys, role, inputEnabled, outputEnabled, inputChannel, outputChannel,
+            groups, groupKeys, role, inputEnabled, outputEnabled,
             priority, keepStock, strategyId, strategyDescriptionId, extractionMode,
             extractionDescriptionId, ownerId, ownerName, version, selectedTypeIds,
             presentTypeIds, outputTypeIds, acceptedTypeIds, linkedNodes,

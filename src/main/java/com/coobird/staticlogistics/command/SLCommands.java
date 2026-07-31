@@ -9,6 +9,7 @@ import com.coobird.staticlogistics.logistics.node.ContainerConfig;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.transfer.*;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
@@ -27,6 +28,7 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -80,12 +82,6 @@ public class SLCommands {
                     .executes(SLCommands::resetStats)))
             .then(Commands.literal("list")
                 .executes(SLCommands::listNodes))
-            .then(Commands.literal("debug")
-                .executes(SLCommands::showDebugOverview)
-                .then(Commands.literal("cache")
-                    .executes(SLCommands::showCacheDebug))
-                .then(Commands.literal("types")
-                    .executes(SLCommands::showTypeDebug)))
         );
     }
 
@@ -127,38 +123,35 @@ public class SLCommands {
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_configs_title").withStyle(ChatFormatting.GOLD), false);
         boolean found = false;
         for (Direction dir : Direction.values()) {
-            FaceAddress key = FaceAddress.of(pos, dir);
-            FaceConfigComposite config = manager.getFaceConfig(key);
-            if (config != null && !config.isDefault()) {
+            NodeQuerySnapshot snapshot = NodeQueryService.query(level, pos, dir).orElse(null);
+            if (snapshot != null) {
                 found = true;
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_direction", dir.getName()).withStyle(ChatFormatting.AQUA), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.group",
-                    config.faceConfig.getGroupId()).withStyle(ChatFormatting.WHITE), false);
-                UUID ownerUuid = config.faceConfig.getOwner();
+                    snapshot.groups().isEmpty() ? "" : snapshot.groups().get(0)).withStyle(ChatFormatting.WHITE), false);
+                UUID ownerUuid = snapshot.ownerId();
                 Component ownerText = (ownerUuid == null)
                     ? Component.translatable("msg.staticlogistics.unknown_owner")
-                    : Component.literal(config.faceConfig.getOwnerName());
+                    : Component.literal(snapshot.ownerName());
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.owner", ownerText.copy()), false);
 
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.global_input",
-                    config.isGlobalInputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
+                    snapshot.inputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
                 ).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.global_output",
-                    config.isGlobalOutputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
+                    snapshot.outputEnabled() ? Component.translatable("commands.staticlogistics.info.enabled") : Component.translatable("commands.staticlogistics.info.disabled")
                 ).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.input_channel", config.linkConfig.getInputChannel()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.output_channel", config.linkConfig.getOutputChannel()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.strategy", config.linkConfig.getStrategy().getDisplayName()).withStyle(ChatFormatting.GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.priority", config.linkConfig.getPriority()).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.strategy", Component.translatable(snapshot.strategyDescriptionId())).withStyle(ChatFormatting.GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.priority", snapshot.priority()).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.role_version",
-                    config.determineRole().name().toLowerCase(), config.getVersion()).withStyle(ChatFormatting.GRAY), false);
+                    snapshot.role().name().toLowerCase(), snapshot.version()).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.selected_types",
-                    formatSelectedTypes(config)).withStyle(ChatFormatting.GRAY), false);
+                    formatTypes(snapshot.selectedTypeIds())).withStyle(ChatFormatting.GRAY), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.present_capabilities",
-                    formatPresentTypes(level, pos, dir)).withStyle(ChatFormatting.DARK_AQUA), false);
+                    formatTypes(snapshot.presentTypeIds())).withStyle(ChatFormatting.DARK_AQUA), false);
                 source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes_detail",
-                    formatLinkedNodes(config)).withStyle(ChatFormatting.DARK_GRAY), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes", config.getLinkedNodes().size()).withStyle(ChatFormatting.DARK_GRAY), false);
+                    formatLinkedNodes(snapshot.linkedNodes())).withStyle(ChatFormatting.DARK_GRAY), false);
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.linked_nodes", snapshot.linkedNodes().size()).withStyle(ChatFormatting.DARK_GRAY), false);
             }
         }
         if (!found) {
@@ -167,36 +160,23 @@ public class SLCommands {
         return 1;
     }
 
-    private static String formatSelectedTypes(FaceConfigComposite config) {
-        if (config.getSelectedTypeIds().isEmpty()) return "-";
-        return config.getSelectedTypeIds().stream()
+    private static String formatTypes(List<ResourceLocation> typeIds) {
+        if (typeIds.isEmpty()) return "-";
+        return typeIds.stream()
             .map(Object::toString)
             .collect(Collectors.joining(", "));
     }
 
-    private static String formatPresentTypes(ServerLevel level, BlockPos pos, Direction face) {
-        List<String> present = new ArrayList<>();
-        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
-            try {
-                if (type.isPresent(level, pos, face)) {
-                    present.add(type.typeId().toString());
-                }
-            } catch (Exception e) {
-                present.add(type.typeId() + "=error");
-            }
+    private static Component formatLinkedNodes(List<LogisticsNode> linkedNodes) {
+        if (linkedNodes.isEmpty()) return Component.literal("-");
+        List<LogisticsNode> nodes = linkedNodes.stream().limit(5).toList();
+        var result = Component.empty();
+        for (int index = 0; index < nodes.size(); index++) {
+            if (index > 0) result.append(Component.literal("; "));
+            result.append(NodeDisplayText.details(nodes.get(index)));
         }
-        return present.isEmpty() ? "-" : String.join(", ", present);
-    }
-
-    private static String formatLinkedNodes(FaceConfigComposite config) {
-        if (config.getLinkedNodes().isEmpty()) return "-";
-        List<String> nodes = config.getLinkedNodes().stream()
-            .limit(5)
-            .map(node -> node.gPos().dimension().location() + " "
-                + node.gPos().pos().toShortString() + " " + node.face().getName())
-            .toList();
-        String suffix = config.getLinkedNodes().size() > nodes.size() ? " ..." : "";
-        return String.join("; ", nodes) + suffix;
+        if (linkedNodes.size() > nodes.size()) result.append(Component.literal(" ..."));
+        return result;
     }
 
     /**
@@ -208,13 +188,13 @@ public class SLCommands {
         ServerPlayer toPlayer = EntityArgument.getPlayer(context, "to");
         MinecraftServer server = context.getSource().getServer();
 
-        int count = new OwnershipTransferService(server, GlobalLogisticsManager.get(server))
-            .transfer(context.getSource(), fromProfile.getId(), toPlayer, null);
-
-        int finalCount = count;
+        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(server);
+        int finalCount = new OwnershipTransferService(
+            server, globalManager).transfer(context.getSource(), fromProfile.getId(), toPlayer, null);
+        if (finalCount == 0) return 0;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.success",
             finalCount, fromProfile.getName(), toPlayer.getDisplayName()), true);
-        return count;
+        return finalCount;
     }
 
     /**
@@ -227,13 +207,13 @@ public class SLCommands {
         ServerPlayer toPlayer = EntityArgument.getPlayer(context, "to");
         MinecraftServer server = context.getSource().getServer();
 
-        int count = new OwnershipTransferService(server, GlobalLogisticsManager.get(server))
-            .transfer(context.getSource(), fromProfile.getId(), toPlayer, groupId);
-
-        int finalCount = count;
+        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(server);
+        int finalCount = new OwnershipTransferService(
+            server, globalManager).transfer(context.getSource(), fromProfile.getId(), toPlayer, groupId);
+        if (finalCount == 0) return 0;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.group_success",
             finalCount, groupId, toPlayer.getDisplayName()), true);
-        return count;
+        return finalCount;
     }
 
     /**
@@ -250,8 +230,13 @@ public class SLCommands {
         if (player == null) return 0;
 
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
-        if (!GroupService.renameGroupAsAdmin(
-            level, player, profile.getId(), oldGroup, newGroup, globalManager)) return 0;
+        boolean renamed = GroupService.renameGroupAsAdmin(
+            level, player, profile.getId(), oldGroup, newGroup, globalManager);
+        if (!renamed) {
+            context.getSource().sendFailure(Component.translatable(
+                "commands.staticlogistics.rename.failed", oldGroup, profile.getName()));
+            return 0;
+        }
 
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.rename.success",
             oldGroup, newGroup, profile.getName()), true);
@@ -346,7 +331,7 @@ public class SLCommands {
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.recent_header", size).withStyle(ChatFormatting.AQUA), false);
         java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("HH:mm:ss");
         for (TransferEntry e : recent) {
-            String time = fmt.format(new java.util.Date(e.timestamp()));
+            String time = fmt.format(new Date(e.timestamp()));
             String srcStr = String.format("%d,%d,%d", e.sx(), e.sy(), e.sz());
             String dstStr = String.format("%d,%d,%d", e.tx(), e.ty(), e.tz());
             String mark = e.success() ? "\u2713" : "\u2717";
@@ -369,7 +354,7 @@ public class SLCommands {
         for (var entry : mgr.getTopNodes(count, true)) {
             NodeStats ns = entry.getValue();
             int r = rArr[0];
-            String posStr = String.format("%d,%d,%d", ns.posX, ns.posY, ns.posZ);
+            String posStr = String.format("%s %d,%d,%d", ns.dim, ns.posX, ns.posY, ns.posZ);
             long sc = ns.sentCount;
             long sa = ns.sentAmount;
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_line", r, ns.face, posStr, sc, sa)
@@ -382,7 +367,7 @@ public class SLCommands {
         for (var entry : mgr.getTopNodes(count, false)) {
             NodeStats ns = entry.getValue();
             int r = rArr[0];
-            String posStr = String.format("%d,%d,%d", ns.posX, ns.posY, ns.posZ);
+            String posStr = String.format("%s %d,%d,%d", ns.dim, ns.posX, ns.posY, ns.posZ);
             long rc = ns.receivedCount;
             long ra = ns.receivedAmount;
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.top_recv_line", r, ns.face, posStr, rc, ra)
@@ -427,89 +412,6 @@ public class SLCommands {
                         posStr, node.face().getName(), role.name().toLowerCase())
                     .withStyle(ChatFormatting.GRAY), false);
             }
-        }
-        return 1;
-    }
-
-    private static int showDebugOverview(CommandContext<CommandSourceStack> ctx) {
-        var source = ctx.getSource();
-        var cacheStats = CapabilityCache.snapshotStats();
-        var schedulerStats = collectSchedulerStats(source.getServer());
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.header").withStyle(ChatFormatting.GOLD), false);
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.transfer_types",
-            TransferRegistries.getAllActive().size(), TransferRegistries.generation()).withStyle(ChatFormatting.GRAY), false);
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache",
-                cacheStats.dimensions(), cacheStats.entries(), cacheStats.liveEntries(), cacheStats.staleEntries())
-            .withStyle(ChatFormatting.GRAY), false);
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.scheduler",
-                schedulerStats.lastMicros(), schedulerStats.peakMicros(),
-                schedulerStats.averageMicros(), schedulerStats.candidates(),
-                schedulerStats.attempts(), schedulerStats.budgetStops())
-            .withStyle(ChatFormatting.GRAY), false);
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.help")
-            .withStyle(ChatFormatting.DARK_GRAY), false);
-        return 1;
-    }
-
-    private static int showCacheDebug(CommandContext<CommandSourceStack> ctx) {
-        CapabilityCache.cleanStaleEntries();
-        var stats = CapabilityCache.snapshotStats();
-        ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_header")
-            .withStyle(ChatFormatting.GOLD), false);
-        ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.cache_stats",
-            stats.dimensions(), stats.entries(), stats.liveEntries(), stats.staleEntries()).withStyle(ChatFormatting.GRAY), false);
-        return 1;
-    }
-
-    private static SchedulerDebugStats collectSchedulerStats(MinecraftServer server) {
-        int dimensions = 0;
-        long lastNanos = 0L;
-        long peakNanos = 0L;
-        long averageNanos = 0L;
-        long budgetStops = 0L;
-        int candidates = 0;
-        int attempts = 0;
-        for (ServerLevel level : server.getAllLevels()) {
-            dimensions++;
-            var stats = LogisticsTicker.getSchedulerStats(server, level.dimension());
-            lastNanos += stats.lastNanos();
-            peakNanos = Math.max(peakNanos, stats.peakNanos());
-            averageNanos += stats.averageNanos();
-            budgetStops += stats.budgetStops();
-            candidates += stats.candidates();
-            attempts += stats.attempts();
-        }
-        long averageMicros = dimensions == 0 ? 0L
-            : averageNanos / dimensions / 1_000L;
-        return new SchedulerDebugStats(
-            lastNanos / 1_000L,
-            peakNanos / 1_000L,
-            averageMicros,
-            budgetStops,
-            candidates,
-            attempts
-        );
-    }
-
-    private record SchedulerDebugStats(
-        long lastMicros,
-        long peakMicros,
-        long averageMicros,
-        long budgetStops,
-        int candidates,
-        int attempts
-    ) {
-    }
-
-    private static int showTypeDebug(CommandContext<CommandSourceStack> ctx) {
-        var source = ctx.getSource();
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.types_header")
-            .withStyle(ChatFormatting.GOLD), false);
-        for (LogisticsResource<?> type : TransferRegistries.getAllActive()) {
-            boolean hasHandler = TransferRegistries.getHandler(type) != null;
-            boolean legacyMask = type.bitOffset() >= 0 && type.bitOffset() < Integer.SIZE;
-            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.debug.type_line",
-                type.typeId().toString(), type.bitOffset(), legacyMask, hasHandler).withStyle(ChatFormatting.GRAY), false);
         }
         return 1;
     }

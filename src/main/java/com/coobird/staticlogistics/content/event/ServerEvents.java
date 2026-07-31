@@ -64,6 +64,7 @@ public class ServerEvents {
         BlueprintUndoManager.release(event.getServer());
         com.coobird.staticlogistics.transfer.TransferLogManager.release(event.getServer());
         com.coobird.staticlogistics.transfer.LogisticsTicker.release(event.getServer());
+        com.coobird.staticlogistics.logistics.group.ConnectionCommandService.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
         com.coobird.staticlogistics.transfer.NodeQueryService.release(event.getServer());
     }

@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.client.gui.screen;
 
+import com.coobird.staticlogistics.client.gui.component.TitleBar;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import com.coobird.staticlogistics.network.SLNetwork;
@@ -58,8 +59,7 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
 
     @Override
     protected void sendFilterUpdate() {
-        SLNetwork.HANDLER.sendToServer(new C2SUpdateFilterOnHandPayload(
-            menu.getFilterData()));
+        SLNetwork.HANDLER.sendToServer(new C2SUpdateFilterOnHandPayload(menu.getFilterData()));
     }
 
     @Override
@@ -70,22 +70,7 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
 
     private void renderTitle(GuiGraphics g) {
         String text = Component.translatable("gui.staticlogistics.hand_filter").getString();
-        int tw = 110, tx = leftPos + (SLGuiTextures.Background.WIDTH - tw) / 2,
-            ty = topPos - 8;
-        g.blit(SLGuiTextures.GUI_ATLAS, tx + tw - 2, ty,
-            SLGuiTextures.Title.U + SLGuiTextures.Button.Small.DISABLED_WIDTH - 2,
-            SLGuiTextures.Title.V, 2, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        g.blit(SLGuiTextures.GUI_ATLAS, tx, ty,
-            SLGuiTextures.Title.U, SLGuiTextures.Title.V,
-            2, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        g.blit(SLGuiTextures.GUI_ATLAS, tx + 2, ty,
-            tw - 4, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.Title.U + 2, SLGuiTextures.Title.V,
-            1, SLGuiTextures.Button.Small.DISABLED_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        g.drawString(this.font, text,
-            tx + (tw - this.font.width(text)) / 2, ty + 4, 0x98FB98, false);
+        TitleBar.render(g, font, leftPos, topPos,
+            SLGuiTextures.Background.WIDTH, text);
     }
 }

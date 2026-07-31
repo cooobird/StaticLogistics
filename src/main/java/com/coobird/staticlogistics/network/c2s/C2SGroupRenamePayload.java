@@ -54,7 +54,7 @@ public record C2SGroupRenamePayload(GroupKey groupKey, String newGroupId) implem
         var result = store.findGroup(groupKey().ownerId(), newGroupId());
         LinkConfiguratorSelection.replaceIfSelected(
             player, target.key(), target.displayName(), result);
-        TeamPacketSync.send(player, new S2CGroupDirectoryPayload(
+        TeamPacketSync.send(player, groupKey().ownerId(), new S2CGroupDirectoryPayload(
             groupKey().ownerId(), store.getGroupRefs(groupKey().ownerId())));
     }
 }

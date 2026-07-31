@@ -30,12 +30,7 @@ public final class CapabilityCache {
     private record CacheKey(long pos, Direction face, Capability<?> capability) {
     }
 
-    private static final class CacheEntry {
-        private final LazyOptional<?> optional;
-
-        private CacheEntry(LazyOptional<?> optional) {
-            this.optional = optional;
-        }
+    private record CacheEntry(LazyOptional<?> optional) {
     }
 
     private static final class DimensionCache {

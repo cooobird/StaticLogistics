@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.logistics.blueprint;
 
-import com.coobird.staticlogistics.logistics.node.LinkConfig;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -16,6 +15,9 @@ public final class BlueprintGeometry {
     private BlueprintGeometry() {
     }
 
+    /**
+     * 将相对坐标按水平旋转映射为绝对坐标。
+     */
     public static BlockPos rotateToAbsolute(BlockPos relative, BlockPos anchor, int rotation) {
         return switch (rotation & 3) {
             case 1 -> anchor.offset(-relative.getZ(), relative.getY(), relative.getX());
@@ -25,11 +27,12 @@ public final class BlueprintGeometry {
         };
     }
 
+    /**
+     * 将面方向按水平旋转同步变换。
+     */
     public static Direction rotateDirection(Direction face, int rotation) {
         if (face.getAxis() == Direction.Axis.Y) return face;
-        Direction[] horizontal = {
-            Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST
-        };
+        Direction[] horizontal = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
         for (int index = 0; index < horizontal.length; index++) {
             if (horizontal[index] == face) {
                 return horizontal[(index + rotation) & 3];
@@ -39,7 +42,8 @@ public final class BlueprintGeometry {
     }
 
     /**
-     * 旧版只记录目标方块；仅当目标面能够唯一判定时才迁移，避免猜错连接面。
+     * 将旧版方块级链接迁移为精确端点链接。
+     * 只有目标面唯一可判定时才迁移，避免把链接猜到错误的容器面。
      */
     public static List<BlueprintData.LinkEntry> resolveLinks(
         BlueprintData.BlockEntry sourceEntry,
@@ -49,15 +53,12 @@ public final class BlueprintGeometry {
         if (!sourceFace.linkedTo().isEmpty()) return sourceFace.linkedTo();
         if (sourceEntry.linkedTo().isEmpty()) return List.of();
 
-        int outputChannel = sourceFace.faceConfig().getInt(ConfigKeys.OUTPUT_CHANNEL);
         List<BlueprintData.LinkEntry> migrated = new ArrayList<>();
         for (BlockPos targetPos : sourceEntry.linkedTo()) {
             BlueprintData.BlockEntry target = entriesByRelativePos.get(targetPos);
             if (target == null) continue;
             List<Direction> candidates = target.faces().entrySet().stream()
                 .filter(entry -> entry.getValue().faceConfig().getBoolean(ConfigKeys.GLOBAL_INPUT))
-                .filter(entry -> LinkConfig.channelsMatch(outputChannel,
-                    entry.getValue().faceConfig().getInt(ConfigKeys.INPUT_CHANNEL)))
                 .map(Map.Entry::getKey)
                 .toList();
             if (candidates.size() == 1) {
@@ -67,4 +68,3 @@ public final class BlueprintGeometry {
         return List.copyOf(migrated);
     }
 }
-

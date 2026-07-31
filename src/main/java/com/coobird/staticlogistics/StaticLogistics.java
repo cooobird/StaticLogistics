@@ -14,8 +14,6 @@ import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.Registry;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -67,9 +65,5 @@ public class StaticLogistics {
 
     public static ResourceLocation asResource(String path) {
         return ResourceLocation.fromNamespaceAndPath(MODID, path);
-    }
-
-    public static <T> ResourceKey<T> asResourceKey(ResourceKey<? extends Registry<T>> registryKey, String path) {
-        return ResourceKey.create(registryKey, asResource(path));
     }
 }

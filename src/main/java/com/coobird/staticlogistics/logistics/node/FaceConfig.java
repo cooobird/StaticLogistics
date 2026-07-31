@@ -70,6 +70,12 @@ public class FaceConfig {
         return Collections.unmodifiableSet(result);
     }
 
+    void addGroupId(Object permit, String displayName) {
+        requireMutationPermit(permit);
+        String normalized = GroupConstraints.normalizeName(displayName);
+        addGroup(permit, new GroupRef(GroupKey.migrated(owner, normalized), normalized));
+    }
+
     void addGroup(Object permit, GroupRef group) {
         requireMutationPermit(permit);
         if (group == null) return;

@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
-import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.node.*;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import net.minecraft.core.BlockPos;
@@ -47,7 +47,7 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
 
     @Override
     public void work(ServerPlayer player) {
-        if (!(player.containerMenu instanceof NodeConfiguratorMenu menu)
+        if (!(player.containerMenu instanceof LinkConfiguratorMenu menu)
             || !NodeInteractionRules.matchesTarget(
             menu.getPos(), menu.getFace(), pos, face)) return;
         FaceConfigComposite config = LinkManager.get(player.serverLevel())
@@ -65,7 +65,8 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
         if (transferType == null) return;
         NetworkHooks.openScreen(player,
             new SimpleMenuProvider((id, inventory, ignored) -> new FilterConfiguratorMenu(
-                id, inventory, pos, face, transferType, input, upgradeStack),
+                id, inventory, menu.getTargetNode(), menu.getRemoteGroupKey(),
+                transferType, input, upgradeStack),
                 Component.translatable("gui.staticlogistics.filter.title")),
             buffer -> {
                 buffer.writeBlockPos(pos);
@@ -73,6 +74,9 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
                 buffer.writeResourceLocation(transferType.typeId());
                 buffer.writeBoolean(input);
                 buffer.writeItem(upgradeStack);
+                buffer.writeResourceLocation(menu.getTargetNode().gPos().dimension().location());
+                menu.getRemoteGroupKey().STREAM_CODEC.encode(
+                    (PortRegistryFriendlyByteBuf) buffer, menu.getRemoteGroupKey());
             });
     }
 }

@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 方块被破坏时，负责以可回滚批次移交全部升级物。
+ * 掉落处理器 —— 方块实体被破坏时，将升级卡和过滤器物品掉落为实体。
  */
 public class DropHandler {
     private final ServerLevel level;
@@ -20,15 +20,17 @@ public class DropHandler {
     }
 
     /**
-     * 同一物理方块的全部升级物作为一个批次移交，生成失败时恢复原槽位。
+     * 同一物理方块的全部升级物作为一个批次移交，任一实体生成失败即整体恢复。
      */
-    public void handoffUpgrades(List<NodeLifecycleService.UpgradeSource> sources) {
+    public NodeLifecycleService.HandoffReceipt beginHandoff(
+        List<NodeLifecycleService.UpgradeSource> sources
+    ) {
         List<ExtractedUpgrade> extracted = new ArrayList<>();
         List<ItemEntity> spawned = new ArrayList<>();
         try {
             for (NodeLifecycleService.UpgradeSource source : sources) {
                 IItemHandler inventory = source.inventory();
-                for (int slot = 0; slot < inventory.getSlots(); slot++) {
+                for (int slot = source.firstSlot(); slot < source.slotLimit(); slot++) {
                     ItemStack stack = inventory.extractItem(slot, Integer.MAX_VALUE, false);
                     if (!stack.isEmpty()) {
                         extracted.add(new ExtractedUpgrade(source.pos(), inventory, slot, stack));
@@ -46,19 +48,51 @@ public class DropHandler {
                 }
                 spawned.add(entity);
             }
+            return new WorldDropReceipt(extracted, spawned);
         } catch (RuntimeException exception) {
-            spawned.forEach(ItemEntity::discard);
-            for (int index = extracted.size() - 1; index >= 0; index--) {
-                ExtractedUpgrade upgrade = extracted.get(index);
-                ItemStack remainder = upgrade.inventory()
-                    .insertItem(upgrade.slot(), upgrade.stack(), false);
-                if (!remainder.isEmpty()) {
-                    exception.addSuppressed(new IllegalStateException(
-                        "Failed to restore upgrade after handoff failure at "
-                            + upgrade.pos() + " slot " + upgrade.slot()));
-                }
-            }
+            rollback(extracted, spawned, exception);
             throw new IllegalStateException("Failed to hand off upgrade batch", exception);
+        }
+    }
+
+    private static void rollback(List<ExtractedUpgrade> extracted,
+                                 List<ItemEntity> spawned,
+                                 RuntimeException failure) {
+        spawned.forEach(ItemEntity::discard);
+        for (int index = extracted.size() - 1; index >= 0; index--) {
+            ExtractedUpgrade upgrade = extracted.get(index);
+            ItemStack remainder = upgrade.inventory()
+                .insertItem(upgrade.slot(), upgrade.stack(), false);
+            if (!remainder.isEmpty()) {
+                failure.addSuppressed(new IllegalStateException(
+                    "Failed to restore upgrade after handoff failure at "
+                        + upgrade.pos() + " slot " + upgrade.slot()));
+            }
+        }
+    }
+
+    private static final class WorldDropReceipt implements NodeLifecycleService.HandoffReceipt {
+        private final List<ExtractedUpgrade> extracted;
+        private final List<ItemEntity> spawned;
+        private boolean committed;
+
+        private WorldDropReceipt(List<ExtractedUpgrade> extracted, List<ItemEntity> spawned) {
+            this.extracted = extracted;
+            this.spawned = spawned;
+        }
+
+        @Override
+        public void commit() {
+            committed = true;
+        }
+
+        @Override
+        public void close() {
+            if (committed) return;
+            IllegalStateException failure =
+                new IllegalStateException("World upgrade handoff was not committed");
+            rollback(extracted, spawned, failure);
+            if (failure.getSuppressed().length > 0) throw failure;
         }
     }
 

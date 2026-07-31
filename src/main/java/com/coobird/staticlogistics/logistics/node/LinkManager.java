@@ -69,7 +69,7 @@ public class LinkManager {
         this.faceConfigHandler = new FaceConfigHandler(level, faceConfigService, configRepository,
             cacheManager, changeHandler, syncManager, this);
         this.lifecycleService = new NodeLifecycleService(
-            this, faceConfigHandler, containerConfigService, dropHandler::handoffUpgrades);
+            this, faceConfigHandler, containerConfigService, dropHandler::beginHandoff);
     }
 
     // 版本管理
@@ -155,7 +155,7 @@ public class LinkManager {
             () -> scheduleNetworkSync(node))) return;
         FaceConfigComposite cfg = getFaceConfig(FaceAddress.of(node));
         if (cfg == null) return;
-        syncBuffer.schedule(node, cfg);
+        syncBuffer.schedule(level, node, cfg);
     }
 
     void scheduleNetworkRemoval(LogisticsNode node, long version, @Nullable UUID ownerId) {
@@ -301,6 +301,24 @@ public class LinkManager {
     public void removeLink(com.coobird.staticlogistics.api.group.GroupKey groupKey,
                            LogisticsNode first, LogisticsNode second) {
         linkGraphService.removeEdge(groupKey, first, second);
+    }
+
+    public void removeLinkWithoutCleanup(
+        com.coobird.staticlogistics.api.group.GroupKey groupKey,
+        LogisticsNode first,
+        LogisticsNode second
+    ) {
+        linkGraphService.removeEdgeWithoutCleanup(groupKey, first, second);
+    }
+
+    public NodeLifecycleService.DisconnectedRemoval prepareDisconnectedRemoval(
+        Collection<LogisticsNode> nodes
+    ) {
+        return lifecycleService.prepareDisconnectedRemoval(nodes);
+    }
+
+    public void applyDisconnectedRemoval(NodeLifecycleService.DisconnectedRemoval removal) {
+        lifecycleService.applyDisconnectedRemoval(removal);
     }
 
     public void removeNodeFromGroup(com.coobird.staticlogistics.api.group.GroupKey groupKey,

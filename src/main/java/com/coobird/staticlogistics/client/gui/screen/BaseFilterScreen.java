@@ -6,7 +6,7 @@ import com.coobird.staticlogistics.client.gui.component.NbtModeControls;
 import com.coobird.staticlogistics.client.gui.component.TagBarWidget;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.content.menu.AbstractFilterMenu;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.logistics.filter.NbtMatchMode;
 import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
@@ -21,7 +21,6 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -33,7 +32,9 @@ import java.util.Set;
  * {@link NbtModeControls} — NBT匹配模式
  *
  */
-public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends AbstractConfiguratorScreen<T> implements FilterGridWidget.FilterSlotProvider, TagBarWidget.TagSlotAccess {
+public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
+    extends AbstractConfiguratorScreen<T>
+    implements FilterGridWidget.FilterSlotProvider, TagBarWidget.TagSlotAccess {
 
     private final TagBarWidget.State tagState = new TagBarWidget.State();
     private Component toastMessage;
@@ -249,12 +250,12 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
     }
 
     @Override
-    public boolean mouseScrolled(double mx, double my, double delta) {
+    public boolean mouseScrolled(double mx, double my, double scrollY) {
         if (isTagMode() && tagState.hoveredTagBarRow >= 0) {
-            if (TagBarWidget.handleScroll(delta, tagState,
+            if (TagBarWidget.handleScroll(scrollY, tagState,
                 tagState.hoveredTagBarRow)) return true;
         }
-        return super.mouseScrolled(mx, my, delta);
+        return super.mouseScrolled(mx, my, scrollY);
     }
 
     protected boolean handleNbtModeAndIgnoreClick(double mx, double my) {
@@ -262,10 +263,10 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
 
         if (NbtModeControls.isModeBtnHovered(mx, my, leftPos, topPos)) {
             boolean isPartial = menu.getNbtMatchMode()
-                == com.coobird.staticlogistics.logistics.filter.NbtMatchMode.PARTIAL;
+                == NbtMatchMode.PARTIAL;
             menu.setNbtMatchMode(isPartial
-                ? com.coobird.staticlogistics.logistics.filter.NbtMatchMode.FULL
-                : com.coobird.staticlogistics.logistics.filter.NbtMatchMode.PARTIAL);
+                ? NbtMatchMode.FULL
+                : NbtMatchMode.PARTIAL);
             sendFilterUpdate();
             return true;
         }
@@ -338,29 +339,6 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu> extends Abs
             }
         }
         sendFilterUpdate();
-    }
-
-    @Override
-    protected boolean isTypeSelected(LogisticsResource<?> type) {
-        return false;
-    }
-
-    @Override
-    protected List<LogisticsResource<?>> getTypeList() {
-        return List.of();
-    }
-
-    @Override
-    protected String getSearchHintKey() {
-        return "";
-    }
-
-    @Override
-    protected void renderTypeListItem(GuiGraphics g, LogisticsResource<?> type, int x, int y, boolean isSelected) {
-    }
-
-    @Override
-    protected void onTypeClicked(LogisticsResource<?> type) {
     }
 
     protected abstract void sendFilterUpdate();

@@ -25,7 +25,7 @@ public final class LogisticsConstants {
         }
 
         /**
-         * 活跃提供者索引的预期容量，仅用于初始化，不限制实际节点数量。
+         * 活跃提供者索引的预期容量，仅用于初始化哈希表，不限制实际节点数量。
          */
         public static int getExpectedProviderCount() {
             return SLConfig.getCacheProviderSize();
@@ -88,13 +88,6 @@ public final class LogisticsConstants {
         }
 
         /**
-         * 冷却管理器的清理间隔（游戏刻）
-         */
-        public static int getCleanIntervalTicks() {
-            return SLConfig.getPerfCleanInterval();
-        }
-
-        /**
          * 默认冷却时间（游戏刻）
          */
         public static int getDefaultCooldownTicks() {
@@ -128,28 +121,6 @@ public final class LogisticsConstants {
         public static int getTransferContextPoolSize() {
             return SLConfig.getPerfContextPoolSize();
         }
-    }
-
-    /**
-     * 存储相关常量
-     * 控制物流链接的存储和位运算操作
-     */
-    public static final class Storage {
-
-        private Storage() {
-        }
-
-        /**
-         * 方向位数（用于位运算）
-         * Minecraft 有 6 个方向，需要 3 位表示
-         */
-        public static final int FACE_BITS = 3;
-
-        /**
-         * 方向掩码（0x7 = 二进制 111）
-         * 用于提取编码后的方向部分
-         */
-        public static final int FACE_MASK = 0x7;
     }
 
     /**

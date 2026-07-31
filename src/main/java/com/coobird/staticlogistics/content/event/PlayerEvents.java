@@ -11,6 +11,7 @@ import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.s2c.S2CAccessSnapshotPayload;
 import net.minecraft.server.level.ServerLevel;
@@ -75,10 +76,13 @@ public final class PlayerEvents {
                 if (config == null || config.isDefault()
                     || !GroupService.canAccess(config.faceConfig.getOwner(), player)) continue;
                 LogisticsNode source = address.toNode(level.dimension());
-                faces.add(FaceTopology.from(source, config));
+                faces.add(FaceTopology.from(level, source, config));
                 config.getLinkedNodesByGroup().forEach((groupKey, targets) ->
-                    targets.forEach(target -> links.add(
-                        new ScopedTopologyLink(groupKey, source, target))));
+                    targets.forEach(target -> {
+                        ConnectionKey connection = new ConnectionKey(groupKey, source, target);
+                        links.add(new ScopedTopologyLink(groupKey, source, target,
+                            PlayerGroupStore.get(player.server).getConnectionName(connection)));
+                    }));
             }
         }
 

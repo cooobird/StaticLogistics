@@ -3,18 +3,21 @@ package com.coobird.staticlogistics.client.render;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.LinkSelectionScope;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
-import com.coobird.staticlogistics.logistics.node.LinkConfig;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.ParticleStatus;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -31,7 +34,7 @@ import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
 
 import java.util.HashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -40,7 +43,7 @@ import java.util.Set;
  * <p>渲染内容：
  * <ul>
  *   <li>存储节点高亮（选中的面 + 方块线框）</li>
- *   <li>选中组的所有节点：面状态指示器（输入/输出频道颜色）</li>
+ *   <li>选中组的所有节点：输入/输出面状态指示器</li>
  *   <li>链接流动粒子（从输出面流向输入面的彩色粒子）</li>
  * </ul>
  *
@@ -49,7 +52,6 @@ import java.util.Set;
  */
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
-
     public static final RenderType PIPE_XRAY = RenderType.create(
         "pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
         RenderType.CompositeState.builder()
@@ -62,11 +64,6 @@ public class LinkWorldRenderer {
             .createCompositeState(false)
     );
 
-    private static double maxRenderDistSq() {
-        double d = Minecraft.getInstance().options.renderDistance().get() * 16 * 0.4;
-        return d * d;
-    }
-
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
@@ -76,34 +73,41 @@ public class LinkWorldRenderer {
         ItemStack stack = getActiveConfigurator(mc);
         if (stack.isEmpty()) return;
 
-        SelectionContext.syncFromItem(stack);
-        GroupKey groupKey = SelectionContext.getSelectedGroupKey();
+        LinkSelectionScope scope = SelectionContext.getSelectionScope(stack);
+        GroupKey groupKey = scope == null ? null : scope.groupKey();
         if (groupKey == null) {
             groupKey = ClientLinkData.INSTANCE.resolveUniqueGroupKey(
-                SelectionContext.getSelectedGroupId());
+                SelectionContext.getSelectedGroupId(stack));
         }
+        ConnectionKey connectionKey = scope == null ? null : scope.connectionKey();
 
         PoseStack ps = event.getPoseStack();
         Vec3 cam = event.getCamera().getPosition();
         MultiBufferSource.BufferSource buf = mc.renderBuffers().bufferSource();
         VertexConsumer b = buf.getBuffer(PIPE_XRAY);
         ResourceKey<Level> dim = mc.level.dimension();
+        WorldOverlayVisibility visibility = new WorldOverlayVisibility(mc.levelRenderer, event.getFrustum());
 
         ps.pushPose();
         ps.translate(-cam.x, -cam.y, -cam.z);
         Matrix4f mat = ps.last().pose();
-        double maxD2 = maxRenderDistSq();
-        float pulse = (float) Math.sin(System.currentTimeMillis() / 200.0) * 0.03f;
+        long frameTimeMillis = System.currentTimeMillis();
+        float pulse = (float) Math.sin(frameTimeMillis / 200.0) * 0.03f;
+        double flowTime = frameTimeMillis / 1000.0;
+        ParticleStatus particleStatus = mc.options.particles().get();
 
         // 存点预览
         LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
             ? lci.getSettings(stack) : null;
         if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
-            renderStoredNodes(settings, dim, mat, b, cam, maxD2, pulse);
+            renderStoredNodes(settings, dim, mat, b, visibility, pulse);
 
         // 选中分组的所有链接
         if (groupKey != null)
-            renderGroupLinks(groupKey, dim, mat, b, cam, maxD2, pulse);
+            renderGroupLinks(
+                groupKey, connectionKey,
+                dim, mat, b, visibility, pulse,
+                flowTime, particleStatus);
 
         ps.popPose();
         buf.endBatch(PIPE_XRAY);
@@ -111,80 +115,179 @@ public class LinkWorldRenderer {
 
     private static void renderStoredNodes(LinkConfiguratorItem.ToolSettings settings,
                                           ResourceKey<Level> dim, Matrix4f mat, VertexConsumer b,
-                                          Vec3 cam, double maxD2, float pulse) {
+                                          WorldOverlayVisibility visibility, float pulse) {
         boolean isIn = settings.storedMode() == ToolMode.LINK_AS_INSERT;
-        float r = isIn ? 0.2f : 1f, g = isIn ? 0.5f : 0.6f, bl = isIn ? 1f : 0f;
+        int faceColor = isIn
+            ? LogisticsRenderHelper.INPUT_COLOR
+            : LogisticsRenderHelper.OUTPUT_COLOR;
 
         for (LogisticsNode node : settings.storedNodes()) {
             if (!node.gPos().dimension().equals(dim)) continue;
             BlockPos p = node.gPos().pos();
-            if (p.distToCenterSqr(cam.x, cam.y, cam.z) > maxD2) continue;
+            if (!visibility.isBlockVisible(p)) continue;
 
             LogisticsRenderHelper.drawFrame(b, mat, p, 0.8f, 0.8f, 0.8f, 0.4f);
             double px = p.getX() + 0.5 + node.face().getStepX() * 0.51;
             double py = p.getY() + 0.5 + node.face().getStepY() * 0.51;
             double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.51;
-            LogisticsRenderHelper.drawFaceQuad(b, mat, px, py, pz, node.face(), 0, 0.6f, 0.4f + pulse, 0, 1f);
+            LogisticsRenderHelper.drawFaceQuad(
+                b, mat, px, py, pz, node.face(),
+                faceColor, 0.6f, 0.4f + pulse, 0, 1f);
         }
     }
 
-    private static void renderGroupLinks(GroupKey groupKey, ResourceKey<Level> dim,
-                                         Matrix4f mat, VertexConsumer b,
-                                         Vec3 cam, double maxD2, float pulse) {
+    private static void renderGroupLinks(
+        GroupKey groupKey,
+        ConnectionKey focusedConnection,
+        ResourceKey<Level> dim,
+        Matrix4f mat, VertexConsumer b,
+        WorldOverlayVisibility visibility, float pulse,
+        double flowTime, ParticleStatus particleStatus) {
         Set<BlockPos> renderedFrames = new HashSet<>();
-        var nodes = ClientLinkData.INSTANCE.getActiveTopology(dim);
+        List<ClientConnection> connections = ClientLinkData.INSTANCE.getConnectionsForGroup(groupKey);
+        boolean wholeGroup = focusedConnection == null;
+        if (focusedConnection != null) {
+            ClientConnection focused = findConnection(
+                connections, focusedConnection);
+            if (focused != null) {
+                renderConnection(
+                    focused, dim, mat, b, visibility, pulse,
+                    flowTime, particleStatus, renderedFrames,
+                    new HashSet<>());
+                return;
+            }
+        }
 
-        for (var entry : nodes.entrySet()) {
-            LogisticsNode node = entry.getKey();
-            FaceTopology topology = entry.getValue();
-            if (!topology.groupKeys().contains(groupKey)) continue;
-
-            BlockPos p = node.gPos().pos();
-            double d2 = p.distToCenterSqr(cam.x, cam.y, cam.z);
-            boolean vis = d2 <= maxD2;
-
-            if (vis && renderedFrames.add(p))
-                LogisticsRenderHelper.drawFrame(b, mat, p, 1f, 1f, 1f, 0.25f);
-            if (vis)
-                LogisticsRenderHelper.drawFaceStatus(b, mat, p, node.face(),
-                    topology.role().canReceive() ? topology.inputChannel() : 0,
-                    topology.role().canSend() ? topology.outputChannel() : 0,
-                    topology.role().canReceive(), topology.role().canSend(), pulse);
-            renderNodeFlows(node, topology, nodes, dim, groupKey, mat, b, cam, vis, maxD2);
+        Set<LogisticsNode> renderedFaces = new HashSet<>();
+        for (ClientConnection connection : connections) {
+            renderConnection(
+                connection, dim, mat, b, visibility, pulse,
+                flowTime, particleStatus, renderedFrames, renderedFaces);
+        }
+        if (wholeGroup) {
+            for (LogisticsNode node :
+                ClientLinkData.INSTANCE.getNodesForGroup(groupKey)) {
+                FaceTopology topology = ClientLinkData.INSTANCE.getTopology(node);
+                if (topology != null) {
+                    renderEndpoint(node, topology, dim, mat, b, visibility,
+                        pulse, renderedFrames, renderedFaces);
+                }
+            }
         }
     }
 
-    private static void renderNodeFlows(LogisticsNode src, FaceTopology source,
-                                        Map<LogisticsNode, FaceTopology> all,
-                                        ResourceKey<Level> dim, GroupKey groupKey,
-                                        Matrix4f mat, VertexConsumer b, Vec3 cam,
-                                        boolean srcVis, double maxD2) {
-        if (!source.role().canSend()) return;
-        int outCh = source.outputChannel();
-
-        BlockPos sp = src.gPos().pos();
-        double time = System.currentTimeMillis() / 1000.0;
-        boolean srcDual = source.role().canReceive();
-
-        for (LogisticsNode dst : ClientLinkData.INSTANCE.getLinkedNodes(groupKey, src)) {
-            if (!dst.gPos().dimension().equals(dim)) continue;
-            FaceTopology target = all.get(dst);
-            if (target == null || !target.groupKeys().contains(groupKey)) continue;
-            if (!target.role().canReceive()) continue;
-            if (!LinkConfig.channelsMatch(outCh, target.inputChannel())) continue;
-
-            BlockPos dp = dst.gPos().pos();
-            double dstD2 = dp.distToCenterSqr(cam.x, cam.y, cam.z);
-            if (!srcVis && dstD2 > maxD2) continue;
-
-            boolean dstDual = target.role().canSend();
-            // 粒子起点偏移到输出半面片（dual 时 offset=+0.3）
-            Vec3 s = faceOffset(sp, src.face(), srcDual ? 0.3f : 0f);
-            // 粒子终点偏移到输入半面片（dual 时 offset=-0.3）
-            Vec3 t = faceOffset(dp, dst.face(), dstDual ? -0.3f : 0f);
-
-            LogisticsRenderHelper.drawFlowParticles(b, mat, s, t, outCh, time);
+    private static ClientConnection findConnection(
+        List<ClientConnection> connections,
+        ConnectionKey key
+    ) {
+        for (ClientConnection connection : connections) {
+            if (connection.key().equals(key)) return connection;
         }
+        return null;
+    }
+
+    private static void renderConnection(
+        ClientConnection connection,
+        ResourceKey<Level> dimension,
+        Matrix4f matrix,
+        VertexConsumer buffer,
+        WorldOverlayVisibility visibility,
+        float pulse,
+        double flowTime,
+        ParticleStatus particleStatus,
+        Set<BlockPos> renderedFrames,
+        Set<LogisticsNode> renderedFaces
+    ) {
+        renderEndpoint(connection.first(), connection.firstTopology(),
+            dimension, matrix, buffer, visibility, pulse,
+            renderedFrames, renderedFaces);
+        renderEndpoint(connection.second(), connection.secondTopology(),
+            dimension, matrix, buffer, visibility, pulse,
+            renderedFrames, renderedFaces);
+        renderConnectionFlows(
+            connection, dimension, matrix, buffer, visibility,
+            flowTime, particleStatus);
+    }
+
+    private static void renderEndpoint(
+        LogisticsNode node,
+        FaceTopology topology,
+        ResourceKey<Level> dimension,
+        Matrix4f matrix,
+        VertexConsumer buffer,
+        WorldOverlayVisibility visibility,
+        float pulse,
+        Set<BlockPos> renderedFrames,
+        Set<LogisticsNode> renderedFaces
+    ) {
+        if (!node.gPos().dimension().equals(dimension)) return;
+        BlockPos position = node.gPos().pos();
+        if (!visibility.isBlockVisible(position)) return;
+        if (renderedFrames.add(position)) {
+            LogisticsRenderHelper.drawFrame(
+                buffer, matrix, position,
+                1.0F, 1.0F, 1.0F, 0.25F);
+        }
+        if (renderedFaces.add(node)) {
+            LogisticsRenderHelper.drawFaceStatus(
+                buffer, matrix, position, node.face(),
+                LogisticsRenderHelper.INPUT_COLOR,
+                LogisticsRenderHelper.OUTPUT_COLOR,
+                topology.role().canReceive(),
+                topology.role().canSend(), pulse);
+        }
+    }
+
+    private static void renderConnectionFlows(
+        ClientConnection connection,
+        ResourceKey<Level> dimension,
+        Matrix4f matrix,
+        VertexConsumer buffer,
+        WorldOverlayVisibility visibility,
+        double flowTime,
+        ParticleStatus particleStatus
+    ) {
+        LogisticsNode first = connection.first();
+        LogisticsNode second = connection.second();
+        if (!first.gPos().dimension().equals(dimension)
+            || !second.gPos().dimension().equals(dimension)) {
+            return;
+        }
+        BlockPos firstPosition = first.gPos().pos();
+        BlockPos secondPosition = second.gPos().pos();
+        if (!visibility.isConnectionVisible(firstPosition, secondPosition)) return;
+
+        if (connection.transfersFirstToSecond()) {
+            drawFlow(first, connection.firstTopology(),
+                second, connection.secondTopology(),
+                matrix, buffer, flowTime, particleStatus);
+        }
+        if (connection.transfersSecondToFirst()) {
+            drawFlow(second, connection.secondTopology(),
+                first, connection.firstTopology(),
+                matrix, buffer, flowTime, particleStatus);
+        }
+    }
+
+    private static void drawFlow(
+        LogisticsNode source,
+        FaceTopology sourceTopology,
+        LogisticsNode target,
+        FaceTopology targetTopology,
+        Matrix4f matrix,
+        VertexConsumer buffer,
+        double time,
+        ParticleStatus particleStatus
+    ) {
+        Vec3 start = faceOffset(
+            source.gPos().pos(), source.face(),
+            sourceTopology.role().canReceive() ? 0.3F : 0.0F);
+        Vec3 end = faceOffset(
+            target.gPos().pos(), target.face(),
+            targetTopology.role().canSend() ? -0.3F : 0.0F);
+        LogisticsRenderHelper.drawFlowParticles(
+            buffer, matrix, start, end,
+            LogisticsRenderHelper.FLOW_COLOR, time, particleStatus);
     }
 
     /**
@@ -194,10 +297,9 @@ public class LinkWorldRenderer {
         Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
         Vec3 center = Vec3.atCenterOf(pos).add(n.scale(0.52));
         if (offset == 0f) return center;
-        // 与 drawFaceQuad 相同的轴计算
         Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
         Vec3 a2 = n.cross(a1).normalize();
-        float size = 0.85f; // 与 drawFaceStatus 的 size 一致
+        float size = 0.85f;
         return center.add(a2.scale(offset * size));
     }
 

@@ -10,6 +10,6 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 public class SoundUtil {
     public static void playClickSound() {
         Minecraft.getInstance().getSoundManager()
-            .play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.get(), 1.0F));
+            .play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
     }
 }

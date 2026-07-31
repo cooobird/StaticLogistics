@@ -13,7 +13,7 @@ public final class ServerPacketRateLimiter {
     public enum Action {
         FILTER_UPDATE(24),
         FACE_CONFIGURATION(80),
-        GROUP_MUTATION(5),
+        GROUP_CREATION(4),
         BLUEPRINT_UNDO(2);
 
         private final int maximumPerSecond;

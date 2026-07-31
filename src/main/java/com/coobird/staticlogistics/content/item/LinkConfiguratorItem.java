@@ -4,8 +4,10 @@ import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtens
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.SLKeyNames;
-import com.coobird.staticlogistics.logistics.NodeConfiguratorTool;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.group.GroupSelectionInvalidator;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
@@ -15,9 +17,11 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -29,6 +33,7 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.ToolAction;
+import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumMap;
@@ -37,14 +42,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
+public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
     private static final Map<ToolMode, ModeHandler> HANDLERS = new EnumMap<>(ToolMode.class);
     private static final UUID BASE_ATTACK_DAMAGE_UUID = UUID.fromString("CB3F55D3-645C-4F38-A497-9C13A33DB5CF");
     private static final UUID BASE_ATTACK_SPEED_UUID = UUID.fromString("FA233E1C-4180-4865-B01B-BCCE9785ACA3");
 
     static {
         HANDLERS.put(ToolMode.WRENCH, new WrenchModeHandler());
-        HANDLERS.put(ToolMode.NODE_CONFIG, new NodeConfigModeHandler());
         HANDLERS.put(ToolMode.REMOVE, new RemoveModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_INSERT, new LinkModeHandler());
         HANDLERS.put(ToolMode.LINK_AS_EXTRACT, new LinkModeHandler());
@@ -126,7 +130,7 @@ public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
         if (!player.isSecondaryUseActive()) {
-            if (level.isClientSide) LinkConfiguratorClientHooks.openScreen(stack);
+            if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         } else {
             LinkOperationHelper.clearNodes(stack, player, level);
@@ -150,11 +154,12 @@ public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
         if (player == null) return InteractionResult.PASS;
         if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
             LinkOperationHelper.validateStoredNodes(stack, serverLevel);
+            GroupSelectionInvalidator.clearInvalidSelection(serverLevel.getServer(), stack);
         }
         ToolSettings settings = getSettings(stack);
 
         if (!player.isSecondaryUseActive()) {
-            if (level.isClientSide) LinkConfiguratorClientHooks.openScreen(stack);
+            if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);
             return InteractionResult.SUCCESS;
         }
 
@@ -166,5 +171,17 @@ public class LinkConfiguratorItem extends Item implements NodeConfiguratorTool {
             return InteractionResult.SUCCESS;
         }
         return result;
+    }
+
+    private static void openConfigurator(ServerPlayer player) {
+        int toolSlot = LinkConfiguratorMenu.findToolSlot(player.getInventory());
+        if (toolSlot < 0) return;
+        GroupSelectionInvalidator.clearInvalidSelection(
+            player.server, player.getInventory().getItem(toolSlot));
+        Component title = Component.translatable("gui.staticlogistics.linker_settings");
+        NetworkHooks.openScreen(player, new SimpleMenuProvider(
+                (id, inventory, ignored) -> new LinkConfiguratorMenu(id, inventory, toolSlot),
+                title),
+            buffer -> LinkConfiguratorMenu.writeEmptyOpenData(buffer, toolSlot));
     }
 }

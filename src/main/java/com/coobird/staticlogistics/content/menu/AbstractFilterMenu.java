@@ -33,10 +33,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         this.addDataSlot(ignoreDamageSlot);
     }
 
-    public void bulkUpdate(UnaryOperator<FilterData> operator) {
-        updateFilterData(operator);
-    }
-
     protected abstract ItemStack getFilterStack();
 
     public abstract UpgradeType getActiveUpgradeType();
@@ -160,7 +156,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         this.ignoreDamageSlot.set(ignore ? 1 : 0);
     }
 
-    // ==================== 物品标签相关 ====================
     public Set<TagKey<Item>> getSlotTags(int slot) {
         return getFilterData().tagSlots().getOrDefault(String.valueOf(slot), Set.of());
     }
@@ -259,7 +254,6 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
         });
     }
 
-    // ==================== 流体标签相关 ====================
     public Set<TagKey<Fluid>> getSlotFluidTags(int slot) {
         return getFilterData().fluidFilterTags().getOrDefault(String.valueOf(slot), Set.of());
     }

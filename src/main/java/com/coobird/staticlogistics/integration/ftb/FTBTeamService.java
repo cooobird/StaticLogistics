@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.integration.ftb;
 
 import com.coobird.staticlogistics.api.group.TeamAccessPolicy;
 import com.coobird.staticlogistics.api.group.TeamMemberProvider;
-import com.coobird.staticlogistics.integration.ModCompat;
 import com.mojang.logging.LogUtils;
 import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import dev.ftb.mods.ftbteams.api.TeamRank;
@@ -14,10 +13,6 @@ import java.util.UUID;
 
 public class FTBTeamService implements TeamAccessPolicy, TeamMemberProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
-
-    public boolean isFtbLoaded() {
-        return ModCompat.isFtbTeamsLoaded();
-    }
 
     public boolean checkFTBTeamAlliance(UUID owner, UUID actor) {
         try {

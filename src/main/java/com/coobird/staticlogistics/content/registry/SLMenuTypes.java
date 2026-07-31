@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.content.registry;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
-import com.coobird.staticlogistics.content.menu.NodeConfiguratorMenu;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.extensions.IForgeMenuType;
@@ -15,8 +15,8 @@ import java.util.function.Supplier;
 public class SLMenuTypes {
     public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, StaticLogistics.MODID);
 
-    public static final Supplier<MenuType<NodeConfiguratorMenu>> NODE_CONFIGURATOR_MENU =
-        TYPES.register("node_configurator_menu", () -> IForgeMenuType.create(NodeConfiguratorMenu::new));
+    public static final Supplier<MenuType<LinkConfiguratorMenu>> LINK_CONFIGURATOR_MENU =
+        TYPES.register("link_configurator_menu", () -> IForgeMenuType.create(LinkConfiguratorMenu::new));
     public static final Supplier<MenuType<FilterConfiguratorMenu>> FILTER_CONFIG =
         TYPES.register("filter_configurator_menu", () -> IForgeMenuType.create(FilterConfiguratorMenu::fromBuffer));
     public static final Supplier<MenuType<HandFilterMenu>> HAND_FILTER =

@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.client.render;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.ParticleStatus;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.phys.Vec3;
@@ -9,36 +10,35 @@ import org.joml.Matrix4f;
 /**
  * 物流渲染共享工具 —— 面指示器、粒子、光束、线框，供 LinkWorldRenderer 和 BlueprintRegionRenderer 共用。
  */
-public class LogisticsRenderHelper {
+public final class LogisticsRenderHelper {
+    public static final int INPUT_COLOR = 0xFF55AAFF;
+    public static final int OUTPUT_COLOR = 0xFFFFAA33;
+    public static final int FLOW_COLOR = 0xFF98FB98;
 
-    // ── 方块面着色指示器 ──
+    private LogisticsRenderHelper() {
+    }
 
-    public static void drawFaceStatus(VertexConsumer b, Matrix4f mat,
-                                      BlockPos pos, Direction face,
-                                      int inChannel, int outChannel,
-                                      boolean hasIn, boolean hasOut, float pulse) {
+    // 方块面着色指示器
+    public static void drawFaceStatus(VertexConsumer b, Matrix4f mat, BlockPos pos, Direction face, int inputColor, int outputColor, boolean hasIn, boolean hasOut, float pulse) {
         double px = pos.getX() + 0.5 + face.getStepX() * 0.508;
         double py = pos.getY() + 0.5 + face.getStepY() * 0.508;
         double pz = pos.getZ() + 0.5 + face.getStepZ() * 0.508;
         float size = 0.4f + pulse;
-        int inIdx = clampChannel(inChannel);
-        int outIdx = clampChannel(outChannel);
 
         if (hasIn && hasOut) {
-            drawFaceQuad(b, mat, px, py, pz, face, inIdx, 0.85f, size, -0.5f, 0.45f);
-            drawFaceQuad(b, mat, px, py, pz, face, outIdx, 0.85f, size, 0.5f, 0.45f);
+            drawFaceQuad(b, mat, px, py, pz, face, inputColor, 0.85f, size, -0.5f, 0.45f);
+            drawFaceQuad(b, mat, px, py, pz, face, outputColor, 0.85f, size, 0.5f, 0.45f);
         } else if (hasIn) {
-            drawFaceQuad(b, mat, px, py, pz, face, inIdx, 0.85f, size, 0, 1f);
+            drawFaceQuad(b, mat, px, py, pz, face, inputColor, 0.85f, size, 0, 1f);
         } else if (hasOut) {
-            drawFaceQuad(b, mat, px, py, pz, face, outIdx, 0.85f, size, 0, 1f);
+            drawFaceQuad(b, mat, px, py, pz, face, outputColor, 0.85f, size, 0, 1f);
         }
     }
 
     public static void drawFaceQuad(VertexConsumer b, Matrix4f mat,
                                     double x, double y, double z, Direction face,
-                                    int colorIdx, float alpha, float size,
+                                    int color, float alpha, float size,
                                     float offset, float widthMult) {
-        int color = RenderConstants.DYE_COLORS[colorIdx % RenderConstants.DYE_COLORS.length];
         float r = ((color >> 16) & 0xFF) / 255f, g = ((color >> 8) & 0xFF) / 255f, bl = (color & 0xFF) / 255f;
         int ir = (int) (r * 255), ig = (int) (g * 255), ib = (int) (bl * 255), ia = (int) (alpha * 255);
 
@@ -56,12 +56,21 @@ public class LogisticsRenderHelper {
         b.vertex(mat, (float) (x + ox - x1 + x2), (float) (y + oy - y1 + y2), (float) (z + oz - z1 + z2)).color(ir, ig, ib, ia).endVertex();
     }
 
-    // ── 流动粒子线 ──
-
-    public static void drawFlowParticles(VertexConsumer b, Matrix4f mat,
-                                         Vec3 from, Vec3 to, int channel, double time) {
-        int idx = clampChannel(channel);
-        int color = RenderConstants.DYE_COLORS[idx];
+    /**
+     * 绘制链接上的流动标记。
+     *
+     * <p>这些标记由当前批次直接绘制，不会进入原版粒子引擎，因此必须显式应用玩家的粒子效果设置。
+     * “全部”保留既有数量与外观，“减少”将数量减半，“最少”只保留一个标记。
+     */
+    public static void drawFlowParticles(
+        VertexConsumer b,
+        Matrix4f mat,
+        Vec3 from,
+        Vec3 to,
+        int color,
+        double time,
+        ParticleStatus particleStatus
+    ) {
         float r = ((color >> 16) & 0xFF) / 255f, g = ((color >> 8) & 0xFF) / 255f, bl = (color & 0xFF) / 255f;
 
         double dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
@@ -69,9 +78,14 @@ public class LogisticsRenderHelper {
         if (dist < 0.1) return;
 
         float speed = 2f;
-        int cnt = (int) Math.min(12, Math.max(3, dist * 2));
-        for (int i = 0; i < cnt; i++) {
-            float progress = (float) (((time * speed + (double) i / cnt * dist) % dist) / dist);
+        int baseCount = (int) Math.min(12, Math.max(3, dist * 2));
+        int count = switch (particleStatus) {
+            case ALL -> baseCount;
+            case DECREASED -> Math.max(1, (baseCount + 1) / 2);
+            case MINIMAL -> 1;
+        };
+        for (int i = 0; i < count; i++) {
+            float progress = (float) (((time * speed + (double) i / count * dist) % dist) / dist);
             float px = (float) (from.x + dx * progress);
             float py = (float) (from.y + dy * progress);
             float pz = (float) (from.z + dz * progress);
@@ -81,9 +95,7 @@ public class LogisticsRenderHelper {
     }
 
     // 线框渲染
-    public static void renderBox(VertexConsumer b, Matrix4f mat,
-                                 float x1, float y1, float z1, float x2, float y2, float z2,
-                                 float r, float g, float bl, float a) {
+    public static void renderBox(VertexConsumer b, Matrix4f mat, float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float bl, float a) {
         int ir = (int) (r * 255), ig = (int) (g * 255), ib = (int) (bl * 255), ia = (int) (a * 255);
         b.vertex(mat, x1, y1, z1).color(ir, ig, ib, ia).endVertex();
         b.vertex(mat, x2, y1, z1).color(ir, ig, ib, ia).endVertex();
@@ -118,9 +130,7 @@ public class LogisticsRenderHelper {
         drawBoxEdges(b, mat, x1, y1, z1, x2, y2, z2, r, g, bl, a);
     }
 
-    public static void drawBoxEdges(VertexConsumer b, Matrix4f mat,
-                                    float x1, float y1, float z1, float x2, float y2, float z2,
-                                    float r, float g, float bl, float a) {
+    public static void drawBoxEdges(VertexConsumer b, Matrix4f mat, float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float bl, float a) {
         float R = 0.015f;
         drawEdge(b, mat, x1, y1, z1, x2, y1, z1, R, r, g, bl, a);
         drawEdge(b, mat, x1, y1, z2, x2, y1, z2, R, r, g, bl, a);
@@ -136,9 +146,7 @@ public class LogisticsRenderHelper {
         drawEdge(b, mat, x2, y2, z1, x2, y2, z2, R, r, g, bl, a);
     }
 
-    public static void drawEdge(VertexConsumer b, Matrix4f mat,
-                                float x1, float y1, float z1, float x2, float y2, float z2,
-                                float radius, float r, float g, float bl, float a) {
+    public static void drawEdge(VertexConsumer b, Matrix4f mat, float x1, float y1, float z1, float x2, float y2, float z2, float radius, float r, float g, float bl, float a) {
         float dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
         float mx1 = x1, my1 = y1, mz1 = z1, mx2 = x2, my2 = y2, mz2 = z2;
         if (dx > 0.1f) {
@@ -158,9 +166,5 @@ public class LogisticsRenderHelper {
             my2 += radius;
         }
         renderBox(b, mat, mx1, my1, mz1, mx2, my2, mz2, r, g, bl, a);
-    }
-
-    private static int clampChannel(int ch) {
-        return (ch >= 1 && ch <= 16) ? (ch - 1) % RenderConstants.DYE_COLORS.length : 0;
     }
 }

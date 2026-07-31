@@ -3,29 +3,38 @@ package com.coobird.staticlogistics.logistics.group;
 import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.mojang.logging.LogUtils;
+import com.mojang.serialization.DataResult;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * 玩家分组的稳定身份目录，并兼容 1.0.4 的名称索引存档。
+ * 独立的玩家分组持久化存储。
+ * 继承 SavedData，修改后直接 setDirty()，由 Minecraft 自动保存。
+ * 主线程单线程访问，无需 ConcurrentHashMap。
  */
 public class PlayerGroupStore extends SavedData {
     private static final String DATA_NAME = "static_logistics_player_groups";
-    private static final int SCHEMA_VERSION = 2;
-    private static final int MAX_STORED_OWNERS = 100_000;
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private final Map<UUID, LinkedHashMap<UUID, String>> groupsByOwner = new LinkedHashMap<>();
-    private final Map<UUID, Integer> playerNextGroupCounter = new LinkedHashMap<>();
+    private static final int SCHEMA_VERSION = 2;
+    private static final int MAX_STORED_OWNERS = 100_000;
+    private static final int MAX_STORED_CONNECTION_NAMES = 1_000_000;
+    private final Map<UUID, LinkedHashMap<UUID, String>> playerGroups = new HashMap<>();
+    private final Map<UUID, Integer> playerNextGroupCounter = new HashMap<>();
+    private final Map<ConnectionKey, String> connectionNames = new HashMap<>();
     private boolean loadedFromDedicatedStorage;
 
-    private PlayerGroupStore() {
+    PlayerGroupStore() {
     }
 
     public static PlayerGroupStore get(MinecraftServer server) {
@@ -40,134 +49,196 @@ public class PlayerGroupStore extends SavedData {
         );
     }
 
-    public synchronized GroupRef addGroup(UUID ownerId, String displayName) {
-        String normalized = GroupConstraints.normalizeName(displayName);
-        Optional<GroupRef> existing = findByName(ownerId, normalized);
-        if (existing.isPresent()) return existing.get();
-        LinkedHashMap<UUID, String> groups = groupsByOwner.computeIfAbsent(ownerId,
-            ignored -> new LinkedHashMap<>());
-        if (groups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) {
+    public void addGroup(UUID playerId, String groupId) {
+        createGroup(playerId, groupId);
+    }
+
+    public GroupRef createGroup(UUID playerId, String displayName) {
+        if (playerId == null) throw new IllegalArgumentException("Group owner is required");
+        displayName = GroupConstraints.normalizeName(displayName);
+        GroupRef existing = findGroup(playerId, displayName);
+        if (existing != null) return existing;
+        if (playerGroups.getOrDefault(playerId, new LinkedHashMap<>()).size()
+            >= GroupConstraints.MAX_GROUPS_PER_OWNER) {
             throw new IllegalStateException("Group limit exceeded");
         }
-        GroupKey key = GroupKey.create(ownerId);
-        groups.put(key.internalId(), normalized);
+        GroupKey key = GroupKey.create(playerId);
+        playerGroups.computeIfAbsent(playerId, ignored -> new LinkedHashMap<>())
+            .put(key.internalId(), displayName);
         setDirty();
-        return new GroupRef(key, normalized);
-    }
-
-    public synchronized GroupRef createGroup(UUID ownerId, String displayName) {
-        return addGroup(ownerId, displayName);
-    }
-
-    public synchronized GroupRef resolveOrCreateGroup(UUID ownerId, String displayName) {
-        return addGroup(ownerId, displayName);
-    }
-
-    public synchronized GroupRef findGroup(UUID ownerId, String displayName) {
-        return findByName(ownerId, displayName).orElse(null);
-    }
-
-    public synchronized GroupRef findGroup(GroupKey key) {
-        return key == null ? null : find(key).orElse(null);
-    }
-
-    public synchronized boolean removeGroup(UUID ownerId, String displayName) {
-        Optional<GroupRef> found = findByName(ownerId, displayName);
-        if (found.isEmpty()) return false;
-        return removeGroup(found.get().key());
-    }
-
-    public synchronized boolean removeGroup(GroupKey key) {
-        LinkedHashMap<UUID, String> groups = groupsByOwner.get(key.ownerId());
-        if (groups == null || groups.remove(key.internalId()) == null) return false;
-        if (groups.isEmpty()) groupsByOwner.remove(key.ownerId());
-        setDirty();
-        return true;
-    }
-
-    private synchronized Optional<GroupRef> find(GroupKey key) {
-        LinkedHashMap<UUID, String> groups = groupsByOwner.get(key.ownerId());
-        if (groups == null) return Optional.empty();
-        String name = groups.get(key.internalId());
-        return name == null ? Optional.empty() : Optional.of(new GroupRef(key, name));
-    }
-
-    private synchronized Optional<GroupRef> findByName(UUID ownerId, String displayName) {
-        if (ownerId == null || displayName == null) return Optional.empty();
-        String normalized;
-        try {
-            normalized = GroupConstraints.normalizeName(displayName);
-        } catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
-        LinkedHashMap<UUID, String> groups = groupsByOwner.get(ownerId);
-        if (groups == null) return Optional.empty();
-        return groups.entrySet().stream()
-            .filter(entry -> entry.getValue().equals(normalized))
-            .map(entry -> new GroupRef(new GroupKey(ownerId, entry.getKey()), entry.getValue()))
-            .findFirst();
-    }
-
-    public synchronized boolean renameGroup(GroupKey key, String newDisplayName) {
-        if (!canRenameGroup(key, newDisplayName)) return false;
-        String normalized = GroupConstraints.normalizeName(newDisplayName);
-        LinkedHashMap<UUID, String> groups = groupsByOwner.get(key.ownerId());
-        if (normalized.equals(groups.get(key.internalId()))) return true;
-        groups.put(key.internalId(), normalized);
-        setDirty();
-        return true;
+        return new GroupRef(key, displayName);
     }
 
     /**
-     * 只检查重命名是否合法，不修改分组目录。
+     * 解析已有分组；不存在时创建新的随机稳定身份。
      */
-    public synchronized boolean canRenameGroup(GroupKey key, String newDisplayName) {
+    public GroupRef resolveOrCreateGroup(UUID playerId, String displayName) {
+        return createGroup(playerId, displayName);
+    }
+
+    @org.jetbrains.annotations.Nullable
+    public GroupRef findGroup(UUID playerId, String displayName) {
+        LinkedHashMap<UUID, String> groups = playerGroups.get(playerId);
+        if (groups == null) return null;
+        for (var entry : groups.entrySet()) {
+            if (entry.getValue().equals(displayName)) {
+                return new GroupRef(new GroupKey(playerId, entry.getKey()), entry.getValue());
+            }
+        }
+        return null;
+    }
+
+    @org.jetbrains.annotations.Nullable
+    public GroupRef findGroup(GroupKey key) {
+        if (key == null || key.isLegacyUnowned()) return null;
+        Map<UUID, String> groups = playerGroups.get(key.ownerId());
+        if (groups == null) return null;
+        String displayName = groups.get(key.internalId());
+        return displayName == null ? null : new GroupRef(key, displayName);
+    }
+
+    public void removeGroup(UUID playerId, String groupId) {
+        if (playerId == null || groupId == null) return;
+        GroupRef group = findGroup(playerId, groupId);
+        if (group != null) removeGroup(group.key());
+    }
+
+    public boolean removeGroup(GroupKey key) {
         if (key == null || key.isLegacyUnowned()) return false;
+        LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
+        if (groups == null || groups.remove(key.internalId()) == null) return false;
+        if (groups.isEmpty()) playerGroups.remove(key.ownerId());
+        connectionNames.keySet().removeIf(connection -> connection.groupKey().equals(key));
+        setDirty();
+        return true;
+    }
+
+    public String getConnectionName(ConnectionKey key) {
+        if (key == null) return "";
+        return connectionNames.getOrDefault(key, "");
+    }
+
+    /**
+     * 设置连接显示名；空名称会删除自定义值并恢复默认连接序号。
+     */
+    public boolean setConnectionName(ConnectionKey key, String displayName) {
+        if (key == null || findGroup(key.groupKey()) == null) return false;
         String normalized;
         try {
-            normalized = GroupConstraints.normalizeName(newDisplayName);
+            normalized = GroupConstraints.normalizeConnectionName(displayName);
         } catch (IllegalArgumentException exception) {
             return false;
         }
-        LinkedHashMap<UUID, String> groups = groupsByOwner.get(key.ownerId());
+        if (normalized.isEmpty()) {
+            if (connectionNames.remove(key) != null) setDirty();
+            return true;
+        }
+        if (!connectionNames.containsKey(key)
+            && connectionNames.size() >= MAX_STORED_CONNECTION_NAMES) {
+            return false;
+        }
+        if (normalized.equals(connectionNames.put(key, normalized))) return true;
+        setDirty();
+        return true;
+    }
+
+    public void removeConnectionName(ConnectionKey key) {
+        if (key != null && connectionNames.remove(key) != null) setDirty();
+    }
+
+    /**
+     * 同一所有者分组合并时迁移连接名称。
+     *
+     * <p>目标分组已有同一连接名称时保留目标值；返回值记录完整补偿信息，供外层节点事务回滚。
+     */
+    public ConnectionNameMerge mergeConnectionNames(GroupKey source, GroupKey target) {
+        if (source == null || target == null
+            || !source.ownerId().equals(target.ownerId())
+            || findGroup(source) == null || findGroup(target) == null) {
+            throw new IllegalArgumentException("Connection name merge groups are invalid");
+        }
+        Map<ConnectionKey, String> sourceNames = new LinkedHashMap<>();
+        connectionNames.forEach((key, name) -> {
+            if (key.groupKey().equals(source)) sourceNames.put(key, name);
+        });
+        Set<ConnectionKey> insertedTargets = new LinkedHashSet<>();
+        sourceNames.forEach((sourceKey, name) -> {
+            connectionNames.remove(sourceKey);
+            ConnectionKey targetKey = new ConnectionKey(
+                target, sourceKey.first(), sourceKey.second());
+            if (!connectionNames.containsKey(targetKey)) {
+                connectionNames.put(targetKey, name);
+                insertedTargets.add(targetKey);
+            }
+        });
+        if (!sourceNames.isEmpty()) setDirty();
+        return new ConnectionNameMerge(
+            Map.copyOf(sourceNames), Set.copyOf(insertedTargets));
+    }
+
+    /**
+     * 恢复一次尚未提交的连接名称合并。
+     */
+    public void rollbackConnectionNameMerge(ConnectionNameMerge merge) {
+        if (merge == null) throw new IllegalArgumentException("Connection name merge is required");
+        merge.insertedTargets().forEach(connectionNames::remove);
+        connectionNames.putAll(merge.sourceNames());
+        if (!merge.sourceNames().isEmpty()) setDirty();
+    }
+
+    public boolean renameGroup(GroupKey key, String newDisplayName) {
+        if (!canRenameGroup(key, newDisplayName)) return false;
+        newDisplayName = GroupConstraints.normalizeName(newDisplayName);
+        LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
+        if (newDisplayName.equals(groups.get(key.internalId()))) return true;
+        groups.put(key.internalId(), newDisplayName);
+        setDirty();
+        return true;
+    }
+
+    /**
+     * 仅校验重命名，不修改分组目录。
+     */
+    public boolean canRenameGroup(GroupKey key, String newDisplayName) {
+        if (key == null || key.isLegacyUnowned()) return false;
+        try {
+            newDisplayName = GroupConstraints.normalizeName(newDisplayName);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+        LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
         if (groups == null || !groups.containsKey(key.internalId())) return false;
-        GroupRef collision = findGroup(key.ownerId(), normalized);
+        GroupRef collision = findGroup(key.ownerId(), newDisplayName);
         return collision == null || collision.key().equals(key);
     }
 
-    private synchronized List<GroupRef> groups(UUID ownerId) {
-        LinkedHashMap<UUID, String> groups = groupsByOwner.get(ownerId);
-        if (groups == null) return List.of();
-        List<GroupRef> result = new ArrayList<>();
-        groups.forEach((id, name) -> result.add(new GroupRef(new GroupKey(ownerId, id), name)));
-        result.sort(Comparator.comparing(GroupRef::displayName).thenComparing(ref -> ref.key().internalId()));
-        return List.copyOf(result);
+    public Set<String> getGroups(UUID playerId) {
+        if (playerId == null) return Collections.emptySet();
+        LinkedHashMap<UUID, String> groups = playerGroups.get(playerId);
+        return groups == null ? Collections.emptySet()
+            : Collections.unmodifiableSet(new LinkedHashSet<>(groups.values()));
     }
 
-    public synchronized Set<GroupRef> getGroupRefs(UUID ownerId) {
-        return Collections.unmodifiableSet(new LinkedHashSet<>(groups(ownerId)));
-    }
-
-    /**
-     * 旧调用方只读取显示名称；稳定身份始终保留在目录内部。
-     */
-    public synchronized Set<String> getGroups(UUID ownerId) {
-        LinkedHashSet<String> names = new LinkedHashSet<>();
-        for (GroupRef group : groups(ownerId)) names.add(group.displayName());
-        return Collections.unmodifiableSet(names);
+    public Set<GroupRef> getGroupRefs(UUID playerId) {
+        LinkedHashMap<UUID, String> groups = playerGroups.get(playerId);
+        if (groups == null) return Collections.emptySet();
+        Set<GroupRef> refs = new LinkedHashSet<>();
+        groups.forEach((internalId, displayName) ->
+            refs.add(new GroupRef(new GroupKey(playerId, internalId), displayName)));
+        return Collections.unmodifiableSet(refs);
     }
 
     /**
-     * 校验一批认领分组，但不修改目录。
+     * 校验旧版无所有者分组能否原样归入玩家，校验阶段不修改存档。
      */
-    public synchronized void validateClaimedGroups(UUID ownerId, Collection<GroupRef> claimedGroups) {
-        if (ownerId == null || claimedGroups == null) {
+    public void validateClaimedGroups(UUID owner, Collection<GroupRef> claimedGroups) {
+        if (owner == null || claimedGroups == null) {
             throw new IllegalArgumentException("Claimed group owner and groups are required");
         }
-        LinkedHashMap<UUID, String> existing = groupsByOwner.getOrDefault(ownerId, new LinkedHashMap<>());
+        LinkedHashMap<UUID, String> existing = playerGroups.getOrDefault(owner, new LinkedHashMap<>());
         Map<UUID, String> additions = new LinkedHashMap<>();
         for (GroupRef group : claimedGroups) {
-            if (group == null || !ownerId.equals(group.key().ownerId())) {
+            if (group == null || !owner.equals(group.key().ownerId())) {
                 throw new IllegalArgumentException("Claimed group owner does not match target owner");
             }
             String storedName = existing.get(group.key().internalId());
@@ -177,7 +248,9 @@ public class PlayerGroupStore extends SavedData {
             boolean nameCollision = existing.entrySet().stream().anyMatch(entry ->
                 !entry.getKey().equals(group.key().internalId())
                     && entry.getValue().equals(group.displayName()));
-            if (nameCollision) throw new IllegalStateException("Target owner already has a group with this name");
+            if (nameCollision) {
+                throw new IllegalStateException("Target owner already has a group with this name");
+            }
             String previous = additions.putIfAbsent(group.key().internalId(), group.displayName());
             if (previous != null && !previous.equals(group.displayName())) {
                 throw new IllegalStateException("Claimed groups contain a conflicting identity");
@@ -190,13 +263,13 @@ public class PlayerGroupStore extends SavedData {
     }
 
     /**
-     * 所有节点认领成功后再提交分组目录。
+     * 在全部节点完成认领后提交分组目录。
      */
-    public synchronized void registerClaimedGroups(UUID ownerId, Collection<GroupRef> claimedGroups) {
-        validateClaimedGroups(ownerId, claimedGroups);
+    public void registerClaimedGroups(UUID owner, Collection<GroupRef> claimedGroups) {
+        validateClaimedGroups(owner, claimedGroups);
         if (claimedGroups.isEmpty()) return;
-        LinkedHashMap<UUID, String> groups = groupsByOwner.computeIfAbsent(ownerId,
-            ignored -> new LinkedHashMap<>());
+        LinkedHashMap<UUID, String> groups = playerGroups.computeIfAbsent(
+            owner, ignored -> new LinkedHashMap<>());
         boolean changed = false;
         for (GroupRef group : claimedGroups) {
             if (groups.putIfAbsent(group.key().internalId(), group.displayName()) == null) changed = true;
@@ -205,48 +278,53 @@ public class PlayerGroupStore extends SavedData {
     }
 
     /**
-     * 从旧链接存档导入一次嵌入式分组快照。
-     * 独立分组存档已有内容时拒绝导入，避免复活被删除的历史分组。
+     * 从 1.0.4 之前嵌在链接存档中的分组数据执行一次性迁移。
+     * 已存在独立分组存档时绝不导入，避免复活其中残留的历史快照。
      */
-    public synchronized boolean importLegacyStorage(CompoundTag legacyTag) {
+    public boolean importLegacyStorage(CompoundTag legacyTag) {
         if (loadedFromDedicatedStorage) return false;
         boolean changed = false;
-        CompoundTag counters = legacyTag.getCompound("player_group_counter");
-        for (String ownerText : counters.getAllKeys()) {
+
+        CompoundTag counterTag = legacyTag.getCompound("player_group_counter");
+        for (String ownerKey : counterTag.getAllKeys()) {
             if (playerNextGroupCounter.size() >= MAX_STORED_OWNERS) break;
-            UUID owner;
             try {
-                owner = UUID.fromString(ownerText);
+                UUID owner = UUID.fromString(ownerKey);
+                playerNextGroupCounter.merge(
+                    owner, Math.max(0, counterTag.getInt(ownerKey)), Math::max);
+                changed = true;
             } catch (IllegalArgumentException exception) {
-                continue;
+                LOGGER.warn("Skipping invalid legacy player group counter owner: {}", ownerKey);
             }
-            playerNextGroupCounter.merge(owner, Math.max(0, counters.getInt(ownerText)), Math::max);
-            changed = true;
         }
-        CompoundTag owners = legacyTag.getCompound("player_groups");
-        for (String ownerText : owners.getAllKeys()) {
-            if (groupsByOwner.size() >= MAX_STORED_OWNERS) break;
+
+        CompoundTag groupsTag = legacyTag.getCompound("player_groups");
+        for (String ownerKey : groupsTag.getAllKeys()) {
+            if (playerGroups.size() >= MAX_STORED_OWNERS) break;
             UUID owner;
             try {
-                owner = UUID.fromString(ownerText);
+                owner = UUID.fromString(ownerKey);
             } catch (IllegalArgumentException exception) {
+                LOGGER.warn("Skipping invalid legacy player group owner: {}", ownerKey);
                 continue;
             }
-            CompoundTag legacyGroups = owners.getCompound(ownerText);
-            LinkedHashMap<UUID, String> groups = groupsByOwner.computeIfAbsent(owner,
-                ignored -> new LinkedHashMap<>());
-            for (String entryKey : new java.util.TreeSet<>(legacyGroups.getAllKeys())) {
+            CompoundTag legacyGroups = groupsTag.getCompound(ownerKey);
+            LinkedHashMap<UUID, String> groups = playerGroups.computeIfAbsent(
+                owner, ignored -> new LinkedHashMap<>());
+            for (String entryKey : legacyGroups.getAllKeys()) {
                 if (groups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) break;
                 String displayName;
                 try {
                     displayName = GroupConstraints.normalizeName(legacyGroups.getString(entryKey));
                 } catch (IllegalArgumentException exception) {
+                    LOGGER.warn("Skipping invalid legacy player group name for owner {}", ownerKey);
                     continue;
                 }
-                GroupKey key = GroupKey.migrated(owner, displayName);
-                if (groups.putIfAbsent(key.internalId(), displayName) == null) changed = true;
+                GroupKey migrated = GroupKey.migrated(owner, displayName);
+                if (groups.putIfAbsent(migrated.internalId(), displayName) == null) changed = true;
             }
         }
+
         if (changed) {
             loadedFromDedicatedStorage = true;
             setDirty();
@@ -254,149 +332,270 @@ public class PlayerGroupStore extends SavedData {
         return changed;
     }
 
-    public synchronized void validateGroupTransfer(UUID previousOwner, UUID newOwner,
-                                                   Collection<GroupRef> transferred) {
-        if (previousOwner == null || newOwner == null || transferred == null) {
+    /**
+     * 将一组稳定分组身份迁移到新所有者；冲突时不修改任何状态。
+     */
+    public void transferGroups(UUID previousOwner, UUID newOwner, Collection<GroupRef> groupsToTransfer) {
+        validateGroupTransfer(previousOwner, newOwner, groupsToTransfer);
+        if (previousOwner.equals(newOwner) || groupsToTransfer.isEmpty()) return;
+
+        LinkedHashMap<UUID, String> sourceGroups = playerGroups.get(previousOwner);
+        LinkedHashMap<UUID, String> destination = playerGroups.computeIfAbsent(
+            newOwner, ignored -> new LinkedHashMap<>());
+        for (GroupRef group : groupsToTransfer) {
+            if (sourceGroups != null) sourceGroups.remove(group.key().internalId());
+            destination.put(group.key().internalId(), group.displayName());
+        }
+        Set<UUID> transferredIds = groupsToTransfer.stream()
+            .map(group -> group.key().internalId())
+            .collect(Collectors.toSet());
+        Map<ConnectionKey, String> transferredNames = new HashMap<>();
+        connectionNames.entrySet().removeIf(entry -> {
+            ConnectionKey key = entry.getKey();
+            if (!previousOwner.equals(key.groupKey().ownerId())
+                || !transferredIds.contains(key.groupKey().internalId())) return false;
+            transferredNames.put(new ConnectionKey(
+                key.groupKey().withOwner(newOwner), key.first(), key.second()), entry.getValue());
+            return true;
+        });
+        transferredNames.forEach(connectionNames::putIfAbsent);
+        if (sourceGroups != null && sourceGroups.isEmpty()) playerGroups.remove(previousOwner);
+        setDirty();
+    }
+
+    public record ConnectionNameMerge(
+        Map<ConnectionKey, String> sourceNames,
+        Set<ConnectionKey> insertedTargets
+    ) {
+        public ConnectionNameMerge {
+            sourceNames = Map.copyOf(sourceNames);
+            insertedTargets = Set.copyOf(insertedTargets);
+        }
+    }
+
+    public void validateGroupTransfer(UUID previousOwner, UUID newOwner,
+                                      Collection<GroupRef> groupsToTransfer) {
+        if (previousOwner == null || newOwner == null || groupsToTransfer == null) {
             throw new IllegalArgumentException("Group transfer owners and groups are required");
         }
-        if (previousOwner.equals(newOwner) || transferred.isEmpty()) return;
-        LinkedHashMap<UUID, String> target = groupsByOwner.getOrDefault(newOwner, new LinkedHashMap<>());
-        long additions = transferred.stream().map(group -> group.key().internalId()).distinct()
-            .filter(id -> !target.containsKey(id)).count();
-        if ((long) target.size() + additions > GroupConstraints.MAX_GROUPS_PER_OWNER) {
+        if (previousOwner.equals(newOwner) || groupsToTransfer.isEmpty()) return;
+
+        LinkedHashMap<UUID, String> targetGroups = playerGroups.getOrDefault(newOwner, new LinkedHashMap<>());
+        long newGroupCount = groupsToTransfer.stream()
+            .map(group -> group.key().internalId()).distinct()
+            .filter(internalId -> !targetGroups.containsKey(internalId)).count();
+        if ((long) targetGroups.size() + newGroupCount > GroupConstraints.MAX_GROUPS_PER_OWNER) {
             throw new IllegalStateException("Group limit exceeded");
         }
-        for (GroupRef group : transferred) {
+        for (GroupRef group : groupsToTransfer) {
             if (!previousOwner.equals(group.key().ownerId())) {
                 throw new IllegalArgumentException("Group does not belong to previous owner");
             }
-            String sameId = target.get(group.key().internalId());
-            if (sameId != null && !sameId.equals(group.displayName())) {
+            String sameInternal = targetGroups.get(group.key().internalId());
+            if (sameInternal != null && !sameInternal.equals(group.displayName())) {
                 throw new IllegalStateException("Target owner has a conflicting group identity");
             }
-            boolean sameName = target.entrySet().stream().anyMatch(entry ->
+            boolean sameName = targetGroups.entrySet().stream().anyMatch(entry ->
                 !entry.getKey().equals(group.key().internalId())
                     && entry.getValue().equals(group.displayName()));
-            if (sameName) throw new IllegalStateException("Target owner already has a group with this name");
-        }
-    }
-
-    public synchronized void transferGroups(UUID previousOwner, UUID newOwner,
-                                            Collection<GroupRef> transferred) {
-        validateGroupTransfer(previousOwner, newOwner, transferred);
-        if (previousOwner.equals(newOwner) || transferred.isEmpty()) return;
-        LinkedHashMap<UUID, String> source = groupsByOwner.get(previousOwner);
-        LinkedHashMap<UUID, String> target = groupsByOwner.computeIfAbsent(newOwner,
-            ignored -> new LinkedHashMap<>());
-        for (GroupRef group : transferred) {
-            if (source != null) source.remove(group.key().internalId());
-            target.put(group.key().internalId(), group.displayName());
-        }
-        if (source != null && source.isEmpty()) groupsByOwner.remove(previousOwner);
-        setDirty();
-    }
-
-    public synchronized String getNextGroupIdForPlayer(UUID ownerId) {
-        Set<Integer> used = new LinkedHashSet<>();
-        for (String name : getGroups(ownerId)) {
-            try {
-                used.add(Integer.parseInt(name));
-            } catch (NumberFormatException ignored) {
-                // 非数字显示名称不参与旧版自动编号。
+            if (sameName) {
+                throw new IllegalStateException("Target owner already has a group with this name");
             }
         }
-        int next = Math.max(playerNextGroupCounter.getOrDefault(ownerId, 0),
-            used.stream().max(Integer::compareTo).orElse(0)) + 1;
-        while (used.contains(next)) next++;
-        playerNextGroupCounter.put(ownerId, next);
-        setDirty();
+
+    }
+
+    public synchronized String getNextGroupIdForPlayer(UUID playerId) {
+        Set<Integer> used = getNumericGroupIdsForPlayer(playerId);
+        if (used.isEmpty()) {
+            playerNextGroupCounter.put(playerId, 1);
+            return "1";
+        }
+        int counter = Math.max(
+            playerNextGroupCounter.getOrDefault(playerId, 0),
+            used.stream().max(Integer::compareTo).orElse(0));
+        int next = counter + 1;
+        while (used.contains(next)) {
+            next++;
+        }
+        playerNextGroupCounter.put(playerId, next);
         return Integer.toString(next);
     }
 
-    @Override
-    public synchronized CompoundTag save(CompoundTag tag) {
-        tag.putInt("schema_version", SCHEMA_VERSION);
-        CompoundTag counters = new CompoundTag();
-        playerNextGroupCounter.forEach((owner, counter) -> counters.putInt(owner.toString(), counter));
-        tag.put("player_group_counter", counters);
+    private Set<Integer> getNumericGroupIdsForPlayer(UUID playerId) {
+        Set<Integer> ids = new HashSet<>();
+        Collection<String> groups = playerGroups.containsKey(playerId)
+            ? playerGroups.get(playerId).values() : Collections.emptyList();
+        if (groups != null) {
+            for (String gid : groups) {
+                if (gid != null && gid.matches("\\d+")) {
+                    try {
+                        ids.add(Integer.parseInt(gid));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return ids;
+    }
 
-        CompoundTag owners = new CompoundTag();
-        groupsByOwner.forEach((owner, groups) -> {
-            CompoundTag values = new CompoundTag();
-            groups.forEach((internalId, displayName) -> values.putString(internalId.toString(), displayName));
-            if (!values.isEmpty()) owners.put(owner.toString(), values);
+    @Override
+    public CompoundTag save(CompoundTag tag) {
+        // 保存分组计数器
+        CompoundTag counterTag = new CompoundTag();
+        playerNextGroupCounter.forEach((uuid, counter) -> counterTag.putInt(uuid.toString(), counter));
+        tag.putInt("schema_version", SCHEMA_VERSION);
+        tag.put("player_group_counter", counterTag);
+
+        // 保存玩家分组
+        CompoundTag groupsTag = new CompoundTag();
+        playerGroups.forEach((uuid, groups) -> {
+            if (!groups.isEmpty()) {
+                CompoundTag playerTag = new CompoundTag();
+                groups.forEach((internalId, displayName) ->
+                    playerTag.putString(internalId.toString(), displayName));
+                groupsTag.put(uuid.toString(), playerTag);
+            }
         });
-        tag.put("player_groups", owners);
+        tag.put("player_groups", groupsTag);
+
+        ListTag namesTag = new ListTag();
+        connectionNames.forEach((key, displayName) -> {
+            CompoundTag entry = new CompoundTag();
+            DataResult<Tag> encoded = ConnectionKey.CODEC.encodeStart(NbtOps.INSTANCE, key);
+            encoded.resultOrPartial(message ->
+                LOGGER.error("Failed to encode connection name key: {}", message)).ifPresent(value -> {
+                entry.put("connection", value);
+                entry.putString("name", displayName);
+                namesTag.add(entry);
+            });
+        });
+        tag.put("connection_names", namesTag);
         return tag;
     }
 
-    private synchronized void load(CompoundTag source) {
-        CompoundTag tag = source.copy();
-        // 只有已有独立 SavedData 文件才会进入此加载分支；即使内容为空，也不能复活旧嵌入快照。
+    void load(CompoundTag tag) {
         loadedFromDedicatedStorage = true;
-        int version = readVersion(tag);
-        readCounters(tag);
-        if (tag.contains("player_groups") && !tag.contains("player_groups", Tag.TAG_COMPOUND)) {
-            throw new IllegalStateException("Player groups field must be a compound tag");
-        }
-        CompoundTag owners = tag.getCompound("player_groups");
-        for (String ownerText : owners.getAllKeys()) {
-            if (groupsByOwner.size() >= MAX_STORED_OWNERS) break;
-            UUID owner;
-            try {
-                owner = UUID.fromString(ownerText);
-            } catch (IllegalArgumentException exception) {
-                LOGGER.warn("Skipping invalid player group owner: {}", ownerText);
-                continue;
-            }
-            if (!owners.contains(ownerText, Tag.TAG_COMPOUND)) {
-                LOGGER.warn("Skipping non-compound player group owner entry: {}", ownerText);
-                continue;
-            }
-            CompoundTag values = owners.getCompound(ownerText);
-            LinkedHashMap<UUID, String> groups = new LinkedHashMap<>();
-            for (String key : new java.util.TreeSet<>(values.getAllKeys())) {
-                if (groups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) break;
+        CompoundTag migrated = migrateStoredData(tag);
+        if (migrated.contains("player_group_counter")) {
+            CompoundTag counterTag = migrated.getCompound("player_group_counter");
+            for (String key : counterTag.getAllKeys()) {
+                if (playerNextGroupCounter.size() >= MAX_STORED_OWNERS) break;
                 try {
-                    String name = GroupConstraints.normalizeName(values.getString(key));
-                    UUID internalId = version == 1
-                        ? GroupKey.migrated(owner, name).internalId()
-                        : UUID.fromString(key);
-                    groups.putIfAbsent(internalId, name);
+                    playerNextGroupCounter.put(
+                        UUID.fromString(key), Math.max(0, counterTag.getInt(key)));
                 } catch (IllegalArgumentException exception) {
-                    LOGGER.warn("Skipping invalid player group entry {} for owner {}", key, owner);
+                    LOGGER.warn("Skipping invalid player group counter owner: {}", key);
                 }
             }
-            if (!groups.isEmpty()) groupsByOwner.put(owner, groups);
         }
-        if (version < SCHEMA_VERSION) setDirty();
+
+        if (migrated.contains("player_groups")) {
+            CompoundTag groupsTag = migrated.getCompound("player_groups");
+            for (String uuidStr : groupsTag.getAllKeys()) {
+                if (playerGroups.size() >= MAX_STORED_OWNERS) break;
+                UUID uuid;
+                try {
+                    uuid = UUID.fromString(uuidStr);
+                } catch (IllegalArgumentException exception) {
+                    LOGGER.warn("Skipping invalid player group owner: {}", uuidStr);
+                    continue;
+                }
+                CompoundTag playerTag = groupsTag.getCompound(uuidStr);
+                LinkedHashMap<UUID, String> groups = new LinkedHashMap<>();
+                for (String storedKey : playerTag.getAllKeys()) {
+                    if (groups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) break;
+                    try {
+                        String displayName = GroupConstraints.normalizeName(
+                            playerTag.getString(storedKey));
+                        groups.put(UUID.fromString(storedKey), displayName);
+                    } catch (IllegalArgumentException exception) {
+                        LOGGER.warn("Skipping invalid player group entry: {}", storedKey);
+                    }
+                }
+                if (!groups.isEmpty()) {
+                    playerGroups.put(uuid, groups);
+                }
+            }
+        }
+
+        if (migrated.contains("connection_names", Tag.TAG_LIST)) {
+            ListTag namesTag = migrated.getList("connection_names", Tag.TAG_COMPOUND);
+            int count = Math.min(namesTag.size(), MAX_STORED_CONNECTION_NAMES);
+            for (int index = 0; index < count; index++) {
+                CompoundTag entry = namesTag.getCompound(index);
+                if (!entry.contains("connection") || !entry.contains("name", Tag.TAG_STRING)) continue;
+                ConnectionKey.CODEC.parse(NbtOps.INSTANCE, entry.get("connection"))
+                    .resultOrPartial(message ->
+                        LOGGER.warn("Skipping invalid connection name key: {}", message))
+                    .ifPresent(key -> {
+                        try {
+                            String name = GroupConstraints.normalizeConnectionName(
+                                entry.getString("name"));
+                            if (!name.isEmpty() && findGroup(key.groupKey()) != null) {
+                                connectionNames.put(key, name);
+                            }
+                        } catch (IllegalArgumentException exception) {
+                            LOGGER.warn("Skipping invalid connection name");
+                        }
+                    });
+            }
+        }
     }
 
-    private static int readVersion(CompoundTag tag) {
-        if (tag.contains("schema_version") && !tag.contains("schema_version", Tag.TAG_INT)) {
+    /**
+     * 将旧显示名键目录显式迁移为第二版稳定 UUID 键目录。
+     */
+    private static CompoundTag migrateStoredData(CompoundTag source) {
+        CompoundTag migrated = source.copy();
+        if (migrated.contains("schema_version")
+            && !migrated.contains("schema_version", Tag.TAG_INT)) {
             throw new IllegalStateException("Player group schema version must be an int");
         }
-        int version = tag.contains("schema_version") ? tag.getInt("schema_version") : 1;
+        int version = migrated.contains("schema_version")
+            ? migrated.getInt("schema_version") : 1;
         if (version < 1 || version > SCHEMA_VERSION) {
             throw new IllegalStateException("Unsupported player group schema version: " + version);
         }
-        return version;
-    }
-
-    private void readCounters(CompoundTag tag) {
-        if (!tag.contains("player_group_counter")) return;
-        if (!tag.contains("player_group_counter", Tag.TAG_COMPOUND)) {
-            throw new IllegalStateException("Player group counter field must be a compound tag");
-        }
-        CompoundTag counters = tag.getCompound("player_group_counter");
-        for (String ownerText : counters.getAllKeys()) {
-            if (playerNextGroupCounter.size() >= MAX_STORED_OWNERS) break;
-            try {
-                UUID owner = UUID.fromString(ownerText);
-                playerNextGroupCounter.put(owner, Math.max(0, counters.getInt(ownerText)));
-            } catch (IllegalArgumentException exception) {
-                LOGGER.warn("Skipping invalid player group counter owner: {}", ownerText);
+        while (version < SCHEMA_VERSION) {
+            switch (version) {
+                case 1 -> {
+                    CompoundTag oldGroups = migrated.getCompound("player_groups");
+                    CompoundTag newGroups = new CompoundTag();
+                    for (String ownerText : oldGroups.getAllKeys()) {
+                        CompoundTag oldOwnerGroups = oldGroups.getCompound(ownerText);
+                        CompoundTag newOwnerGroups = new CompoundTag();
+                        UUID owner;
+                        try {
+                            owner = UUID.fromString(ownerText);
+                        } catch (IllegalArgumentException exception) {
+                            newGroups.put(ownerText, oldOwnerGroups.copy());
+                            continue;
+                        }
+                        for (String oldKey : oldOwnerGroups.getAllKeys()) {
+                            if (newOwnerGroups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) break;
+                            String displayName;
+                            try {
+                                displayName = GroupConstraints.normalizeName(
+                                    oldOwnerGroups.getString(oldKey));
+                            } catch (IllegalArgumentException exception) {
+                                LOGGER.warn("Skipping invalid migrated player group name for owner {}", ownerText);
+                                continue;
+                            }
+                            GroupKey key = GroupKey.migrated(owner, displayName);
+                            newOwnerGroups.putString(key.internalId().toString(), displayName);
+                        }
+                        if (!newOwnerGroups.isEmpty()) newGroups.put(ownerText, newOwnerGroups);
+                    }
+                    migrated.put("player_groups", newGroups);
+                    migrated.putInt("schema_version", 2);
+                    version = 2;
+                }
+                default -> throw new IllegalStateException(
+                    "Missing player group migration from version: " + version);
             }
         }
+
+        return migrated;
     }
 }

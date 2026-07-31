@@ -5,7 +5,6 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.node.LinkConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -106,9 +105,7 @@ public class TransferUtils {
         if (!sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
             || !targetConfig.getLinkedNodes(groupKey).contains(sourceNode)) return false;
 
-        int sourceChannel = sourceConfig.linkConfig.getOutputChannel();
-        int targetChannel = targetConfig.linkConfig.getInputChannel();
-        return LinkConfig.channelsMatch(sourceChannel, targetChannel);
+        return true;
     }
 
     // ── 传输协议接口 ──

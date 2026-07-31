@@ -136,8 +136,6 @@ public final class BlueprintCaptureService {
 
     private static CompoundTag encodeFace(FaceConfigComposite config) {
         CompoundTag tag = new CompoundTag();
-        tag.putInt(ConfigKeys.INPUT_CHANNEL, config.linkConfig.getInputChannel());
-        tag.putInt(ConfigKeys.OUTPUT_CHANNEL, config.linkConfig.getOutputChannel());
         tag.putString(ConfigKeys.STRATEGY, config.linkConfig.getStrategy().id().toString());
         tag.putString(ConfigKeys.EXTRACTION_MODE, config.linkConfig.getExtractionMode().name());
         tag.putInt(ConfigKeys.PRIORITY, config.linkConfig.getPriority());
@@ -148,4 +146,3 @@ public final class BlueprintCaptureService {
         return tag;
     }
 }
-

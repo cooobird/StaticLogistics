@@ -56,14 +56,16 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos,
         if (!(player.containerMenu instanceof FilterConfiguratorMenu menu)
             || !NodeInteractionRules.matchesTarget(menu.getPos(), menu.getFace(), pos, face)
             || menu.isInput() != isInput
+            || menu.getTransferType() == null
             || !menu.getTransferType().typeId().equals(typeId)) return;
 
         NodeMutationService mutations = new NodeMutationService();
-        NodeMutationService.ValidatedNode node = mutations.resolve(player, pos, face);
+        NodeMutationService.ValidatedNode node = menu.resolveValidatedNode(player);
         if (node == null) return;
         int slotIndex = isInput ? 0 : 1;
         var upgradeStack = node.config().filterConfig.getUpgrades().getStackInSlot(slotIndex);
-        if (mutations.updateFilter(node, typeId, isInput, filter)) {
+        if (menu.matchesInstalledFilter(node.config())
+            && mutations.updateFilter(node, typeId, isInput, filter)) {
             menu.commitFilterData(filter, upgradeStack);
         }
     }

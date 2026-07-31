@@ -19,8 +19,8 @@ import java.util.stream.Collectors;
 /**
  * 统一生成节点的无副作用只读快照，并按完整节点依赖局部失效缓存。
  *
- * <p>一个输入面的展示结果依赖其链接输出面，因此缓存维护反向依赖索引；
- * 任一配置或能力变化只清理该面及依赖它的快照。
+ * <p>本服务只在服务器主线程使用。一个输入面的展示结果依赖其链接输出面，
+ * 因此缓存同时维护反向依赖索引；任一配置或能力变化只清理该面及依赖它的快照。
  */
 public final class NodeQueryService {
     private static final Map<MinecraftServer, CacheState> CACHES = new HashMap<>();
@@ -68,12 +68,13 @@ public final class NodeQueryService {
 
         private void removeSnapshot(QueryKey key) {
             CachedSnapshot removed = snapshots.remove(key);
-            if (removed == null) return;
-            for (QueryKey dependency : removed.dependencies()) {
-                Set<QueryKey> children = dependents.get(dependency);
-                if (children == null) continue;
-                children.remove(key);
-                if (children.isEmpty()) dependents.remove(dependency);
+            if (removed != null) {
+                for (QueryKey dependency : removed.dependencies()) {
+                    Set<QueryKey> children = dependents.get(dependency);
+                    if (children == null) continue;
+                    children.remove(key);
+                    if (children.isEmpty()) dependents.remove(dependency);
+                }
             }
         }
     }
@@ -153,8 +154,6 @@ public final class NodeQueryService {
             config.determineRole(),
             config.isGlobalInputEnabled(),
             config.isGlobalOutputEnabled(),
-            config.linkConfig.getInputChannel(),
-            config.linkConfig.getOutputChannel(),
             config.linkConfig.getPriority(),
             config.linkConfig.getKeepStock(),
             config.linkConfig.getStrategy().id(),

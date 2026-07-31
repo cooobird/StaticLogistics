@@ -3,23 +3,27 @@ package com.coobird.staticlogistics.client.event;
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.client.gui.screen.*;
+import com.coobird.staticlogistics.client.gui.component.ToolModeFeedback;
+import com.coobird.staticlogistics.client.gui.screen.BlueprintGroupScreen;
+import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
+import com.coobird.staticlogistics.client.gui.screen.HandFilterScreen;
+import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.content.item.*;
+import com.coobird.staticlogistics.content.item.BlueprintClientHooks;
+import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
-import com.coobird.staticlogistics.transfer.TransferTypeSelection;
+import com.coobird.staticlogistics.network.c2s.C2SUpdateToolModePayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -34,8 +38,6 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.mesdag.portlib.event.client.PortRegisterMenuScreensEvent;
-
-import java.util.List;
 
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
@@ -72,8 +74,6 @@ public class ClientEvents {
     }
 
     private static void installClientHooks() {
-        LinkConfiguratorClientHooks.install(
-            stack -> Minecraft.getInstance().setScreen(new LinkConfiguratorScreen(stack)));
         BlueprintClientHooks.install(
             stack -> Minecraft.getInstance().setScreen(new BlueprintGroupScreen(stack)),
             (stack, tooltip) -> {
@@ -125,24 +125,16 @@ public class ClientEvents {
         if (stack.getItem() instanceof LinkConfiguratorItem) {
             if (!SLKeyMappings.TOOL_MODE_SCROLL.isDown()) return;
             event.setCanceled(true);
-            String currentGroup = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP, "");
-            var currentGroupKey = PortItemStackExtension.getData(
-                stack, SLDataComponents.SELECTED_GROUP_KEY.get());
             int currentMode = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE, 0);
-            List<ResourceLocation> selectedTypeIds = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_TYPES.get());
-            int legacyMask = PortItemStackExtension.getDataOrDefault(
-                stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-            selectedTypeIds = TransferTypeSelection.mergeIdsWithMask(
-                selectedTypeIds == null ? List.of() : selectedTypeIds,
-                legacyMask, TransferRegistries.getAllActive());
 
             ToolMode mode = ToolMode.fromId(currentMode);
             ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
             int nextMode = newMode.getId();
 
             PortItemStackExtension.setData(stack, SLDataComponents.TOOL_MODE, nextMode);
-            SLNetwork.HANDLER.sendToServer(new C2SUpdateToolSettingsPayload(
-                currentGroup, currentGroupKey, nextMode, selectedTypeIds, legacyMask));
+            SLNetwork.HANDLER.sendToServer(
+                new C2SUpdateToolModePayload(nextMode));
+            ToolModeFeedback.show(mc.player, stack, newMode);
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.get(), 1.2f, 0.4f));
             return;
         }
@@ -220,7 +212,7 @@ public class ClientEvents {
     }
 
     public static void registerMenuScreens(PortRegisterMenuScreensEvent event) {
-        event.register(SLMenuTypes.NODE_CONFIGURATOR_MENU.get(), NodeConfiguratorScreen::new);
+        event.register(SLMenuTypes.LINK_CONFIGURATOR_MENU.get(), LinkConfiguratorScreen::new);
         event.register(SLMenuTypes.FILTER_CONFIG.get(), FilterConfiguratorScreen::new);
         event.register(SLMenuTypes.HAND_FILTER.get(), HandFilterScreen::new);
     }

@@ -9,6 +9,7 @@ import com.coobird.staticlogistics.logistics.util.VersionOrder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,9 +31,13 @@ public final class PendingSyncBuffer {
             return topology == null;
         }
 
-        static PendingSyncEntry update(LogisticsNode node, FaceConfigComposite config) {
+        static PendingSyncEntry update(
+            ServerLevel level,
+            LogisticsNode node,
+            FaceConfigComposite config
+        ) {
             return new PendingSyncEntry(node.gPos().pos(), node.face(),
-                FaceTopology.from(node, config), config.getLinkedNodesByGroup(),
+                FaceTopology.from(level, node, config), config.getLinkedNodesByGroup(),
                 config.getVersion(), config.faceConfig.getOwner());
         }
 
@@ -53,8 +58,12 @@ public final class PendingSyncBuffer {
     private final Map<ResourceKey<Level>, Map<FaceAddress, PendingSyncEntry>> pending = new HashMap<>();
     private boolean flushing;
 
-    public void schedule(LogisticsNode node, FaceConfigComposite config) {
-        enqueue(node, PendingSyncEntry.update(node, config));
+    public void schedule(
+        ServerLevel level,
+        LogisticsNode node,
+        FaceConfigComposite config
+    ) {
+        enqueue(node, PendingSyncEntry.update(level, node, config));
     }
 
     public void scheduleRemoval(LogisticsNode node, long version, @Nullable UUID ownerId) {
@@ -93,4 +102,3 @@ public final class PendingSyncBuffer {
         }
     }
 }
-

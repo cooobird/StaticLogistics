@@ -130,11 +130,7 @@ public class SLJadePlugin implements IWailaPlugin {
                 int keepStock = snapshot.keepStock();
                 if (keepStock > 0) faceTag.putInt("keep_stock", keepStock);
 
-                // 频道、策略、优先级、所有者
-                int inCh = snapshot.inputChannel();
-                int outCh = snapshot.outputChannel();
-                if (inCh > 0) faceTag.putInt("in_channel", inCh);
-                if (outCh > 0) faceTag.putInt("out_channel", outCh);
+                // 策略、优先级、所有者
                 faceTag.putString("strategy", snapshot.strategyDescriptionId());
                 faceTag.putString("extraction_mode", snapshot.extractionDescriptionId());
                 faceTag.putInt("priority", snapshot.priority());
@@ -221,8 +217,6 @@ public class SLJadePlugin implements IWailaPlugin {
             // 输入端信息
             boolean hasIn = role.equals("input") || role.equals("both");
             boolean hasOut = role.equals("output") || role.equals("both");
-            int inCh = faceTag.getInt("in_channel");
-            int outCh = faceTag.getInt("out_channel");
             int priority = faceTag.getInt("priority");
             int keepStock = faceTag.getInt("keep_stock");
             String strategyKey = faceTag.getString("strategy");
@@ -231,11 +225,6 @@ public class SLJadePlugin implements IWailaPlugin {
             if (hasIn) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
                 addResourceTypeLine(boxContent, "jade.staticlogistics.receive_types", faceTag, "accepted_type_ids");
-                if (inCh > 0) {
-                    boxContent.add(Component.literal("  ")
-                        .append(Component.translatable("jade.staticlogistics.channel", inCh))
-                        .withStyle(ChatFormatting.GRAY));
-                }
                 boxContent.add(Component.literal("  ")
                     .append(Component.translatable("jade.staticlogistics.priority", priority))
                     .withStyle(ChatFormatting.GRAY));
@@ -249,11 +238,6 @@ public class SLJadePlugin implements IWailaPlugin {
             if (hasOut) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
                 addResourceTypeLine(boxContent, "jade.staticlogistics.transfer_types", faceTag, "output_type_ids");
-                if (outCh > 0) {
-                    boxContent.add(Component.literal("  ")
-                        .append(Component.translatable("jade.staticlogistics.channel", outCh))
-                        .withStyle(ChatFormatting.GRAY));
-                }
                 if (!strategyKey.isEmpty()) {
                     boxContent.add(Component.literal("  ")
                         .append(Component.translatable("jade.staticlogistics.strategy_label",

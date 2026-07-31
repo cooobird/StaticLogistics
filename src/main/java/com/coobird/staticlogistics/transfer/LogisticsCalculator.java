@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.transfer;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 
 /**
  * 物流计算工具类 - 集中所有与升级倍率、范围、距离相关的计算
@@ -40,31 +41,78 @@ public final class LogisticsCalculator {
         return container != null && container.isDimensionEffective();
     }
 
-    // 算最远传多远，不设人工上限，倍率多少就是多少
-    // 如果倍率异常<=0，兜底回退默认半径
-    public static double getMaxTransferDistance(ContainerConfig container) {
-        if (container == null) return SLConfig.getDefaultRadius();
-        double baseRadius = SLConfig.getDefaultRadius();
+    /**
+     * 返回整数格范围。范围倍率溢出时使用 {@link Integer#MAX_VALUE} 表示无限。
+     */
+    public static int getMaxTransferBlocks(ContainerConfig container) {
+        int baseRadius = SLConfig.getDefaultRadius();
+        if (container == null) return baseRadius;
         long rangeMult = getRangeMultiplier(container);
         if (rangeMult >= ContainerConfig.INFINITY_MARKER) {
-            return Double.POSITIVE_INFINITY;
+            return Integer.MAX_VALUE;
         }
-        if (rangeMult <= 0) {
-            return baseRadius;
-        }
-        return baseRadius * rangeMult;
+        if (rangeMult <= 1) return baseRadius;
+        if (rangeMult > Integer.MAX_VALUE / baseRadius) return Integer.MAX_VALUE;
+        return (int) (baseRadius * rangeMult);
     }
 
     /**
-     * 检查两个节点是否超出传输范围（基于发送端容器）。
-     * 返回 true 表示超出范围，应跳过传输。
+     * 使用发送端容器评估一条传输方向的距离能力。
      */
-    public static boolean isOutOfRange(BlockPos senderPos, BlockPos receiverPos, ContainerConfig senderContainer) {
-        if (isDimensionEffective(senderContainer)) return false; // 跨维度忽略距离
-        double maxDist = getMaxTransferDistance(senderContainer);
-        if (Double.isInfinite(maxDist)) return false;
-        double actualDistSq = senderPos.distSqr(receiverPos);
-        return actualDistSq > maxDist * maxDist;
+    public static TransferRangeAssessment assessTransferRange(
+        GlobalPos sender,
+        GlobalPos receiver,
+        ContainerConfig senderContainer
+    ) {
+        return assessTransferRange(
+            sender, receiver, getMaxTransferBlocks(senderContainer),
+            isDimensionEffective(senderContainer));
+    }
+
+    /**
+     * 客户端拓扑与服务端传输共同使用的纯整数范围评估。
+     */
+    public static TransferRangeAssessment assessTransferRange(
+        GlobalPos sender,
+        GlobalPos receiver,
+        int maximumBlocks,
+        boolean dimensionEffective
+    ) {
+        if (sender == null || receiver == null) {
+            throw new IllegalArgumentException("Transfer range endpoints are required");
+        }
+        if (maximumBlocks < 0) {
+            throw new IllegalArgumentException("Maximum transfer blocks must not be negative");
+        }
+        boolean crossDimension = !sender.dimension().equals(receiver.dimension());
+        if (dimensionEffective) {
+            int actualBlocks = crossDimension ? 0 : distanceBlocks(sender.pos(), receiver.pos());
+            return new TransferRangeAssessment(
+                crossDimension, true, true, actualBlocks, Integer.MAX_VALUE);
+        }
+        if (crossDimension) {
+            return new TransferRangeAssessment(true, false, false, 0, maximumBlocks);
+        }
+        int actualBlocks = distanceBlocks(sender.pos(), receiver.pos());
+        boolean unlimited = maximumBlocks == Integer.MAX_VALUE;
+        return new TransferRangeAssessment(
+            false, unlimited, unlimited || actualBlocks <= maximumBlocks,
+            actualBlocks, maximumBlocks);
+    }
+
+    /**
+     * 两个方块坐标之间的欧氏距离，向上取整为完整方块格数。
+     */
+    public static int distanceBlocks(BlockPos first, BlockPos second) {
+        if (first == null || second == null) {
+            throw new IllegalArgumentException("Distance positions are required");
+        }
+        return ceilBlocks(Math.sqrt(first.distSqr(second)));
+    }
+
+    private static int ceilBlocks(double value) {
+        if (!Double.isFinite(value) || value >= Integer.MAX_VALUE) return Integer.MAX_VALUE;
+        return Math.max(0, (int) Math.ceil(value));
     }
 
     /**
@@ -100,6 +148,18 @@ public final class LogisticsCalculator {
             return Long.MAX_VALUE;
         }
         return result;
+    }
+
+    /**
+     * 一条传输方向的统一整数范围结论。
+     */
+    public record TransferRangeAssessment(
+        boolean crossDimension,
+        boolean unlimited,
+        boolean allowed,
+        int actualBlocks,
+        int maximumBlocks
+    ) {
     }
 
 }

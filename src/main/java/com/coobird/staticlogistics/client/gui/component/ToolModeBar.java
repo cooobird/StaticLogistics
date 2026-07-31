@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.client.gui.component;
 
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
+import com.coobird.staticlogistics.content.SLKeyNames;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -10,21 +11,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 左侧边栏组件：渲染模式选择标签页及其图标。
+ * 顶部工具模式栏：横向显示四种连接器模式。
  */
-public class LeftSidebar {
+public final class ToolModeBar {
+    public static final int MODE_COUNT = 4;
+    private static final int MODE_X = 8;
+    private static final int MODE_Y = 7;
+    private static final int MODE_STEP = 22;
 
-    public static final int MODE_COUNT = 5;
-    private static final int MODE_Y = 13;
-    private static final int MODE_STEP = 19;
+    private ToolModeBar() {
+    }
 
-    public static void render(GuiGraphics g, int leftPos, int topPos, int modeIdx) {
+    public static void render(GuiGraphics g, Font font, int leftPos, int topPos, int modeIdx) {
         for (int i = 0; i < MODE_COUNT; i++) {
-            int ry = topPos + MODE_Y + (i * MODE_STEP);
+            int rx = leftPos + MODE_X + (i * MODE_STEP);
+            int ry = topPos + MODE_Y;
             boolean sel = (i == modeIdx);
             int bw = sel ? SLGuiTextures.Button.Middle.SELECTED_WIDTH : SLGuiTextures.Button.Middle.WIDTH;
             int bh = sel ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.HEIGHT;
-            int bx = leftPos - bw;
+            int bx = sel ? rx - 1 : rx;
             int by = sel ? ry - 1 : ry;
 
             g.blit(SLGuiTextures.GUI_ATLAS, bx, by,
@@ -41,19 +46,15 @@ public class LeftSidebar {
                 iconV = switch (i) {
                     case 1 -> SLGuiTextures.Icon.INPUT_V;
                     case 2 -> SLGuiTextures.Icon.OUTPUT_V;
-                    case 3 -> SLGuiTextures.Icon.DISCONNECT_V;
-                    default -> SLGuiTextures.Icon.CONFIG_V;
+                    default -> SLGuiTextures.Icon.DISCONNECT_V;
                 };
             }
-            g.blit(SLGuiTextures.GUI_ATLAS,
-                bx + (bw - 19) / 2, by + (bh - 15) / 2 - 1,
-                iconU, iconV, 19, 15,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
+            g.blit(SLGuiTextures.GUI_ATLAS, bx + (bw - 19) / 2, by + (bh - 13) / 2 - 2, iconU, iconV, 19, 15, SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
         }
     }
 
     /**
-     * 检测鼠标是否点击了某个模式标签，返回索引（0..MODE_COUNT-1），未命中返回 -1。
+     * 返回鼠标命中的模式索引；未命中时返回 {@code -1}。
      */
     public static int getClickedMode(double mx, double my, int leftPos, int topPos) {
         for (int i = 0; i < MODE_COUNT; i++) {
@@ -65,9 +66,9 @@ public class LeftSidebar {
     }
 
     private static boolean isModeHit(double mx, double my, int leftPos, int topPos, int index) {
-        int x = leftPos - SLGuiTextures.Button.Middle.SELECTED_WIDTH;
-        int y = topPos + MODE_Y + (index * MODE_STEP) - 1;
-        return mx >= x && mx < leftPos
+        int x = leftPos + MODE_X + index * MODE_STEP - 1;
+        int y = topPos + MODE_Y - 1;
+        return mx >= x && mx < x + SLGuiTextures.Button.Middle.SELECTED_WIDTH
             && my >= y && my < y + SLGuiTextures.Button.Middle.SELECTED_HEIGHT;
     }
 
@@ -80,12 +81,11 @@ public class LeftSidebar {
                     case 0 -> "mode.staticlogistics.wrench";
                     case 1 -> "mode.staticlogistics.link_as_input";
                     case 2 -> "mode.staticlogistics.link_as_output";
-                    case 3 -> "mode.staticlogistics.remove";
-                    default -> "mode.staticlogistics.node_config";
+                    default -> "mode.staticlogistics.remove";
                 };
                 tooltip.add(Component.translatable(key).withStyle(ChatFormatting.YELLOW));
                 tooltip.add(Component.translatable(key + ".desc",
-                        Component.keybind("key.sneak"))
+                        Component.keybind(SLKeyNames.TOOL_MODE_SCROLL))
                     .withStyle(ChatFormatting.GRAY));
                 g.renderComponentTooltip(font, tooltip, mx, my);
                 return;

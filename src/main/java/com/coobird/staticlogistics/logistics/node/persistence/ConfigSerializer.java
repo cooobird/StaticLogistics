@@ -9,122 +9,135 @@ import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import org.slf4j.Logger;
 
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * 面配置 schema v2 的唯一序列化入口。
+ * 配置序列化器 —— 将 {@link FaceConfigComposite} 的子配置序列化/反序列化为 NBT。
+ *
+ * <p>处理的字段见 {@link ConfigKeys}。
+ *
+ * <p>版本兼容：反序列化时自动迁移旧格式（group_id → group_ids，SLOT_ROUND_ROBIN → ROUND_ROBIN）。
  */
-public final class ConfigSerializer {
+public class ConfigSerializer {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final int CURRENT_SCHEMA_VERSION = LogisticsDataMigration.CURRENT_FACE_SCHEMA_VERSION;
 
-    private ConfigSerializer() {
-    }
-
-    public static CompoundTag serializeNBT(FaceConfigComposite config, HolderLookup.Provider provider) {
-        CompoundTag tag = new CompoundTag();
-        tag.putInt(ConfigKeys.SCHEMA_VERSION, LogisticsDataMigration.CURRENT_FACE_SCHEMA_VERSION);
-
-        CompoundTag groups = new CompoundTag();
+    public static CompoundTag serializeNBT(FaceConfigComposite config, HolderLookup.Provider p) {
+        CompoundTag nbt = new CompoundTag();
+        nbt.putInt(ConfigKeys.SCHEMA_VERSION, CURRENT_SCHEMA_VERSION);
+        CompoundTag groupsTag = new CompoundTag();
         for (GroupRef group : config.faceConfig.getGroups()) {
-            groups.putString(group.key().internalId().toString(), group.displayName());
+            groupsTag.putString(group.key().internalId().toString(), group.displayName());
         }
-        if (!groups.isEmpty()) tag.put(ConfigKeys.GROUPS, groups);
+        if (!groupsTag.isEmpty()) nbt.put(ConfigKeys.GROUPS, groupsTag);
 
-        // 迁移窗口保留旧显示名称投影，旧版本仍可识别分组。
-        Set<String> displayNames = config.faceConfig.getGroupIds();
-        if (!displayNames.isEmpty()) tag.putString(ConfigKeys.GROUP_IDS, String.join(",", displayNames));
-
-        UUID owner = config.faceConfig.getOwner();
-        if (owner != null) tag.putUUID(ConfigKeys.OWNER, owner);
-        tag.putString(ConfigKeys.OWNER_NAME, config.faceConfig.getOwnerName());
-        CompoundTag ownerProfile = config.faceConfig.getOwnerProfileTag();
-        if (!ownerProfile.isEmpty()) tag.put(ConfigKeys.OWNER_PROFILE, ownerProfile);
-
-        tag.putInt(ConfigKeys.INPUT_CHANNEL, config.linkConfig.getInputChannel());
-        tag.putInt(ConfigKeys.OUTPUT_CHANNEL, config.linkConfig.getOutputChannel());
-        tag.putString(ConfigKeys.STRATEGY, config.linkConfig.getStrategy().id().toString());
-        tag.putString(ConfigKeys.EXTRACTION_MODE, config.linkConfig.getExtractionMode().name());
-        tag.putInt(ConfigKeys.PRIORITY, config.linkConfig.getPriority());
-        tag.putInt(ConfigKeys.KEEP_STOCK, config.linkConfig.getKeepStock());
-
-        try {
-            tag.put(ConfigKeys.FILTER_UPGRADES, config.filterConfig.getUpgrades().serializeNBT());
-        } catch (Exception exception) {
-            LOGGER.error("Failed to serialize filter upgrades for face config", exception);
-            tag.put(ConfigKeys.FILTER_UPGRADES, new CompoundTag());
+        // 迁移窗口内保留显示名称列表，兼容旧版本读取。
+        Set<String> allGroups = config.faceConfig.getGroupIds();
+        if (!allGroups.isEmpty()) {
+            nbt.putString(ConfigKeys.GROUP_IDS, String.join(",", allGroups));
         }
-        TransferTypeSelection.writeIds(tag, ConfigKeys.SELECTED_TYPES, config.getSelectedTypeIds());
-        tag.putInt(ConfigKeys.SELECTED_TYPES_MASK, config.getLegacySelectedTypesMask());
-        return tag;
+
+        UUID ownerUuid = config.faceConfig.getOwner();
+        if (ownerUuid != null) nbt.putUUID(ConfigKeys.OWNER, ownerUuid);
+        nbt.putString(ConfigKeys.OWNER_NAME, config.faceConfig.getOwnerName());
+        if (!config.faceConfig.getOwnerProfileTag().isEmpty()) {
+            nbt.put(ConfigKeys.OWNER_PROFILE, config.faceConfig.getOwnerProfileTag().copy());
+        }
+
+        nbt.putString(ConfigKeys.STRATEGY, config.linkConfig.getStrategy().id().toString());
+        nbt.putString(ConfigKeys.EXTRACTION_MODE, config.linkConfig.getExtractionMode().name());
+        nbt.putInt(ConfigKeys.PRIORITY, config.linkConfig.getPriority());
+        nbt.putInt(ConfigKeys.KEEP_STOCK, config.linkConfig.getKeepStock());
+
+        nbt.put(ConfigKeys.FILTER_UPGRADES, config.filterConfig.getUpgrades().serializeNBT());
+        TransferTypeSelection.writeIds(nbt, ConfigKeys.SELECTED_TYPES, config.getSelectedTypeIds());
+        nbt.putInt(ConfigKeys.SELECTED_TYPES_MASK, config.getLegacySelectedTypesMask());
+        return nbt;
     }
 
     /**
-     * 输入必须先经过 {@link LogisticsDataMigration#migrateFace(CompoundTag)}。
+     * 解码已经由迁移入口提升到当前版本的面配置。
      */
-    public static void deserializeMigratedNBT(
-        Object permit,
-        FaceConfigComposite config,
-        HolderLookup.Provider provider,
-        CompoundTag tag
-    ) {
-        if (tag.getInt(ConfigKeys.SCHEMA_VERSION) > LogisticsDataMigration.CURRENT_FACE_SCHEMA_VERSION) {
-            throw new IllegalStateException("Unsupported face config schema version: "
-                + tag.getInt(ConfigKeys.SCHEMA_VERSION));
+    public static void deserializeMigratedNBT(Object permit, FaceConfigComposite config,
+                                              HolderLookup.Provider p, CompoundTag nbt) {
+        int schemaVersion = nbt.contains(ConfigKeys.SCHEMA_VERSION)
+            ? nbt.getInt(ConfigKeys.SCHEMA_VERSION) : 1;
+        if (schemaVersion > CURRENT_SCHEMA_VERSION) {
+            throw new IllegalStateException("Unsupported face config schema version: " + schemaVersion);
+        }
+        UUID ownerUuid = nbt.hasUUID(ConfigKeys.OWNER) ? nbt.getUUID(ConfigKeys.OWNER) : null;
+        String ownerName = nbt.contains(ConfigKeys.OWNER_NAME) ? nbt.getString(ConfigKeys.OWNER_NAME) : "Unknown";
+        if (ownerUuid != null) config.setOwner(permit, ownerUuid, ownerName, null);
+        if (nbt.contains(ConfigKeys.OWNER_PROFILE)) {
+            config.setOwnerProfileTag(permit, nbt.getCompound(ConfigKeys.OWNER_PROFILE).copy());
         }
 
-        UUID owner = tag.hasUUID(ConfigKeys.OWNER) ? tag.getUUID(ConfigKeys.OWNER) : null;
-        String ownerName = tag.contains(ConfigKeys.OWNER_NAME, Tag.TAG_STRING)
-            ? tag.getString(ConfigKeys.OWNER_NAME) : "Unknown";
-        if (owner != null) config.setOwner(permit, owner, ownerName, null);
-        if (tag.contains(ConfigKeys.OWNER_PROFILE, Tag.TAG_COMPOUND)) {
-            config.setOwnerProfileTag(permit, tag.getCompound(ConfigKeys.OWNER_PROFILE));
-        }
-
-        if (tag.contains(ConfigKeys.GROUPS, Tag.TAG_COMPOUND)) {
-            UUID effectiveOwner = owner == null ? GroupKey.LEGACY_UNOWNED : owner;
-            CompoundTag groups = tag.getCompound(ConfigKeys.GROUPS);
-            for (String internalId : groups.getAllKeys()) {
-                if (!groups.contains(internalId, Tag.TAG_STRING)) {
-                    throw new IllegalStateException("Group display name must be a string: " + internalId);
+        if (nbt.contains(ConfigKeys.GROUPS)) {
+            CompoundTag groupsTag = nbt.getCompound(ConfigKeys.GROUPS);
+            UUID effectiveOwner = ownerUuid == null ? GroupKey.LEGACY_UNOWNED : ownerUuid;
+            for (String internalId : groupsTag.getAllKeys()) {
+                try {
+                    String displayName = groupsTag.getString(internalId);
+                    if (!displayName.isEmpty()) {
+                        config.addGroup(permit, new GroupRef(
+                            new GroupKey(effectiveOwner, UUID.fromString(internalId)), displayName));
+                    }
+                } catch (IllegalArgumentException e) {
+                    LOGGER.warn("Ignoring invalid group identity {}", internalId);
                 }
-                config.addGroup(permit, new GroupRef(
-                    new GroupKey(effectiveOwner, UUID.fromString(internalId)),
-                    groups.getString(internalId)));
+            }
+        } else {
+            // 旧版结构：读取所有者后，再按显示名称执行确定性迁移。
+            String oldGroupId = nbt.getString(ConfigKeys.GROUP_ID);
+            if (!oldGroupId.isEmpty()) config.addLegacyGroup(permit, oldGroupId);
+            String groupIdsStr = nbt.getString(ConfigKeys.GROUP_IDS);
+            if (!groupIdsStr.isEmpty()) {
+                for (String gid : groupIdsStr.split(",")) {
+                    String trimmed = gid.trim();
+                    if (!trimmed.isEmpty()) config.addLegacyGroup(permit, trimmed);
+                }
             }
         }
 
-        config.setInputChannel(tag.getInt(ConfigKeys.INPUT_CHANNEL));
-        config.setOutputChannel(tag.getInt(ConfigKeys.OUTPUT_CHANNEL));
         try {
-            config.setDistributionStrategy(DistributionStrategyRegistry.byName(tag.getString(ConfigKeys.STRATEGY)));
-        } catch (Exception exception) {
-            config.setDistributionStrategy(DistributionStrategyRegistry.SEQUENTIAL);
+            String stratName = nbt.getString(ConfigKeys.STRATEGY);
+            // 迁移旧 SLOT_ROUND_ROBIN → ROUND_ROBIN
+            if ("SLOT_ROUND_ROBIN".equals(stratName)) {
+                config.setDistributionStrategy(
+                    DistributionStrategyRegistry.ROUND_ROBIN);
+                config.setExtractionMode(ExtractionMode.SLOT_ROUND_ROBIN);
+            } else {
+                config.setDistributionStrategy(
+                    DistributionStrategyRegistry.byName(stratName));
+            }
+        } catch (Exception e) {
+            config.setDistributionStrategy(
+                DistributionStrategyRegistry.SEQUENTIAL);
         }
-        if (tag.contains(ConfigKeys.EXTRACTION_MODE, Tag.TAG_STRING)) {
+        if (nbt.contains(ConfigKeys.EXTRACTION_MODE)) {
             try {
-                config.setExtractionMode(
-                    ExtractionMode.valueOf(tag.getString(ConfigKeys.EXTRACTION_MODE)));
-            } catch (IllegalArgumentException exception) {
+                config.setExtractionMode(ExtractionMode.valueOf(nbt.getString(ConfigKeys.EXTRACTION_MODE)));
+            } catch (Exception e) {
                 config.setExtractionMode(ExtractionMode.SEQUENTIAL);
             }
         }
-        config.setPriority(tag.getInt(ConfigKeys.PRIORITY));
-        config.setKeepStock(tag.getInt(ConfigKeys.KEEP_STOCK));
+        config.setPriority(nbt.getInt(ConfigKeys.PRIORITY));
+        config.setKeepStock(nbt.getInt(ConfigKeys.KEEP_STOCK));
 
-        if (tag.contains(ConfigKeys.FILTER_UPGRADES, Tag.TAG_COMPOUND)) {
-            config.filterConfig.getUpgrades().deserializeNBT(tag.getCompound(ConfigKeys.FILTER_UPGRADES));
+        if (nbt.contains(ConfigKeys.FILTER_UPGRADES)) {
+            config.filterConfig.getUpgrades().deserializeNBT(nbt.getCompound(ConfigKeys.FILTER_UPGRADES));
         }
-        if (tag.contains(ConfigKeys.SELECTED_TYPES, Tag.TAG_LIST)) {
-            config.setSelectedTypeIds(TransferTypeSelection.readIds(tag, ConfigKeys.SELECTED_TYPES));
-            if (tag.contains(ConfigKeys.SELECTED_TYPES_MASK, Tag.TAG_INT)) {
-                config.loadUnresolvedLegacySelectedTypesMask(tag.getInt(ConfigKeys.SELECTED_TYPES_MASK));
+        if (nbt.contains(ConfigKeys.SELECTED_TYPES)) {
+            config.setSelectedTypeIds(TransferTypeSelection.readIds(nbt, ConfigKeys.SELECTED_TYPES));
+            if (nbt.contains(ConfigKeys.SELECTED_TYPES_MASK)) {
+                config.loadUnresolvedLegacySelectedTypesMask(
+                    nbt.getInt(ConfigKeys.SELECTED_TYPES_MASK));
             }
-        } else if (tag.contains(ConfigKeys.SELECTED_TYPES_MASK, Tag.TAG_INT)) {
-            config.loadLegacySelectedTypesMask(tag.getInt(ConfigKeys.SELECTED_TYPES_MASK));
+        } else if (nbt.contains(ConfigKeys.SELECTED_TYPES_MASK)) {
+            config.loadLegacySelectedTypesMask(nbt.getInt(ConfigKeys.SELECTED_TYPES_MASK));
         }
     }
 }

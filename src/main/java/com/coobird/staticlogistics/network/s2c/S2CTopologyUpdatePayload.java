@@ -2,7 +2,9 @@ package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
@@ -12,12 +14,14 @@ import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * 分页、原子地替换一批面的轻量拓扑及其分组作用域出边。
@@ -35,20 +39,18 @@ public record S2CTopologyUpdatePayload(
     /**
      * 服务端生成更新时使用的冻结输入。
      */
-    public record FaceUpdate(FaceTopology topology, Map<com.coobird.staticlogistics.api.group.GroupKey,
-        Set<LogisticsNode>> linksByGroup) {
+    public record FaceUpdate(FaceTopology topology, Map<GroupKey, Set<LogisticsNode>> linksByGroup) {
         public FaceUpdate {
             if (topology == null || linksByGroup == null) {
                 throw new IllegalArgumentException("Topology update fields must not be null");
             }
-            Map<com.coobird.staticlogistics.api.group.GroupKey, Set<LogisticsNode>> copy =
-                new LinkedHashMap<>();
+            Map<GroupKey, Set<LogisticsNode>> copy = new LinkedHashMap<>();
             linksByGroup.forEach((key, value) -> copy.put(key, Set.copyOf(value)));
             linksByGroup = Map.copyOf(copy);
         }
 
-        public static FaceUpdate from(LogisticsNode node, FaceConfigComposite config) {
-            return new FaceUpdate(FaceTopology.from(node, config), config.getLinkedNodesByGroup());
+        public static FaceUpdate from(ServerLevel level, LogisticsNode node, FaceConfigComposite config) {
+            return new FaceUpdate(FaceTopology.from(level, node, config), config.getLinkedNodesByGroup());
         }
     }
 
@@ -62,15 +64,24 @@ public record S2CTopologyUpdatePayload(
     /**
      * 将任意数量的面和链接边拆成有界页面；客户端收齐后一次性提交。
      */
-    public static List<S2CTopologyUpdatePayload> pages(Collection<FaceUpdate> updates) {
+    public static List<S2CTopologyUpdatePayload> pages(
+        Collection<FaceUpdate> updates,
+        Function<ConnectionKey, String> connectionNameResolver
+    ) {
         if (updates == null || updates.isEmpty()) return List.of();
+        if (connectionNameResolver == null) {
+            throw new IllegalArgumentException("Connection name resolver must not be null");
+        }
         Map<LogisticsNode, FaceTopology> facesByNode = new LinkedHashMap<>();
         Set<ScopedTopologyLink> linkSet = new LinkedHashSet<>();
         for (FaceUpdate update : updates) {
             FaceTopology previous = facesByNode.putIfAbsent(update.topology().node(), update.topology());
             if (previous != null) throw new IllegalArgumentException("Duplicate face in topology update");
-            update.linksByGroup().forEach((groupKey, targets) -> targets.forEach(target ->
-                linkSet.add(new ScopedTopologyLink(groupKey, update.topology().node(), target))));
+            update.linksByGroup().forEach((groupKey, targets) -> targets.forEach(target -> {
+                ConnectionKey key = new ConnectionKey(groupKey, update.topology().node(), target);
+                linkSet.add(new ScopedTopologyLink(groupKey, update.topology().node(), target,
+                    connectionNameResolver.apply(key)));
+            }));
         }
 
         List<FaceTopology> faces = List.copyOf(facesByNode.values());

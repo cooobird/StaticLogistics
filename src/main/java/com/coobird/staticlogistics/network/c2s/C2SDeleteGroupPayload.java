@@ -4,9 +4,12 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CClearLinkEndpointPayload;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -46,7 +49,14 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements IPortPacket.C2
         var target = store.findGroup(groupKey());
         if (target != null && new GroupCommandService(player.getServer()).delete(player, groupKey())) {
             LinkConfiguratorSelection.clearIfSelected(player, target.key(), target.displayName());
-            TeamPacketSync.send(player, new S2CGroupDirectoryPayload(
+            if (player.containerMenu instanceof LinkConfiguratorMenu menu
+                && menu.hasTarget()
+                && groupKey().equals(menu.getRemoteGroupKey())) {
+                menu.clearTarget();
+                SLNetwork.HANDLER.sendToPlayer(player, new S2CClearLinkEndpointPayload());
+                menu.broadcastChanges();
+            }
+            TeamPacketSync.send(player, groupKey().ownerId(), new S2CGroupDirectoryPayload(
                 groupKey().ownerId(), store.getGroupRefs(groupKey().ownerId())));
         }
     }

@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.client.data;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
@@ -57,6 +58,7 @@ public enum ClientLinkData {
         final Map<GroupKey, Set<FaceKey>> groupFaces = new ConcurrentHashMap<>();
         final Map<FaceKey, Set<GroupKey>> faceGroups = new ConcurrentHashMap<>();
         final Map<GroupKey, Map<LogisticsNode, Set<LogisticsNode>>> scopedLinks = new ConcurrentHashMap<>();
+        final Map<ConnectionKey, String> connectionNames = new ConcurrentHashMap<>();
         final VersionGate<FaceKey> versionGate = new VersionGate<>();
     }
 
@@ -332,14 +334,6 @@ public enum ClientLinkData {
         return List.copyOf(projection.knownGroupRefs.values());
     }
 
-    public Map<LogisticsNode, FaceTopology> getActiveTopology(ResourceKey<Level> dimension) {
-        Map<FaceAddress, FaceTopology> values = projection.topologyByDimension.get(dimension);
-        if (values == null || values.isEmpty()) return Collections.emptyMap();
-        Map<LogisticsNode, FaceTopology> result = new LinkedHashMap<>();
-        values.values().forEach(topology -> result.put(topology.node(), topology));
-        return Collections.unmodifiableMap(result);
-    }
-
     public Set<LogisticsNode> getLinkedNodes(GroupKey groupKey, LogisticsNode source) {
         Map<LogisticsNode, Set<LogisticsNode>> sources = projection.scopedLinks.get(groupKey);
         if (sources == null) return Set.of();
@@ -347,13 +341,56 @@ public enum ClientLinkData {
         return targets == null ? Set.of() : Set.copyOf(targets);
     }
 
-    public void addKnownGroup(GroupRef group, String ownerName) {
+    /**
+     * 返回分组中的唯一连接视图。
+     *
+     * <p>服务端会分别同步两个端点的出边，因此先按规范化端点对去重。只有两端拓扑都在同一份
+     * 已提交快照中存在时才公开，避免界面短暂展示无法配置的半连接。
+     */
+    public List<ClientConnection> getConnectionsForGroup(GroupKey groupKey) {
         ProjectionState state = projection;
-        state.knownGroupRefs.put(group.key(), group);
-        if (ownerName != null && !ownerName.isEmpty()) {
-            state.knownOwnerNames.putIfAbsent(group.key().ownerId(), ownerName);
+        Map<LogisticsNode, Set<LogisticsNode>> sources = state.scopedLinks.get(groupKey);
+        if (sources == null || sources.isEmpty()) return List.of();
+
+        Map<ConnectionKey, ClientConnection> connections = new LinkedHashMap<>();
+        sources.forEach((source, targets) -> targets.forEach(target -> {
+            Set<LogisticsNode> reciprocal = sources.get(target);
+            if (reciprocal == null || !reciprocal.contains(source)) return;
+            ConnectionKey key = new ConnectionKey(groupKey, source, target);
+            FaceTopology first = findTopology(state, key.first());
+            FaceTopology second = findTopology(state, key.second());
+            if (first == null || second == null) return;
+            connections.putIfAbsent(key, new ClientConnection(
+                groupKey, key.first(), key.second(), first, second,
+                state.connectionNames.getOrDefault(key, "")));
+        }));
+        return connections.values().stream()
+            .sorted(ClientConnection.DISPLAY_ORDER)
+            .toList();
+    }
+
+    /**
+     * 使用稳定身份从最新客户端拓扑中解析连接。
+     *
+     * <p>调用方不得长期保存 {@link ClientConnection}，因为其中的端点拓扑会随服务端同步更新。
+     */
+    @Nullable
+    public ClientConnection findConnection(ConnectionKey key) {
+        for (ClientConnection connection : getConnectionsForGroup(key.groupKey())) {
+            if (connection.key().equals(key)) return connection;
         }
-        incrementDataVersion();
+        return null;
+    }
+
+    @Nullable
+    public FaceTopology getTopology(LogisticsNode node) {
+        return findTopology(projection, node);
+    }
+
+    @Nullable
+    private FaceTopology findTopology(ProjectionState state, LogisticsNode node) {
+        Map<FaceAddress, FaceTopology> dimension = state.topologyByDimension.get(node.gPos().dimension());
+        return dimension == null ? null : dimension.get(FaceAddress.of(node));
     }
 
     @Nullable
@@ -435,11 +472,22 @@ public enum ClientLinkData {
             .computeIfAbsent(link.groupKey(), ignored -> new ConcurrentHashMap<>())
             .computeIfAbsent(link.source(), ignored -> ConcurrentHashMap.newKeySet())
             .add(link.target());
+        ConnectionKey key = new ConnectionKey(link.groupKey(), link.source(), link.target());
+        String previous = state.connectionNames.putIfAbsent(key, link.displayName());
+        if (previous != null && !previous.equals(link.displayName())) {
+            throw new IllegalStateException("Conflicting connection names in topology snapshot");
+        }
     }
 
     private void removeSourceLinks(ProjectionState state, LogisticsNode source) {
         state.scopedLinks.entrySet().removeIf(group -> {
-            group.getValue().remove(source);
+            Set<LogisticsNode> removedTargets = group.getValue().remove(source);
+            if (removedTargets != null) {
+                for (LogisticsNode target : removedTargets) {
+                    state.connectionNames.remove(
+                        new ConnectionKey(group.getKey(), source, target));
+                }
+            }
             return group.getValue().isEmpty();
         });
     }
@@ -455,11 +503,12 @@ public enum ClientLinkData {
             });
             return sources.isEmpty();
         });
+        state.connectionNames.keySet().removeIf(key ->
+            key.first().equals(node) || key.second().equals(node));
     }
 
     public String getOwnerName(UUID owner) {
         String known = projection.knownOwnerNames.get(owner);
         return known == null || known.isEmpty() ? owner.toString() : known;
     }
-
 }

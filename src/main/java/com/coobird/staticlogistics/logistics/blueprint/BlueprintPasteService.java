@@ -2,10 +2,12 @@ package com.coobird.staticlogistics.logistics.blueprint;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.*;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
+import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import com.mojang.logging.LogUtils;
@@ -24,11 +26,11 @@ import net.minecraft.world.item.ItemStack;
 import org.slf4j.Logger;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 蓝图粘贴与撤销的统一事务协调器。
  */
-@SuppressWarnings("try")
 public final class BlueprintPasteService {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -114,16 +116,16 @@ public final class BlueprintPasteService {
         boolean targetGroupExisted = globalMgr.findGroup(player.getUUID(), data.groupId()) != null;
 
         // 撤销快照：记录粘贴前的完整状态
-        List<BlueprintUndoData.FaceSnapshot> faceSnapshots = new java.util.ArrayList<>();
-        List<BlueprintUndoData.ContainerSnapshot> containerSnapshots = new java.util.ArrayList<>();
-        List<BlueprintUndoData.LinkSnapshot> linkSnapshots = new java.util.ArrayList<>();
-        List<BlueprintUndoData.GroupSnapshot> groupSnapshots = new java.util.ArrayList<>();
+        List<BlueprintUndoData.FaceSnapshot> faceSnapshots = new ArrayList<>();
+        List<BlueprintUndoData.ContainerSnapshot> containerSnapshots = new ArrayList<>();
+        List<BlueprintUndoData.LinkSnapshot> linkSnapshots = new ArrayList<>();
+        List<BlueprintUndoData.GroupSnapshot> groupSnapshots = new ArrayList<>();
 
         Set<BlockPos> pastedPositions = data.blocks().stream()
             .map(entry -> BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation))
-            .collect(java.util.stream.Collectors.toSet());
+            .collect(Collectors.toSet());
         Map<BlockPos, BlueprintData.BlockEntry> entriesByRelativePos = data.blocks().stream()
-            .collect(java.util.stream.Collectors.toMap(
+            .collect(Collectors.toMap(
                 BlueprintData.BlockEntry::relativePos, entry -> entry, (first, ignored) -> first));
 
         // 在打开事务前完整冻结回滚基线，后续任何写入都必须已有对应快照。
@@ -142,7 +144,7 @@ public final class BlueprintPasteService {
                     faceSnapshots.add(new BlueprintUndoData.FaceSnapshot(
                         absPos, rotatedFace, true,
                         existingCfg.serializeNBT(level.registryAccess()),
-                        new java.util.HashSet<>(existingCfg.getLinkedNodes())
+                        new HashSet<>(existingCfg.getLinkedNodes())
                     ));
                 } else {
                     faceSnapshots.add(new BlueprintUndoData.FaceSnapshot(
@@ -207,18 +209,16 @@ public final class BlueprintPasteService {
 
                     try (var ignored = cfg.beginBulkEdit()) {
                         CompoundTag ft = fe.faceConfig();
-                        cfg.setInputChannel(ft.getInt(ConfigKeys.INPUT_CHANNEL));
-                        cfg.setOutputChannel(ft.getInt(ConfigKeys.OUTPUT_CHANNEL));
                         String stratName = ft.getString(ConfigKeys.STRATEGY);
                         if (!stratName.isEmpty()) {
                             cfg.setDistributionStrategy(
-                                com.coobird.staticlogistics.transfer.DistributionStrategyRegistry.byName(stratName));
+                                DistributionStrategyRegistry.byName(stratName));
                         }
                         String extName = ft.getString(ConfigKeys.EXTRACTION_MODE);
                         if (!extName.isEmpty()) {
                             try {
                                 cfg.setExtractionMode(
-                                    com.coobird.staticlogistics.api.type.ExtractionMode.valueOf(extName));
+                                    ExtractionMode.valueOf(extName));
                             } catch (Exception e) {
                                 LOGGER.warn("Failed to parse extraction mode", e);
                             }
@@ -309,7 +309,7 @@ public final class BlueprintPasteService {
             }
 
             // 在提交前按实际将要记录的键校验撤销快照大小，避免提交后才发现快照无法保存。
-            Set<FaceAddress> projectedPostVersionKeys = new java.util.LinkedHashSet<>();
+            Set<FaceAddress> projectedPostVersionKeys = new LinkedHashSet<>();
             for (BlueprintUndoData.FaceSnapshot snapshot : faceSnapshots) {
                 projectedPostVersionKeys.add(FaceAddress.of(snapshot.pos(), snapshot.face()));
             }

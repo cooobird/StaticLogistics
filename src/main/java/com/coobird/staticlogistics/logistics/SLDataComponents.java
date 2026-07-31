@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import io.netty.handler.codec.DecoderException;
@@ -40,6 +41,15 @@ public class SLDataComponents {
     public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<GroupKey>> SELECTED_GROUP_KEY =
         DATA_COMPONENT_TYPES.builder("selected_group_key", b -> b.persistent(GroupKey.CODEC)
             .networkSynchronized(GroupKey.STREAM_CODEC));
+
+    /**
+     * 配置器当前聚焦的单条连接；缺少该组件表示预览整个分组。
+     */
+    public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<ConnectionKey>>
+        SELECTED_CONNECTION_KEY =
+        DATA_COMPONENT_TYPES.builder("selected_connection_key", b -> b
+            .persistent(ConnectionKey.CODEC)
+            .networkSynchronized(ConnectionKey.STREAM_CODEC));
 
     public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<Integer>> SELECTED_TYPES_MASK =
         DATA_COMPONENT_TYPES.builder("selected_types_mask", b -> b.persistent(Codec.INT).networkSynchronized(PortByteBufCodecs.VAR_INT));

@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.network.sync;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.sync.PendingSyncBuffer;
@@ -35,7 +36,7 @@ public final class NetworkSyncManager implements TopologySyncPort {
                              FaceConfigComposite config) {
         if (!GroupService.canAccess(config.faceConfig.getOwner(), player)) return;
         LogisticsNode node = new LogisticsNode(GlobalPos.of(level.dimension(), pos), face);
-        sendTopologyPages(player, List.of(S2CTopologyUpdatePayload.FaceUpdate.from(node, config)));
+        sendTopologyPages(player, List.of(S2CTopologyUpdatePayload.FaceUpdate.from(level, node, config)));
     }
 
     /**
@@ -77,7 +78,7 @@ public final class NetworkSyncManager implements TopologySyncPort {
             FaceConfigComposite config = entry.getValue();
             if (config.isDefault() || !GroupService.canAccess(config.faceConfig.getOwner(), player)) continue;
             LogisticsNode node = entry.getKey().toNode(level.dimension());
-            updates.add(S2CTopologyUpdatePayload.FaceUpdate.from(node, config));
+            updates.add(S2CTopologyUpdatePayload.FaceUpdate.from(level, node, config));
         }
         sendTopologyPages(player, updates);
     }
@@ -86,7 +87,8 @@ public final class NetworkSyncManager implements TopologySyncPort {
         ServerPlayer player,
         List<S2CTopologyUpdatePayload.FaceUpdate> updates
     ) {
-        S2CTopologyUpdatePayload.pages(updates)
+        PlayerGroupStore store = PlayerGroupStore.get(player.server);
+        S2CTopologyUpdatePayload.pages(updates, store::getConnectionName)
             .forEach(payload -> SLNetwork.HANDLER.sendToPlayer(player, payload));
     }
 

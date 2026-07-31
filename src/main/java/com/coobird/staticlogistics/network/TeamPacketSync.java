@@ -1,13 +1,15 @@
 package com.coobird.staticlogistics.network;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.group.PermissionService;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
 import net.minecraft.server.level.ServerPlayer;
 import org.mesdag.portlib.network.IPortPacket;
 
-import java.util.Collection;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 把已授权数据包发送给发起玩家所在团队的在线成员。
@@ -16,16 +18,19 @@ public final class TeamPacketSync {
     private TeamPacketSync() {
     }
 
-    public static void send(ServerPlayer player, IPortPacket.S2C payload) {
+    public static void send(ServerPlayer player, UUID ownerId, IPortPacket.S2C payload) {
         boolean sentToPlayer = false;
+        PermissionService permissions = PermissionService.getInstance();
         Set<UUID> recipients = PermissionService.getInstance().teamMembersOf(player.getUUID());
         for (UUID memberId : recipients) {
             ServerPlayer member = player.server.getPlayerList().getPlayer(memberId);
-            if (member == null) continue;
+            if (member == null || !permissions.canAccess(ownerId, member)) continue;
             SLNetwork.HANDLER.sendToPlayer(member, payload);
             sentToPlayer |= member.getUUID().equals(player.getUUID());
         }
-        if (!sentToPlayer) SLNetwork.HANDLER.sendToPlayer(player, payload);
+        if (!sentToPlayer && permissions.canAccess(ownerId, player)) {
+            SLNetwork.HANDLER.sendToPlayer(player, payload);
+        }
     }
 
     /**
@@ -33,8 +38,46 @@ public final class TeamPacketSync {
      */
     public static void sendTopology(
         ServerPlayer player,
+        UUID ownerId,
         Collection<S2CTopologyUpdatePayload.FaceUpdate> updates
     ) {
-        S2CTopologyUpdatePayload.pages(updates).forEach(payload -> send(player, payload));
+        PlayerGroupStore store = PlayerGroupStore.get(player.server);
+        PermissionService permissions = PermissionService.getInstance();
+        Set<UUID> recipients = permissions.teamMembersOf(player.getUUID());
+        boolean sentToPlayer = false;
+        for (UUID memberId : recipients) {
+            ServerPlayer member = player.server.getPlayerList().getPlayer(memberId);
+            if (member == null || !permissions.canAccess(ownerId, member)) continue;
+            sendTopologyTo(member, sanitize(updates, member, permissions), store);
+            sentToPlayer |= member.getUUID().equals(player.getUUID());
+        }
+        if (!sentToPlayer && permissions.canAccess(ownerId, player)) {
+            sendTopologyTo(player, sanitize(updates, player, permissions), store);
+        }
+    }
+
+    private static Collection<S2CTopologyUpdatePayload.FaceUpdate> sanitize(
+        Collection<S2CTopologyUpdatePayload.FaceUpdate> updates,
+        ServerPlayer recipient,
+        PermissionService permissions
+    ) {
+        return updates.stream().map(update -> {
+            Map<GroupKey, Set<LogisticsNode>> visible = new LinkedHashMap<>();
+            update.linksByGroup().forEach((groupKey, targets) -> {
+                if (permissions.canAccess(groupKey.ownerId(), recipient)) {
+                    visible.put(groupKey, targets);
+                }
+            });
+            return new S2CTopologyUpdatePayload.FaceUpdate(update.topology(), visible);
+        }).collect(Collectors.toList());
+    }
+
+    private static void sendTopologyTo(
+        ServerPlayer recipient,
+        Collection<S2CTopologyUpdatePayload.FaceUpdate> updates,
+        PlayerGroupStore store
+    ) {
+        S2CTopologyUpdatePayload.pages(updates, store::getConnectionName)
+            .forEach(payload -> SLNetwork.HANDLER.sendToPlayer(recipient, payload));
     }
 }
