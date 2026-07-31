@@ -78,7 +78,7 @@ public class ServerEvents {
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("11");
+        final PayloadRegistrar registrar = event.registrar("12");
 
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
@@ -91,7 +91,10 @@ public class ServerEvents {
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
         registrar.playToServer(C2SOpenNodeFilterPayload.TYPE, C2SOpenNodeFilterPayload.STREAM_CODEC, C2SOpenNodeFilterPayload::handle);
         registrar.playToServer(C2SReturnToLinkConfiguratorPayload.TYPE, C2SReturnToLinkConfiguratorPayload.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::handle);
-        registrar.playToServer(C2SUpdateToolSettingsPayload.TYPE, C2SUpdateToolSettingsPayload.STREAM_CODEC, C2SUpdateToolSettingsPayload::handle);
+        registrar.playToServer(C2SUpdateToolModePayload.TYPE, C2SUpdateToolModePayload.STREAM_CODEC, C2SUpdateToolModePayload::handle);
+        registrar.playToServer(C2SUpdateToolTypesPayload.TYPE, C2SUpdateToolTypesPayload.STREAM_CODEC, C2SUpdateToolTypesPayload::handle);
+        registrar.playToServer(C2SUpdateToolGroupPayload.TYPE, C2SUpdateToolGroupPayload.STREAM_CODEC, C2SUpdateToolGroupPayload::handle);
+        registrar.playToServer(C2SUpdateToolConnectionPayload.TYPE, C2SUpdateToolConnectionPayload.STREAM_CODEC, C2SUpdateToolConnectionPayload::handle);
         registrar.playToServer(C2SGroupRenamePayload.TYPE, C2SGroupRenamePayload.STREAM_CODEC, C2SGroupRenamePayload::handle);
         registrar.playToServer(C2SUpdateFilterOnItemPayload.TYPE, C2SUpdateFilterOnItemPayload.STREAM_CODEC, C2SUpdateFilterOnItemPayload::handle);
         registrar.playToServer(C2SUpdateFilterOnHandPayload.TYPE, C2SUpdateFilterOnHandPayload.STREAM_CODEC, C2SUpdateFilterOnHandPayload::handle);

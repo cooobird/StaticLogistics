@@ -18,9 +18,7 @@ import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
 import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
-import com.coobird.staticlogistics.transfer.TransferTypeSelection;
+import com.coobird.staticlogistics.network.c2s.C2SUpdateToolModePayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -124,24 +122,14 @@ public class ClientEvents {
         if (stack.getItem() instanceof LinkConfiguratorItem) {
             if (!SLKeyMappings.TOOL_MODE_SCROLL.isDown()) return;
             event.setCanceled(true);
-            String currentGroup = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
             int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
-            List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
-            int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-            selectedTypeIds = TransferTypeSelection.mergeIdsWithMask(
-                selectedTypeIds == null ? List.of() : selectedTypeIds,
-                legacyMask, TransferRegistries.getAllActive());
 
             ToolMode mode = ToolMode.fromId(currentMode);
             ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
             int nextMode = newMode.getId();
 
             stack.set(SLDataComponents.TOOL_MODE.get(), nextMode);
-            PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
-                currentGroup, stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()), nextMode,
-                selectedTypeIds,
-                stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0),
-                stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get())));
+            PacketDistributor.sendToServer(new C2SUpdateToolModePayload(nextMode));
             ToolModeFeedback.show(mc.player, stack, newMode);
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
             return;

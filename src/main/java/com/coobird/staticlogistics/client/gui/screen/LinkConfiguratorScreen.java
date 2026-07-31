@@ -18,12 +18,12 @@ import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.network.c2s.*;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -73,7 +73,6 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private static final int COLOR_DISABLED = 0xFF777777;
 
     // 区域组件分别保存自己的滚动、选择或编辑状态。
-    private final ItemStack stack;
     private final NetworkPreviewPanel preview = new NetworkPreviewPanel();
 
     private int modeIdx;
@@ -82,7 +81,6 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     public LinkConfiguratorScreen(LinkConfiguratorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.stack = menu.getToolStack();
     }
 
     @Override
@@ -96,8 +94,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         this.inventoryLabelY = HIDDEN_VANILLA_INVENTORY_LABEL_Y;
 
         // 顶部工具状态来自配置器物品。
+        ItemStack stack = toolStack();
         SelectionContext.syncFromItem(stack);
-        modeIdx = SelectionContext.getSelectedMode();
+        modeIdx = ToolMode.fromId(
+            stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)).getId();
         String initialGroup = SelectionContext.getSelectedGroupId();
         stack.set(SLDataComponents.SELECTED_GROUP.get(), initialGroup);
 
@@ -117,6 +117,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+        ItemStack stack = toolStack();
         int contentInset = SLGuiTextures.LinkConfigurator.CONTENT_INSET;
         graphics.blit(SLGuiTextures.GUI_ATLAS,
             leftPos - contentInset, topPos - contentInset,
@@ -174,10 +175,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     public void containerTick() {
         super.containerTick();
         nodeConfigurationPanel.tick();
+        ItemStack stack = toolStack();
         if (!Objects.equals(
             stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get()),
             SelectionContext.getFocusedConnectionKey())) {
-            syncCurrentSettings(false);
+            syncFocusedConnection(false);
         }
     }
 
@@ -223,9 +225,16 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             graphics.drawString(font, compactNode(selectedNode),
                 x, y + CONNECTION_SINGLE_LINE_Y, COLOR_ACCENT, false);
         } else {
-            graphics.drawString(font,
+            int maximumWidth = SLGuiTextures.LinkConfigurator.CONNECTION_WIDTH
+                - CONNECTION_TEXT_INSET * 2;
+            List<FormattedCharSequence> lines = font.split(
                 Component.translatable("gui.staticlogistics.network_preview.select_hint"),
-                x, y + CONNECTION_EMPTY_HINT_Y, COLOR_DISABLED, false);
+                maximumWidth);
+            for (int index = 0; index < Math.min(lines.size(), 2); index++) {
+                graphics.drawString(font, lines.get(index), x,
+                    y + CONNECTION_EMPTY_HINT_Y + index * font.lineHeight,
+                    COLOR_DISABLED, false);
+            }
         }
     }
 
@@ -294,8 +303,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         int clickedMode = ToolModeBar.getClickedMode(mouseX, mouseY, leftPos, topPos);
         if (clickedMode >= 0) {
             modeIdx = clickedMode;
-            syncCurrentSettings(true);
+            ItemStack stack = toolStack();
+            stack.set(SLDataComponents.TOOL_MODE.get(), modeIdx);
+            PacketDistributor.sendToServer(new C2SUpdateToolModePayload(modeIdx));
             ToolModeFeedback.show(minecraft.player, stack, ToolMode.fromId(modeIdx));
+            SoundUtil.playClickSound();
             return true;
         }
         if (groupPanel.isRenaming()
@@ -315,7 +327,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         }
         if (groupPanel.handleScrollbarClick(mouseX, mouseY, leftPos, topPos)) return true;
         GroupPanel.ClickResult listResult = groupPanel.handleListClick(
-            mouseX, mouseY, button, leftPos, topPos, stack,
+            mouseX, mouseY, button, leftPos, topPos, toolStack(),
             SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
         if (listResult != null) {
             handleGroupResult(listResult);
@@ -330,7 +342,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             if (!Objects.equals(
                 focusBeforePreviewClick,
                 SelectionContext.getFocusedConnectionKey())) {
-                syncCurrentSettings(false);
+                syncFocusedConnection(false);
             }
             LogisticsNode node = preview.getSelectedNode();
             if (node != null) {
@@ -350,7 +362,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         switch (result.getAction()) {
             case SELECT -> {
                 SelectionContext.clearConnectionFocus();
-                syncSettings(result.getGroup(), true);
+                syncGroup(result.getGroup(), true);
+                syncFocusedConnection(false);
                 preview.setGroup(result.getGroup().key());
             }
             case RENAME -> {
@@ -367,9 +380,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                     preview.setGroup(null);
                 }
                 if (result.getGroup().key().equals(
-                    stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()))) {
+                    toolStack().get(SLDataComponents.SELECTED_GROUP_KEY.get()))) {
                     SelectionContext.clearConnectionFocus();
-                    syncSettings("", false);
+                    syncGroup("", false);
+                    syncFocusedConnection(false);
                 }
                 if (menu.hasTarget()
                     && result.getGroup().key().equals(menu.getRemoteGroupKey())) {
@@ -380,10 +394,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                     new C2SDeleteGroupPayload(result.getGroup().key()));
             }
             case OPEN_CONNECTION -> {
-                syncSettings(result.getGroup(), false);
+                syncGroup(result.getGroup(), false);
                 preview.setGroup(result.getGroup().key());
                 preview.selectConnection(Objects.requireNonNull(result.getConnection()));
-                syncCurrentSettings(false);
+                syncFocusedConnection(false);
                 SoundUtil.playClickSound();
             }
             case RENAME_CONNECTION -> {
@@ -397,7 +411,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                 if (selected != null
                     && selected.key().equals(connection.key())) {
                     preview.selectConnection(null);
-                    syncCurrentSettings(false);
+                    syncFocusedConnection(false);
                 }
                 if (menu.hasTarget()
                     && (menu.getTargetNode().equals(connection.first())
@@ -533,20 +547,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     }
 
     private GroupRef selectedGroup() {
+        ItemStack stack = toolStack();
         var key = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
         return key == null ? null : ClientLinkData.INSTANCE.findGroupRef(key);
-    }
-
-    private void syncCurrentSettings(boolean playSound) {
-        GroupRef selected = selectedGroup();
-        if (selected != null) syncSettings(selected, playSound);
-        else syncSettings(stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""), playSound);
     }
 
     private TransferTypeGrid.View transferTypeView() {
         if (!menu.hasTarget()) {
             return new TransferTypeGrid.View(
-                TransferTypeGrid.getToolSelectedTypeIds(stack),
+                TransferTypeGrid.getToolSelectedTypeIds(toolStack()),
                 TransferTypeGrid.Context.TOOL_DEFAULT,
                 true);
         }
@@ -568,8 +577,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             return;
         }
         if (view.context() == TransferTypeGrid.Context.TOOL_DEFAULT) {
+            ItemStack stack = toolStack();
             TransferTypeGrid.toggleToolType(stack, type);
-            syncCurrentSettings(true);
+            List<ResourceLocation> selectedTypeIds =
+                TransferTypeGrid.getToolSelectedTypeIds(stack);
+            int legacyMask =
+                stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            PacketDistributor.sendToServer(
+                new C2SUpdateToolTypesPayload(selectedTypeIds, legacyMask));
+            SoundUtil.playClickSound();
             return;
         }
         List<ResourceLocation> selection = TransferTypeSelection.toggle(
@@ -582,22 +598,24 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         SoundUtil.playClickSound();
     }
 
-    private void syncSettings(GroupRef group, boolean playSound) {
-        syncSettings(group.displayName(), group, playSound);
+    private void syncGroup(GroupRef group, boolean playSound) {
+        syncGroup(group.displayName(), group, playSound);
     }
 
-    private void syncSettings(String groupName, boolean playSound) {
-        syncSettings(groupName, null, playSound);
+    private void syncGroup(String groupName, boolean playSound) {
+        syncGroup(groupName, null, playSound);
     }
 
-    private void syncSettings(String groupName, GroupRef group, boolean playSound) {
+    private void syncGroup(String groupName, GroupRef group, boolean playSound) {
+        ItemStack stack = toolStack();
         GroupKey groupKey = group == null ? null : group.key();
         ConnectionKey connectionKey = SelectionContext.getFocusedConnectionKey();
         if (connectionKey != null
             && !Objects.equals(groupKey, connectionKey.groupKey())) {
             connectionKey = null;
         }
-        SelectionContext.setSelection(groupName, groupKey, modeIdx, connectionKey);
+        SelectionContext.setGroupSelection(groupName, groupKey);
+        if (connectionKey != null) SelectionContext.focusConnection(connectionKey);
         stack.set(SLDataComponents.SELECTED_GROUP.get(), groupName);
         if (group == null) stack.remove(SLDataComponents.SELECTED_GROUP_KEY.get());
         else stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
@@ -606,16 +624,32 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         } else {
             stack.set(SLDataComponents.SELECTED_CONNECTION_KEY.get(), connectionKey);
         }
-        stack.set(SLDataComponents.TOOL_MODE.get(), modeIdx);
-        List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
-        int legacyMask = stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-        selectedTypeIds = TransferTypeSelection.mergeIdsWithMask(
-            selectedTypeIds == null ? List.of() : selectedTypeIds,
-            legacyMask, TransferRegistries.getAllActive());
-        PacketDistributor.sendToServer(new C2SUpdateToolSettingsPayload(
-            groupName, group == null ? null : group.key(), modeIdx,
-            selectedTypeIds, legacyMask, connectionKey));
+        PacketDistributor.sendToServer(
+            new C2SUpdateToolGroupPayload(groupName, groupKey));
         if (playSound) SoundUtil.playClickSound();
+    }
+
+    private void syncFocusedConnection(boolean playSound) {
+        ItemStack stack = toolStack();
+        ConnectionKey connectionKey = SelectionContext.getFocusedConnectionKey();
+        GroupKey groupKey = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
+        if (connectionKey != null
+            && !Objects.equals(groupKey, connectionKey.groupKey())) {
+            connectionKey = null;
+            SelectionContext.clearConnectionFocus();
+        }
+        if (connectionKey == null) {
+            stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        } else {
+            stack.set(SLDataComponents.SELECTED_CONNECTION_KEY.get(), connectionKey);
+        }
+        PacketDistributor.sendToServer(
+            new C2SUpdateToolConnectionPayload(connectionKey));
+        if (playSound) SoundUtil.playClickSound();
+    }
+
+    private ItemStack toolStack() {
+        return menu.getToolStack();
     }
 
     private int previewLeft() {

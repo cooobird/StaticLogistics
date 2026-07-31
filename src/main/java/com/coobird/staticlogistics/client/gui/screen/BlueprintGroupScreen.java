@@ -13,7 +13,8 @@ import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateToolSettingsPayload;
+import com.coobird.staticlogistics.network.c2s.C2SUpdateToolConnectionPayload;
+import com.coobird.staticlogistics.network.c2s.C2SUpdateToolGroupPayload;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -503,11 +504,12 @@ public class BlueprintGroupScreen extends Screen {
         stack.set(SLDataComponents.SELECTED_GROUP.get(), groupId);
         stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
         stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
-        SelectionContext.setSelection(groupId, group.key(), 0);
+        SelectionContext.setGroupSelection(groupId, group.key());
+        SelectionContext.clearConnectionFocus();
         PacketDistributor.sendToServer(
-            new C2SUpdateToolSettingsPayload(groupId, group.key(), 0, List.of(),
-                stack.getOrDefault(SLDataComponents.SELECTED_TYPES_MASK.get(), 0),
-                null));
+            new C2SUpdateToolGroupPayload(groupId, group.key()));
+        PacketDistributor.sendToServer(
+            new C2SUpdateToolConnectionPayload(null));
         Player player = Minecraft.getInstance().player;
         if (player != null) {
             player.displayClientMessage(Component.translatable(

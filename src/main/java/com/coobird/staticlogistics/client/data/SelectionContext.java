@@ -1,7 +1,6 @@
 package com.coobird.staticlogistics.client.data;
 
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import net.minecraft.world.item.ItemStack;
@@ -12,16 +11,15 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 /**
- * 客户端选择上下文，追踪当前手持连接配置器选中的稳定分组、连接和工具模式。
+ * 客户端当前选中的分组与单条连接。
  *
- * <p>界面交互负责同步并修改该上下文；世界渲染只通过接收 {@link ItemStack}
- * 的只读方法解析有效选择，不得反向修改交互状态。
+ * <p>临时预览只影响界面和世界渲染，不会改写工具数据。工具模式和资源类型拥有各自独立的
+ * 状态链，不属于此上下文。
  */
 @OnlyIn(Dist.CLIENT)
 public final class SelectionContext {
     private static String selectedGroupId = "";
     private static GroupKey selectedGroupKey;
-    private static int selectedMode = 0;
     private static String previewGroupId;
     private static GroupKey previewGroupKey;
     private static ConnectionKey selectedConnectionKey;
@@ -30,24 +28,19 @@ public final class SelectionContext {
     private SelectionContext() {
     }
 
-    public static void setSelection(String groupId, @Nullable GroupKey groupKey, int mode) {
-        setSelection(groupId, groupKey, mode, null);
-    }
-
     /**
-     * 更新物品已确认的选择，并结束临时预览。
+     * 更新已确认的分组，不修改工具模式或资源类型。
      */
-    public static void setSelection(
-        String groupId, @Nullable GroupKey groupKey, int mode, @Nullable ConnectionKey connectionKey) {
-        if (connectionKey != null
-            && !Objects.equals(groupKey, connectionKey.groupKey())) {
-            throw new IllegalArgumentException(
-                "Selected connection must belong to the selected group");
-        }
+    public static void setGroupSelection(
+        String groupId,
+        @Nullable GroupKey groupKey
+    ) {
         selectedGroupId = groupId;
         selectedGroupKey = groupKey;
-        selectedMode = mode;
-        selectedConnectionKey = connectionKey;
+        if (selectedConnectionKey != null
+            && !Objects.equals(groupKey, selectedConnectionKey.groupKey())) {
+            selectedConnectionKey = null;
+        }
         clearPreview();
     }
 
@@ -61,15 +54,14 @@ public final class SelectionContext {
     }
 
     /**
-     * 返回世界和界面共同消费的有效预览范围。
+     * 返回界面和世界渲染共同使用的有效预览范围。
      */
     @Nullable
     public static LinkSelectionScope getSelectionScope() {
         GroupKey groupKey = getSelectedGroupKey();
         if (groupKey == null) return null;
-        ConnectionKey connectionKey = previewGroupKey == null
-            ? selectedConnectionKey
-            : previewConnectionKey;
+        ConnectionKey connectionKey =
+            previewGroupKey == null ? selectedConnectionKey : previewConnectionKey;
         if (connectionKey != null
             && !groupKey.equals(connectionKey.groupKey())) {
             connectionKey = null;
@@ -78,20 +70,17 @@ public final class SelectionContext {
     }
 
     /**
-     * 为世界渲染解析只读选择。
-     *
-     * <p>临时蓝图预览优先于物品中的持久选择；除此之外直接读取物品组件，
-     * 不得借由渲染循环改写客户端交互状态。
+     * 从工具物品解析世界渲染使用的只读选择。
      */
     @Nullable
     public static LinkSelectionScope getSelectionScope(ItemStack stack) {
         Objects.requireNonNull(stack, "Selection stack must not be null");
-        if (previewGroupKey != null) {
-            return getSelectionScope();
-        }
+        if (previewGroupKey != null) return getSelectionScope();
+
         GroupKey groupKey = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
         if (groupKey == null) return null;
-        ConnectionKey connectionKey = stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        ConnectionKey connectionKey =
+            stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get());
         if (connectionKey != null
             && !groupKey.equals(connectionKey.groupKey())) {
             connectionKey = null;
@@ -100,7 +89,7 @@ public final class SelectionContext {
     }
 
     /**
-     * 返回世界渲染应使用的只读分组显示名。
+     * 返回世界渲染使用的只读分组显示名。
      */
     public static String getSelectedGroupId(ItemStack stack) {
         Objects.requireNonNull(stack, "Selection stack must not be null");
@@ -116,7 +105,7 @@ public final class SelectionContext {
     }
 
     /**
-     * 把当前预览缩小到一条连接，不改变持久分组选择。
+     * 将当前预览缩小到一条连接，不改变已选分组。
      */
     public static void focusConnection(ConnectionKey connectionKey) {
         Objects.requireNonNull(connectionKey, "Focused connection must not be null");
@@ -134,7 +123,7 @@ public final class SelectionContext {
     }
 
     /**
-     * 清除单连接焦点并恢复整组预览。
+     * 清除单条连接焦点，恢复整个分组预览。
      */
     public static void clearConnectionFocus() {
         if (previewGroupKey == null) {
@@ -144,16 +133,15 @@ public final class SelectionContext {
         }
     }
 
-    public static int getSelectedMode() {
-        return selectedMode;
-    }
-
+    /**
+     * 从工具物品同步已确认的分组和单条连接。
+     */
     public static void syncFromItem(ItemStack stack) {
-        selectedGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
+        selectedGroupId =
+            stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
         selectedGroupKey = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
-        selectedMode = ToolMode.fromId(
-            stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)).getId();
-        ConnectionKey storedConnection = stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        ConnectionKey storedConnection =
+            stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get());
         if (storedConnection != null
             && !Objects.equals(selectedGroupKey, storedConnection.groupKey())) {
             storedConnection = null;
@@ -162,7 +150,7 @@ public final class SelectionContext {
     }
 
     /**
-     * 临时覆盖世界渲染使用的分组，但不修改物品数据，也不会向服务端提交。
+     * 临时切换世界预览分组，不修改工具数据。
      */
     public static void preview(String groupId, GroupKey groupKey) {
         if (!Objects.equals(previewGroupKey, groupKey)) {
@@ -173,7 +161,7 @@ public final class SelectionContext {
     }
 
     /**
-     * 结束临时预览，恢复使用物品中已经确认的分组。
+     * 结束临时预览，恢复工具中已确认的选择。
      */
     public static void clearPreview() {
         previewGroupId = null;
@@ -184,7 +172,6 @@ public final class SelectionContext {
     public static void clear() {
         selectedGroupId = "";
         selectedGroupKey = null;
-        selectedMode = 0;
         selectedConnectionKey = null;
         clearPreview();
     }
