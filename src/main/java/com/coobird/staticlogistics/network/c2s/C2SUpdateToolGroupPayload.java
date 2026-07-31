@@ -19,12 +19,9 @@ import org.jetbrains.annotations.Nullable;
 /**
  * 仅更新工具当前选中的分组。
  */
-public record C2SUpdateToolGroupPayload(
-    String groupId,
-    @Nullable GroupKey groupKey
-) implements CustomPacketPayload {
-    public static final Type<C2SUpdateToolGroupPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("update_tool_group"));
+public record C2SUpdateToolGroupPayload(String groupId, @Nullable GroupKey groupKey) implements CustomPacketPayload {
+    public static final Type<C2SUpdateToolGroupPayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_group"));
+
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolGroupPayload>
         STREAM_CODEC = new StreamCodec<>() {
             @Override

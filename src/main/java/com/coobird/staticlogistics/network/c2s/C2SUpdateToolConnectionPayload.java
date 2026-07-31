@@ -16,11 +16,9 @@ import org.jetbrains.annotations.Nullable;
 /**
  * 仅更新工具当前选中的单条连接。
  */
-public record C2SUpdateToolConnectionPayload(
-    @Nullable ConnectionKey connectionKey
-) implements CustomPacketPayload {
-    public static final Type<C2SUpdateToolConnectionPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("update_tool_connection"));
+public record C2SUpdateToolConnectionPayload(@Nullable ConnectionKey connectionKey) implements CustomPacketPayload {
+    public static final Type<C2SUpdateToolConnectionPayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_connection"));
+
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolConnectionPayload>
         STREAM_CODEC = new StreamCodec<>() {
             @Override

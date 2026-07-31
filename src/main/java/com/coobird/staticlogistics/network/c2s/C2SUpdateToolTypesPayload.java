@@ -18,12 +18,9 @@ import java.util.List;
 /**
  * 仅更新连接配置器的默认传输类型。
  */
-public record C2SUpdateToolTypesPayload(
-    List<ResourceLocation> selectedTypeIds,
-    int legacySelectedTypesMask
-) implements CustomPacketPayload {
-    public static final Type<C2SUpdateToolTypesPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("update_tool_types"));
+public record C2SUpdateToolTypesPayload(List<ResourceLocation> selectedTypeIds, int legacySelectedTypesMask) implements CustomPacketPayload {
+    public static final Type<C2SUpdateToolTypesPayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_types"));
+
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolTypesPayload> STREAM_CODEC =
         StreamCodec.composite(
             BoundedNetworkCodecs.TRANSFER_TYPE_IDS,

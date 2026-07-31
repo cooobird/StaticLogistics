@@ -12,10 +12,8 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /**
  * 在现有连接配置器菜单中切换输入或输出侧。
  */
-public record C2SSelectLinkEndpointSidePayload(boolean inputSide)
-    implements CustomPacketPayload {
-    public static final Type<C2SSelectLinkEndpointSidePayload> TYPE =
-        new Type<>(StaticLogistics.asResource("select_link_endpoint_side"));
+public record C2SSelectLinkEndpointSidePayload(boolean inputSide) implements CustomPacketPayload {
+    public static final Type<C2SSelectLinkEndpointSidePayload> TYPE = new Type<>(StaticLogistics.asResource("select_link_endpoint_side"));
     public static final StreamCodec<
         RegistryFriendlyByteBuf,
         C2SSelectLinkEndpointSidePayload

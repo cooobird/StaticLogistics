@@ -19,10 +19,9 @@ import java.util.Objects;
 /**
  * 在现有连接配置菜单内切换服务端权威节点，不重新创建菜单。
  */
-public record C2SOpenLinkEndpointPayload(GroupKey groupKey, LogisticsNode node, boolean inputSide)
-    implements CustomPacketPayload {
-    public static final Type<C2SOpenLinkEndpointPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("open_link_endpoint"));
+public record C2SOpenLinkEndpointPayload(GroupKey groupKey, LogisticsNode node, boolean inputSide) implements CustomPacketPayload {
+    public static final Type<C2SOpenLinkEndpointPayload> TYPE = new Type<>(StaticLogistics.asResource("open_link_endpoint"));
+
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenLinkEndpointPayload> STREAM_CODEC =
         StreamCodec.composite(
             GroupKey.STREAM_CODEC, C2SOpenLinkEndpointPayload::groupKey,

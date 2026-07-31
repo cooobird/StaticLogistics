@@ -15,8 +15,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record C2SUpdateFilterOnHandPayload(FilterData filter) implements CustomPacketPayload {
 
-    public static final Type<C2SUpdateFilterOnHandPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("update_filter_on_hand"));
+    public static final Type<C2SUpdateFilterOnHandPayload> TYPE = new Type<>(StaticLogistics.asResource("update_filter_on_hand"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateFilterOnHandPayload> STREAM_CODEC =
         StreamCodec.composite(

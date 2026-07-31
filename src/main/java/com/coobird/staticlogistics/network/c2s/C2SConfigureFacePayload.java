@@ -32,11 +32,7 @@ import java.util.Objects;
 /**
  * 客户端提交的单项面配置修改。
  */
-public record C2SConfigureFacePayload(
-    BlockPos pos,
-    Direction face,
-    FaceConfigurationEdit edit
-) implements CustomPacketPayload {
+public record C2SConfigureFacePayload(BlockPos pos, Direction face, FaceConfigurationEdit edit) implements CustomPacketPayload {
     private static final int GLOBAL_INPUT = 0;
     private static final int GLOBAL_OUTPUT = 1;
     // 操作号 2、3 曾用于频道设置，保留空缺以避免误解旧数据包。

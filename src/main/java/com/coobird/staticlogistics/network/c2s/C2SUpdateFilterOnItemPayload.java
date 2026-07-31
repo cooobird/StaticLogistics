@@ -17,16 +17,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-public record C2SUpdateFilterOnItemPayload(
-    BlockPos pos,
-    Direction face,
-    ResourceLocation typeId,
-    boolean isInput,
-    FilterData filter
-) implements CustomPacketPayload {
-
-    public static final Type<C2SUpdateFilterOnItemPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("update_filter_on_item"));
+public record C2SUpdateFilterOnItemPayload(BlockPos pos, Direction face, ResourceLocation typeId, boolean isInput, FilterData filter) implements CustomPacketPayload {
+    public static final Type<C2SUpdateFilterOnItemPayload> TYPE = new Type<>(StaticLogistics.asResource("update_filter_on_item"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateFilterOnItemPayload> STREAM_CODEC =
         StreamCodec.composite(

@@ -18,12 +18,10 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /**
  * 从连接面的过滤器子界面返回连接配置器。
  */
-public record C2SReturnToLinkConfiguratorPayload(BlockPos pos, Direction face)
-    implements CustomPacketPayload {
-    public static final Type<C2SReturnToLinkConfiguratorPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("return_to_link_configurator"));
-    public static final StreamCodec<RegistryFriendlyByteBuf, C2SReturnToLinkConfiguratorPayload> STREAM_CODEC =
-        StreamCodec.composite(
+public record C2SReturnToLinkConfiguratorPayload(BlockPos pos, Direction face) implements CustomPacketPayload {
+    public static final Type<C2SReturnToLinkConfiguratorPayload> TYPE = new Type<>(StaticLogistics.asResource("return_to_link_configurator"));
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, C2SReturnToLinkConfiguratorPayload> STREAM_CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::pos,
             Direction.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::face,
             C2SReturnToLinkConfiguratorPayload::new);

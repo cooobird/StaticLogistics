@@ -22,15 +22,10 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /**
  * 从连接配置器打开所选连接面的输入或输出过滤器。
  */
-public record C2SOpenNodeFilterPayload(
-    BlockPos pos,
-    Direction face,
-    boolean input
-) implements CustomPacketPayload {
-    public static final Type<C2SOpenNodeFilterPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("open_node_filter"));
-    public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenNodeFilterPayload> STREAM_CODEC =
-        StreamCodec.composite(
+public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean input) implements CustomPacketPayload {
+    public static final Type<C2SOpenNodeFilterPayload> TYPE = new Type<>(StaticLogistics.asResource("open_node_filter"));
+
+    public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenNodeFilterPayload> STREAM_CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, C2SOpenNodeFilterPayload::pos,
             Direction.STREAM_CODEC, C2SOpenNodeFilterPayload::face,
             ByteBufCodecs.BOOL, C2SOpenNodeFilterPayload::input,

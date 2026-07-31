@@ -14,8 +14,8 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * 仅更新连接配置器的操作模式。
  */
 public record C2SUpdateToolModePayload(int mode) implements CustomPacketPayload {
-    public static final Type<C2SUpdateToolModePayload> TYPE =
-        new Type<>(StaticLogistics.asResource("update_tool_mode"));
+    public static final Type<C2SUpdateToolModePayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_mode"));
+
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolModePayload> STREAM_CODEC =
         StreamCodec.composite(ByteBufCodecs.VAR_INT, C2SUpdateToolModePayload::mode,
             C2SUpdateToolModePayload::new);

@@ -15,11 +15,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-public record C2SGroupRenamePayload(
-    GroupKey groupKey,
-    String newGroupId
-) implements CustomPacketPayload {
-
+public record C2SGroupRenamePayload(GroupKey groupKey, String newGroupId) implements CustomPacketPayload {
     public static final Type<C2SGroupRenamePayload> TYPE = new Type<>(StaticLogistics.asResource("group_rename"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SGroupRenamePayload> STREAM_CODEC =

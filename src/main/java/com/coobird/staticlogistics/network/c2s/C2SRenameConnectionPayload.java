@@ -13,15 +13,10 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /**
  * 请求重命名一条稳定连接。
  */
-public record C2SRenameConnectionPayload(
-    ConnectionKey connection,
-    String displayName
-) implements CustomPacketPayload {
-    public static final Type<C2SRenameConnectionPayload> TYPE =
-        new Type<>(StaticLogistics.asResource("rename_connection"));
+public record C2SRenameConnectionPayload(ConnectionKey connection, String displayName) implements CustomPacketPayload {
+    public static final Type<C2SRenameConnectionPayload> TYPE = new Type<>(StaticLogistics.asResource("rename_connection"));
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, C2SRenameConnectionPayload> STREAM_CODEC =
-        StreamCodec.of(
+    public static final StreamCodec<RegistryFriendlyByteBuf, C2SRenameConnectionPayload> STREAM_CODEC = StreamCodec.of(
             (buffer, payload) -> {
                 ConnectionKey.STREAM_CODEC.encode(buffer, payload.connection());
                 buffer.writeUtf(payload.displayName(), GroupConstraints.MAX_CONNECTION_NAME_LENGTH);

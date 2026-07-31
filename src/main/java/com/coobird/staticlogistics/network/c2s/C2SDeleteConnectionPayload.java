@@ -16,9 +16,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 /**
  * 请求删除一条连接及删除后真正孤立的端点。
  */
-public record C2SDeleteConnectionPayload(
-    ConnectionKey connection
-) implements CustomPacketPayload {
+public record C2SDeleteConnectionPayload(ConnectionKey connection) implements CustomPacketPayload {
     public static final Type<C2SDeleteConnectionPayload> TYPE =
         new Type<>(StaticLogistics.asResource("delete_connection"));
 
