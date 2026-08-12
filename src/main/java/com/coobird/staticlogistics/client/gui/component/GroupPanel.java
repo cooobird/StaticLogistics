@@ -13,7 +13,6 @@ import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
-import com.mojang.authlib.GameProfile;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -22,8 +21,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -32,7 +29,6 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -88,7 +84,6 @@ public class GroupPanel {
     private List<GroupRef> cachedGroupList = Collections.emptyList();
     private List<GroupConnectionTreeModel.Row> cachedRows = Collections.emptyList();
     private final Set<GroupKey> expandedGroups = new HashSet<>();
-    private final Map<UUID, ItemStack> headCache = new HashMap<>();
 
     public GroupPanel(Font font, int leftPos, int topPos) {
         int sx = leftPos + SIDE_PANEL_X;
@@ -258,20 +253,9 @@ public class GroupPanel {
                 // 渲染所有者头像
                 UUID ownerUUID = group.key().ownerId();
                 if (isGroupRow && ownerUUID != null) {
-                    ItemStack headStack = headCache.computeIfAbsent(ownerUUID, uid -> {
-                        String ownerName = ClientLinkData.INSTANCE.getOwnerName(uid);
-                        GameProfile profile = new GameProfile(uid, ownerName);
-                        ItemStack head = new ItemStack(Items.PLAYER_HEAD);
-                        CompoundTag ownerTag = NbtUtils.writeGameProfile(new CompoundTag(), profile);
-                        head.getOrCreateTag().put("SkullOwner", ownerTag);
-                        return head;
-                    });
                     int headSize = 10;
-                    g.pose().pushPose();
-                    g.pose().translate(textX + 2, itemY + 1, 0);
-                    g.pose().scale(headSize / 16f, headSize / 16f, 1f);
-                    g.renderFakeItem(headStack, 0, 0);
-                    g.pose().popPose();
+                    PlayerAvatarRenderer.render(
+                        g, ownerUUID, textX + 2, itemY + 1, headSize);
                     textX += headSize + 3;
                     if (mx >= textX - headSize - 3 && mx < textX - 3
                         && my >= itemY + 1 && my < itemY + 1 + headSize) {

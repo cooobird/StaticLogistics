@@ -54,7 +54,7 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements IPortPacket.C2
                 && groupKey().equals(menu.getRemoteGroupKey())) {
                 menu.clearTarget();
                 SLNetwork.HANDLER.sendToPlayer(player, new S2CClearLinkEndpointPayload());
-                menu.broadcastChanges();
+                menu.broadcastFullState();
             }
             TeamPacketSync.send(player, groupKey().ownerId(), new S2CGroupDirectoryPayload(
                 groupKey().ownerId(), store.getGroupRefs(groupKey().ownerId())));

@@ -28,6 +28,6 @@ public record C2SClearLinkEndpointPayload() implements IPortPacket.C2S {
         if (!(player.containerMenu instanceof LinkConfiguratorMenu menu)) return;
         menu.clearTarget();
         SLNetwork.HANDLER.sendToPlayer(player, new S2CClearLinkEndpointPayload());
-        menu.broadcastChanges();
+        menu.broadcastFullState();
     }
 }

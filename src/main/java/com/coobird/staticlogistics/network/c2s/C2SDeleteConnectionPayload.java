@@ -38,7 +38,7 @@ public record C2SDeleteConnectionPayload(ConnectionKey connection) implements IP
             || menu.getTargetNode().equals(connection().second()))) {
             menu.clearTarget();
             SLNetwork.HANDLER.sendToPlayer(player, new S2CClearLinkEndpointPayload());
-            menu.broadcastChanges();
+            menu.broadcastFullState();
         }
     }
 }

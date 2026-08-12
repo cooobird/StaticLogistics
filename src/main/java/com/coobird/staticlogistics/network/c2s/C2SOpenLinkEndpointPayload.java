@@ -58,6 +58,6 @@ public record C2SOpenLinkEndpointPayload(GroupKey groupKey, LogisticsNode node, 
         SLNetwork.HANDLER.sendToPlayer(player,
             new S2CSelectLinkEndpointPayload(
                 groupKey(), node(), inputSide(), resolved.config().getSelectedTypeIds()));
-        menu.broadcastChanges();
+        menu.broadcastFullState();
     }
 }

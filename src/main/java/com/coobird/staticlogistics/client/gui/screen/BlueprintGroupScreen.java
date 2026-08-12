@@ -8,6 +8,7 @@ import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.GroupConnectionTreeModel;
 import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.gui.component.PlayerAvatarRenderer;
 import com.coobird.staticlogistics.client.gui.component.SoundUtil;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
@@ -17,20 +18,16 @@ import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolConnectionPayload;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolGroupPayload;
-import com.mojang.authlib.GameProfile;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 import java.util.*;
 
@@ -209,17 +206,9 @@ public class BlueprintGroupScreen extends Screen {
             }
             UUID ownerUUID = group.key().ownerId();
             if (groupRow && ownerUUID != null) {
-                String ownerName = ClientLinkData.INSTANCE.getOwnerName(ownerUUID);
-                GameProfile profile = new GameProfile(ownerUUID, ownerName);
-                ItemStack headStack = new ItemStack(Items.PLAYER_HEAD);
-                CompoundTag ownerTag = NbtUtils.writeGameProfile(new CompoundTag(), profile);
-                headStack.getOrCreateTag().put("SkullOwner", ownerTag);
                 int headSize = 10;
-                g.pose().pushPose();
-                g.pose().translate(textX, itemY + 1, 0);
-                g.pose().scale(headSize / 16f, headSize / 16f, 1f);
-                g.renderFakeItem(headStack, 0, 0);
-                g.pose().popPose();
+                PlayerAvatarRenderer.render(
+                    g, ownerUUID, textX, itemY + 1, headSize);
                 textX += headSize + 3;
             }
 

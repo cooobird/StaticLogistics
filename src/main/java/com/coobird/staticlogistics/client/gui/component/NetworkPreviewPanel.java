@@ -20,6 +20,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.Nameable;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -513,6 +514,10 @@ public final class NetworkPreviewPanel {
             || !node.isInSameDimension(minecraft.level.dimension())
             || !minecraft.level.hasChunk(chunkX, chunkZ)) {
             return Component.translatable("gui.staticlogistics.network_preview.node").getString();
+        }
+        if (minecraft.level.getBlockEntity(node.gPos().pos())
+            instanceof Nameable nameable) {
+            return nameable.getDisplayName().getString();
         }
         return minecraft.level.getBlockState(node.gPos().pos()).getBlock()
             .getName().getString();

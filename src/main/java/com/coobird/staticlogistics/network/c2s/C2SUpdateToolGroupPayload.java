@@ -94,5 +94,12 @@ public record C2SUpdateToolGroupPayload(
             PortItemStackExtension.setData(
                 stack, SLDataComponents.SELECTED_GROUP_KEY.get(), selectedGroup.key());
         }
+        var selectedConnection = PortItemStackExtension.getData(
+            stack, SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        if (selectedConnection != null && (selectedGroup == null
+            || !selectedConnection.groupKey().equals(selectedGroup.key()))) {
+            PortItemStackExtension.removeData(
+                stack, SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        }
     }
 }
