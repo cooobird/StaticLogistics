@@ -44,7 +44,7 @@ public record C2SDeleteConnectionPayload(ConnectionKey connection) implements Cu
                 || menu.getTargetNode().equals(payload.connection().second()))) {
                 menu.clearTarget();
                 PacketDistributor.sendToPlayer(player, new S2CClearLinkEndpointPayload());
-                menu.broadcastChanges();
+                menu.broadcastFullState();
             }
         });
     }

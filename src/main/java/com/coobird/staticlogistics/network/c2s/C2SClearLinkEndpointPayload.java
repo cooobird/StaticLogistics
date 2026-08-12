@@ -37,7 +37,7 @@ public record C2SClearLinkEndpointPayload() implements CustomPacketPayload {
             menu.clearTarget();
             PacketDistributor.sendToPlayer(
                 player, new S2CClearLinkEndpointPayload());
-            menu.broadcastChanges();
+            menu.broadcastFullState();
         });
     }
 }

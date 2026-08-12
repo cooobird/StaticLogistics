@@ -52,7 +52,7 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements CustomPacketPa
                     menu.clearTarget();
                     PacketDistributor.sendToPlayer(
                         sp, new S2CClearLinkEndpointPayload());
-                    menu.broadcastChanges();
+                    menu.broadcastFullState();
                 }
                 TeamPacketSync.send(sp, payload.groupKey().ownerId(),
                     new S2CGroupDirectoryPayload(

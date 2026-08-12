@@ -46,8 +46,8 @@ public class UpgradeItem extends Item implements LogisticsUpgrade {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (level.isClientSide) {
-            PacketDistributor.sendToServer(new C2SOpenHandFilterPayload());
+        if (level.isClientSide && isFilterUpgrade()) {
+            PacketDistributor.sendToServer(new C2SOpenHandFilterPayload(hand == InteractionHand.OFF_HAND));
         }
         return InteractionResultHolder.success(stack);
     }

@@ -92,5 +92,9 @@ public record C2SUpdateToolGroupPayload(String groupId, @Nullable GroupKey group
         } else {
             stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), selectedGroup.key());
         }
+        var selectedConnection = stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        if (selectedConnection != null && (selectedGroup == null || !selectedConnection.groupKey().equals(selectedGroup.key()))) {
+            stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        }
     }
 }

@@ -347,6 +347,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             LogisticsNode node = preview.getSelectedNode();
             if (node != null) {
                 openNode(node);
+            } else {
+                clearNodeTarget();
             }
             return true;
         }
@@ -439,6 +441,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             && topology.role().canReceive() && !topology.role().canSend();
         PacketDistributor.sendToServer(new C2SOpenLinkEndpointPayload(
             group.key(), node, inputSide));
+    }
+
+    /**
+     * 预览不再选中节点时，同时解除客户端菜单与服务端权威目标的绑定。
+     */
+    private void clearNodeTarget() {
+        if (!menu.hasTarget()) return;
+        menu.clearTarget();
+        PacketDistributor.sendToServer(new C2SClearLinkEndpointPayload());
     }
 
     /**

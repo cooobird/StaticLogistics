@@ -52,7 +52,7 @@ public class HandFilterMenu extends AbstractFilterMenu {
     }
 
     public boolean isBoundSlotSelected() {
-        return player.getInventory().selected == inventorySlot;
+        return inventorySlot == Inventory.SLOT_OFFHAND || player.getInventory().selected == inventorySlot;
     }
 
     @Override

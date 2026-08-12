@@ -78,7 +78,7 @@ public class ServerEvents {
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("12");
+        final PayloadRegistrar registrar = event.registrar("13");
 
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
