@@ -201,7 +201,7 @@ final class LinkGraphService {
 
         @Override
         public boolean belongsTo(GroupKey group) {
-            return config.faceConfig.getGroupKeys().contains(group);
+            return config.faceConfig.containsGroup(group);
         }
 
         @Override

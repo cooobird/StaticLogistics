@@ -36,20 +36,18 @@ public class StrategyBasedTargetSelector {
         orderedTargets.clear();
 
         try {
-            for (var scope : sourceConfig.getLinkedNodesByGroup().entrySet()) {
-                if (!sourceConfig.faceConfig.getGroupKeys().contains(scope.getKey())) continue;
-                for (LogisticsNode target : scope.getValue()) {
-                    ServerLevel targetLevel = globalManager.getLevel(target.gPos().dimension());
-                    if (targetLevel == null) continue;
+            sourceConfig.forEachLinkedNode((groupKey, target) -> {
+                if (!sourceConfig.faceConfig.containsGroup(groupKey)) return;
+                ServerLevel targetLevel = globalManager.getLevel(target.gPos().dimension());
+                if (targetLevel == null) return;
 
-                    FaceConfigComposite targetCfg = LinkManager.get(targetLevel)
-                        .getFaceConfig(FaceAddress.of(target));
-                    if (targetCfg == null || !TransferUtils.isTransferLinkActive(
-                        sourceNode, sourceConfig, target, targetCfg, scope.getKey())) continue;
-
+                FaceConfigComposite targetCfg = LinkManager.get(targetLevel)
+                    .getFaceConfig(FaceAddress.of(target));
+                if (targetCfg != null && TransferUtils.isTransferLinkActive(
+                    sourceNode, sourceConfig, target, targetCfg, groupKey)) {
                     targets.put(target, targetCfg);
                 }
-            }
+            });
 
             if (targets.isEmpty()) return Collections.emptyList();
             orderedTargets.addAll(targets.keySet());

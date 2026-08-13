@@ -63,6 +63,13 @@ public class FaceConfig {
         return Collections.unmodifiableSet(keys);
     }
 
+    /**
+     * 直接判断分组归属与内部 ID，避免仅为成员检查构造完整分组键集合。
+     */
+    public boolean containsGroup(GroupKey key) {
+        return key != null && ownsGroupKey(key) && groups.containsKey(key.internalId());
+    }
+
     public Set<GroupRef> getGroups() {
         UUID effectiveOwner = owner == null ? GroupKey.LEGACY_UNOWNED : owner;
         Set<GroupRef> refs = new LinkedHashSet<>();

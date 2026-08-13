@@ -26,7 +26,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -40,8 +39,6 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
-
-import java.util.List;
 
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
@@ -120,7 +117,7 @@ public class ClientEvents {
         ItemStack stack = mc.player.getMainHandItem();
 
         if (stack.getItem() instanceof LinkConfiguratorItem) {
-            if (!SLKeyMappings.TOOL_MODE_SCROLL.isDown()) return;
+            if (!SLKeyMappings.isKeyDown(SLKeyMappings.TOOL_MODE_SCROLL)) return;
             event.setCanceled(true);
             int currentMode = stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0);
 
@@ -139,9 +136,9 @@ public class ClientEvents {
             String previewStr = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
             if (previewStr.isEmpty()) return;
 
-            boolean moveDown = SLKeyMappings.BLUEPRINT_PREVIEW_MOVE.isDown();
-            boolean rotateDown = SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE.isDown();
-            boolean moveYDown = SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y.isDown();
+            boolean moveDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
+            boolean rotateDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
+            boolean moveYDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
             if (!moveDown && !rotateDown && !moveYDown) return;
 
             event.setCanceled(true);

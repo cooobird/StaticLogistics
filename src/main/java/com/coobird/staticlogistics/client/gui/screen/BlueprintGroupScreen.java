@@ -110,7 +110,7 @@ public class BlueprintGroupScreen extends Screen {
             g.pose().pushPose();
             g.pose().translate(0, 0, 500);
             renderGroupTooltip(g, mx, my, this.hoveredGroup,
-                SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
+                SLKeyMappings.isKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
             g.pose().popPose();
         } else if (this.hoveredConnection != null) {
             g.pose().pushPose();

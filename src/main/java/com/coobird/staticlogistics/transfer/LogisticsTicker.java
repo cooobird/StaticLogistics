@@ -159,7 +159,7 @@ public final class LogisticsTicker {
         boolean needsCooldown = type.requiresCooldown();
         if (needsCooldown && state.cooldowns.hasCooldown(
             dimension, sourceKey, type.typeId(), currentTick)) return;
-        if (type.requiresValidLinks() && config.getLinkedNodes().isEmpty()) return;
+        if (type.requiresValidLinks() && !config.hasLinkedNodes()) return;
 
         LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
         long limit = config.getTransferLimit(type);

@@ -183,7 +183,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
 
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
-        if (button == 1 && SLKeyMappings.isGuiKeyDown(SLKeyMappings.QUICK_FILTER_MARK)) {
+        if (button == 1 && SLKeyMappings.isKeyDown(SLKeyMappings.QUICK_FILTER_MARK)) {
             Slot hoveredSlot = getSlotUnderMouse();
             if (hoveredSlot != null && !hoveredSlot.getItem().isEmpty()) {
                 if (!FilterGridWidget.getArea(leftPos, topPos, isTagMode())

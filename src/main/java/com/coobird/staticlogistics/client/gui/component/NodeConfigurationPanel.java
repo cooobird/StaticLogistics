@@ -574,9 +574,9 @@ public final class NodeConfigurationPanel {
     }
 
     private static int adjustmentMultiplier() {
-        boolean timesTen = SLKeyMappings.isGuiKeyDown(
+        boolean timesTen = SLKeyMappings.isKeyDown(
             SLKeyMappings.PRIORITY_X10);
-        boolean timesFive = SLKeyMappings.isGuiKeyDown(
+        boolean timesFive = SLKeyMappings.isKeyDown(
             SLKeyMappings.PRIORITY_X5);
         if (timesTen && timesFive) {
             return 64;

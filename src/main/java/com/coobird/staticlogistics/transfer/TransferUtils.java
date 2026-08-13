@@ -93,7 +93,7 @@ public class TransferUtils {
 
         Set<ResourceLocation> linkedTypeIds = new HashSet<>();
         for (var scope : targetConfig.getLinkedNodesByGroup().entrySet()) {
-            if (!targetConfig.faceConfig.getGroupKeys().contains(scope.getKey())) continue;
+            if (!targetConfig.faceConfig.containsGroup(scope.getKey())) continue;
             for (LogisticsNode sourceNode : scope.getValue()) {
                 ServerLevel sourceLevel = targetLevel.getServer().getLevel(sourceNode.gPos().dimension());
                 if (sourceLevel == null) continue;
@@ -122,8 +122,8 @@ public class TransferUtils {
         LogisticsNode targetNode, FaceConfigComposite targetConfig, GroupKey groupKey
     ) {
         if (!sourceConfig.isGlobalOutputEnabled() || !targetConfig.isGlobalInputEnabled()) return false;
-        if (!sourceConfig.faceConfig.getGroupKeys().contains(groupKey)
-            || !targetConfig.faceConfig.getGroupKeys().contains(groupKey)) return false;
+        if (!sourceConfig.faceConfig.containsGroup(groupKey)
+            || !targetConfig.faceConfig.containsGroup(groupKey)) return false;
         return sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
             && targetConfig.getLinkedNodes(groupKey).contains(sourceNode);
     }
