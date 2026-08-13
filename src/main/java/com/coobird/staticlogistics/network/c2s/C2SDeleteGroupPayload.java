@@ -2,11 +2,11 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CClearLinkEndpointPayload;
@@ -42,9 +42,8 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements IPortPacket.C2
 
     @Override
     public void work(ServerPlayer player) {
-        boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
-            || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
-        if (!holdsTool || player.getServer() == null) return;
+        if (!NodeInteractionValidator.holdsConfigurator(player)
+            || player.getServer() == null) return;
         var store = PlayerGroupStore.get(player.getServer());
         var target = store.findGroup(groupKey());
         if (target != null && new GroupCommandService(player.getServer()).delete(player, groupKey())) {

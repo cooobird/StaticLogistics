@@ -1,11 +1,12 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
@@ -42,16 +43,21 @@ public record C2SGroupRenamePayload(GroupKey groupKey, String newGroupId) implem
 
     @Override
     public void work(ServerPlayer player) {
-        boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
-            || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
-        if (!holdsTool || player.getServer() == null) return;
+        if (!NodeInteractionValidator.holdsConfigurator(player)
+            || player.getServer() == null) return;
+        String newGroupName;
+        try {
+            newGroupName = GroupConstraints.normalizeName(newGroupId());
+        } catch (IllegalArgumentException exception) {
+            return;
+        }
         var store = PlayerGroupStore.get(player.getServer());
         var target = store.findGroup(groupKey());
         if (target == null) return;
         boolean changed = new GroupCommandService(player.getServer())
-            .rename(player, groupKey(), newGroupId());
+            .rename(player, groupKey(), newGroupName);
         if (!changed) return;
-        var result = store.findGroup(groupKey().ownerId(), newGroupId());
+        var result = store.findGroup(groupKey().ownerId(), newGroupName);
         LinkConfiguratorSelection.replaceIfSelected(
             player, target.key(), target.displayName(), result);
         TeamPacketSync.send(player, groupKey().ownerId(), new S2CGroupDirectoryPayload(

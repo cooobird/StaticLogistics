@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.content.item;
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import net.minecraft.world.InteractionHand;
@@ -17,7 +18,7 @@ public final class LinkConfiguratorSelection {
     }
 
     public static boolean select(Player player, GroupRef group) {
-        ItemStack stack = findHeldTool(player);
+        ItemStack stack = findConfigurator(player);
         if (stack == null || group == null) return false;
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP.get(), group.displayName());
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
@@ -30,7 +31,7 @@ public final class LinkConfiguratorSelection {
      */
     public static void replaceIfSelected(Player player, GroupKey sourceKey,
                                          String oldName, GroupRef result) {
-        ItemStack stack = findHeldTool(player);
+        ItemStack stack = findConfigurator(player);
         if (stack == null || sourceKey == null || result == null) return;
         GroupKey selectedKey = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
         String selectedName = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), "");
@@ -42,7 +43,7 @@ public final class LinkConfiguratorSelection {
     }
 
     public static void clearIfSelected(Player player, GroupKey key, String displayName) {
-        ItemStack stack = findHeldTool(player);
+        ItemStack stack = findConfigurator(player);
         if (stack == null) return;
         GroupKey selectedKey = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
         String selectedName = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), "");
@@ -60,7 +61,7 @@ public final class LinkConfiguratorSelection {
         Player player,
         ConnectionKey connectionKey
     ) {
-        ItemStack stack = findHeldTool(player);
+        ItemStack stack = findConfigurator(player);
         if (stack == null || connectionKey == null) return;
         if (connectionKey.equals(
             PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_CONNECTION_KEY.get()))) {
@@ -68,8 +69,12 @@ public final class LinkConfiguratorSelection {
         }
     }
 
-    private static ItemStack findHeldTool(Player player) {
+    private static ItemStack findConfigurator(Player player) {
         if (player == null) return null;
+        if (player.containerMenu instanceof LinkConfiguratorMenu menu) {
+            ItemStack stack = menu.getToolStack();
+            if (stack.getItem() instanceof LinkConfiguratorItem) return stack;
+        }
         for (InteractionHand hand : InteractionHand.values()) {
             ItemStack stack = player.getItemInHand(hand);
             if (stack.getItem() instanceof LinkConfiguratorItem) return stack;

@@ -224,11 +224,18 @@ public final class NetworkPreviewPanel {
          */
         boolean layoutChanged = false;
         boolean firstLayout = saved.isEmpty();
-        for (Map.Entry<LogisticsNode, Point> entry : automatic.entrySet()) {
-            Point point = entry.getValue();
-            if (saved.putIfAbsent(entry.getKey(),
-                new NetworkPreviewLayoutStore.Position(
-                    point.x, point.y)) == null) {
+        List<NetworkPreviewLayoutStore.Position> occupied = new ArrayList<>();
+        List<Map.Entry<LogisticsNode, Point>> placementOrder = new ArrayList<>(automatic.entrySet());
+        placementOrder.sort(Comparator.comparing(entry -> !saved.containsKey(entry.getKey())));
+        for (Map.Entry<LogisticsNode, Point> entry : placementOrder) {
+            NetworkPreviewLayoutStore.Position original = saved.get(entry.getKey());
+            NetworkPreviewLayoutStore.Position candidate = original == null
+                ? new NetworkPreviewLayoutStore.Position(entry.getValue().x, entry.getValue().y)
+                : original;
+            NetworkPreviewLayoutStore.Position resolved = findFreePosition(candidate, occupied);
+            occupied.add(resolved);
+            if (!resolved.equals(original)) {
+                saved.put(entry.getKey(), resolved);
                 layoutChanged = true;
             }
         }
@@ -251,6 +258,36 @@ public final class NetworkPreviewPanel {
                 (int) Math.round(x + point.x()),
                 (int) Math.round(y + point.y()))));
         return result;
+    }
+
+    private static NetworkPreviewLayoutStore.Position findFreePosition(
+        NetworkPreviewLayoutStore.Position preferred,
+        List<NetworkPreviewLayoutStore.Position> occupied
+    ) {
+        if (!overlapsAny(preferred, occupied)) return preferred;
+        double step = NODE_HEIGHT + NODE_GAP;
+        for (int distance = 1; distance <= occupied.size() + 1; distance++) {
+            NetworkPreviewLayoutStore.Position below = new NetworkPreviewLayoutStore.Position(
+                preferred.x(), preferred.y() + step * distance);
+            if (!overlapsAny(below, occupied)) return below;
+            NetworkPreviewLayoutStore.Position above = new NetworkPreviewLayoutStore.Position(
+                preferred.x(), preferred.y() - step * distance);
+            if (!overlapsAny(above, occupied)) return above;
+        }
+        throw new IllegalStateException("Unable to resolve network preview node overlap");
+    }
+
+    private static boolean overlapsAny(
+        NetworkPreviewLayoutStore.Position candidate,
+        List<NetworkPreviewLayoutStore.Position> occupied
+    ) {
+        for (NetworkPreviewLayoutStore.Position position : occupied) {
+            if (Math.abs(candidate.x() - position.x()) < NODE_WIDTH + NODE_GAP
+                && Math.abs(candidate.y() - position.y()) < NODE_HEIGHT + NODE_GAP) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void vote(Map<LogisticsNode, Integer> votes, LogisticsNode node) {

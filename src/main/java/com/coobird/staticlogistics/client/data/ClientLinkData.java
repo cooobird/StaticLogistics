@@ -18,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * 客户端物流投影。
@@ -215,7 +216,7 @@ public enum ClientLinkData {
             getOrCreateTopologyMap(next, key.dimension()).put(key.address(), topology);
             next.versionGate.seed(key, topology.version());
             indexFace(next, key, topology);
-            rememberTopologyDirectory(next, topology);
+            rememberTopologyOwner(next, topology);
         }
         snapshot.links.forEach(link -> putScopedLink(next, link));
         for (GroupRef group : snapshot.groups.values()) {
@@ -314,16 +315,15 @@ public enum ClientLinkData {
      */
     public void replaceGroupDirectory(UUID owner, Set<GroupRef> groups) {
         ProjectionState state = projection;
-        Set<GroupRef> previous = state.groupDirectoryByOwner.remove(owner);
-        if (!groups.isEmpty()) {
-            Set<GroupRef> owned = ConcurrentHashMap.newKeySet();
-            owned.addAll(groups);
-            state.groupDirectoryByOwner.put(owner, owned);
-            owned.forEach(group -> state.knownGroupRefs.put(group.key(), group));
-        }
-        if (previous != null) {
-            previous.forEach(group -> retireGroupIfUnreferenced(state, group.key()));
-        }
+        Set<GroupRef> owned = ConcurrentHashMap.newKeySet();
+        owned.addAll(groups);
+        state.groupDirectoryByOwner.put(owner, owned);
+
+        Set<GroupKey> currentKeys = owned.stream()
+            .map(GroupRef::key).collect(Collectors.toSet());
+        state.knownGroupRefs.keySet().removeIf(key ->
+            key.ownerId().equals(owner) && !currentKeys.contains(key));
+        owned.forEach(group -> state.knownGroupRefs.put(group.key(), group));
         incrementDataVersion();
     }
 
@@ -430,7 +430,21 @@ public enum ClientLinkData {
     }
 
     private void rememberTopologyDirectory(ProjectionState state, FaceTopology topology) {
-        topology.groups().forEach(group -> state.knownGroupRefs.put(group.key(), group));
+        topology.groups().forEach(group -> {
+            Set<GroupRef> directory = state.groupDirectoryByOwner.get(group.key().ownerId());
+            if (directory == null) {
+                state.knownGroupRefs.putIfAbsent(group.key(), group);
+                return;
+            }
+            directory.stream()
+                .filter(candidate -> candidate.key().equals(group.key()))
+                .findFirst()
+                .ifPresent(candidate -> state.knownGroupRefs.put(candidate.key(), candidate));
+        });
+        rememberTopologyOwner(state, topology);
+    }
+
+    private void rememberTopologyOwner(ProjectionState state, FaceTopology topology) {
         if (topology.ownerId() != null && !"Unknown".equals(topology.ownerName())) {
             state.knownOwnerNames.putIfAbsent(topology.ownerId(), topology.ownerName());
         }

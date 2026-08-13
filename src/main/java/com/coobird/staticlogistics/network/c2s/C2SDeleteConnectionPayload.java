@@ -34,6 +34,7 @@ public record C2SDeleteConnectionPayload(ConnectionKey connection) implements IP
         LinkConfiguratorSelection.clearConnectionIfSelected(player, connection());
         if (player.containerMenu instanceof LinkConfiguratorMenu menu
             && menu.hasTarget()
+            && connection().groupKey().equals(menu.getRemoteGroupKey())
             && (menu.getTargetNode().equals(connection().first())
             || menu.getTargetNode().equals(connection().second()))) {
             menu.clearTarget();
