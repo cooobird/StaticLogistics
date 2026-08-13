@@ -40,6 +40,7 @@ public record C2SDeleteConnectionPayload(ConnectionKey connection) implements Cu
                 player, payload.connection());
             if (player.containerMenu instanceof LinkConfiguratorMenu menu
                 && menu.hasTarget()
+                && payload.connection().groupKey().equals(menu.getRemoteGroupKey())
                 && (menu.getTargetNode().equals(payload.connection().first())
                 || menu.getTargetNode().equals(payload.connection().second()))) {
                 menu.clearTarget();

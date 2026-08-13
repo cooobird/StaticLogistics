@@ -2,10 +2,10 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupConstraints;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import com.coobird.staticlogistics.network.TeamPacketSync;
@@ -36,9 +36,7 @@ public record C2SCreateEmptyGroupPayload(String groupId) implements CustomPacket
         context.enqueueWork(() -> {
             var player = context.player();
             if (!(player instanceof ServerPlayer serverPlayer)) return;
-            boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
-                || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
-            if (!holdsTool || player.getServer() == null) return;
+            if (!NodeInteractionValidator.holdsConfigurator(serverPlayer) || player.getServer() == null) return;
             if (!ServerPacketRateLimiter.allow(
                 serverPlayer, ServerPacketRateLimiter.Action.GROUP_CREATION)) {
                 return;

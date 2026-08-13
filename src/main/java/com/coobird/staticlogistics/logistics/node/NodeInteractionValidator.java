@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.logistics.node;
 
+import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import net.minecraft.core.BlockPos;
@@ -18,6 +19,9 @@ public final class NodeInteractionValidator {
     }
 
     public static boolean holdsConfigurator(ServerPlayer player) {
+        if (player.containerMenu instanceof LinkConfiguratorMenu menu && menu.getToolStack().getItem() instanceof LinkConfiguratorTool) {
+            return true;
+        }
         return player.getMainHandItem().getItem() instanceof LinkConfiguratorTool
             || player.getOffhandItem().getItem() instanceof LinkConfiguratorTool;
     }

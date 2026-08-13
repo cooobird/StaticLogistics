@@ -2,11 +2,11 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CClearLinkEndpointPayload;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
@@ -37,9 +37,7 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements CustomPacketPa
         context.enqueueWork(() -> {
             var player = context.player();
             if (!(player instanceof ServerPlayer sp)) return;
-            boolean holdsTool = sp.getMainHandItem().getItem() instanceof LinkConfiguratorItem
-                || sp.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
-            if (!holdsTool) return;
+            if (!NodeInteractionValidator.holdsConfigurator(sp)) return;
             var server = sp.getServer();
             if (server == null) return;
 

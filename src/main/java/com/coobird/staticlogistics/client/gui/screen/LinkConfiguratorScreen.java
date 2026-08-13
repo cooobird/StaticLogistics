@@ -416,6 +416,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                     syncFocusedConnection(false);
                 }
                 if (menu.hasTarget()
+                    && connection.groupKey().equals(menu.getRemoteGroupKey())
                     && (menu.getTargetNode().equals(connection.first())
                     || menu.getTargetNode().equals(connection.second()))) {
                     menu.clearTarget();

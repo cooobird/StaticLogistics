@@ -1,11 +1,12 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorSelection;
 import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
@@ -37,16 +38,20 @@ public record C2SGroupRenamePayload(GroupKey groupKey, String newGroupId) implem
         context.enqueueWork(() -> {
             var player = context.player();
             if (!(player instanceof ServerPlayer serverPlayer)) return;
-            boolean holdsTool = player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
-                || player.getOffhandItem().getItem() instanceof LinkConfiguratorItem;
-            if (!holdsTool) return;
+            if (!NodeInteractionValidator.holdsConfigurator(serverPlayer)) return;
             var server = player.getServer();
             if (server == null) return;
+            String newGroupName;
+            try {
+                newGroupName = GroupConstraints.normalizeName(payload.newGroupId());
+            } catch (IllegalArgumentException exception) {
+                return;
+            }
             var target = PlayerGroupStore.get(server).findGroup(payload.groupKey());
             if (target != null && new GroupCommandService(server).rename(
-                serverPlayer, payload.groupKey(), payload.newGroupId())) {
+                serverPlayer, payload.groupKey(), newGroupName)) {
                 var result = PlayerGroupStore.get(server)
-                    .findGroup(payload.groupKey().ownerId(), payload.newGroupId());
+                    .findGroup(payload.groupKey().ownerId(), newGroupName);
                 LinkConfiguratorSelection.replaceIfSelected(
                     player, target.key(), target.displayName(), result);
                 TeamPacketSync.send(serverPlayer, payload.groupKey().ownerId(),
