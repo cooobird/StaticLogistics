@@ -23,6 +23,7 @@ import net.minecraft.world.entity.player.Player;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -207,7 +208,7 @@ public class FaceConfigComposite {
             throw new IllegalArgumentException("Group merge requires the same owner");
         }
         if (source.key().equals(target.key())
-            || !faceConfig.getGroupKeys().contains(source.key())) return;
+            || !faceConfig.containsGroup(source.key())) return;
 
         try (BulkEdit ignored = beginBulkEdit()) {
             faceConfig.addGroup(permit, target);
@@ -239,10 +240,14 @@ public class FaceConfigComposite {
         return Collections.unmodifiableSet(linkedNodes);
     }
 
+    public boolean hasLinkedNodes() {
+        return !linkedNodesByGroup.isEmpty();
+    }
+
     public void addLinkedNode(LinkMutationPermit permit, GroupKey groupKey, LogisticsNode node) {
         if (permit == null) throw new IllegalArgumentException("Link mutation permit is required");
         if (groupKey == null || node == null) return;
-        if (!faceConfig.getGroupKeys().contains(groupKey)) {
+        if (!faceConfig.containsGroup(groupKey)) {
             throw new IllegalArgumentException("Link group does not belong to face owner");
         }
         LinkedHashSet<LogisticsNode> scoped =
@@ -316,11 +321,21 @@ public class FaceConfigComposite {
         return Collections.unmodifiableMap(result);
     }
 
+    /**
+     * 遍历内部链接作用域，不创建分组映射快照。回调只接收节点值，无法修改聚合根状态。
+     */
+    public void forEachLinkedNode(BiConsumer<GroupKey, LogisticsNode> consumer) {
+        Objects.requireNonNull(consumer, "Linked node consumer must not be null");
+        linkedNodesByGroup.forEach((groupKey, nodes) ->
+            nodes.forEach(node -> consumer.accept(groupKey, node)));
+    }
+
     public boolean removeLinkedNode(LinkMutationPermit permit, GroupKey groupKey, LogisticsNode node) {
         if (permit == null) throw new IllegalArgumentException("Link mutation permit is required");
         LinkedHashSet<LogisticsNode> nodes = linkedNodesByGroup.get(groupKey);
         if (nodes == null || !nodes.remove(node)) return false;
         if (nodes.isEmpty()) linkedNodesByGroup.remove(groupKey);
+        disableRolesIfDisconnected();
         markDirty();
         return true;
     }
@@ -330,7 +345,19 @@ public class FaceConfigComposite {
      */
     public boolean removeLinkedNode(LinkMutationPermit permit, LogisticsNode node) {
         if (permit == null) throw new IllegalArgumentException("Link mutation permit is required");
-        return linkedNodes.remove(node);
+        boolean changed = linkedNodes.remove(node);
+        if (changed) disableRolesIfDisconnected();
+        return changed;
+    }
+
+    /**
+     * 无连接的面不得保留输入或输出角色。
+     * 该约束放在聚合根中，保证所有链接删除入口共享同一行为。
+     */
+    private void disableRolesIfDisconnected() {
+        if (!linkedNodesByGroup.isEmpty()) return;
+        setGlobalInputEnabled(false);
+        setGlobalOutputEnabled(false);
     }
 
     public boolean isGlobalInputEnabled() {
@@ -478,7 +505,7 @@ public class FaceConfigComposite {
                 CompoundTag scopeTag = scopedTag.getCompound(scopeIndex);
                 if (!scopeTag.hasUUID("owner") || !scopeTag.hasUUID("internal")) continue;
                 GroupKey groupKey = new GroupKey(scopeTag.getUUID("owner"), scopeTag.getUUID("internal"));
-                if (!faceConfig.getGroupKeys().contains(groupKey)) continue;
+                if (!faceConfig.containsGroup(groupKey)) continue;
                 CompoundTag nodesTag = scopeTag.getCompound("nodes");
                 decodedLinks = Math.addExact(decodedLinks, nodesTag.getAllKeys().size());
                 if (decodedLinks > MAX_LINKS_PER_FACE) {
@@ -504,6 +531,7 @@ public class FaceConfigComposite {
                 });
             }
         }
+        disableRolesIfDisconnected();
     }
 
     public boolean isDefault() {

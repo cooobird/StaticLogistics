@@ -260,7 +260,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         GroupRef hoveredGroup = groupPanel.getHoveredGroup();
         if (hoveredGroup != null) {
             groupPanel.renderGroupTooltip(graphics, font, mouseX, mouseY, hoveredGroup,
-                SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
+                SLKeyMappings.isKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
             return;
         }
         ClientConnection hoveredConnection = groupPanel.getHoveredConnection();
@@ -331,7 +331,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (groupPanel.handleScrollbarClick(mouseX, mouseY, leftPos, topPos)) return true;
         GroupPanel.ClickResult listResult = groupPanel.handleListClick(
             mouseX, mouseY, button, leftPos, topPos, toolStack(),
-            SLKeyMappings.isGuiKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
+            SLKeyMappings.isKeyDown(SLKeyMappings.GROUP_DETAILS_AND_EXPORT));
         if (listResult != null) {
             handleGroupResult(listResult);
             return true;

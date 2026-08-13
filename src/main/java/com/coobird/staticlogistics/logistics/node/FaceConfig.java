@@ -70,6 +70,13 @@ public class FaceConfig {
         return Collections.unmodifiableSet(result);
     }
 
+    /**
+     * 直接判断分组归属与内部 ID，避免仅为成员检查构造完整分组键集合。
+     */
+    public boolean containsGroup(GroupKey key) {
+        return key != null && ownsGroupKey(key) && groups.containsKey(key.internalId());
+    }
+
     void addGroupId(Object permit, String displayName) {
         requireMutationPermit(permit);
         String normalized = GroupConstraints.normalizeName(displayName);
@@ -98,12 +105,12 @@ public class FaceConfig {
 
     void removeGroup(LinkMutationPermit permit, GroupKey key) {
         requireMutationPermit(permit);
-        if (key != null && ownsGroup(key) && groups.remove(key.internalId()) != null) markDirty();
+        if (key != null && ownsGroupKey(key) && groups.remove(key.internalId()) != null) markDirty();
     }
 
     void renameGroup(LinkMutationPermit permit, GroupKey key, String displayName) {
         requireMutationPermit(permit);
-        if (key == null || !ownsGroup(key) || !groups.containsKey(key.internalId())) return;
+        if (key == null || !ownsGroupKey(key) || !groups.containsKey(key.internalId())) return;
         String normalized = GroupConstraints.normalizeName(displayName);
         if (!normalized.equals(groups.get(key.internalId()))) {
             groups.put(key.internalId(), normalized);
@@ -210,7 +217,7 @@ public class FaceConfig {
         markDirty();
     }
 
-    private boolean ownsGroup(GroupKey key) {
+    private boolean ownsGroupKey(GroupKey key) {
         UUID effectiveOwner = owner == null ? GroupKey.LEGACY_UNOWNED : owner;
         return effectiveOwner.equals(key.ownerId());
     }

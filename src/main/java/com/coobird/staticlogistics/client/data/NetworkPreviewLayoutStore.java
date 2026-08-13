@@ -1,11 +1,9 @@
 package com.coobird.staticlogistics.client.data;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.google.gson.*;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -33,7 +31,7 @@ import java.util.UUID;
  * 客户端网络预览布局的唯一持久化仓库。
  *
  * <p>布局是玩家本地的显示偏好，不进入服务端物流数据和物品组件。仓库以稳定的
- * 分组身份和完整节点身份保存节点位置、缩放与平移；GUI 只读写内存状态，在界面
+ * 分组身份和方块位置保存节点位置、缩放与平移；GUI 只读写内存状态，在界面
  * 关闭或退出存档时统一原子落盘，避免拖动过程中频繁访问磁盘。
  */
 @OnlyIn(Dist.CLIENT)
@@ -42,7 +40,7 @@ public enum NetworkPreviewLayoutStore {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 2;
     private static final int MAX_GROUPS = 4_096;
     private static final int MAX_NODES_PER_GROUP = 16_384;
     private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
@@ -138,7 +136,8 @@ public enum NetworkPreviewLayoutStore {
             }
             try (BufferedReader reader = Files.newBufferedReader(FILE, StandardCharsets.UTF_8)) {
                 JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-                if (root.get("version").getAsInt() != FORMAT_VERSION) {
+                int formatVersion = root.get("version").getAsInt();
+                if (formatVersion < 1 || formatVersion > FORMAT_VERSION) {
                     LOGGER.warn("Unsupported network preview layout format in {}", FILE);
                     return;
                 }
@@ -152,6 +151,7 @@ public enum NetworkPreviewLayoutStore {
                             index, exception);
                     }
                 }
+                if (formatVersion < FORMAT_VERSION) dirty = true;
             }
         } catch (IOException | RuntimeException exception) {
             layouts.clear();
@@ -173,17 +173,13 @@ public enum NetworkPreviewLayoutStore {
         int count = Math.min(nodes.size(), MAX_NODES_PER_GROUP);
         for (int index = 0; index < count; index++) {
             JsonObject nodeJson = nodes.get(index).getAsJsonObject();
-            Direction face = Direction.byName(nodeJson.get("face").getAsString());
-            if (face == null) continue;
             ResourceLocation dimensionId = ResourceLocation.parse(nodeJson.get("dimension").getAsString());
             ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, dimensionId);
-            LogisticsNode node = new LogisticsNode(
-                GlobalPos.of(dimension, new BlockPos(
+            GlobalPos node = GlobalPos.of(dimension, new BlockPos(
                     nodeJson.get("x").getAsInt(),
                     nodeJson.get("y").getAsInt(),
-                    nodeJson.get("z").getAsInt())),
-                face);
-            layout.nodePositions.put(node, new Position(
+                nodeJson.get("z").getAsInt()));
+            layout.nodePositions.putIfAbsent(node, new Position(
                 clamp(finite(nodeJson.get("view_x").getAsDouble(), 0.0D),
                     -MAX_VIEW_COORDINATE, MAX_VIEW_COORDINATE),
                 clamp(finite(nodeJson.get("view_y").getAsDouble(), 0.0D),
@@ -203,11 +199,10 @@ public enum NetworkPreviewLayoutStore {
         layout.nodePositions.forEach((node, position) -> {
             JsonObject nodeJson = new JsonObject();
             nodeJson.addProperty("dimension",
-                node.gPos().dimension().location().toString());
-            nodeJson.addProperty("x", node.gPos().pos().getX());
-            nodeJson.addProperty("y", node.gPos().pos().getY());
-            nodeJson.addProperty("z", node.gPos().pos().getZ());
-            nodeJson.addProperty("face", node.face().getName());
+                node.dimension().location().toString());
+            nodeJson.addProperty("x", node.pos().getX());
+            nodeJson.addProperty("y", node.pos().getY());
+            nodeJson.addProperty("z", node.pos().getZ());
             nodeJson.addProperty("view_x", position.x());
             nodeJson.addProperty("view_y", position.y());
             nodes.add(nodeJson);
@@ -250,12 +245,12 @@ public enum NetworkPreviewLayoutStore {
      * 单个分组的可变视图状态，仅由客户端渲染线程访问。
      */
     public static final class Layout {
-        private final Map<LogisticsNode, Position> nodePositions = new LinkedHashMap<>();
+        private final Map<GlobalPos, Position> nodePositions = new LinkedHashMap<>();
         private double panX;
         private double panY;
         private double zoom = 1.0D;
 
-        public Map<LogisticsNode, Position> nodePositions() {
+        public Map<GlobalPos, Position> nodePositions() {
             return nodePositions;
         }
 

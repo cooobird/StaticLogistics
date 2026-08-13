@@ -123,7 +123,7 @@ public class ClientEvents {
         ItemStack stack = mc.player.getMainHandItem();
 
         if (stack.getItem() instanceof LinkConfiguratorItem) {
-            if (!SLKeyMappings.TOOL_MODE_SCROLL.isDown()) return;
+            if (!SLKeyMappings.isKeyDown(SLKeyMappings.TOOL_MODE_SCROLL)) return;
             event.setCanceled(true);
             int currentMode = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE, 0);
 
@@ -143,9 +143,9 @@ public class ClientEvents {
             String previewStr = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR, "");
             if (previewStr.isEmpty()) return;
 
-            boolean moveDown = SLKeyMappings.BLUEPRINT_PREVIEW_MOVE.isDown();
-            boolean rotateDown = SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE.isDown();
-            boolean moveYDown = SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y.isDown();
+            boolean moveDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
+            boolean rotateDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
+            boolean moveYDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
             if (!moveDown && !rotateDown && !moveYDown) return;
 
             event.setCanceled(true);

@@ -13,6 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
@@ -48,7 +49,7 @@ public final class NodeMutationService {
         FaceAddress key = FaceAddress.of(node);
         FaceConfigComposite config = manager.getFaceConfig(key);
         if (config == null
-            || !config.faceConfig.getGroupKeys().contains(groupKey)
+            || !config.faceConfig.containsGroup(groupKey)
             || !config.canPlayerModify(player)) return null;
         return new ValidatedNode(
             player, level, manager, key, node.gPos().pos(), node.face(), config);
@@ -60,7 +61,7 @@ public final class NodeMutationService {
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(node.level().getServer())) {
             transaction.capture(node.node());
             try (NodeLifecycleService.HandoffReceipt receipt =
-                     beginDisabledFilterHandoff(node, edit)) {
+                     beginDisabledRoleHandoff(node, edit, transaction)) {
                 changed = applyConfiguration(node.config(), edit);
                 if (changed) {
                     for (var group : node.config().faceConfig.getGroups()) {
@@ -77,17 +78,18 @@ public final class NodeMutationService {
     }
 
     /**
-     * 关闭输入或输出时，只移交对应侧的过滤器物品。
+     * 关闭输入或输出时，移交对应侧过滤器以及已不再被任何输出面使用的容器升级。
      *
      * <p>返还与面配置修改共享同一事务：优先进入玩家背包，背包已满时在玩家位置掉落；
-     * 后续配置提交失败时，玩家背包、掉落实体和过滤器槽位会一起恢复。</p>
+     * 后续配置提交失败时，玩家背包、掉落实体和槽位会一起恢复。</p>
      */
     @Nullable
-    private static NodeLifecycleService.HandoffReceipt beginDisabledFilterHandoff(
-        ValidatedNode node, FaceConfigurationEdit edit) {
+    private static NodeLifecycleService.HandoffReceipt beginDisabledRoleHandoff(
+        ValidatedNode node, FaceConfigurationEdit edit, NodeMutationTransaction transaction) {
         if (!(edit instanceof FaceConfigurationEdit.BooleanEdit booleanEdit)
             || booleanEdit.enabled()) return null;
         FaceConfigComposite config = node.config();
+        List<NodeLifecycleService.UpgradeSource> sources = new ArrayList<>(2);
         int slot;
         if (booleanEdit.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT) {
             if (!config.isGlobalInputEnabled()) return null;
@@ -96,9 +98,27 @@ public final class NodeMutationService {
             if (!config.isGlobalOutputEnabled()) return null;
             slot = 1;
         }
-        return new PlayerUpgradeHandoff(node.player()).begin(List.of(
-            new NodeLifecycleService.UpgradeSource(
-                node.pos(), config.filterConfig.getUpgrades(), slot, slot + 1)));
+        sources.add(new NodeLifecycleService.UpgradeSource(
+            node.pos(), config.filterConfig.getUpgrades(), slot, slot + 1));
+
+        ContainerConfig container = config.getContainerConfig();
+        if (container != null && hasNoRemainingOutputFace(node, booleanEdit.field(), container)) {
+            transaction.captureContainer(node.level(), node.pos());
+            sources.add(new NodeLifecycleService.UpgradeSource(node.pos(), container.getUpgrades()));
+        }
+        return new PlayerUpgradeHandoff(node.player()).begin(sources);
+    }
+
+    private static boolean hasNoRemainingOutputFace(
+        ValidatedNode node, FaceConfigurationEdit.BooleanField disabledField, ContainerConfig container) {
+        if (disabledField != FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT
+            && node.config().isGlobalOutputEnabled()) return false;
+        for (FaceAddress faceKey : container.getLinkedFaceKeys()) {
+            if (faceKey.equals(node.key())) continue;
+            FaceConfigComposite face = node.manager().getFaceConfig(faceKey);
+            if (face != null && face.isGlobalOutputEnabled()) return false;
+        }
+        return true;
     }
 
     private static boolean applyConfiguration(FaceConfigComposite config,

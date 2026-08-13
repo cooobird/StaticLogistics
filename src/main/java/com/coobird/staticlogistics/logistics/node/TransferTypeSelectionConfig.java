@@ -7,6 +7,7 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -16,6 +17,7 @@ import java.util.function.Consumer;
  */
 public class TransferTypeSelectionConfig {
     private List<ResourceLocation> selectedTypeIds = List.of();
+    private Set<ResourceLocation> selectedTypeIdSet = Set.of();
     /**
      * 当前未注册适配器对应的旧位；必须原样跨加载与保存保留。
      */
@@ -46,7 +48,7 @@ public class TransferTypeSelectionConfig {
         }
         int retainedLegacyMask = unresolvedLegacyMask & ~activeTypeMask();
         if (!selectedTypeIds.equals(sanitized) || unresolvedLegacyMask != retainedLegacyMask) {
-            selectedTypeIds = sanitized;
+            replaceSelectedTypeIds(sanitized);
             unresolvedLegacyMask = retainedLegacyMask;
             onDirty.accept(this);
         }
@@ -62,7 +64,7 @@ public class TransferTypeSelectionConfig {
             mask, TransferRegistries.getAllActive());
         int unresolved = mask & ~activeTypeMask();
         if (!selectedTypeIds.equals(resolved) || unresolvedLegacyMask != unresolved) {
-            selectedTypeIds = resolved;
+            replaceSelectedTypeIds(resolved);
             unresolvedLegacyMask = unresolved;
             onDirty.accept(this);
         }
@@ -77,14 +79,14 @@ public class TransferTypeSelectionConfig {
         restored.addAll(TransferTypeSelection.fromMask(mask, TransferRegistries.getAllActive()));
         List<ResourceLocation> resolvedIds = TransferTypeSelection.sanitize(restored);
         if (!selectedTypeIds.equals(resolvedIds) || unresolvedLegacyMask != unresolved) {
-            selectedTypeIds = resolvedIds;
+            replaceSelectedTypeIds(resolvedIds);
             unresolvedLegacyMask = unresolved;
             onDirty.accept(this);
         }
     }
 
     public boolean isTypeSelected(LogisticsResource<?> type) {
-        return TransferTypeSelection.isSelected(selectedTypeIds, type);
+        return selectedTypeIdSet.contains(type.typeId());
     }
 
     /**
@@ -94,10 +96,18 @@ public class TransferTypeSelectionConfig {
         if (snapshot == null) throw new IllegalArgumentException("Transfer type snapshot must not be null");
         if (!selectedTypeIds.equals(snapshot.selectedTypeIds)
             || unresolvedLegacyMask != snapshot.unresolvedLegacyMask) {
-            selectedTypeIds = snapshot.selectedTypeIds;
+            replaceSelectedTypeIds(snapshot.selectedTypeIds);
             unresolvedLegacyMask = snapshot.unresolvedLegacyMask;
             onDirty.accept(this);
         }
+    }
+
+    /**
+     * 同时替换持久化顺序列表与运行时查询索引，避免 Tick 热路径线性扫描类型 ID。
+     */
+    private void replaceSelectedTypeIds(List<ResourceLocation> ids) {
+        selectedTypeIds = List.copyOf(ids);
+        selectedTypeIdSet = Set.copyOf(selectedTypeIds);
     }
 
     private static int activeTypeMask() {

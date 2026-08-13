@@ -60,9 +60,9 @@ public final class SLKeyMappings {
     }
 
     /**
-     * 普通界面打开时 Minecraft 不会维护 KeyMapping 的按下状态，因此直接读取实际输入设备。
+     * 直接读取实际输入设备，避免界面切换或失焦后沿用 KeyMapping 的过期缓存状态。
      */
-    public static boolean isGuiKeyDown(KeyMapping mapping) {
+    public static boolean isKeyDown(KeyMapping mapping) {
         if (mapping.isUnbound() || !mapping.getKeyConflictContext().isActive()) return false;
 
         InputConstants.Key key = mapping.getKey();
