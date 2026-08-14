@@ -14,6 +14,6 @@ public enum SequentialExtractionStrategy implements ItemExtractionStrategy {
     }
 
     @Override
-    public void endTick(int lastProcessedIdx, int passCount, TransferContext ctx, boolean movedAny) {
+    public void advanceAfterAttempt(int processedIdx, int passCount, TransferContext ctx) {
     }
 }

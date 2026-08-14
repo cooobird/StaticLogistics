@@ -125,6 +125,10 @@ public class GlobalLogisticsManager {
         return groupMemberService.getAllGroupKeys();
     }
 
+    public String getGroupDisplayName(GroupKey groupKey) {
+        return groupDisplayNames.get(groupKey);
+    }
+
     public String getGroupId(LogisticsNode node) {
         GroupKey key = nodeGroupService.getGroupKey(node);
         return key == null ? null : groupDisplayNames.get(key);

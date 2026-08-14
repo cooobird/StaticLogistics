@@ -79,7 +79,9 @@ Forge 1.20.1 的 Minecraft 物流模组。支持物品、流体、能量与联�
 | 命令                                  | 说明              |
 |-------------------------------------|-----------------|
 | /sl info [pos]                      | 查看容器 + 6 面配置详情  |
-| /sl list                            | 列出所有活跃分组及节点     |
+| /sl list                            | 显示活跃物流分组的第 1 页  |
+| /sl list page <page>                | 按页查看活跃物流分组      |
+| /sl list group <group> [page]       | 按页查看指定分组中的节点    |
 | /sl stats                           | 传输统计概览          |
 | /sl stats recent                    | 最近 20 条传输（含时间戳） |
 | /sl stats top                       | Top 发送/接收节点排行   |

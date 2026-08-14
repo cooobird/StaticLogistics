@@ -358,10 +358,15 @@ public class SLLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.info.enabled", "Enabled", "启用");
         add("commands.staticlogistics.info.disabled", "Disabled", "禁用");
 
-        add("commands.staticlogistics.list.header", "=== Active Logistics Nodes ===", "=== 当前活跃物流节点 ===");
         add("commands.staticlogistics.list.no_groups", "No active logistics groups found.", "未找到活跃的物流分组。");
-        add("commands.staticlogistics.list.group_entry", "Group: %s (%d nodes)", "分组：%s（共 %d 个节点）");
-        add("commands.staticlogistics.list.node_entry", "  - %s %s (%s)", "  - %s %s（角色：%s）");
+        add("commands.staticlogistics.list.groups_header", "=== Logistics Groups (%d/%d) ===", "=== 物流分组（第 %d/%d 页）===");
+        add("commands.staticlogistics.list.group_header", "=== Group %s (%d/%d) ===", "=== 分组 %s（第 %d/%d 页）===");
+        add("commands.staticlogistics.list.group_entry", "Group: %s | Owner: %s | %d nodes", "分组：%s｜所有者：%s｜%d 个节点");
+        add("commands.staticlogistics.list.node_entry", "  - %s | %s | %s | %s", "  - %s｜%s｜%s｜%s");
+        add("commands.staticlogistics.list.groups_help", "Details: /sl list group <group> [page]", "查看详情：/sl list group <分组名> [页码]");
+        add("commands.staticlogistics.list.group_not_found", "Logistics group '%s' was not found.", "未找到物流分组“%s”。");
+        add("commands.staticlogistics.list.group_ambiguous", "Multiple owners have a group named '%s'. Rename one before querying details.", "多个所有者均有名为“%s”的分组，请先重命名其中一个再查询详情。");
+        add("commands.staticlogistics.list.invalid_page", "Page %d does not exist. Last page: %d.", "第 %d 页不存在，最后一页为第 %d 页。");
 
 
         add("commands.staticlogistics.stats.header", "═════ StaticLogistics Stats ═════", "═════ StaticLogistics 传输统计 ═════");
@@ -455,6 +460,18 @@ public class SLLanguageProvider extends LanguageProvider {
             """
                 每个维度每刻用于物流调度的软时间上限。
                 默认：1500，范围：100-10000。""");
+
+        add("config.staticlogistics.performance.max_item_transactions",
+            "Item Transfer Batch Limit", "单次物品传输批次上限");
+        add("config.staticlogistics.performance.max_item_transactions.tooltip",
+            """
+                Maximum item transactions committed by one node activation.
+                Increase for high-throughput machines; excessive values may increase server load.
+                Default: 16, Range: 1-256.""",
+            """
+                单个节点每次激活最多提交的物品传输批次数。
+                高产机器可适当提高，数值过大可能增加服务器负载。
+                默认：16，范围：1-256。""");
 
         add("config.staticlogistics.performance.clean_interval", "Clean Interval (Ticks)", "清理间隔(Tick)");
         add("config.staticlogistics.performance.clean_interval.tooltip",

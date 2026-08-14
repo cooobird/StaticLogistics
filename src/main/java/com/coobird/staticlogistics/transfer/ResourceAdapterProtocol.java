@@ -85,6 +85,16 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
     }
 
     @Override
+    public int maxTransactionsPerActivation() {
+        return Math.max(1, adapter.maxTransactionsPerActivation());
+    }
+
+    @Override
+    public boolean advanceRejectedCandidate(ExtractionResult<Object> simulated) {
+        return adapter.advanceRejectedCandidate(simulated, sourceCfg, transferContext);
+    }
+
+    @Override
     public boolean canInsert(C dest, Object value, LogisticsNode targetNode) {
         targetLimit = Long.MAX_VALUE;
         if (transferContext == null) return true;

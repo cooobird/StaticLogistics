@@ -88,6 +88,13 @@ public final class LogisticsConstants {
         }
 
         /**
+         * 单次节点激活最多提交的物品传输事务数。
+         */
+        public static int getMaxItemTransactionsPerActivation() {
+            return SLConfig.getMaxItemTransactionsPerActivation();
+        }
+
+        /**
          * 默认冷却时间（游戏刻）
          */
         public static int getDefaultCooldownTicks() {

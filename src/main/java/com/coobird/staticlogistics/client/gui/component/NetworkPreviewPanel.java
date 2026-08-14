@@ -29,8 +29,8 @@ import java.util.*;
 /**
  * 连接配置器中的拓扑预览。
  *
- * <p>这里只保存视图平移、缩放与选择状态，拓扑真相始终来自
- * {@link ClientLinkData}。
+ * <p>这里只保存当前界面的平移、缩放与选择状态，节点位置由本地布局仓库持久化，
+ * 拓扑真相始终来自 {@link ClientLinkData}。
  */
 public final class NetworkPreviewPanel {
     private static final int NODE_WIDTH = 72;
@@ -53,6 +53,7 @@ public final class NetworkPreviewPanel {
     private double panX;
     private double panY;
     private double zoom = 1.0D;
+    private boolean centerViewOnNextLayout = true;
     private boolean panning;
     private double panningDistance;
     @Nullable
@@ -64,16 +65,10 @@ public final class NetworkPreviewPanel {
         this.groupKey = groupKey;
         this.selectedNode = null;
         this.selectedNodes.clear();
-        if (groupKey == null) {
-            this.panX = 0.0D;
-            this.panY = 0.0D;
-            this.zoom = 1.0D;
-        } else {
-            NetworkPreviewLayoutStore.Layout layout = NetworkPreviewLayoutStore.INSTANCE.getOrCreate(groupKey);
-            this.panX = layout.panX();
-            this.panY = layout.panY();
-            this.zoom = layout.zoom();
-        }
+        this.panX = 0.0D;
+        this.panY = 0.0D;
+        this.zoom = 1.0D;
+        this.centerViewOnNextLayout = true;
         this.panning = false;
         this.draggingNode = null;
         this.draggingNodes.clear();
@@ -207,7 +202,6 @@ public final class NetworkPreviewPanel {
          * removeGroup 统一清理，避免重进存档后刚打开界面就丢失尚未同步到的节点位置。
          */
         boolean layoutChanged = migrateLegacyPositions(storedLayout, automatic);
-        boolean firstLayout = !storedLayout.isViewInitialized();
         if (layoutChanged) {
             NetworkPreviewLayoutStore.INSTANCE.markDirty();
         }
@@ -218,10 +212,7 @@ public final class NetworkPreviewPanel {
                     (int) Math.round(point.x()), (int) Math.round(point.y())));
             }
         });
-        if (firstLayout) {
-            zoom = initialZoom(localPositions, height);
-            persistView();
-        }
+        if (centerViewOnNextLayout) centerView(localPositions, x, y, width, height);
 
         currentLocalPositions.clear();
         currentLocalPositions.putAll(localPositions);
@@ -388,21 +379,30 @@ public final class NetworkPreviewPanel {
     }
 
     /**
-     * 首次布局只在节点无法原尺寸容纳时缩小，保证节点之间永不互相覆盖。
+     * 根据已保存的节点布局重建临时视图，使每次打开界面都能看到位于画布中心的网络。
      */
-    private static double initialZoom(
-        Map<LogisticsNode, Point> positions,
-        int viewportHeight
-    ) {
-        if (positions.isEmpty()) return 1.0D;
-        int minimum = positions.values().stream()
-            .mapToInt(Point::y).min().orElse(0);
-        int maximum = positions.values().stream()
+    private void centerView(Map<LogisticsNode, Point> positions, int viewportX, int viewportY,
+                            int viewportWidth, int viewportHeight) {
+        centerViewOnNextLayout = false;
+        if (positions.isEmpty()) {
+            panX = 0.0D;
+            panY = 0.0D;
+            zoom = 1.0D;
+            return;
+        }
+        int minimumX = positions.values().stream().mapToInt(Point::x).min().orElse(0);
+        int maximumX = positions.values().stream()
+            .mapToInt(point -> point.x + NODE_WIDTH).max().orElse(viewportWidth);
+        int minimumY = positions.values().stream().mapToInt(Point::y).min().orElse(0);
+        int maximumY = positions.values().stream()
             .mapToInt(point -> point.y + NODE_HEIGHT).max().orElse(viewportHeight);
-        int contentHeight = Math.max(1, maximum - minimum);
-        return Mth.clamp(
-            (viewportHeight - LAYOUT_PADDING * 2.0D) / contentHeight,
-            MIN_ZOOM, 1.0D);
+        int contentWidth = Math.max(1, maximumX - minimumX);
+        int contentHeight = Math.max(1, maximumY - minimumY);
+        double widthScale = (viewportWidth - LAYOUT_PADDING * 2.0D) / contentWidth;
+        double heightScale = (viewportHeight - LAYOUT_PADDING * 2.0D) / contentHeight;
+        zoom = Mth.clamp(Math.min(widthScale, heightScale), MIN_ZOOM, 1.0D);
+        panX = (viewportX + viewportWidth / 2.0D - (minimumX + maximumX) / 2.0D) * zoom;
+        panY = (viewportY + viewportHeight / 2.0D - (minimumY + maximumY) / 2.0D) * zoom;
     }
 
     private void renderConnection(
@@ -798,7 +798,6 @@ public final class NetworkPreviewPanel {
         if (panningDistance < 2.0D) return true;
         panX += deltaX;
         panY += deltaY;
-        persistView();
         return true;
     }
 
@@ -850,15 +849,7 @@ public final class NetworkPreviewPanel {
         panX = mouseX - centerX - worldOffsetX * nextZoom;
         panY = mouseY - centerY - worldOffsetY * nextZoom;
         zoom = nextZoom;
-        persistView();
         return true;
-    }
-
-    private void persistView() {
-        if (groupKey == null) return;
-        NetworkPreviewLayoutStore.INSTANCE.getOrCreate(groupKey)
-            .setView(panX, panY, zoom);
-        NetworkPreviewLayoutStore.INSTANCE.markDirty();
     }
 
     private static String nodeKey(LogisticsNode node) {

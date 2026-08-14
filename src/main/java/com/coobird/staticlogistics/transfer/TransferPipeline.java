@@ -12,7 +12,9 @@ import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.common.MinecraftForge;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 传输管线 —— 编排一次完整的传输流程。
@@ -43,99 +45,137 @@ public final class TransferPipeline {
         if (localCap == null) return false;
 
         boolean movedAny = false;
+        int attemptBudget = Math.max(1, protocol.maxTransactionsPerActivation());
+        int attempts = 0;
+        Set<Object> rejectedCandidateContexts = null;
 
-        for (LogisticsNode remoteNode : destinations) {
-            boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
+        while (remaining > 0L && attempts < attemptBudget
+            && (context == null || context.hasTimeRemaining())) {
+            boolean movedThisPass = false;
+            boolean candidateSeen = false;
+            boolean terminalFailure = false;
+            ExtractionResult<T> rejectedCandidate = null;
 
-            LogisticsCalculator.TransferRangeAssessment range = LogisticsCalculator.assessTransferRange(
-                GlobalPos.of(localLevel.dimension(), localPos), remoteNode.gPos(), localContainer);
-            if (range.crossDimension() && !range.allowed()) {
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
-                continue;
-            }
+            for (LogisticsNode remoteNode : destinations) {
+                boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
 
-            if (!range.crossDimension() && !range.allowed()) {
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.OUT_OF_RANGE);
-                continue;
-            }
-
-            ServerLevel remoteLevel = isSameDim ? localLevel :
-                localLevel.getServer().getLevel(remoteNode.gPos().dimension());
-            if (remoteLevel == null || !remoteLevel.getChunkSource().hasChunk(
-                remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4)) {
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.CHUNK_UNLOADED);
-                continue;
-            }
-
-            C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
-            if (remoteCap == null) {
-                if (context != null && context.sourceConfig() != null
-                    && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
-                    cleanStaleTarget(remoteNode, context);
-                }
-                if (context != null) logFailure(context, remoteNode, TransferFailureReason.CAPABILITY_NULL);
-                continue;
-            }
-
-            C from = isPullMode ? remoteCap : localCap;
-            C to = isPullMode ? localCap : remoteCap;
-
-            // Pre 事件
-            if (context != null) {
-                LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
-                LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                PreTransferEvent preEvent = new PreTransferEvent(
-                    srcNode, dstNode, context.typeId(), remaining);
-                MinecraftForge.EVENT_BUS.post(preEvent);
-                if (preEvent.isCanceled()) {
-                    logFailure(context, remoteNode, TransferFailureReason.EVENT_CANCELLED);
+                LogisticsCalculator.TransferRangeAssessment range = LogisticsCalculator.assessTransferRange(
+                    GlobalPos.of(localLevel.dimension(), localPos), remoteNode.gPos(), localContainer);
+                if (range.crossDimension() && !range.allowed()) {
+                    if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
+                    }
                     continue;
                 }
-            }
 
-            long targetAccepted = 0;
-            boolean transferComplete = true;
-            TransferFailureReason commitFailure = null;
-            ExtractionResult<T> simulated = protocol.simulateExtract(from, remaining);
-            if (!protocol.isEmpty(simulated) && protocol.canInsert(to, simulated.value(), remoteNode)) {
-                long simulatedAccepted = Math.min(remaining,
-                    Math.max(0L, protocol.simulateInsert(to, simulated.value())));
-                if (simulatedAccepted > 0L) {
-                    TransferTransaction.Result result = TransferTransaction.commit(
-                        protocol, from, to, simulated, simulatedAccepted, remoteNode);
-                    targetAccepted = result.accepted();
-                    transferComplete = result.failure() == TransferTransaction.Failure.NONE;
-                    if (result.failure() == TransferTransaction.Failure.SOURCE_COMMIT_FAILED) {
-                        commitFailure = TransferFailureReason.SOURCE_COMMIT_FAILED;
-                    } else if (result.failure() == TransferTransaction.Failure.ROLLBACK_FAILED) {
-                        commitFailure = TransferFailureReason.ROLLBACK_FAILED;
+                if (!range.crossDimension() && !range.allowed()) {
+                    if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.OUT_OF_RANGE);
                     }
-                    if (context != null && targetAccepted <= 0L && commitFailure != null) {
-                        logFailure(context, remoteNode, commitFailure);
+                    continue;
+                }
+
+                ServerLevel remoteLevel = isSameDim ? localLevel
+                    : localLevel.getServer().getLevel(remoteNode.gPos().dimension());
+                if (remoteLevel == null || !remoteLevel.getChunkSource().hasChunk(
+                    remoteNode.gPos().pos().getX() >> 4, remoteNode.gPos().pos().getZ() >> 4)) {
+                    if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.CHUNK_UNLOADED);
                     }
-                } else if (context != null) {
+                    continue;
+                }
+
+                C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
+                if (remoteCap == null) {
+                    if (context != null && context.sourceConfig() != null
+                        && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
+                        cleanStaleTarget(remoteNode, context);
+                    }
+                    if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.CAPABILITY_NULL);
+                    }
+                    continue;
+                }
+
+                C from = isPullMode ? remoteCap : localCap;
+                C to = isPullMode ? localCap : remoteCap;
+
+                // Pre 事件
+                if (context != null) {
+                    LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
+                    LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
+                    PreTransferEvent preEvent = new PreTransferEvent(
+                        srcNode, dstNode, context.typeId(), remaining);
+                    MinecraftForge.EVENT_BUS.post(preEvent);
+                    if (preEvent.isCanceled()) {
+                        logFailure(context, remoteNode, TransferFailureReason.EVENT_CANCELLED);
+                        continue;
+                    }
+                }
+
+                long targetAccepted = 0;
+                boolean transferComplete = true;
+                TransferFailureReason commitFailure = null;
+                ExtractionResult<T> simulated = protocol.simulateExtract(from, remaining);
+                if (!protocol.isEmpty(simulated)) {
+                    candidateSeen = true;
+                    rejectedCandidate = simulated;
+                }
+                if (!protocol.isEmpty(simulated) && protocol.canInsert(to, simulated.value(), remoteNode)) {
+                    long simulatedAccepted = Math.min(remaining,
+                        Math.max(0L, protocol.simulateInsert(to, simulated.value())));
+                    if (simulatedAccepted > 0L) {
+                        TransferTransaction.Result result = TransferTransaction.commit(
+                            protocol, from, to, simulated, simulatedAccepted, remoteNode);
+                        targetAccepted = result.accepted();
+                        transferComplete = result.failure() == TransferTransaction.Failure.NONE;
+                        if (result.failure() == TransferTransaction.Failure.SOURCE_COMMIT_FAILED) {
+                            commitFailure = TransferFailureReason.SOURCE_COMMIT_FAILED;
+                            terminalFailure = true;
+                        } else if (result.failure() == TransferTransaction.Failure.ROLLBACK_FAILED) {
+                            commitFailure = TransferFailureReason.ROLLBACK_FAILED;
+                            terminalFailure = true;
+                        }
+                        if (context != null && targetAccepted <= 0L && commitFailure != null) {
+                            logFailure(context, remoteNode, commitFailure);
+                        }
+                    } else if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.TARGET_REJECTED);
+                    }
+                } else if (!protocol.isEmpty(simulated) && context != null) {
                     logFailure(context, remoteNode, TransferFailureReason.TARGET_REJECTED);
                 }
-            } else if (!protocol.isEmpty(simulated) && context != null) {
-                logFailure(context, remoteNode, TransferFailureReason.TARGET_REJECTED);
+
+                if (targetAccepted > 0) {
+                    remaining -= targetAccepted;
+                    movedAny = true;
+                    movedThisPass = true;
+                    attempts++;
+                }
+
+                // 日志 + Post 事件
+                if (targetAccepted > 0 && context != null) {
+                    LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
+                    LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
+                    TransferLogManager.get(localLevel.getServer()).logTransfer(
+                        srcNode, dstNode, context.type(), targetAccepted, transferComplete, commitFailure);
+                    PostTransferEvent postEvent = new PostTransferEvent(
+                        srcNode, dstNode, context.typeId(), targetAccepted, transferComplete);
+                    MinecraftForge.EVENT_BUS.post(postEvent);
+                }
+                if (remaining <= 0L || attempts >= attemptBudget || terminalFailure
+                    || context != null && !context.hasTimeRemaining()) break;
             }
 
-            if (targetAccepted > 0) {
-                remaining -= targetAccepted;
-                movedAny = true;
+            if (terminalFailure || remaining <= 0L || attempts >= attemptBudget) break;
+            if (movedThisPass) continue;
+            if (!candidateSeen || rejectedCandidate == null || rejectedCandidate.context() == null) break;
+            if (rejectedCandidateContexts == null) rejectedCandidateContexts = new HashSet<>();
+            if (!rejectedCandidateContexts.add(rejectedCandidate.context())
+                || !protocol.advanceRejectedCandidate(rejectedCandidate)) {
+                break;
             }
-
-            // 日志 + Post 事件
-            if (targetAccepted > 0 && context != null) {
-                LogisticsNode srcNode = context.isPullMode() ? remoteNode : context.sourceNode();
-                LogisticsNode dstNode = context.isPullMode() ? context.sourceNode() : remoteNode;
-                TransferLogManager.get(localLevel.getServer()).logTransfer(
-                    srcNode, dstNode, context.type(), targetAccepted, transferComplete, commitFailure);
-                PostTransferEvent postEvent = new PostTransferEvent(
-                    srcNode, dstNode, context.typeId(), targetAccepted, transferComplete);
-                MinecraftForge.EVENT_BUS.post(postEvent);
-            }
-            if (remaining <= 0) break;
+            attempts++;
         }
         return movedAny;
     }
