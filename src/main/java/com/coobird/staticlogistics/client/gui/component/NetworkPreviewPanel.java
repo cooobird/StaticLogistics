@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.NetworkPreviewLayoutStore;
 import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
@@ -17,7 +18,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -37,12 +37,15 @@ public final class NetworkPreviewPanel {
     private static final int NODE_HEIGHT = 27;
     private static final int LAYOUT_PADDING = 1;
     private static final int NODE_GAP = 5;
+    private static final int COMPONENT_GAP = 14;
     private static final int SELECTED_CONNECTION_COLOR = 0xFFFFD45A;
     private static final double MIN_ZOOM = 0.35D;
     private static final double MAX_ZOOM = 1.8D;
 
     private final List<NodeHit> nodeHits = new ArrayList<>();
     private final List<ConnectionHit> connectionHits = new ArrayList<>();
+    private final Map<LogisticsNode, Point> currentLocalPositions = new LinkedHashMap<>();
+    private final LinkedHashSet<LogisticsNode> selectedNodes = new LinkedHashSet<>();
     @Nullable
     private GroupKey groupKey;
     @Nullable
@@ -51,13 +54,16 @@ public final class NetworkPreviewPanel {
     private double panY;
     private double zoom = 1.0D;
     private boolean panning;
+    private double panningDistance;
     @Nullable
-    private GlobalPos draggingNode;
+    private LogisticsNode draggingNode;
+    private final LinkedHashSet<LogisticsNode> draggingNodes = new LinkedHashSet<>();
 
     public void setGroup(@Nullable GroupKey groupKey) {
         if (Objects.equals(this.groupKey, groupKey)) return;
         this.groupKey = groupKey;
         this.selectedNode = null;
+        this.selectedNodes.clear();
         if (groupKey == null) {
             this.panX = 0.0D;
             this.panY = 0.0D;
@@ -70,6 +76,7 @@ public final class NetworkPreviewPanel {
         }
         this.panning = false;
         this.draggingNode = null;
+        this.draggingNodes.clear();
     }
 
     public void removeLayout(GroupKey groupKey) {
@@ -89,6 +96,10 @@ public final class NetworkPreviewPanel {
         return selectedNode;
     }
 
+    public List<LogisticsNode> getSelectedNodes() {
+        return List.copyOf(selectedNodes);
+    }
+
     @Nullable
     public ClientConnection getSelectedConnection() {
         ConnectionKey key = SelectionContext.getFocusedConnectionKey();
@@ -106,10 +117,13 @@ public final class NetworkPreviewPanel {
             SelectionContext.focusConnection(connection.key());
         }
         this.selectedNode = null;
+        this.selectedNodes.clear();
     }
 
     public void selectNode(@Nullable LogisticsNode node) {
         this.selectedNode = node;
+        this.selectedNodes.clear();
+        if (node != null) this.selectedNodes.add(node);
         SelectionContext.clearConnectionFocus();
     }
 
@@ -132,8 +146,8 @@ public final class NetworkPreviewPanel {
             return;
         }
 
-        Map<GlobalPos, VisualNode> nodes = collectNodes(connections);
-        Map<GlobalPos, Point> positions = layout(connections, nodes, x, y, width, height);
+        Map<LogisticsNode, VisualNode> nodes = collectNodes(connections);
+        Map<LogisticsNode, Point> positions = layout(connections, nodes, x, y, width, height);
         ViewTransform transform = new ViewTransform(
             x + width / 2.0D,
             y + height / 2.0D,
@@ -149,8 +163,8 @@ public final class NetworkPreviewPanel {
         graphics.pose().scale((float) transform.zoom, (float) transform.zoom, 1.0F);
         graphics.pose().translate(-transform.centerX, -transform.centerY, 0.0D);
         for (ClientConnection connection : connections) {
-            Point first = positions.get(connection.first().gPos());
-            Point second = positions.get(connection.second().gPos());
+            Point first = positions.get(connection.first());
+            Point second = positions.get(connection.second());
             if (first == null || second == null) continue;
             renderConnection(graphics, connection, first, second, transform);
         }
@@ -164,8 +178,8 @@ public final class NetworkPreviewPanel {
         graphics.disableScissor();
     }
 
-    private Map<GlobalPos, VisualNode> collectNodes(List<ClientConnection> connections) {
-        Map<GlobalPos, VisualNode> nodes = new LinkedHashMap<>();
+    private Map<LogisticsNode, VisualNode> collectNodes(List<ClientConnection> connections) {
+        Map<LogisticsNode, VisualNode> nodes = new LinkedHashMap<>();
         for (ClientConnection connection : connections) {
             collectNode(nodes, connection.first(), connection.firstTopology());
             collectNode(nodes, connection.second(), connection.secondTopology());
@@ -173,155 +187,211 @@ public final class NetworkPreviewPanel {
         return nodes;
     }
 
-    private static void collectNode(Map<GlobalPos, VisualNode> nodes,
+    private static void collectNode(Map<LogisticsNode, VisualNode> nodes,
                                     LogisticsNode node, FaceTopology topology) {
-        nodes.computeIfAbsent(node.gPos(), ignored -> new VisualNode(node, topology));
+        nodes.putIfAbsent(node, new VisualNode(node, topology));
     }
 
-    private Map<GlobalPos, Point> layout(
+    private Map<LogisticsNode, Point> layout(
         List<ClientConnection> connections,
-        Map<GlobalPos, VisualNode> nodes,
+        Map<LogisticsNode, VisualNode> nodes,
         int x, int y, int width, int height) {
-        Map<GlobalPos, Integer> sourceVotes = new LinkedHashMap<>();
-        Map<GlobalPos, Integer> targetVotes = new LinkedHashMap<>();
-        for (ClientConnection connection : connections) {
-            boolean forward = connection.transfersFirstToSecond();
-            boolean backward = connection.transfersSecondToFirst();
-            if (forward && !backward) {
-                vote(sourceVotes, connection.first().gPos());
-                vote(targetVotes, connection.second().gPos());
-            } else if (backward && !forward) {
-                vote(sourceVotes, connection.second().gPos());
-                vote(targetVotes, connection.first().gPos());
-            } else {
-                // 双向或暂时停用的连接保持稳定的左右顺序，避免刷新时节点跳动。
-                vote(sourceVotes, connection.first().gPos());
-                vote(targetVotes, connection.second().gPos());
-            }
-        }
-
-        List<Map.Entry<GlobalPos, VisualNode>> sources = new ArrayList<>();
-        List<Map.Entry<GlobalPos, VisualNode>> targets = new ArrayList<>();
-        nodes.entrySet().stream()
-            .sorted(Comparator.comparing(entry -> nodeKey(entry.getKey())))
-            .forEach(entry -> {
-                int sourceScore = sourceVotes.getOrDefault(entry.getKey(), 0);
-                int targetScore = targetVotes.getOrDefault(entry.getKey(), 0);
-                if (sourceScore >= targetScore && sourceScore > 0) {
-                    sources.add(entry);
-                } else {
-                    targets.add(entry);
-                }
-            });
-
-        Map<GlobalPos, Point> automatic = new LinkedHashMap<>();
-        placeColumn(automatic, sources, 18, LAYOUT_PADDING,
-            height - LAYOUT_PADDING * 2);
-        placeColumn(automatic, targets, width - NODE_WIDTH - 18,
-            LAYOUT_PADDING, height - LAYOUT_PADDING * 2);
+        Map<LogisticsNode, Point> automatic = buildTopologyLayout(
+            connections, nodes.keySet(), width);
 
         NetworkPreviewLayoutStore.Layout storedLayout =
             NetworkPreviewLayoutStore.INSTANCE.getOrCreate(Objects.requireNonNull(groupKey));
-        Map<GlobalPos, NetworkPreviewLayoutStore.Position> saved = storedLayout.nodePositions();
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> saved = storedLayout.nodePositions();
         /*
          * 不在增量拓扑同步期间删除暂时不可见的节点布局。分组真正删除时由布局仓库的
          * removeGroup 统一清理，避免重进存档后刚打开界面就丢失尚未同步到的节点位置。
          */
-        boolean layoutChanged = false;
-        boolean firstLayout = saved.isEmpty();
-        List<NetworkPreviewLayoutStore.Position> occupied = new ArrayList<>();
-        List<Map.Entry<GlobalPos, Point>> placementOrder = new ArrayList<>(automatic.entrySet());
-        placementOrder.sort(Comparator.comparing(entry -> !saved.containsKey(entry.getKey())));
-        for (Map.Entry<GlobalPos, Point> entry : placementOrder) {
-            NetworkPreviewLayoutStore.Position original = saved.get(entry.getKey());
-            NetworkPreviewLayoutStore.Position candidate = original == null
-                ? new NetworkPreviewLayoutStore.Position(entry.getValue().x, entry.getValue().y)
-                : original;
-            NetworkPreviewLayoutStore.Position resolved = findFreePosition(candidate, occupied);
-            occupied.add(resolved);
-            if (!resolved.equals(original)) {
-                saved.put(entry.getKey(), resolved);
-                layoutChanged = true;
-            }
-        }
+        boolean layoutChanged = migrateLegacyPositions(storedLayout, automatic);
+        boolean firstLayout = !storedLayout.isViewInitialized();
         if (layoutChanged) {
             NetworkPreviewLayoutStore.INSTANCE.markDirty();
         }
+        Map<LogisticsNode, Point> localPositions = new LinkedHashMap<>(automatic);
+        saved.forEach((node, point) -> {
+            if (automatic.containsKey(node)) {
+                localPositions.put(node, new Point(
+                    (int) Math.round(point.x()), (int) Math.round(point.y())));
+            }
+        });
         if (firstLayout) {
-            Map<GlobalPos, Point> initialPositions = new LinkedHashMap<>(saved.size());
-            saved.forEach((node, point) -> initialPositions.put(
-                node, new Point(
-                    (int) Math.round(point.x()),
-                    (int) Math.round(point.y()))));
-            zoom = initialZoom(initialPositions, height);
+            zoom = initialZoom(localPositions, height);
             persistView();
         }
 
-        Map<GlobalPos, Point> result = new LinkedHashMap<>(saved.size());
-        saved.forEach((node, point) ->
-            result.put(node, new Point(
-                (int) Math.round(x + point.x()),
-                (int) Math.round(y + point.y()))));
+        currentLocalPositions.clear();
+        currentLocalPositions.putAll(localPositions);
+        Map<LogisticsNode, Point> result = new LinkedHashMap<>(localPositions.size());
+        localPositions.forEach((node, point) -> result.put(node,
+            new Point(x + point.x, y + point.y)));
         return result;
     }
 
-    private static NetworkPreviewLayoutStore.Position findFreePosition(
-        NetworkPreviewLayoutStore.Position preferred,
-        List<NetworkPreviewLayoutStore.Position> occupied
-    ) {
-        if (!overlapsAny(preferred, occupied)) return preferred;
-        double step = NODE_HEIGHT + NODE_GAP;
-        for (int distance = 1; distance <= occupied.size() + 1; distance++) {
-            NetworkPreviewLayoutStore.Position below = new NetworkPreviewLayoutStore.Position(
-                preferred.x(), preferred.y() + step * distance);
-            if (!overlapsAny(below, occupied)) return below;
-            NetworkPreviewLayoutStore.Position above = new NetworkPreviewLayoutStore.Position(
-                preferred.x(), preferred.y() - step * distance);
-            if (!overlapsAny(above, occupied)) return above;
+    /**
+     * 生成分层拓扑布局：先拆分独立连通分量，再按传输方向确定层级，最后用相邻层
+     * 重心排序减少交叉。双向和停用连接使用稳定身份确定展示方向，不改变真实传输语义。
+     */
+    private static Map<LogisticsNode, Point> buildTopologyLayout(
+        List<ClientConnection> connections, Set<LogisticsNode> nodes, int width) {
+        Map<LogisticsNode, Set<LogisticsNode>> neighbors = new LinkedHashMap<>();
+        nodes.forEach(node -> neighbors.put(node, new LinkedHashSet<>()));
+        for (ClientConnection connection : connections) {
+            neighbors.get(connection.first()).add(connection.second());
+            neighbors.get(connection.second()).add(connection.first());
         }
-        throw new IllegalStateException("Unable to resolve network preview node overlap");
+        List<Set<LogisticsNode>> components = connectedComponents(neighbors);
+        List<TopologyComponent> layouts = components.stream()
+            .map(component -> layoutComponent(component, neighbors))
+            .sorted(Comparator.comparing(layout -> nodeKey(layout.firstNode())))
+            .toList();
+
+        Map<LogisticsNode, Point> result = new LinkedHashMap<>();
+        int componentY = LAYOUT_PADDING;
+        int left = 18;
+        int right = Math.max(left, width - NODE_WIDTH - 18);
+        for (TopologyComponent component : layouts) {
+            int maximumLayer = component.layers().keySet().stream()
+                .mapToInt(Integer::intValue).max().orElse(0);
+            int componentHeight = component.layers().values().stream()
+                .mapToInt(layer -> NODE_HEIGHT + Math.max(0, layer.size() - 1)
+                    * (NODE_HEIGHT + NODE_GAP))
+                .max().orElse(NODE_HEIGHT);
+            for (var entry : component.layers().entrySet()) {
+                int x = maximumLayer == 0 ? (left + right) / 2
+                    : Mth.lerpInt(entry.getKey() / (float) maximumLayer, left, right);
+                List<LogisticsNode> layer = entry.getValue();
+                int layerHeight = NODE_HEIGHT + Math.max(0, layer.size() - 1)
+                    * (NODE_HEIGHT + NODE_GAP);
+                int y = componentY + (componentHeight - layerHeight) / 2;
+                for (LogisticsNode node : layer) {
+                    result.put(node, new Point(x, y));
+                    y += NODE_HEIGHT + NODE_GAP;
+                }
+            }
+            componentY += componentHeight + COMPONENT_GAP;
+        }
+        return result;
     }
 
-    private static boolean overlapsAny(
-        NetworkPreviewLayoutStore.Position candidate,
-        List<NetworkPreviewLayoutStore.Position> occupied
+    private static List<Set<LogisticsNode>> connectedComponents(
+        Map<LogisticsNode, Set<LogisticsNode>> neighbors) {
+        List<Set<LogisticsNode>> result = new ArrayList<>();
+        Set<LogisticsNode> visited = new HashSet<>();
+        neighbors.keySet().stream().sorted(Comparator.comparing(NetworkPreviewPanel::nodeKey))
+            .forEach(start -> {
+                if (!visited.add(start)) return;
+                LinkedHashSet<LogisticsNode> component = new LinkedHashSet<>();
+                ArrayDeque<LogisticsNode> pending = new ArrayDeque<>();
+                pending.add(start);
+                while (!pending.isEmpty()) {
+                    LogisticsNode node = pending.removeFirst();
+                    component.add(node);
+                    neighbors.getOrDefault(node, Set.of()).stream()
+                        .sorted(Comparator.comparing(NetworkPreviewPanel::nodeKey))
+                        .filter(visited::add).forEach(pending::addLast);
+                }
+                result.add(component);
+            });
+        return result;
+    }
+
+    private static TopologyComponent layoutComponent(
+        Set<LogisticsNode> component,
+        Map<LogisticsNode, Set<LogisticsNode>> neighbors
     ) {
-        for (NetworkPreviewLayoutStore.Position position : occupied) {
-            if (Math.abs(candidate.x() - position.x()) < NODE_WIDTH + NODE_GAP
-                && Math.abs(candidate.y() - position.y()) < NODE_HEIGHT + NODE_GAP) {
-                return true;
+        LogisticsNode root = component.stream().min(
+            Comparator.<LogisticsNode>comparingInt(node ->
+                    -neighbors.getOrDefault(node, Set.of()).size())
+                .thenComparing(NetworkPreviewPanel::nodeKey)).orElseThrow();
+        Map<LogisticsNode, Integer> depth = new LinkedHashMap<>();
+        ArrayDeque<LogisticsNode> pending = new ArrayDeque<>();
+        depth.put(root, 0);
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            LogisticsNode node = pending.removeFirst();
+            List<LogisticsNode> adjacent = neighbors.getOrDefault(node, Set.of()).stream()
+                .filter(component::contains)
+                .sorted(Comparator.comparing(NetworkPreviewPanel::nodeKey)).toList();
+            for (LogisticsNode next : adjacent) {
+                if (depth.putIfAbsent(next, depth.get(node) + 1) == null) pending.addLast(next);
             }
         }
-        return false;
+        Map<Integer, List<LogisticsNode>> layers = new TreeMap<>();
+        component.forEach(node -> layers.computeIfAbsent(depth.get(node), ignored -> new ArrayList<>()).add(node));
+        layers.values().forEach(layer -> layer.sort(Comparator.comparing(NetworkPreviewPanel::nodeKey)));
+        improveTopologyOrder(layers, neighbors, depth);
+        return new TopologyComponent(component.stream()
+            .min(Comparator.comparing(NetworkPreviewPanel::nodeKey)).orElseThrow(), layers);
     }
 
-    private static void vote(Map<GlobalPos, Integer> votes, GlobalPos node) {
-        votes.merge(node, 1, Integer::sum);
-    }
-
-    private void placeColumn(Map<GlobalPos, Point> result,
-                             List<Map.Entry<GlobalPos, VisualNode>> entries,
-                             int baseX, int baseY, int availableHeight) {
-        if (entries.isEmpty()) return;
-        double step = entries.size() == 1
-            ? 0.0D
-            : Math.max(
-            NODE_HEIGHT + NODE_GAP,
-            (availableHeight - NODE_HEIGHT)
-                / (double) (entries.size() - 1));
-        double total = NODE_HEIGHT + step * (entries.size() - 1);
-        double start = baseY + (availableHeight - total) / 2.0D;
-        for (int i = 0; i < entries.size(); i++) {
-            result.put(entries.get(i).getKey(),
-                new Point(baseX, (int) Math.round(start + i * step)));
+    private static void improveTopologyOrder(
+        Map<Integer, List<LogisticsNode>> layers,
+        Map<LogisticsNode, Set<LogisticsNode>> neighbors,
+        Map<LogisticsNode, Integer> depth
+    ) {
+        for (int pass = 0; pass < 4; pass++) {
+            Map<LogisticsNode, Integer> previousOrder = Map.of();
+            for (Map.Entry<Integer, List<LogisticsNode>> entry : layers.entrySet()) {
+                int layerDepth = entry.getKey();
+                Map<LogisticsNode, Integer> order = previousOrder;
+                entry.getValue().sort(Comparator
+                    .<LogisticsNode>comparingDouble(node -> barycenter(
+                        neighbors.getOrDefault(node, Set.of()).stream()
+                            .filter(adjacent -> depth.get(adjacent) < layerDepth).toList(), order))
+                    .thenComparing(NetworkPreviewPanel::nodeKey));
+                previousOrder = indexOrder(entry.getValue());
+            }
         }
+    }
+
+    private static double barycenter(Collection<LogisticsNode> nodes,
+                                     Map<LogisticsNode, Integer> order) {
+        return nodes.stream().filter(order::containsKey).mapToInt(order::get)
+            .average().orElse(Double.MAX_VALUE);
+    }
+
+    private static Map<LogisticsNode, Integer> indexOrder(List<LogisticsNode> nodes) {
+        Map<LogisticsNode, Integer> result = new HashMap<>();
+        for (int index = 0; index < nodes.size(); index++) result.put(nodes.get(index), index);
+        return result;
+    }
+
+    /**
+     * 将旧版按方块坐标保存的位置迁移为按连接面保存。一个方块上的多个面只在旧位置附近展开，
+     * 不再通过全局避让把节点推到远处。
+     */
+    private static boolean migrateLegacyPositions(
+        NetworkPreviewLayoutStore.Layout layout,
+        Map<LogisticsNode, Point> automatic
+    ) {
+        if (layout.legacyNodePositions().isEmpty()) return false;
+        Map<net.minecraft.core.GlobalPos, List<LogisticsNode>> nodesByPosition = new LinkedHashMap<>();
+        automatic.keySet().forEach(node ->
+            nodesByPosition.computeIfAbsent(node.gPos(), ignored -> new ArrayList<>()).add(node));
+        layout.legacyNodePositions().forEach((position, savedPosition) -> {
+            List<LogisticsNode> matching = new ArrayList<>(
+                nodesByPosition.getOrDefault(position, List.of()));
+            matching.sort(Comparator.comparing(NetworkPreviewPanel::nodeKey));
+            double startY = savedPosition.y() - (matching.size() - 1) * (NODE_HEIGHT + NODE_GAP) / 2.0D;
+            for (int index = 0; index < matching.size(); index++) {
+                layout.nodePositions().putIfAbsent(matching.get(index),
+                    new NetworkPreviewLayoutStore.Position(savedPosition.x(),
+                        startY + index * (NODE_HEIGHT + NODE_GAP)));
+            }
+        });
+        layout.legacyNodePositions().clear();
+        return true;
     }
 
     /**
      * 首次布局只在节点无法原尺寸容纳时缩小，保证节点之间永不互相覆盖。
      */
     private static double initialZoom(
-        Map<GlobalPos, Point> positions,
+        Map<LogisticsNode, Point> positions,
         int viewportHeight
     ) {
         if (positions.isEmpty()) return 1.0D;
@@ -530,16 +600,18 @@ public final class NetworkPreviewPanel {
                             ViewTransform transform) {
         LogisticsNode node = visualNode.representative();
         FaceTopology topology = visualNode.topology();
-        boolean selected = selectedNode != null && node.gPos().equals(selectedNode.gPos());
-        int border = selected ? 0xFF98FB98 : 0xFF767676;
-        int background = selected ? 0xFF315B36 : 0xFF3A3A3A;
+        boolean primarySelected = node.equals(selectedNode);
+        boolean selected = selectedNodes.contains(node);
+        int border = primarySelected ? 0xFF98FB98 : selected ? 0xFFFFD45A : 0xFF767676;
+        int background = primarySelected ? 0xFF315B36 : selected ? 0xFF5A5130 : 0xFF3A3A3A;
         graphics.fill(point.x, point.y, point.x + NODE_WIDTH, point.y + NODE_HEIGHT, border);
         graphics.fill(point.x + 2, point.y + 2,
             point.x + NODE_WIDTH - 2, point.y + NODE_HEIGHT - 2, background);
 
-        String name = nodeName(node);
-        graphics.drawString(font, font.plainSubstrByWidth(name, NODE_WIDTH - 8),
-            point.x + 4, point.y + 4, selected ? 0xFF98FB98 : 0xFFEDEDED, false);
+        String title = nodeName(node) + " · "
+            + NodeDisplayText.direction(node.face()).getString();
+        graphics.drawString(font, font.plainSubstrByWidth(title, NODE_WIDTH - 8),
+            point.x + 4, point.y + 4, primarySelected ? 0xFF98FB98 : selected ? 0xFFFFD45A : 0xFFEDEDED, false);
         String position = node.gPos().pos().toShortString();
         graphics.drawString(font, font.plainSubstrByWidth(position, NODE_WIDTH - 8),
             point.x + 4, point.y + 15, 0xFFAAAAAA, false);
@@ -558,8 +630,7 @@ public final class NetworkPreviewPanel {
             || !minecraft.level.hasChunk(chunkX, chunkZ)) {
             return Component.translatable("gui.staticlogistics.network_preview.node").getString();
         }
-        if (minecraft.level.getBlockEntity(node.gPos().pos())
-            instanceof Nameable nameable) {
+        if (minecraft.level.getBlockEntity(node.gPos().pos()) instanceof Nameable nameable) {
             return nameable.getDisplayName().getString();
         }
         return minecraft.level.getBlockState(node.gPos().pos()).getBlock()
@@ -596,6 +667,14 @@ public final class NetworkPreviewPanel {
             graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
             return;
         }
+        graphics.renderComponentTooltip(font, List.of(
+            Component.translatable("gui.staticlogistics.network_preview.controls")
+                .withStyle(ChatFormatting.GOLD),
+            Component.translatable("gui.staticlogistics.network_preview.multi_select_hint",
+                SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT.getTranslatedKeyMessage()),
+            Component.translatable("gui.staticlogistics.network_preview.drag_selected_hint"),
+            Component.translatable("gui.staticlogistics.network_preview.zoom_hint")
+        ), mouseX, mouseY);
     }
 
     private List<Component> buildNodeTooltip(LogisticsNode node, FaceTopology topology) {
@@ -647,10 +726,27 @@ public final class NetworkPreviewPanel {
         if (!isInside(mouseX, mouseY, x, y, width, height)) return false;
         for (NodeHit hit : nodeHits) {
             if (!hit.contains(mouseX, mouseY)) continue;
-            selectedNode = hit.node.representative();
+            LogisticsNode clickedNode = hit.node.representative();
+            if (SLKeyMappings.isKeyDown(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT) && button == 0) {
+                toggleNodeSelection(clickedNode);
+            } else if (button == 0 && selectedNodes.contains(clickedNode)) {
+                selectedNode = clickedNode;
+            } else {
+                selectedNodes.clear();
+                selectedNodes.add(clickedNode);
+                selectedNode = clickedNode;
+            }
             SelectionContext.clearConnectionFocus();
-            draggingNode = button == 0 ? hit.node.position() : null;
+            draggingNode = button == 0
+                && !SLKeyMappings.isKeyDown(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT)
+                ? hit.node.position() : null;
+            draggingNodes.clear();
+            if (draggingNode != null) {
+                draggingNodes.addAll(selectedNodes.contains(draggingNode)
+                    ? selectedNodes : List.of(draggingNode));
+            }
             panning = false;
+            panningDistance = 0.0D;
             SoundUtil.playClickSound();
             return true;
         }
@@ -658,15 +754,17 @@ public final class NetworkPreviewPanel {
             if (!hit.contains(mouseX, mouseY)) continue;
             selectConnection(hit.connection);
             draggingNode = null;
+            draggingNodes.clear();
             panning = false;
+            panningDistance = 0.0D;
             SoundUtil.playClickSound();
             return true;
         }
         if (button == 0) {
-            selectedNode = null;
-            SelectionContext.clearConnectionFocus();
             draggingNode = null;
+            draggingNodes.clear();
             panning = true;
+            panningDistance = 0.0D;
             return true;
         }
         return false;
@@ -674,21 +772,30 @@ public final class NetworkPreviewPanel {
 
     public boolean mouseDragged(double deltaX, double deltaY) {
         if (draggingNode != null && groupKey != null) {
-            Map<GlobalPos, NetworkPreviewLayoutStore.Position> layout =
+            Map<LogisticsNode, NetworkPreviewLayoutStore.Position> layout =
                 NetworkPreviewLayoutStore.INSTANCE.getOrCreate(groupKey)
                     .nodePositions();
-            NetworkPreviewLayoutStore.Position point = layout.get(draggingNode);
-            if (point == null) {
-                draggingNode = null;
-                return false;
+            double localDeltaX = deltaX / zoom;
+            double localDeltaY = deltaY / zoom;
+            boolean moved = false;
+            for (LogisticsNode node : draggingNodes) {
+                NetworkPreviewLayoutStore.Position point = layout.get(node);
+                if (point == null) {
+                    Point current = currentLocalPositions.get(node);
+                    if (current == null) continue;
+                    point = new NetworkPreviewLayoutStore.Position(current.x, current.y);
+                }
+                layout.put(node, new NetworkPreviewLayoutStore.Position(
+                    point.x() + localDeltaX, point.y() + localDeltaY));
+                moved = true;
             }
-            layout.put(draggingNode, new NetworkPreviewLayoutStore.Position(
-                point.x() + deltaX / zoom,
-                point.y() + deltaY / zoom));
+            if (!moved) return false;
             NetworkPreviewLayoutStore.INSTANCE.markDirty();
             return true;
         }
         if (!panning) return false;
+        panningDistance += Math.hypot(deltaX, deltaY);
+        if (panningDistance < 2.0D) return true;
         panX += deltaX;
         panY += deltaY;
         persistView();
@@ -703,9 +810,26 @@ public final class NetworkPreviewPanel {
      */
     public boolean mouseReleased() {
         boolean handled = panning || draggingNode != null;
+        if (panning && panningDistance < 2.0D) {
+            selectedNode = null;
+            selectedNodes.clear();
+            SelectionContext.clearConnectionFocus();
+        }
         panning = false;
+        panningDistance = 0.0D;
         draggingNode = null;
+        draggingNodes.clear();
         return handled;
+    }
+
+    private void toggleNodeSelection(LogisticsNode node) {
+        if (selectedNodes.remove(node)) {
+            selectedNode = selectedNodes.isEmpty() ? null
+                : selectedNodes.stream().reduce((first, second) -> second).orElse(null);
+            return;
+        }
+        selectedNodes.add(node);
+        selectedNode = node;
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double delta,
@@ -737,8 +861,9 @@ public final class NetworkPreviewPanel {
         NetworkPreviewLayoutStore.INSTANCE.markDirty();
     }
 
-    private static String nodeKey(GlobalPos node) {
-        return node.dimension().location() + "/" + node.pos().asLong();
+    private static String nodeKey(LogisticsNode node) {
+        return node.gPos().dimension().location() + "/" + node.gPos().pos().asLong()
+            + "/" + node.face().getName();
     }
 
     private static boolean isInside(double mouseX, double mouseY,
@@ -750,6 +875,10 @@ public final class NetworkPreviewPanel {
     }
 
     private record Point(int x, int y) {
+    }
+
+    private record TopologyComponent(LogisticsNode firstNode,
+                                     Map<Integer, List<LogisticsNode>> layers) {
     }
 
     /**
@@ -798,8 +927,8 @@ public final class NetworkPreviewPanel {
     }
 
     private record VisualNode(LogisticsNode representative, FaceTopology topology) {
-        private GlobalPos position() {
-            return representative.gPos();
+        private LogisticsNode position() {
+            return representative;
         }
     }
 

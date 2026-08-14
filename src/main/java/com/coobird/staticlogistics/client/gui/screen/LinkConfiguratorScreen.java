@@ -61,6 +61,12 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private static final int GROUP_TITLE_X = 316;
     private static final int REGION_TITLE_Y = 28;
     private static final int INVENTORY_TITLE_Y_OFFSET = 2;
+    private static final int EXPANDED_PREVIEW_FRAME_X = 8;
+    private static final int EXPANDED_PREVIEW_FRAME_Y = 38;
+    private static final int EXPANDED_PREVIEW_FRAME_WIDTH = 462;
+    private static final int EXPANDED_PREVIEW_FRAME_HEIGHT = 224;
+    private static final int PREVIEW_TOGGLE_X = 267;
+    private static final int PREVIEW_TOGGLE_Y = 26;
 
     // 当前连接摘要在右侧信息框中的内边距和行偏移。
     private static final int CONNECTION_TEXT_INSET = 5;
@@ -79,6 +85,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private int modeIdx;
     private GroupPanel groupPanel;
     private NodeConfigurationPanel nodeConfigurationPanel;
+    private ConfirmationDialog confirmationDialog;
+    private boolean previewExpanded;
 
     public LinkConfiguratorScreen(LinkConfiguratorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -112,7 +120,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
         // 左下节点区复用当前 Menu；页签切换不会创建新容器界面。
         nodeConfigurationPanel = new NodeConfigurationPanel(
-            menu, font, this::openFilter, this::selectSide, SoundUtil::playClickSound);
+            menu, font, this::openFilter, this::selectSide,
+            SoundUtil::playClickSound, preview::getSelectedNodes);
         nodeConfigurationPanel.init(leftPos, topPos, this::addRenderableWidget);
     }
 
@@ -129,27 +138,38 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         renderToolbarLabels(graphics);
         ToolModeBar.render(graphics, font, leftPos, topPos, modeIdx);
         TransferTypeGrid.render(graphics, transferTypeView(), leftPos, topPos, mouseX, mouseY);
-
-        preview.render(graphics, font, previewLeft(), previewTop(),
-            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
-            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT,
-            mouseX, mouseY);
-
-        groupPanel.render(graphics, font, stack, preview.getSelectedConnection(),
-            leftPos, topPos, mouseX, mouseY, partialTick);
-        renderCurrentConnection(graphics);
-        nodeConfigurationPanel.render(graphics, mouseX, mouseY);
+        renderPreviewToggle(graphics, mouseX, mouseY);
+        if (!previewExpanded) {
+            preview.render(graphics, font, previewLeft(), previewTop(),
+                previewWidth(), previewHeight(), mouseX, mouseY);
+            groupPanel.render(graphics, font, stack, preview.getSelectedConnection(),
+                leftPos, topPos, mouseX, mouseY, partialTick);
+            renderCurrentConnection(graphics);
+            nodeConfigurationPanel.render(graphics, mouseX, mouseY);
+        }
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
+        if (previewExpanded) renderExpandedPreview(graphics, mouseX, mouseY);
+        if (confirmationDialog != null && confirmationDialog.isOpen()) {
+            confirmationDialog.render(graphics, font, width, height, mouseX, mouseY);
+            return;
+        }
 
         /*
          * 玩家背包和快捷栏必须完整走原版容器 Tooltip 流程，才能保留物品名称、
          * 附魔、数据组件以及其他模组追加的 Tooltip。配置槽由节点区域在原版
          * 物品 Tooltip 后追加升级统计，因此不能在这里重复绘制。
          */
+        if (previewExpanded) {
+            preview.renderTooltip(graphics, font, mouseX, mouseY,
+                previewLeft(), previewTop(), previewWidth(), previewHeight());
+            renderPreviewToggleTooltip(graphics, mouseX, mouseY);
+            return;
+        }
+
         Slot hoveredSlot = getSlotUnderMouse();
         if (hoveredSlot != null
             && !hoveredSlot.getItem().isEmpty()
@@ -166,10 +186,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             mouseY,
             previewLeft(),
             previewTop(),
-            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
-            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT);
+            previewWidth(), previewHeight());
         nodeConfigurationPanel.renderTooltips(graphics, mouseX, mouseY);
         renderTopTooltips(graphics, mouseX, mouseY);
+        renderPreviewToggleTooltip(graphics, mouseX, mouseY);
     }
 
     @Override
@@ -197,6 +217,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     private void renderToolbarLabels(GuiGraphics graphics) {
         graphics.drawString(font, Component.translatable("gui.staticlogistics.network_preview.title"), leftPos + PREVIEW_TITLE_X, topPos + REGION_TITLE_Y, COLOR_ACCENT, false);
+        if (previewExpanded) return;
         graphics.drawString(font, Component.translatable("gui.staticlogistics.groups_and_connections"), leftPos + GROUP_TITLE_X, topPos + REGION_TITLE_Y, COLOR_ACCENT, false);
         graphics.drawString(font, playerInventoryTitle,
             leftPos + SLGuiTextures.LinkConfigurator.INVENTORY_X,
@@ -273,6 +294,27 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (confirmationDialog != null && confirmationDialog.isOpen()) {
+            return confirmationDialog.mouseClicked(mouseX, mouseY, button, width, height);
+        }
+        if (button == 0 && NodeConfigControls.hitOpBtn(mouseX, mouseY,
+            leftPos + PREVIEW_TOGGLE_X, topPos + PREVIEW_TOGGLE_Y)) {
+            previewExpanded = !previewExpanded;
+            SoundUtil.playClickSound();
+            return true;
+        }
+        if (previewExpanded) {
+            ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();
+            if (preview.mouseClicked(mouseX, mouseY, button,
+                previewLeft(), previewTop(), previewWidth(), previewHeight())) {
+                if (!Objects.equals(focusBeforePreviewClick,
+                    SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
+                LogisticsNode node = preview.getSelectedNode();
+                if (node != null) openNode(node);
+                return true;
+            }
+            return true;
+        }
         if (groupPanel.searchBoxMouseClicked(mouseX, mouseY, button)) {
             setFocused(groupPanel.getSearchBox());
             return true;
@@ -339,9 +381,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
         ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();
         if (preview.mouseClicked(mouseX, mouseY, button,
-            previewLeft(), previewTop(),
-            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
-            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT)) {
+            previewLeft(), previewTop(), previewWidth(), previewHeight())) {
             if (!Objects.equals(
                 focusBeforePreviewClick,
                 SelectionContext.getFocusedConnectionKey())) {
@@ -380,24 +420,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                 onClose();
             }
             case DELETE -> {
-                preview.removeLayout(result.getGroup().key());
-                if (preview.isShowingGroup(result.getGroup().key())) {
-                    preview.setGroup(null);
-                }
-                if (result.getGroup().key().equals(
-                    PortItemStackExtension.getData(
-                        toolStack(), SLDataComponents.SELECTED_GROUP_KEY.get()))) {
-                    SelectionContext.clearConnectionFocus();
-                    syncGroup("", false);
-                    syncFocusedConnection(false);
-                }
-                if (menu.hasTarget()
-                    && result.getGroup().key().equals(menu.getRemoteGroupKey())) {
-                    // 删除分组并不等于关闭配置器，只解除菜单对该分组节点的绑定。
-                    menu.clearTarget();
-                }
-                SLNetwork.HANDLER.sendToServer(
-                    new C2SDeleteGroupPayload(result.getGroup().key()));
+                GroupRef group = result.getGroup();
+                confirmationDialog = new ConfirmationDialog(
+                    Component.translatable("gui.staticlogistics.confirm_delete"),
+                    Component.translatable("gui.staticlogistics.confirm_delete_group", group.displayName()),
+                    () -> deleteGroup(group));
             }
             case OPEN_CONNECTION -> {
                 syncGroup(result.getGroup(), false);
@@ -413,25 +440,44 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             }
             case DELETE_CONNECTION -> {
                 ClientConnection connection = Objects.requireNonNull(result.getConnection());
-                ClientConnection selected = preview.getSelectedConnection();
-                if (selected != null
-                    && selected.key().equals(connection.key())) {
-                    preview.selectConnection(null);
-                    syncFocusedConnection(false);
-                }
-                if (menu.hasTarget()
-                    && connection.groupKey().equals(menu.getRemoteGroupKey())
-                    && (menu.getTargetNode().equals(connection.first())
-                    || menu.getTargetNode().equals(connection.second()))) {
-                    menu.clearTarget();
-                }
-                SLNetwork.HANDLER.sendToServer(
-                    new C2SDeleteConnectionPayload(connection.key()));
-                SoundUtil.playClickSound();
+                Component name = connection.displayName().isEmpty()
+                    ? Component.translatable("gui.staticlogistics.connection")
+                    : Component.literal(connection.displayName());
+                confirmationDialog = new ConfirmationDialog(
+                    Component.translatable("gui.staticlogistics.confirm_delete"),
+                    Component.translatable("gui.staticlogistics.confirm_delete_connection", name),
+                    () -> deleteConnection(connection));
             }
             case CONSUME -> {
             }
         }
+    }
+
+    private void deleteGroup(GroupRef group) {
+        preview.removeLayout(group.key());
+        if (preview.isShowingGroup(group.key())) preview.setGroup(null);
+        if (group.key().equals(PortItemStackExtension.getData(
+            toolStack(), SLDataComponents.SELECTED_GROUP_KEY.get()))) {
+            SelectionContext.clearConnectionFocus();
+            syncGroup("", false);
+            syncFocusedConnection(false);
+        }
+        if (menu.hasTarget() && group.key().equals(menu.getRemoteGroupKey())) menu.clearTarget();
+        SLNetwork.HANDLER.sendToServer(new C2SDeleteGroupPayload(group.key()));
+        SoundUtil.playClickSound();
+    }
+
+    private void deleteConnection(ClientConnection connection) {
+        ClientConnection selected = preview.getSelectedConnection();
+        if (selected != null && selected.key().equals(connection.key())) {
+            preview.selectConnection(null);
+            syncFocusedConnection(false);
+        }
+        if (menu.hasTarget() && connection.groupKey().equals(menu.getRemoteGroupKey())
+            && (menu.getTargetNode().equals(connection.first())
+            || menu.getTargetNode().equals(connection.second()))) menu.clearTarget();
+        SLNetwork.HANDLER.sendToServer(new C2SDeleteConnectionPayload(connection.key()));
+        SoundUtil.playClickSound();
     }
 
     /**
@@ -481,9 +527,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             mouseX, mouseY, scrollY, leftPos, topPos)) return true;
         if (groupPanel.mouseScrolled(mouseX, mouseY, scrollY, leftPos, topPos)) return true;
         if (preview.mouseScrolled(mouseX, mouseY, scrollY,
-            previewLeft(), previewTop(),
-            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
-            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT)) return true;
+            previewLeft(), previewTop(), previewWidth(), previewHeight())) return true;
         return super.mouseScrolled(mouseX, mouseY, scrollY);
     }
 
@@ -498,14 +542,20 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         groupPanel.mouseReleased();
-        if (preview.mouseReleased()) return true;
+        ConnectionKey focusBeforeRelease = SelectionContext.getFocusedConnectionKey();
+        if (preview.mouseReleased()) {
+            if (!Objects.equals(focusBeforeRelease,
+                SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
+            if (preview.getSelectedNode() == null) clearNodeTarget();
+            return true;
+        }
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (nodeConfigurationPanel.keyPressed(keyCode)) {
-            return true;
+        if (confirmationDialog != null && confirmationDialog.isOpen()) {
+            return confirmationDialog.keyPressed(keyCode);
         }
         if (groupPanel.getSearchBox().canConsumeInput()
             || groupPanel.getRenameBox().canConsumeInput()) {
@@ -516,6 +566,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
+        if (nodeConfigurationPanel.keyPressed(keyCode)) return true;
         if (groupPanel.isCreatingGroup()
             && groupPanel.getNewGroupBox().canConsumeInput()) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -606,10 +657,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         List<ResourceLocation> selection = TransferTypeSelection.toggle(
             menu.getSelectedTypeIds(), type);
         menu.setSelectedTypeIds(selection);
-        SLNetwork.HANDLER.sendToServer(new C2SConfigureFacePayload(
-            menu.getPos(),
-            menu.getFace(),
-            new FaceConfigurationEdit.SelectedTypesEdit(selection)));
+        FaceConfigurationEdit edit = new FaceConfigurationEdit.SelectedTypesEdit(selection);
+        List<LogisticsNode> nodes = preview.getSelectedNodes();
+        if (nodes.size() > 1) {
+            SLNetwork.HANDLER.sendToServer(new C2SConfigureFacesPayload(
+                menu.getRemoteGroupKey(), nodes, edit));
+        } else {
+            SLNetwork.HANDLER.sendToServer(new C2SConfigureFacePayload(
+                menu.getPos(), menu.getFace(), edit));
+        }
         SoundUtil.playClickSound();
     }
 
@@ -671,11 +727,56 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     }
 
     private int previewLeft() {
-        return leftPos + SLGuiTextures.LinkConfigurator.PREVIEW_X;
+        return leftPos + (previewExpanded
+            ? EXPANDED_PREVIEW_FRAME_X + 2
+            : SLGuiTextures.LinkConfigurator.PREVIEW_X);
     }
 
     private int previewTop() {
-        return topPos + SLGuiTextures.LinkConfigurator.PREVIEW_Y;
+        return topPos + (previewExpanded
+            ? EXPANDED_PREVIEW_FRAME_Y + 2
+            : SLGuiTextures.LinkConfigurator.PREVIEW_Y);
+    }
+
+    private int previewWidth() {
+        return previewExpanded
+            ? EXPANDED_PREVIEW_FRAME_WIDTH - 4
+            : SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH;
+    }
+
+    private int previewHeight() {
+        return previewExpanded
+            ? EXPANDED_PREVIEW_FRAME_HEIGHT - 4
+            : SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT;
+    }
+
+    private void renderPreviewToggle(GuiGraphics graphics, int mouseX, int mouseY) {
+        int x = leftPos + PREVIEW_TOGGLE_X;
+        int y = topPos + PREVIEW_TOGGLE_Y;
+        NodeConfigControls.renderOpBtn(graphics, x, y, !previewExpanded,
+            NodeConfigControls.hitOpBtn(mouseX, mouseY, x, y));
+    }
+
+    private void renderExpandedPreview(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 350);
+        NetworkPreviewFrame.render(graphics,
+            leftPos + EXPANDED_PREVIEW_FRAME_X,
+            topPos + EXPANDED_PREVIEW_FRAME_Y,
+            EXPANDED_PREVIEW_FRAME_WIDTH,
+            EXPANDED_PREVIEW_FRAME_HEIGHT);
+        preview.render(graphics, font, previewLeft(), previewTop(),
+            previewWidth(), previewHeight(), mouseX, mouseY);
+        graphics.pose().popPose();
+    }
+
+    private void renderPreviewToggleTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        int x = leftPos + PREVIEW_TOGGLE_X;
+        int y = topPos + PREVIEW_TOGGLE_Y;
+        if (!NodeConfigControls.hitOpBtn(mouseX, mouseY, x, y)) return;
+        graphics.renderTooltip(font, Component.translatable(previewExpanded
+            ? "gui.staticlogistics.network_preview.restore"
+            : "gui.staticlogistics.network_preview.expand"), mouseX, mouseY);
     }
 
     @Override

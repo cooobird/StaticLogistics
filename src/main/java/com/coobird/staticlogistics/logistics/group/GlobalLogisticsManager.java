@@ -5,21 +5,16 @@ import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.node.NodeMutationTransaction;
+import com.coobird.staticlogistics.logistics.node.*;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import com.coobird.staticlogistics.transfer.TransferCursorService;
-import net.minecraft.core.Direction;
-import net.minecraft.core.GlobalPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
@@ -332,10 +327,6 @@ public class GlobalLogisticsManager {
     }
 
     // 为玩家自动分配下一个未使用的数字组 ID（单调递增，不复用）
-    public synchronized String getNextGroupIdForPlayer(UUID playerId) {
-        return PlayerGroupStore.get(server).getNextGroupIdForPlayer(playerId);
-    }
-
     /**
      * 根源清理：遍历所有维度的玩家面配置，移除已无活跃节点的组ID（空组清零）。
      * 调用时机：删除链路/组操作后。
@@ -371,20 +362,9 @@ public class GlobalLogisticsManager {
     }
 
     /**
-     * 删除指定分组及其所有关联节点。
-     * 统一处理空分组和有内容的分组。
-     */
-    public void removeGroup(Player actor, UUID ownerId, String groupId) {
-        if (actor == null || ownerId == null || groupId == null || groupId.isEmpty()) return;
-        PlayerGroupStore store = PlayerGroupStore.get(server);
-        GroupRef group = store.findGroup(ownerId, groupId);
-        if (group != null) removeGroup(actor, group.key());
-    }
-
-    /**
      * 解析边界显示名后，所有删除都以稳定分组键执行。
      */
-    public boolean removeGroup(Player actor, GroupKey groupKey) {
+    public boolean removeGroup(ServerPlayer actor, GroupKey groupKey) {
         if (actor == null || groupKey == null
             || !GroupService.canModify(groupKey.ownerId(), actor)) return false;
 
@@ -392,31 +372,59 @@ public class GlobalLogisticsManager {
         GroupRef group = store.findGroup(groupKey);
         if (group == null) return false;
 
-        List<LogisticsNode> nodes = collectGroupNodes(groupKey);
+        List<LogisticsNode> nodes = collectGroupNodes(groupKey).stream().distinct().toList();
 
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
             transaction.captureAll(nodes);
-            transaction.onRollback(() -> {
-                store.registerClaimedGroups(groupKey.ownerId(), List.of(group));
-                updateGroupDisplayName(groupKey, group.displayName());
-            });
-
+            Map<LinkManager, List<LogisticsNode>> candidates = new LinkedHashMap<>();
             for (LogisticsNode node : nodes) {
                 ServerLevel nodeLevel = server.getLevel(node.gPos().dimension());
                 if (nodeLevel == null) {
                     throw new IllegalStateException(
                         "Group deletion dimension is unavailable: " + node.gPos().dimension().location());
                 }
-                LinkManager.get(nodeLevel).removeNodeFromGroup(groupKey, node);
+                LinkManager manager = LinkManager.get(nodeLevel);
+                candidates.computeIfAbsent(manager, ignored -> new ArrayList<>()).add(node);
+                transaction.captureContainer(nodeLevel, node.gPos().pos());
             }
+            transaction.onRollback(() -> {
+                store.registerClaimedGroups(groupKey.ownerId(), List.of(group));
+                updateGroupDisplayName(groupKey, group.displayName());
+            });
+
+            candidates.forEach((manager, managerNodes) -> managerNodes.forEach(node ->
+                manager.removeNodeFromGroupWithoutCleanup(groupKey, node)));
+
+            List<PreparedRemoval> removals = new ArrayList<>();
+            List<NodeLifecycleService.UpgradeSource> sources = new ArrayList<>();
+            candidates.forEach((manager, managerNodes) -> {
+                NodeLifecycleService.DisconnectedRemoval removal =
+                    manager.prepareDisconnectedRemoval(managerNodes);
+                if (!removal.faces().isEmpty()) {
+                    removals.add(new PreparedRemoval(manager, removal));
+                    sources.addAll(removal.sources());
+                }
+            });
             if (!store.removeGroup(groupKey)) {
                 throw new IllegalStateException("Group directory changed during deletion");
             }
             groupDisplayNames.remove(groupKey);
-            transaction.commit();
+            try (NodeLifecycleService.HandoffReceipt receipt =
+                     new PlayerUpgradeHandoff(actor).begin(sources)) {
+                removals.forEach(removal ->
+                    removal.manager().applyDisconnectedRemoval(removal.removal()));
+                transaction.commit();
+                receipt.commit();
+            }
         }
         GroupSelectionInvalidator.clearOnlineSelections(server, groupKey);
         return true;
+    }
+
+    private record PreparedRemoval(
+        LinkManager manager,
+        NodeLifecycleService.DisconnectedRemoval removal
+    ) {
     }
 
     /**
@@ -502,43 +510,6 @@ public class GlobalLogisticsManager {
             }
         }
         return List.copyOf(nodes);
-    }
-
-    /**
-     * 收集指定分组的所有面配置条目（用于客户端同步清理）。
-     */
-    public List<GlobalLogisticsManager.FaceEntry> collectGroupFaceConfigs(String groupId) {
-        List<FaceEntry> result = new ArrayList<>();
-        if (groupId == null || groupId.isEmpty()) return result;
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager mgr = LinkManager.get(level);
-            for (FaceAddress key : mgr.getAllConfigKeys()) {
-                FaceConfigComposite cfg = mgr.getFaceConfig(key);
-                if (cfg != null && cfg.faceConfig.getGroupIds().contains(groupId)) {
-                    result.add(new FaceEntry(GlobalPos.of(level.dimension(), key.pos()), key.face()));
-                }
-            }
-        }
-        return result;
-    }
-
-    public List<GlobalLogisticsManager.FaceEntry> collectGroupFaceConfigs(UUID ownerId, String displayName) {
-        GroupRef group = PlayerGroupStore.get(server).findGroup(ownerId, displayName);
-        if (group == null) group = GroupRef.migrated(ownerId, displayName);
-        List<FaceEntry> result = new ArrayList<>();
-        for (ServerLevel level : server.getAllLevels()) {
-            LinkManager mgr = LinkManager.get(level);
-            for (FaceAddress key : mgr.getAllConfigKeys()) {
-                FaceConfigComposite cfg = mgr.getFaceConfig(key);
-                if (cfg != null && cfg.faceConfig.getGroupKeys().contains(group.key())) {
-                    result.add(new FaceEntry(GlobalPos.of(level.dimension(), key.pos()), key.face()));
-                }
-            }
-        }
-        return result;
-    }
-
-    public record FaceEntry(GlobalPos pos, Direction face) {
     }
 
     /**

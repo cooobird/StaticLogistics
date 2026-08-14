@@ -14,6 +14,7 @@ public final class ServerPacketRateLimiter {
         FILTER_UPDATE(24),
         FACE_CONFIGURATION(80),
         GROUP_CREATION(4),
+        BULK_NODE_SELECTION(8),
         BLUEPRINT_UNDO(2);
 
         private final int maximumPerSecond;

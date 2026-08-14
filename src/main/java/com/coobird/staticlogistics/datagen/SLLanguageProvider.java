@@ -13,7 +13,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.Block;
 import net.minecraftforge.common.data.LanguageProvider;
 import net.minecraftforge.registries.RegistryObject;
 
@@ -47,6 +46,13 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.linker_settings", "Linker Configuration", "连接配置器");
         add("gui.staticlogistics.search_hint", "Search...", "搜索分组...");
         add("gui.staticlogistics.add_group", "Add Group", "添加分组");
+        add("gui.staticlogistics.confirm", "Confirm", "确认");
+        add("gui.staticlogistics.cancel", "Cancel", "取消");
+        add("gui.staticlogistics.confirm_delete", "Confirm Deletion", "确认删除");
+        add("gui.staticlogistics.confirm_delete_group", "Delete group '%s' and all of its connections?", "删除分组“%s”及其全部链接？");
+        add("gui.staticlogistics.confirm_delete_connection", "Delete connection '%s'?", "删除链接“%s”？");
+        add("gui.staticlogistics.network_preview.expand", "Expand network preview", "放大网络预览");
+        add("gui.staticlogistics.network_preview.restore", "Restore network preview", "恢复网络预览");
         add("gui.staticlogistics.blueprint.connection_count",
             "Connections: %s", "连接数：%s");
         add("gui.staticlogistics.blueprint.connection_count_compact",
@@ -100,6 +106,10 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.disabled", "Disabled", "已禁用");
         add("gui.staticlogistics.filter", "Filter", "过滤器");
         add("gui.staticlogistics.upgrades", "Upgrades", "升级");
+        add("gui.staticlogistics.apply_to_selected", "Apply to Selected", "应用至所选节点");
+        add("gui.staticlogistics.apply_to_selected.tooltip",
+            "Copy this node's types, filters, upgrades and settings to every selected node",
+            "将当前节点的类型、过滤器、升级与设置完整应用至全部所选节点");
         add("gui.staticlogistics.receive_types", "Accepted Types: %s", "接收类型：%s");
         add("gui.staticlogistics.transfer_types", "Transfer Types: %s", "传输类型：%s");
         add("gui.staticlogistics.transfer_amount",
@@ -110,10 +120,19 @@ public class SLLanguageProvider extends LanguageProvider {
             "Network Preview", "网络预览");
         add("gui.staticlogistics.network_preview.empty",
             "No connections in this group", "此分组中没有连接");
+        add("gui.staticlogistics.network_preview.selected_nodes",
+            "%s nodes selected", "已选择 %s 个节点");
         add("gui.staticlogistics.network_preview.node",
             "Unloaded Node", "未加载节点");
         add("gui.staticlogistics.network_preview.select_hint",
             "Select a node or connection in the preview", "请在预览中选择节点或连接");
+        add("gui.staticlogistics.network_preview.controls", "Preview Controls", "预览操作");
+        add("gui.staticlogistics.network_preview.multi_select_hint",
+            "Hold %s and click nodes to select multiple", "按住 %s 点击节点可进行复选");
+        add("gui.staticlogistics.network_preview.drag_selected_hint",
+            "Drag a selected node to move the selection together", "拖动已选节点可整体移动所选节点");
+        add("gui.staticlogistics.network_preview.zoom_hint",
+            "Scroll to zoom; drag empty space to pan", "滚轮缩放；拖动空白区域平移预览");
         add("gui.staticlogistics.network_preview.select_node_to_configure",
             "Click a node in the preview to configure it",
             "点击网络预览中的节点进行配置");
@@ -192,8 +211,16 @@ public class SLLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.no_capability", "This block has no logistics capability.", "此方块无物流能力。");
         add("msg.staticlogistics.node_removed", "Node unrecorded. Remaining: %s", "节点记录已移除，剩余：%s");
         add("msg.staticlogistics.stored_nodes_full", "The configurator can store at most %s nodes.", "连接配置器最多可记录 %s 个节点。");
+        add("msg.staticlogistics.bulk_nodes_added", "Added %s of %s matching nodes.", "已添加 %s/%s 个匹配节点。");
         add("msg.staticlogistics.selection_cleared", "Selection Cleared", "已清空已记录节点");
         add("msg.staticlogistics.batch_linked_to_group", "Successfully linked %s nodes to Group: %s!", "成功将 %s 条链路连接至分组：%s！");
+        add("msg.staticlogistics.node_template_applied",
+            "Applied the complete configuration to %s nodes",
+            "已将完整配置应用至 %s 个节点");
+        add("msg.staticlogistics.node_template_missing_items",
+            "Not enough matching filters or upgrades for every selected node",
+            "没有足够的对应过滤器或升级供全部所选节点使用");
+        add("msg.staticlogistics.select_group_to_link", "Create and select a group before linking.", "请先创建并选择一个分组，再建立链接。");
         add("msg.staticlogistics.no_nodes_stored", "No nodes are stored in the configurator!", "配置器中未存储任何节点！");
         add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
         add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
@@ -264,6 +291,9 @@ public class SLLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.priority_x10", "Adjust Value ×10", "数值调整 ×10");
         add("key.staticlogistics.priority_x5", "Adjust Value ×5", "数值调整 ×5");
         add("key.staticlogistics.group_details_and_export", "Show Group Details / Export Coordinates", "显示分组详情 / 导出坐标");
+        add("key.staticlogistics.bulk_node_selection", "Select Connected Blocks", "选取相连同类方块");
+        add("key.staticlogistics.network_preview_multi_select", "Select Multiple Preview Nodes", "复选网络预览节点");
+        add("tooltip.staticlogistics.bulk_select_hint", "In a node selection mode, hold %s and right-click a block to select connected blocks of the same type", "处于节点选取模式时，按住 %s 右击方块，可批量选取相连的同类方块");
 
         add("jade.staticlogistics.input", "[Input]", "[输入]");
         add("jade.staticlogistics.output", "[Output]", "[输出]");
@@ -600,10 +630,6 @@ public class SLLanguageProvider extends LanguageProvider {
 
     public void add(String key, String en, String zh) {
         super.add(key, this.locale.equals("zh_cn") ? zh : en);
-    }
-
-    public void addBlock(RegistryObject<? extends Block> key, String zh) {
-        this.add(key.get().getDescriptionId(), toTitleCase(key.get().getDescriptionId()), zh);
     }
 
     public void addItem(RegistryObject<? extends Item> key, String zh) {

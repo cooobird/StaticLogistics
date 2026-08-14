@@ -12,12 +12,18 @@ public class SLNetwork {
     public static void init() {
         HANDLER.registerInGameC2S(C2SBlueprintUndoPayload.class, C2SBlueprintUndoPayload.ID,
             C2SBlueprintUndoPayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SBulkSelectNodesPayload.class, C2SBulkSelectNodesPayload.ID,
+            C2SBulkSelectNodesPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SClearLinkEndpointPayload.class, C2SClearLinkEndpointPayload.ID,
             C2SClearLinkEndpointPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SClearStoredNodesPayload.class, C2SClearStoredNodesPayload.ID,
             C2SClearStoredNodesPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SConfigureFacePayload.class, C2SConfigureFacePayload.ID,
             C2SConfigureFacePayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SConfigureFacesPayload.class, C2SConfigureFacesPayload.ID,
+            C2SConfigureFacesPayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SApplyNodeTemplatePayload.class, C2SApplyNodeTemplatePayload.ID,
+            C2SApplyNodeTemplatePayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SCreateEmptyGroupPayload.class, C2SCreateEmptyGroupPayload.ID,
             C2SCreateEmptyGroupPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SDeleteConnectionPayload.class, C2SDeleteConnectionPayload.ID,

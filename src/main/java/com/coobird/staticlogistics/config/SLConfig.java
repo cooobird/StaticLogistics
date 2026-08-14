@@ -1,10 +1,13 @@
 package com.coobird.staticlogistics.config;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.content.event.PlayerEvents;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
+import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -249,9 +252,10 @@ public final class SLConfig {
     @SubscribeEvent
     public static void onConfigEvent(ModConfigEvent event) {
         if (event.getConfig().getSpec() == CONFIG_SPEC) {
-            configGeneration.incrementAndGet();
             onLoad();
+            configGeneration.incrementAndGet();
             syncConfigToPlayers();
+            refreshRuntimeState();
         }
     }
 
@@ -412,6 +416,15 @@ public final class SLConfig {
         SLNetwork.HANDLER.sendToAllPlayers(payload);
     }
 
+    private static void refreshRuntimeState() {
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null) return;
+        LogisticsTicker.onConfigReload(server);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            PlayerEvents.refreshClientState(player);
+        }
+    }
+
     private static CompoundTag buildConfigTag() {
         CompoundTag tag = new CompoundTag();
         // 基础设置
@@ -488,5 +501,6 @@ public final class SLConfig {
         perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");
         perfBatchCleanSize = tag.getInt("batchCleanSize");
         perfContextPoolSize = tag.getInt("contextPoolSize");
+        configGeneration.incrementAndGet();
     }
 }

@@ -27,11 +27,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @SuppressWarnings("try")
 public class LinkOperationHelper {
-    public static final String DEFAULT_GROUP_NAME = "1";
 
     public static void validateStoredNodes(ItemStack stack, ServerLevel level) {
         List<LogisticsNode> storedNodes = PortItemStackExtension.getData(stack, SLDataComponents.STORED_NODES.get());
@@ -112,7 +113,7 @@ public class LinkOperationHelper {
         level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.5f, 0.5f);
     }
 
-    public static void executeBatchLink(ItemStack stack, String groupId, LinkConfiguratorItem.ToolSettings settings,
+    public static void executeBatchLink(ItemStack stack, LinkConfiguratorItem.ToolSettings settings,
                                         BlockPos pos, Direction face, ServerLevel level, Player player) {
         // 校验存点人是否当前玩家，防止别人捡到工具冒用
         String storedOwner = PortItemStackExtension.getData(stack, SLDataComponents.STORED_NODES_OWNER.get());
@@ -137,9 +138,9 @@ public class LinkOperationHelper {
         LogisticsNode currentNode = new LogisticsNode(GlobalPos.of(level.dimension(), pos), face);
         GroupRef group;
         try {
-            group = resolveSelectedGroup(player, groupId, settings.groupKey());
+            group = resolveSelectedGroup(level, player, settings.groupKey());
         } catch (IllegalArgumentException | IllegalStateException exception) {
-            player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission")
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.select_group_to_link")
                 .withStyle(ChatFormatting.RED), true);
             return;
         }
@@ -246,24 +247,38 @@ public class LinkOperationHelper {
         return true;
     }
 
-    private static GroupRef resolveSelectedGroup(Player player, String displayName,
+    private static GroupRef resolveSelectedGroup(ServerLevel level, Player player,
                                                  GroupKey selectedKey) {
-        if (selectedKey == null) {
-            return PlayerGroupStore.get(player.getServer())
-                .resolveOrCreateGroup(player.getUUID(), displayName);
-        }
-        GroupRef selected = PlayerGroupStore.get(player.getServer()).findGroup(selectedKey);
+        if (selectedKey == null) throw new IllegalStateException("Selected group is required");
+        GroupRef selected = PlayerGroupStore.get(level.getServer()).findGroup(selectedKey);
         if (selected != null) {
             if (!GroupService.canModify(selected.key().ownerId(), player)) {
                 throw new IllegalArgumentException("Selected group is unavailable");
             }
             return selected;
         }
-        if (!selectedKey.ownerId().equals(player.getUUID())) {
-            throw new IllegalArgumentException("Selected group is unavailable");
+        throw new IllegalArgumentException("Selected group is unavailable");
+    }
+
+    public static int addNodes(ItemStack stack, Collection<LogisticsNode> candidates,
+                               ToolMode mode, Player player, Level level) {
+        if (!mode.isLinkMode() || candidates == null || candidates.isEmpty()) return 0;
+        LinkedHashSet<LogisticsNode> nodes = new LinkedHashSet<>(PortItemStackExtension.getDataOrDefault(
+            stack, SLDataComponents.STORED_NODES.get(), List.of()));
+        int before = nodes.size();
+        for (LogisticsNode node : candidates) {
+            if (nodes.size() >= SLDataComponents.MAX_STORED_NODES) break;
+            nodes.add(node);
         }
-        return PlayerGroupStore.get(player.getServer())
-            .resolveOrCreateGroup(player.getUUID(), displayName);
+        if (nodes.size() == before) return 0;
+        if (before == 0) PortItemStackExtension.setData(
+            stack, SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
+        PortItemStackExtension.setData(stack, SLDataComponents.STORED_MODE.get(), mode.getId());
+        PortItemStackExtension.setData(stack, SLDataComponents.STORED_NODES.get(), List.copyOf(nodes));
+        if (player instanceof ServerPlayer serverPlayer) serverPlayer.inventoryMenu.broadcastChanges();
+        level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.value(),
+            SoundSource.PLAYERS, 0.8F, 1.5F);
+        return nodes.size() - before;
     }
 
     /**

@@ -88,7 +88,7 @@ public record C2SConfigureFacePayload(
                 node.level(), node.node(), node.config())));
     }
 
-    private static FaceConfigurationEdit decodeEdit(PortRegistryFriendlyByteBuf buffer) {
+    static FaceConfigurationEdit decodeEdit(PortRegistryFriendlyByteBuf buffer) {
         int operation = buffer.readUnsignedByte();
         try {
             return switch (operation) {
@@ -139,7 +139,7 @@ public record C2SConfigureFacePayload(
         return new FaceConfigurationEdit.SelectedTypesEdit(ids);
     }
 
-    private static void encodeEdit(PortRegistryFriendlyByteBuf buffer, FaceConfigurationEdit edit) {
+    static void encodeEdit(PortRegistryFriendlyByteBuf buffer, FaceConfigurationEdit edit) {
         if (edit instanceof FaceConfigurationEdit.BooleanEdit value) {
             buffer.writeByte(value.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT
                 ? GLOBAL_INPUT : GLOBAL_OUTPUT);

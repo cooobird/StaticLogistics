@@ -14,10 +14,4 @@ public record ExtractionResult<T>(T value, @Nullable Object context) {
     public boolean isEmpty() {
         return value == null;
     }
-
-    @Nullable
-    @SuppressWarnings("unchecked")
-    public <C> C getContext() {
-        return (C) context;
-    }
 }

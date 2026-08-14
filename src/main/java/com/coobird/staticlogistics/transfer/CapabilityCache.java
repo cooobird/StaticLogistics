@@ -38,9 +38,6 @@ public final class CapabilityCache {
             new LinkedHashMap<>(256, 0.75F, true);
     }
 
-    public record Stats(int dimensions, int entries, int liveEntries, int staleEntries) {
-    }
-
     @SuppressWarnings("unchecked")
     public static <C> C get(ServerLevel level, BlockPos pos, Direction face,
                             Capability<C> capability) {
@@ -124,29 +121,4 @@ public final class CapabilityCache {
         }
     }
 
-    public static Stats snapshotStats() {
-        int entries = 0;
-        int live = 0;
-        int stale = 0;
-        for (DimensionCache dimension : CACHE.values()) {
-            synchronized (dimension) {
-                entries += dimension.entries.size();
-                for (CacheEntry entry : dimension.entries.values()) {
-                    if (entry.optional.isPresent()) live++;
-                    else stale++;
-                }
-            }
-        }
-        return new Stats(CACHE.size(), entries, live, stale);
-    }
-
-    public static void cleanStaleEntries() {
-        for (var entry : CACHE.entrySet()) {
-            DimensionCache dimension = entry.getValue();
-            synchronized (dimension) {
-                dimension.entries.values().removeIf(value -> !value.optional.isPresent());
-                if (dimension.entries.isEmpty()) CACHE.remove(entry.getKey(), dimension);
-            }
-        }
-    }
 }

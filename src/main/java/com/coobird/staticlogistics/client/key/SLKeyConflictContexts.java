@@ -27,6 +27,8 @@ final class SLKeyConflictContexts {
     static final IKeyConflictContext LINK_ENDPOINT_GUI = inGui(Domain.LINK_ENDPOINT, () ->
         Minecraft.getInstance().screen instanceof LinkConfiguratorScreen screen
             && screen.hasNodeTarget());
+    static final IKeyConflictContext NETWORK_PREVIEW_GUI = inGui(Domain.NETWORK_PREVIEW, () ->
+        Minecraft.getInstance().screen instanceof LinkConfiguratorScreen);
     static final IKeyConflictContext GROUP_SCREEN = inGui(Domain.GROUP, () ->
         Minecraft.getInstance().screen instanceof LinkConfiguratorScreen
             || Minecraft.getInstance().screen instanceof BlueprintGroupScreen);
@@ -57,6 +59,7 @@ final class SLKeyConflictContexts {
         LINK_CONFIGURATOR,
         FILTER,
         LINK_ENDPOINT,
+        NETWORK_PREVIEW,
         GROUP
     }
 

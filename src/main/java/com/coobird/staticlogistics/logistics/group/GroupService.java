@@ -24,12 +24,6 @@ public class GroupService {
         return permissionService.canModify(owner, actor);
     }
 
-    // 为玩家获取一个可用的下一个数字组 ID
-    public static String getNextGroupIdForPlayer(Player player) {
-        GlobalLogisticsManager manager = GlobalLogisticsManager.get(player.getServer());
-        return manager.getNextGroupIdForPlayer(player.getUUID());
-    }
-
     // 重命名组（门面，委托给 GroupRenameService）
     public static boolean renameGroup(Level level, Player player, String oldId, String newId, GlobalLogisticsManager globalManager) {
         return renameGroup(level, player, player.getUUID(), oldId, newId, globalManager);

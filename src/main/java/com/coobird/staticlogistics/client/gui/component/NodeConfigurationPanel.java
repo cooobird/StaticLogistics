@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.client.gui.component;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
@@ -7,7 +8,9 @@ import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.node.FaceConfigurationEdit;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.network.SLNetwork;
+import com.coobird.staticlogistics.network.c2s.C2SApplyNodeTemplatePayload;
 import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
+import com.coobird.staticlogistics.network.c2s.C2SConfigureFacesPayload;
 import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
@@ -19,6 +22,7 @@ import net.minecraft.world.inventory.Slot;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * 连接配置器底部的节点配置区域。
@@ -54,12 +58,16 @@ public final class NodeConfigurationPanel {
     private static final int STRATEGY_Y = CONFIG_Y + 50;
     private static final int EXTRACTION_Y = CONFIG_Y + 70;
     private static final int OUTPUT_ACTION_WIDTH = 124;
+    private static final int APPLY_TEMPLATE_X = 152;
+    private static final int APPLY_TEMPLATE_Y = CONFIG_Y + 70;
+    private static final int APPLY_TEMPLATE_WIDTH = 124;
 
     private final LinkConfiguratorMenu menu;
     private final Font font;
     private final Runnable openFilter;
     private final Consumer<Boolean> selectSide;
     private final Runnable playClick;
+    private final Supplier<List<LogisticsNode>> selectedNodes;
 
     private EditBox priorityBox;
     private EditBox keepStockBox;
@@ -71,13 +79,15 @@ public final class NodeConfigurationPanel {
         Font font,
         Runnable openFilter,
         Consumer<Boolean> selectSide,
-        Runnable playClick
+        Runnable playClick,
+        Supplier<List<LogisticsNode>> selectedNodes
     ) {
         this.menu = menu;
         this.font = font;
         this.openFilter = openFilter;
         this.selectSide = selectSide;
         this.playClick = playClick;
+        this.selectedNodes = selectedNodes;
     }
 
     public void init(int left, int top, Consumer<EditBox> addWidget) {
@@ -165,6 +175,7 @@ public final class NodeConfigurationPanel {
             renderOutputUtilityRow(graphics, mouseX, mouseY);
             renderOutputControls(graphics, mouseX, mouseY);
         }
+        renderApplyTemplateButton(graphics, mouseX, mouseY);
     }
 
     private void renderEmpty(GuiGraphics graphics) {
@@ -323,11 +334,28 @@ public final class NodeConfigurationPanel {
             extractionHovered);
     }
 
+    private void renderApplyTemplateButton(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (selectedNodes.get().size() < 2) return;
+        boolean hovered = NodeConfigControls.hitCycleBtn(mouseX, mouseY,
+            left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y, APPLY_TEMPLATE_WIDTH);
+        NodeConfigControls.renderCycleBtn(graphics, font,
+            left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y, APPLY_TEMPLATE_WIDTH,
+            Component.translatable("gui.staticlogistics.apply_to_selected"), hovered);
+    }
+
     public void renderTooltips(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!menu.hasTarget()) {
             return;
         }
         renderConfigSlotTooltip(graphics, mouseX, mouseY);
+
+        if (selectedNodes.get().size() > 1 && NodeConfigControls.hitCycleBtn(
+            mouseX, mouseY, left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y,
+            APPLY_TEMPLATE_WIDTH)) {
+            graphics.renderTooltip(font, Component.translatable(
+                "gui.staticlogistics.apply_to_selected.tooltip"), mouseX, mouseY);
+            return;
+        }
 
         if (keepStockBox != null
             && keepStockBox.isVisible()
@@ -436,6 +464,12 @@ public final class NodeConfigurationPanel {
         if (NodeConfigControls.hitToggle(
             mouseX, mouseY, left + TOGGLE_X, top + UTILITY_Y)) {
             toggleCurrentSide();
+            return true;
+        }
+        if (selectedNodes.get().size() > 1 && NodeConfigControls.hitCycleBtn(
+            mouseX, mouseY, left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y,
+            APPLY_TEMPLATE_WIDTH)) {
+            applyTemplateToSelected();
             return true;
         }
 
@@ -597,8 +631,22 @@ public final class NodeConfigurationPanel {
     }
 
     private void send(FaceConfigurationEdit edit) {
+        List<LogisticsNode> nodes = selectedNodes.get();
+        if (nodes.size() > 1) {
+            SLNetwork.HANDLER.sendToServer(new C2SConfigureFacesPayload(
+                menu.getRemoteGroupKey(), nodes, edit));
+            return;
+        }
         SLNetwork.HANDLER.sendToServer(new C2SConfigureFacePayload(
             menu.getPos(), menu.getFace(), edit));
+    }
+
+    private void applyTemplateToSelected() {
+        List<LogisticsNode> nodes = selectedNodes.get();
+        if (nodes.size() < 2 || !nodes.contains(menu.getTargetNode())) return;
+        SLNetwork.HANDLER.sendToServer(new C2SApplyNodeTemplatePayload(
+            menu.getRemoteGroupKey(), menu.getTargetNode(), nodes));
+        playClick.run();
     }
 
     private static boolean hit(

@@ -173,10 +173,6 @@ public class LinkManager {
 
     // 面配置 CRUD（委托 FaceConfigHandler）
 
-    FaceConfigHandler getFaceConfigHandler() {
-        return faceConfigHandler;
-    }
-
     LinkChangeHandler getChangeHandler() {
         return changeHandler;
     }
@@ -195,10 +191,6 @@ public class LinkManager {
 
     ConfigRepository getConfigRepository() {
         return faceConfigHandler.configRepository;
-    }
-
-    FaceConfigService getFaceConfigService() {
-        return faceConfigHandler.faceConfigService;
     }
 
     SyncManager getSyncManager() {
@@ -324,6 +316,13 @@ public class LinkManager {
     public void removeNodeFromGroup(com.coobird.staticlogistics.api.group.GroupKey groupKey,
                                     LogisticsNode node) {
         linkGraphService.removeNodeFromGroup(groupKey, node);
+    }
+
+    public void removeNodeFromGroupWithoutCleanup(
+        com.coobird.staticlogistics.api.group.GroupKey groupKey,
+        LogisticsNode node
+    ) {
+        linkGraphService.removeNodeFromGroupWithoutCleanup(groupKey, node);
     }
 
     void cascadeRemove(LogisticsNode node, FaceConfigComposite config) {

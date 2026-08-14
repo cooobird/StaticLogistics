@@ -108,6 +108,8 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         ToolSettings settings = getSettings(stack);
         tooltip.add(Component.translatable("tooltip.staticlogistics.scroll_hint",
             Component.keybind(SLKeyNames.TOOL_MODE_SCROLL)).withStyle(ChatFormatting.GREEN));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.bulk_select_hint",
+            Component.keybind(SLKeyNames.BULK_NODE_SELECTION)).withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode().getDisplayName()));
         String types = settings.getSelectedTypes().stream().map(t -> Component.translatable(t.translationKey()).getString()).collect(Collectors.joining(", "));
         tooltip.add(Component.translatable("tooltip.staticlogistics.type", types.isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(types)));
@@ -157,6 +159,14 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
             GroupSelectionInvalidator.clearInvalidSelection(serverLevel.getServer(), stack);
         }
         ToolSettings settings = getSettings(stack);
+
+        if (level.isClientSide && LinkConfiguratorClientHooks.isBulkSelectionActive()
+            && settings.mode().isLinkMode()) return InteractionResult.SUCCESS;
+        if (player instanceof ServerPlayer serverPlayer
+            && BulkSelectionInteractionGuard.matches(
+            serverPlayer, context.getClickedPos(), context.getClickedFace())) {
+            return InteractionResult.SUCCESS;
+        }
 
         if (!player.isSecondaryUseActive()) {
             if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);

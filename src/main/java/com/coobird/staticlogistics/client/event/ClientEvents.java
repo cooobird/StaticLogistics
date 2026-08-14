@@ -9,22 +9,17 @@ import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
 import com.coobird.staticlogistics.client.gui.screen.HandFilterScreen;
 import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.content.item.BlueprintClientHooks;
-import com.coobird.staticlogistics.content.item.BlueprintItem;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.content.item.*;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.network.SLNetwork;
-import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
-import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateToolModePayload;
+import com.coobird.staticlogistics.network.c2s.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -32,7 +27,9 @@ import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.RenderHighlightEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -65,6 +62,8 @@ public class ClientEvents {
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
         event.register(SLKeyMappings.TOOL_MODE_SCROLL);
+        event.register(SLKeyMappings.BULK_NODE_SELECTION);
+        event.register(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT);
         event.register(SLKeyMappings.BLUEPRINT_UNDO);
         event.register(SLKeyMappings.CLEAR_STORED_NODES);
         event.register(SLKeyMappings.QUICK_FILTER_MARK);
@@ -74,6 +73,8 @@ public class ClientEvents {
     }
 
     private static void installClientHooks() {
+        LinkConfiguratorClientHooks.installBulkSelectionKey(() ->
+            SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION));
         BlueprintClientHooks.install(
             stack -> Minecraft.getInstance().setScreen(new BlueprintGroupScreen(stack)),
             (stack, tooltip) -> {
@@ -110,6 +111,21 @@ public class ClientEvents {
                 return count;
             }
         );
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onBulkNodeSelection(PlayerInteractEvent.RightClickBlock event) {
+        if (!event.getLevel().isClientSide()
+            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem item)
+            || !SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION)) return;
+        ToolMode mode = item.getSettings(event.getItemStack()).mode();
+        if (!mode.isLinkMode()) return;
+        SLNetwork.HANDLER.sendToServer(new C2SBulkSelectNodesPayload(
+            event.getPos(), event.getFace(), mode));
+        event.setUseBlock(Event.Result.DENY);
+        event.setUseItem(Event.Result.DENY);
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

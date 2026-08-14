@@ -10,11 +10,13 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.items.IItemHandlerModifiable;
+import net.minecraftforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
@@ -56,25 +58,84 @@ public final class NodeMutationService {
     }
 
     public boolean configure(ValidatedNode node, FaceConfigurationEdit edit) {
-        if (edit == null) return false;
-        boolean changed;
-        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(node.level().getServer())) {
-            transaction.capture(node.node());
-            try (NodeLifecycleService.HandoffReceipt receipt =
-                     beginDisabledRoleHandoff(node, edit, transaction)) {
-                changed = applyConfiguration(node.config(), edit);
-                if (changed) {
-                    for (var group : node.config().faceConfig.getGroups()) {
-                        GlobalLogisticsManager.get(node.level().getServer()).syncGroupLinks(group.key());
-                    }
+        return !configureAll(List.of(node), edit).isEmpty();
+    }
+
+    /**
+     * 在同一服务端事务内修改多个已验证节点。
+     */
+    public List<ValidatedNode> configureAll(Collection<ValidatedNode> requestedNodes,
+                                            FaceConfigurationEdit edit) {
+        if (edit == null || requestedNodes == null || requestedNodes.isEmpty()) return List.of();
+        List<ValidatedNode> nodes = distinctNodes(requestedNodes);
+        if (nodes.isEmpty()) return List.of();
+        var server = nodes.get(0).level().getServer();
+        if (nodes.stream().anyMatch(node -> node.level().getServer() != server)) {
+            throw new IllegalArgumentException("Batch nodes must belong to the same server");
+        }
+
+        List<ValidatedNode> changed = new ArrayList<>();
+        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
+            nodes.forEach(node -> transaction.capture(node.node()));
+            List<NodeLifecycleService.UpgradeSource> sources =
+                collectDisabledRoleHandoffs(nodes, edit, transaction);
+            try (NodeLifecycleService.HandoffReceipt receipt = sources.isEmpty() ? null
+                : new PlayerUpgradeHandoff(nodes.get(0).player()).begin(sources)) {
+                for (ValidatedNode node : nodes) {
+                    if (applyConfiguration(node.config(), edit)) changed.add(node);
                 }
+                Set<GroupKey> affectedGroups = new LinkedHashSet<>();
+                changed.forEach(node -> node.config().faceConfig.getGroups()
+                    .forEach(group -> affectedGroups.add(group.key())));
+                affectedGroups.forEach(GlobalLogisticsManager.get(server)::syncGroupLinks);
                 transaction.commit();
-                if (receipt != null) {
-                    receipt.commit();
-                }
+                if (receipt != null) receipt.commit();
             }
         }
-        return changed;
+        return List.copyOf(changed);
+    }
+
+    /**
+     * 将来源节点的类型、过滤器、升级与行为设置完整应用到其余所选节点。
+     * 物品不足或提交失败时，节点、容器和玩家背包会整体回滚。
+     */
+    public List<ValidatedNode> applyTemplate(ValidatedNode source,
+                                             Collection<ValidatedNode> requestedTargets) {
+        if (source == null || requestedTargets == null || requestedTargets.isEmpty()) return List.of();
+        List<ValidatedNode> targets = distinctNodes(requestedTargets).stream()
+            .filter(target -> !target.node().equals(source.node()))
+            .toList();
+        if (targets.isEmpty()) return List.of();
+        var server = source.level().getServer();
+        if (targets.stream().anyMatch(target -> target.level().getServer() != server)) {
+            throw new IllegalArgumentException("Batch nodes must belong to the same server");
+        }
+
+        List<ItemStack> inventorySnapshot = source.player().getInventory().items.stream()
+            .map(ItemStack::copy).toList();
+        List<SlotChange> slotChanges = collectTemplateSlotChanges(source, targets);
+        Map<Item, Integer> requiredItems = requiredItems(slotChanges);
+        if (!hasItems(source.player(), requiredItems)) return List.of();
+
+        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
+            targets.forEach(target -> transaction.capture(target.node()));
+            captureTargetContainers(transaction, targets);
+            transaction.onRollback(() -> restoreInventory(source.player(), inventorySnapshot));
+            consumeItems(source.player(), requiredItems);
+            List<NodeLifecycleService.UpgradeSource> returnedSources = returnedSources(slotChanges);
+            try (NodeLifecycleService.HandoffReceipt receipt = returnedSources.isEmpty() ? null
+                : new PlayerUpgradeHandoff(source.player()).begin(returnedSources)) {
+                slotChanges.forEach(SlotChange::apply);
+                targets.forEach(target -> copyFaceConfiguration(source.config(), target.config()));
+                Set<GroupKey> affectedGroups = new LinkedHashSet<>();
+                targets.forEach(target -> target.config().faceConfig.getGroups()
+                    .forEach(group -> affectedGroups.add(group.key())));
+                affectedGroups.forEach(GlobalLogisticsManager.get(server)::syncGroupLinks);
+                transaction.commit();
+                if (receipt != null) receipt.commit();
+            }
+        }
+        return List.copyOf(targets);
     }
 
     /**
@@ -83,42 +144,181 @@ public final class NodeMutationService {
      * <p>返还与面配置修改共享同一事务：优先进入玩家背包，背包已满时在玩家位置掉落；
      * 后续配置提交失败时，玩家背包、掉落实体和槽位会一起恢复。</p>
      */
-    @Nullable
-    private static NodeLifecycleService.HandoffReceipt beginDisabledRoleHandoff(
-        ValidatedNode node, FaceConfigurationEdit edit, NodeMutationTransaction transaction) {
+    private static List<NodeLifecycleService.UpgradeSource> collectDisabledRoleHandoffs(
+        List<ValidatedNode> nodes, FaceConfigurationEdit edit,
+        NodeMutationTransaction transaction) {
         if (!(edit instanceof FaceConfigurationEdit.BooleanEdit booleanEdit)
-            || booleanEdit.enabled()) return null;
-        FaceConfigComposite config = node.config();
-        List<NodeLifecycleService.UpgradeSource> sources = new ArrayList<>(2);
-        int slot;
-        if (booleanEdit.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT) {
-            if (!config.isGlobalInputEnabled()) return null;
-            slot = 0;
-        } else {
-            if (!config.isGlobalOutputEnabled()) return null;
-            slot = 1;
+            || booleanEdit.enabled()) return List.of();
+        Set<FaceAddress> disabledOutputs = new LinkedHashSet<>();
+        if (booleanEdit.field() == FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT) {
+            nodes.stream().filter(node -> node.config().isGlobalOutputEnabled())
+                .map(ValidatedNode::key).forEach(disabledOutputs::add);
         }
-        sources.add(new NodeLifecycleService.UpgradeSource(
-            node.pos(), config.filterConfig.getUpgrades(), slot, slot + 1));
-
-        ContainerConfig container = config.getContainerConfig();
-        if (container != null && hasNoRemainingOutputFace(node, booleanEdit.field(), container)) {
-            transaction.captureContainer(node.level(), node.pos());
-            sources.add(new NodeLifecycleService.UpgradeSource(node.pos(), container.getUpgrades()));
+        List<NodeLifecycleService.UpgradeSource> sources = new ArrayList<>();
+        Set<ContainerConfig> capturedContainers =
+            java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        for (ValidatedNode node : nodes) {
+            FaceConfigComposite config = node.config();
+            boolean active = booleanEdit.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT
+                ? config.isGlobalInputEnabled() : config.isGlobalOutputEnabled();
+            if (!active) continue;
+            int slot = booleanEdit.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT ? 0 : 1;
+            sources.add(new NodeLifecycleService.UpgradeSource(
+                node.pos(), config.filterConfig.getUpgrades(), slot, slot + 1));
+            ContainerConfig container = config.getContainerConfig();
+            if (booleanEdit.field() == FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT
+                && container != null && capturedContainers.add(container)
+                && hasNoRemainingOutputFace(node, container, disabledOutputs)) {
+                transaction.captureContainer(node.level(), node.pos());
+                sources.add(new NodeLifecycleService.UpgradeSource(node.pos(), container.getUpgrades()));
+            }
         }
-        return new PlayerUpgradeHandoff(node.player()).begin(sources);
+        return sources;
     }
 
     private static boolean hasNoRemainingOutputFace(
-        ValidatedNode node, FaceConfigurationEdit.BooleanField disabledField, ContainerConfig container) {
-        if (disabledField != FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT
-            && node.config().isGlobalOutputEnabled()) return false;
+        ValidatedNode node, ContainerConfig container, Set<FaceAddress> disabledOutputs) {
         for (FaceAddress faceKey : container.getLinkedFaceKeys()) {
-            if (faceKey.equals(node.key())) continue;
+            if (disabledOutputs.contains(faceKey)) continue;
             FaceConfigComposite face = node.manager().getFaceConfig(faceKey);
             if (face != null && face.isGlobalOutputEnabled()) return false;
         }
         return true;
+    }
+
+    private static List<ValidatedNode> distinctNodes(Collection<ValidatedNode> nodes) {
+        Set<LogisticsNode> identities = new LinkedHashSet<>();
+        List<ValidatedNode> result = new ArrayList<>();
+        for (ValidatedNode node : nodes) {
+            if (node != null && identities.add(node.node())) result.add(node);
+        }
+        return result;
+    }
+
+    private static List<SlotChange> collectTemplateSlotChanges(
+        ValidatedNode source, List<ValidatedNode> targets) {
+        List<SlotChange> changes = new ArrayList<>();
+        IItemHandlerModifiable sourceFilters = source.config().filterConfig.getUpgrades();
+        Set<ContainerIdentity> visitedContainers = new LinkedHashSet<>();
+        ContainerConfig sourceContainer = source.config().getContainerConfig();
+        for (ValidatedNode target : targets) {
+            collectSlotChanges(sourceFilters, target.config().filterConfig.getUpgrades(), changes);
+            ContainerIdentity identity = new ContainerIdentity(target.level(), target.pos());
+            ContainerConfig targetContainer = target.config().getContainerConfig();
+            if (sourceContainer != null && targetContainer != null && visitedContainers.add(identity)) {
+                collectSlotChanges(sourceContainer.getUpgrades(), targetContainer.getUpgrades(), changes);
+            }
+        }
+        return changes;
+    }
+
+    private static void collectSlotChanges(IItemHandlerModifiable source,
+                                           IItemHandlerModifiable target,
+                                           List<SlotChange> changes) {
+        for (int slot = 0; slot < source.getSlots(); slot++) {
+            ItemStack current = target.getStackInSlot(slot);
+            ItemStack desired = source.getStackInSlot(slot);
+            if (!ItemStack.matches(current, desired)) {
+                changes.add(new SlotChange(target, slot, current.copy(), desired.copy()));
+            }
+        }
+    }
+
+    private static Map<Item, Integer> requiredItems(List<SlotChange> changes) {
+        Map<Item, Integer> required = new IdentityHashMap<>();
+        for (SlotChange change : changes) {
+            if (change.desired().isEmpty()) continue;
+            int count = change.current().is(change.desired().getItem())
+                ? Math.max(0, change.desired().getCount() - change.current().getCount())
+                : change.desired().getCount();
+            if (count > 0) required.merge(change.desired().getItem(), count, Integer::sum);
+        }
+        return required;
+    }
+
+    private static boolean hasItems(ServerPlayer player, Map<Item, Integer> required) {
+        Map<Item, Integer> available = new IdentityHashMap<>();
+        player.getInventory().items.forEach(stack -> {
+            if (!stack.isEmpty()) available.merge(stack.getItem(), stack.getCount(), Integer::sum);
+        });
+        return required.entrySet().stream()
+            .allMatch(entry -> available.getOrDefault(entry.getKey(), 0) >= entry.getValue());
+    }
+
+    private static void consumeItems(ServerPlayer player, Map<Item, Integer> required) {
+        Map<Item, Integer> remaining = new IdentityHashMap<>(required);
+        for (ItemStack stack : player.getInventory().items) {
+            int count = remaining.getOrDefault(stack.getItem(), 0);
+            if (count <= 0) continue;
+            int removed = Math.min(count, stack.getCount());
+            stack.shrink(removed);
+            remaining.put(stack.getItem(), count - removed);
+        }
+        if (remaining.values().stream().anyMatch(count -> count > 0)) {
+            throw new IllegalStateException("Required configuration items are unavailable");
+        }
+        player.getInventory().setChanged();
+    }
+
+    private static List<NodeLifecycleService.UpgradeSource> returnedSources(List<SlotChange> changes) {
+        List<ItemStack> returned = new ArrayList<>();
+        for (SlotChange change : changes) {
+            if (change.current().isEmpty()) continue;
+            int count = change.desired().is(change.current().getItem())
+                ? Math.max(0, change.current().getCount() - change.desired().getCount())
+                : change.current().getCount();
+            if (count > 0) {
+                ItemStack stack = change.current().copy();
+                stack.setCount(count);
+                returned.add(stack);
+            }
+        }
+        if (returned.isEmpty()) return List.of();
+        ItemStackHandler handler = new ItemStackHandler(returned.size());
+        for (int slot = 0; slot < returned.size(); slot++) handler.setStackInSlot(slot, returned.get(slot));
+        return List.of(new NodeLifecycleService.UpgradeSource(BlockPos.ZERO, handler));
+    }
+
+    private static void restoreInventory(ServerPlayer player, List<ItemStack> snapshot) {
+        for (int slot = 0; slot < snapshot.size(); slot++) {
+            player.getInventory().items.set(slot, snapshot.get(slot).copy());
+        }
+        player.getInventory().setChanged();
+    }
+
+    private static void captureTargetContainers(NodeMutationTransaction transaction,
+                                                List<ValidatedNode> targets) {
+        Set<ContainerIdentity> captured = new LinkedHashSet<>();
+        for (ValidatedNode target : targets) {
+            ContainerIdentity identity = new ContainerIdentity(target.level(), target.pos());
+            if (captured.add(identity)) transaction.captureContainer(target.level(), target.pos());
+        }
+    }
+
+    private static void copyFaceConfiguration(FaceConfigComposite source,
+                                              FaceConfigComposite target) {
+        try (FaceConfigComposite.BulkEdit ignored = target.beginBulkEdit()) {
+            target.setGlobalInputEnabled(source.isGlobalInputEnabled());
+            target.setGlobalOutputEnabled(source.isGlobalOutputEnabled());
+            target.setPriority(source.linkConfig.getPriority());
+            target.setKeepStock(source.linkConfig.getKeepStock());
+            target.setDistributionStrategy(source.linkConfig.getStrategy());
+            target.setExtractionMode(source.linkConfig.getExtractionMode());
+            target.setSelectedTypeIds(source.getSelectedTypeIds());
+        }
+    }
+
+    private record SlotChange(IItemHandlerModifiable target, int slot,
+                              ItemStack current, ItemStack desired) {
+        private void apply() {
+            target.setStackInSlot(slot, desired.copy());
+        }
+    }
+
+    private record ContainerIdentity(ServerLevel level, BlockPos pos) {
+        private ContainerIdentity {
+            pos = pos.immutable();
+        }
     }
 
     private static boolean applyConfiguration(FaceConfigComposite config,

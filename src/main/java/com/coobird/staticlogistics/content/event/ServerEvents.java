@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.command.SLCommands;
+import com.coobird.staticlogistics.content.item.BulkSelectionInteractionGuard;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.integration.ModCompat;
@@ -67,6 +68,7 @@ public class ServerEvents {
         com.coobird.staticlogistics.logistics.group.ConnectionCommandService.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
         com.coobird.staticlogistics.transfer.NodeQueryService.release(event.getServer());
+        BulkSelectionInteractionGuard.release(event.getServer());
     }
 
     @SubscribeEvent
@@ -147,6 +149,18 @@ public class ServerEvents {
                 }
             }
         }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onBulkSelectionRightClick(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
+            || !BulkSelectionInteractionGuard.matches(
+            player, event.getPos(), event.getFace())) return;
+        event.setUseBlock(Event.Result.DENY);
+        event.setUseItem(Event.Result.DENY);
+        event.setCanceled(true);
+        event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
     }
 
     @SubscribeEvent

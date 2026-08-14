@@ -1,9 +1,11 @@
 package com.coobird.staticlogistics.client.data;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.google.gson.*;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -40,7 +42,7 @@ public enum NetworkPreviewLayoutStore {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int FORMAT_VERSION = 2;
+    private static final int FORMAT_VERSION = 3;
     private static final int MAX_GROUPS = 4_096;
     private static final int MAX_NODES_PER_GROUP = 16_384;
     private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
@@ -175,15 +177,22 @@ public enum NetworkPreviewLayoutStore {
             JsonObject nodeJson = nodes.get(index).getAsJsonObject();
             ResourceLocation dimensionId = ResourceLocation.parse(nodeJson.get("dimension").getAsString());
             ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, dimensionId);
-            GlobalPos node = GlobalPos.of(dimension, new BlockPos(
+            GlobalPos position = GlobalPos.of(dimension, new BlockPos(
                     nodeJson.get("x").getAsInt(),
                     nodeJson.get("y").getAsInt(),
                 nodeJson.get("z").getAsInt()));
-            layout.nodePositions.putIfAbsent(node, new Position(
+            Position viewPosition = new Position(
                 clamp(finite(nodeJson.get("view_x").getAsDouble(), 0.0D),
                     -MAX_VIEW_COORDINATE, MAX_VIEW_COORDINATE),
                 clamp(finite(nodeJson.get("view_y").getAsDouble(), 0.0D),
-                    -MAX_VIEW_COORDINATE, MAX_VIEW_COORDINATE)));
+                    -MAX_VIEW_COORDINATE, MAX_VIEW_COORDINATE));
+            if (nodeJson.has("face")) {
+                Direction face = Direction.byName(nodeJson.get("face").getAsString());
+                if (face == null) throw new IllegalArgumentException("Invalid preview node face");
+                layout.nodePositions.putIfAbsent(new LogisticsNode(position, face), viewPosition);
+            } else {
+                layout.legacyNodePositions.putIfAbsent(position, viewPosition);
+            }
         }
         layouts.put(groupKey, layout);
     }
@@ -199,7 +208,18 @@ public enum NetworkPreviewLayoutStore {
         layout.nodePositions.forEach((node, position) -> {
             JsonObject nodeJson = new JsonObject();
             nodeJson.addProperty("dimension",
-                node.dimension().location().toString());
+                node.gPos().dimension().location().toString());
+            nodeJson.addProperty("x", node.gPos().pos().getX());
+            nodeJson.addProperty("y", node.gPos().pos().getY());
+            nodeJson.addProperty("z", node.gPos().pos().getZ());
+            nodeJson.addProperty("face", node.face().getName());
+            nodeJson.addProperty("view_x", position.x());
+            nodeJson.addProperty("view_y", position.y());
+            nodes.add(nodeJson);
+        });
+        layout.legacyNodePositions.forEach((node, position) -> {
+            JsonObject nodeJson = new JsonObject();
+            nodeJson.addProperty("dimension", node.dimension().location().toString());
             nodeJson.addProperty("x", node.pos().getX());
             nodeJson.addProperty("y", node.pos().getY());
             nodeJson.addProperty("z", node.pos().getZ());
@@ -245,13 +265,19 @@ public enum NetworkPreviewLayoutStore {
      * 单个分组的可变视图状态，仅由客户端渲染线程访问。
      */
     public static final class Layout {
-        private final Map<GlobalPos, Position> nodePositions = new LinkedHashMap<>();
+        private final Map<LogisticsNode, Position> nodePositions = new LinkedHashMap<>();
+        private final Map<GlobalPos, Position> legacyNodePositions = new LinkedHashMap<>();
         private double panX;
         private double panY;
         private double zoom = 1.0D;
+        private boolean viewInitialized;
 
-        public Map<GlobalPos, Position> nodePositions() {
+        public Map<LogisticsNode, Position> nodePositions() {
             return nodePositions;
+        }
+
+        public Map<GlobalPos, Position> legacyNodePositions() {
+            return legacyNodePositions;
         }
 
         public double panX() {
@@ -266,10 +292,15 @@ public enum NetworkPreviewLayoutStore {
             return zoom;
         }
 
+        public boolean isViewInitialized() {
+            return viewInitialized;
+        }
+
         public void setView(double panX, double panY, double zoom) {
             this.panX = panX;
             this.panY = panY;
             this.zoom = zoom;
+            this.viewInitialized = true;
         }
     }
 }
