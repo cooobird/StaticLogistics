@@ -31,7 +31,6 @@ public class PlayerGroupStore extends SavedData {
     private static final int MAX_STORED_OWNERS = 100_000;
     private static final int MAX_STORED_CONNECTION_NAMES = 1_000_000;
     private final Map<UUID, LinkedHashMap<UUID, String>> playerGroups = new HashMap<>();
-    private final Map<UUID, Integer> playerNextGroupCounter = new HashMap<>();
     private final Map<ConnectionKey, String> connectionNames = new HashMap<>();
     private boolean loadedFromDedicatedStorage;
 
@@ -98,12 +97,6 @@ public class PlayerGroupStore extends SavedData {
         if (groups == null) return null;
         String displayName = groups.get(key.internalId());
         return displayName == null ? null : new GroupRef(key, displayName);
-    }
-
-    public void removeGroup(UUID playerId, String groupId) {
-        if (playerId == null || groupId == null) return;
-        GroupRef group = findGroup(playerId, groupId);
-        if (group != null) removeGroup(group.key());
     }
 
     public boolean removeGroup(GroupKey key) {
@@ -288,19 +281,6 @@ public class PlayerGroupStore extends SavedData {
         if (loadedFromDedicatedStorage) return false;
         boolean changed = false;
 
-        CompoundTag counterTag = legacyTag.getCompound("player_group_counter");
-        for (String ownerKey : counterTag.getAllKeys()) {
-            if (playerNextGroupCounter.size() >= MAX_STORED_OWNERS) break;
-            try {
-                UUID owner = UUID.fromString(ownerKey);
-                playerNextGroupCounter.merge(
-                    owner, Math.max(0, counterTag.getInt(ownerKey)), Math::max);
-                changed = true;
-            } catch (IllegalArgumentException exception) {
-                LOGGER.warn("Skipping invalid legacy player group counter owner: {}", ownerKey);
-            }
-        }
-
         CompoundTag groupsTag = legacyTag.getCompound("player_groups");
         for (String ownerKey : groupsTag.getAllKeys()) {
             if (playerGroups.size() >= MAX_STORED_OWNERS) break;
@@ -408,47 +388,9 @@ public class PlayerGroupStore extends SavedData {
 
     }
 
-    public synchronized String getNextGroupIdForPlayer(UUID playerId) {
-        Set<Integer> used = getNumericGroupIdsForPlayer(playerId);
-        if (used.isEmpty()) {
-            playerNextGroupCounter.put(playerId, 1);
-            return "1";
-        }
-        int counter = Math.max(
-            playerNextGroupCounter.getOrDefault(playerId, 0),
-            used.stream().max(Integer::compareTo).orElse(0));
-        int next = counter + 1;
-        while (used.contains(next)) {
-            next++;
-        }
-        playerNextGroupCounter.put(playerId, next);
-        return Integer.toString(next);
-    }
-
-    private Set<Integer> getNumericGroupIdsForPlayer(UUID playerId) {
-        Set<Integer> ids = new HashSet<>();
-        Collection<String> groups = playerGroups.containsKey(playerId)
-            ? playerGroups.get(playerId).values() : Collections.emptyList();
-        if (groups != null) {
-            for (String gid : groups) {
-                if (gid != null && gid.matches("\\d+")) {
-                    try {
-                        ids.add(Integer.parseInt(gid));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
-        }
-        return ids;
-    }
-
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
-        // 保存分组计数器
-        CompoundTag counterTag = new CompoundTag();
-        playerNextGroupCounter.forEach((uuid, counter) -> counterTag.putInt(uuid.toString(), counter));
         tag.putInt("schema_version", SCHEMA_VERSION);
-        tag.put("player_group_counter", counterTag);
 
         // 保存玩家分组
         CompoundTag groupsTag = new CompoundTag();
@@ -480,19 +422,6 @@ public class PlayerGroupStore extends SavedData {
     void load(CompoundTag tag) {
         loadedFromDedicatedStorage = true;
         CompoundTag migrated = migrateStoredData(tag);
-        if (migrated.contains("player_group_counter")) {
-            CompoundTag counterTag = migrated.getCompound("player_group_counter");
-            for (String key : counterTag.getAllKeys()) {
-                if (playerNextGroupCounter.size() >= MAX_STORED_OWNERS) break;
-                try {
-                    playerNextGroupCounter.put(
-                        UUID.fromString(key), Math.max(0, counterTag.getInt(key)));
-                } catch (IllegalArgumentException exception) {
-                    LOGGER.warn("Skipping invalid player group counter owner: {}", key);
-                }
-            }
-        }
-
         if (migrated.contains("player_groups")) {
             CompoundTag groupsTag = migrated.getCompound("player_groups");
             for (String uuidStr : groupsTag.getAllKeys()) {

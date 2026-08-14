@@ -20,6 +20,10 @@ public final class SLKeyMappings {
         SLKeyNames.BLUEPRINT_PREVIEW_MOVE_Y, SLKeyConflictContexts.BLUEPRINT_IN_GAME, GLFW.GLFW_KEY_LEFT_ALT);
     public static final KeyMapping TOOL_MODE_SCROLL = heldKey(
         SLKeyNames.TOOL_MODE_SCROLL, SLKeyConflictContexts.LINK_CONFIGURATOR_IN_GAME, GLFW.GLFW_KEY_LEFT_SHIFT);
+    public static final KeyMapping BULK_NODE_SELECTION = heldKey(
+        SLKeyNames.BULK_NODE_SELECTION, SLKeyConflictContexts.LINK_CONFIGURATOR_IN_GAME, GLFW.GLFW_KEY_LEFT_CONTROL);
+    public static final KeyMapping NETWORK_PREVIEW_MULTI_SELECT = heldKey(
+        SLKeyNames.NETWORK_PREVIEW_MULTI_SELECT, SLKeyConflictContexts.NETWORK_PREVIEW_GUI, GLFW.GLFW_KEY_LEFT_SHIFT);
 
     public static final KeyMapping CLEAR_STORED_NODES = modifiedKey(
         SLKeyNames.CLEAR_STORED_NODES, SLKeyConflictContexts.LINK_CONFIGURATOR_IN_GAME,

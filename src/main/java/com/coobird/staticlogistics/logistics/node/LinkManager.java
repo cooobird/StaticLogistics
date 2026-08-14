@@ -165,10 +165,6 @@ public class LinkManager {
         syncBuffer.flush(topologySyncPort);
     }
 
-    FaceConfigHandler getFaceConfigHandler() {
-        return faceConfigHandler;
-    }
-
     LinkChangeHandler getChangeHandler() {
         return changeHandler;
     }
@@ -190,10 +186,6 @@ public class LinkManager {
 
     ConfigRepository getConfigRepository() {
         return faceConfigHandler.configRepository;
-    }
-
-    FaceConfigService getFaceConfigService() {
-        return faceConfigHandler.faceConfigService;
     }
 
     SyncManager getSyncManager() {
@@ -299,6 +291,10 @@ public class LinkManager {
         linkGraphService.removeNodeFromGroup(groupKey, node);
     }
 
+    public void removeNodeFromGroupWithoutCleanup(GroupKey groupKey, LogisticsNode node) {
+        linkGraphService.removeNodeFromGroupWithoutCleanup(groupKey, node);
+    }
+
     void cascadeRemove(LogisticsNode node, FaceConfigComposite config) {
         linkGraphService.cascadeRemove(node, config);
     }
@@ -366,10 +362,6 @@ public class LinkManager {
     public <C> C getCapability(BlockPos pos, Direction face,
                                BlockCapability<C, Direction> capability) {
         return capabilityCache.get(pos, face, capability);
-    }
-
-    public CapabilityCache.Stats getCapabilityCacheStats() {
-        return capabilityCache.snapshotStats();
     }
 
     public void invalidateCapabilityCache(BlockPos pos, Direction face) {

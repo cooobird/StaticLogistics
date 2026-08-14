@@ -9,16 +9,10 @@ import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
 import com.coobird.staticlogistics.client.gui.screen.HandFilterScreen;
 import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
-import com.coobird.staticlogistics.content.item.BlueprintClientHooks;
-import com.coobird.staticlogistics.content.item.BlueprintItem;
-import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
-import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.content.item.*;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.network.c2s.C2SBlueprintUndoPayload;
-import com.coobird.staticlogistics.network.c2s.C2SClearStoredNodesPayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateBlueprintPreviewPayload;
-import com.coobird.staticlogistics.network.c2s.C2SUpdateToolModePayload;
+import com.coobird.staticlogistics.network.c2s.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -27,6 +21,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
@@ -37,6 +32,8 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.common.util.TriState;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -58,10 +55,13 @@ public class ClientEvents {
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
+        LinkConfiguratorClientHooks.installBulkSelectionKey(() -> SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION));
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
         event.register(SLKeyMappings.TOOL_MODE_SCROLL);
+        event.register(SLKeyMappings.BULK_NODE_SELECTION);
+        event.register(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT);
         event.register(SLKeyMappings.BLUEPRINT_UNDO);
         event.register(SLKeyMappings.CLEAR_STORED_NODES);
         event.register(SLKeyMappings.QUICK_FILTER_MARK);
@@ -104,6 +104,20 @@ public class ClientEvents {
                 return count;
             }
         );
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onBulkNodeSelection(PlayerInteractEvent.RightClickBlock event) {
+        if (!event.getLevel().isClientSide()
+            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem item)
+            || !SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION)) return;
+        ToolMode mode = item.getSettings(event.getItemStack()).mode();
+        if (!mode.isLinkMode()) return;
+        PacketDistributor.sendToServer(new C2SBulkSelectNodesPayload(event.getPos(), event.getFace(), mode));
+        event.setUseBlock(TriState.FALSE);
+        event.setUseItem(TriState.FALSE);
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

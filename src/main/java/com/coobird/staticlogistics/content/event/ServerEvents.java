@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.command.SLCommands;
+import com.coobird.staticlogistics.content.item.BulkSelectionInteractionGuard;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.integration.ModCompat;
@@ -26,6 +27,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.EventPriority;
@@ -67,6 +69,7 @@ public class ServerEvents {
         LogisticsTicker.release(event.getServer());
         NodeQueryService.release(event.getServer());
         ConnectionCommandService.release(event.getServer());
+        BulkSelectionInteractionGuard.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
     }
 
@@ -78,7 +81,7 @@ public class ServerEvents {
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("13");
+        final PayloadRegistrar registrar = event.registrar("14");
 
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
@@ -89,6 +92,9 @@ public class ServerEvents {
         registrar.playToClient(S2CClearLinkEndpointPayload.TYPE, S2CClearLinkEndpointPayload.STREAM_CODEC, S2CClearLinkEndpointPayload::handle);
 
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
+        registrar.playToServer(C2SConfigureFacesPayload.TYPE, C2SConfigureFacesPayload.STREAM_CODEC, C2SConfigureFacesPayload::handle);
+        registrar.playToServer(C2SApplyNodeTemplatePayload.TYPE, C2SApplyNodeTemplatePayload.STREAM_CODEC, C2SApplyNodeTemplatePayload::handle);
+        registrar.playToServer(C2SBulkSelectNodesPayload.TYPE, C2SBulkSelectNodesPayload.STREAM_CODEC, C2SBulkSelectNodesPayload::handle);
         registrar.playToServer(C2SOpenNodeFilterPayload.TYPE, C2SOpenNodeFilterPayload.STREAM_CODEC, C2SOpenNodeFilterPayload::handle);
         registrar.playToServer(C2SReturnToLinkConfiguratorPayload.TYPE, C2SReturnToLinkConfiguratorPayload.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::handle);
         registrar.playToServer(C2SUpdateToolModePayload.TYPE, C2SUpdateToolModePayload.STREAM_CODEC, C2SUpdateToolModePayload::handle);
@@ -188,6 +194,18 @@ public class ServerEvents {
                 }
             }
         }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onBulkSelectionRightClick(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
+            || !BulkSelectionInteractionGuard.matches(
+            player, event.getPos(), event.getFace())) return;
+        event.setUseBlock(TriState.FALSE);
+        event.setUseItem(TriState.FALSE);
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
 }

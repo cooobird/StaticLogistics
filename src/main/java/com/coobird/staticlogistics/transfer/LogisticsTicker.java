@@ -41,31 +41,11 @@ public final class LogisticsTicker {
     private static final class SchedulerCursor {
         int nodeIndex;
         int typeIndex;
-        long lastElapsedNanos;
-        long peakElapsedNanos;
-        double averageElapsedNanos;
-        long budgetStops;
-        int lastCandidates;
-        int lastAttempts;
-
-        void record(long elapsed, int candidates, int attempts, boolean budgetStopped) {
-            lastElapsedNanos = elapsed;
-            peakElapsedNanos = Math.max(peakElapsedNanos, elapsed);
-            averageElapsedNanos = averageElapsedNanos == 0
-                ? elapsed : averageElapsedNanos * 0.9 + elapsed * 0.1;
-            lastCandidates = candidates;
-            lastAttempts = attempts;
-            if (budgetStopped) budgetStops++;
-        }
     }
 
     private static final class RuntimeState {
         final CooldownManager cooldowns = new CooldownManager();
         final Map<ResourceKey<Level>, SchedulerCursor> schedulers = new HashMap<>();
-    }
-
-    public record SchedulerStats(long lastNanos, long peakNanos, long averageNanos,
-                                 long budgetStops, int candidates, int attempts) {
     }
 
     private LogisticsTicker() {
@@ -102,10 +82,7 @@ public final class LogisticsTicker {
         FaceAddress[] sourceKeys = manager.getActiveProviderKeysArray();
         LogisticsResource<?>[] types = getCachedTypes();
         SchedulerCursor cursor = state.schedulers.computeIfAbsent(dimension, ignored -> new SchedulerCursor());
-        if (sourceKeys.length == 0 || types.length == 0) {
-            cursor.record(0, 0, 0, false);
-            return;
-        }
+        if (sourceKeys.length == 0 || types.length == 0) return;
 
         cursor.nodeIndex = Math.floorMod(cursor.nodeIndex, sourceKeys.length);
         cursor.typeIndex = Math.floorMod(cursor.typeIndex, types.length);
@@ -115,8 +92,6 @@ public final class LogisticsTicker {
         long timeBudget = Math.max(1, LogisticsConstants.Performance.getTickerTimeBudgetNanos());
         long started = System.nanoTime();
         int candidates = 0;
-        int attempts = 0;
-        boolean budgetStopped = false;
 
         while (candidates < candidateBudget) {
             int nodeIndex = cursor.nodeIndex;
@@ -129,19 +104,13 @@ public final class LogisticsTicker {
             if (config != null && !config.isDefault()) {
                 LogisticsResource<?> type = types[typeIndex];
                 if (config.isTypeSelected(type)) {
-                    attempts++;
                     processCandidate(level, dimension, currentTick, state, manager,
                         sourceKey, config, type);
                 }
             }
 
-            if (System.nanoTime() - started >= timeBudget) {
-                budgetStopped = true;
-                break;
-            }
+            if (System.nanoTime() - started >= timeBudget) break;
         }
-
-        cursor.record(System.nanoTime() - started, candidates, attempts, budgetStopped);
     }
 
     private static void advanceCursor(SchedulerCursor cursor, int nodeCount, int typeCount) {
@@ -179,15 +148,6 @@ public final class LogisticsTicker {
             dimension, sourceKey, type.typeId(), cooldown, currentTick);
     }
 
-    public static SchedulerStats getSchedulerStats(MinecraftServer server, ResourceKey<Level> dimension) {
-        RuntimeState state = RUNTIMES.get(server);
-        SchedulerCursor cursor = state == null ? null : state.schedulers.get(dimension);
-        if (cursor == null) return new SchedulerStats(0, 0, 0, 0, 0, 0);
-        return new SchedulerStats(cursor.lastElapsedNanos, cursor.peakElapsedNanos,
-            Math.round(cursor.averageElapsedNanos), cursor.budgetStops,
-            cursor.lastCandidates, cursor.lastAttempts);
-    }
-
     public static void wakeup(ServerLevel level, FaceAddress source) {
         state(level.getServer()).cooldowns.removeAllForSource(level.dimension(), source);
     }
@@ -215,6 +175,16 @@ public final class LogisticsTicker {
     public static void release(MinecraftServer server) {
         RuntimeState removed = RUNTIMES.remove(server);
         if (removed != null) removed.cooldowns.clearAll();
+    }
+
+    /**
+     * 配置热重载后清除旧冷却，让新间隔和基础传输量从下一游戏刻生效。
+     */
+    public static void onConfigReload(MinecraftServer server) {
+        RuntimeState runtime = RUNTIMES.get(server);
+        if (runtime == null) return;
+        runtime.cooldowns.clearAll();
+        runtime.schedulers.clear();
     }
 
     private static LogisticsResource<?>[] getCachedTypes() {

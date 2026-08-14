@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.logistics.group;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.event.PlayerEvents;
 import com.coobird.staticlogistics.logistics.node.*;
 import com.mojang.logging.LogUtils;
@@ -67,6 +68,30 @@ public final class ConnectionCommandService {
     }
 
     /**
+     * 从指定分组移除一个端点及其在该分组中的全部连接。
+     *
+     * <p>工具移除模式与界面删除共用同一事务：先修改互惠图，再统一识别真正失去全部连接的面；
+     * 面过滤器优先返还玩家背包，且只有容器的全部关联面都被移除时才返还共享升级。</p>
+     */
+    public boolean deleteNodeFromGroup(ServerPlayer actor, GroupKey groupKey, LogisticsNode node) {
+        ResolvedGroupNode resolved = resolveGroupNode(actor, groupKey, node);
+        if (resolved == null || !tryAcquireMutation(actor)) return false;
+        try {
+            LinkedHashSet<LogisticsNode> candidates = new LinkedHashSet<>();
+            candidates.add(node);
+            candidates.addAll(resolved.config().getLinkedNodes(groupKey));
+            removeTopologyAndOrphans(actor, candidates,
+                () -> resolved.manager().removeNodeFromGroupWithoutCleanup(groupKey, node));
+            refreshAuthorizedClients(actor);
+            return true;
+        } catch (RuntimeException exception) {
+            LOGGER.error("Failed to remove logistics node from group {}",
+                groupKey.internalId(), exception);
+            return false;
+        }
+    }
+
+    /**
      * 验证连接仍然存在，并且玩家当前有权通过配置器查看它。
      */
     public boolean isSelectable(ServerPlayer actor, ConnectionKey requestedKey) {
@@ -78,28 +103,39 @@ public final class ConnectionCommandService {
         ResolvedConnection connection
     ) {
         ConnectionKey key = connection.key();
-        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
-            transaction.capture(key.first());
-            transaction.capture(key.second());
-            transaction.captureContainer(connection.firstLevel(), key.first().gPos().pos());
-            transaction.captureContainer(connection.secondLevel(), key.second().gPos().pos());
-
+        removeTopologyAndOrphans(actor, List.of(key.first(), key.second()), () -> {
             connection.firstManager().removeLinkWithoutCleanup(
                 key.groupKey(), key.first(), key.second());
             if (connection.firstConfig().getLinkedNodes(key.groupKey()).contains(key.second())
                 || connection.secondConfig().getLinkedNodes(key.groupKey()).contains(key.first())) {
                 throw new IllegalStateException("Connection remained after reciprocal removal");
             }
+        });
+    }
 
-            Map<LinkManager, List<LogisticsNode>> candidates = new LinkedHashMap<>();
-            candidates.computeIfAbsent(connection.firstManager(), ignored -> new ArrayList<>())
-                .add(key.first());
-            candidates.computeIfAbsent(connection.secondManager(), ignored -> new ArrayList<>())
-                .add(key.second());
+    private void removeTopologyAndOrphans(ServerPlayer actor,
+                                          Collection<LogisticsNode> candidates,
+                                          Runnable topologyMutation) {
+        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
+            Map<LinkManager, List<LogisticsNode>> candidatesByManager = new LinkedHashMap<>();
+            for (LogisticsNode candidate : new LinkedHashSet<>(candidates)) {
+                ServerLevel level = server.getLevel(candidate.gPos().dimension());
+                if (level == null) {
+                    throw new IllegalStateException(
+                        "Logistics node dimension is unavailable: "
+                            + candidate.gPos().dimension().location());
+                }
+                transaction.capture(candidate);
+                transaction.captureContainer(level, candidate.gPos().pos());
+                candidatesByManager.computeIfAbsent(LinkManager.get(level), ignored -> new ArrayList<>())
+                    .add(candidate);
+            }
+
+            topologyMutation.run();
 
             List<PreparedRemoval> removals = new ArrayList<>();
             List<NodeLifecycleService.UpgradeSource> sources = new ArrayList<>();
-            candidates.forEach((manager, nodes) -> {
+            candidatesByManager.forEach((manager, nodes) -> {
                 NodeLifecycleService.DisconnectedRemoval removal =
                     manager.prepareDisconnectedRemoval(nodes);
                 if (!removal.faces().isEmpty()) {
@@ -116,6 +152,24 @@ public final class ConnectionCommandService {
                 receipt.commit();
             }
         }
+    }
+
+    @Nullable
+    private ResolvedGroupNode resolveGroupNode(ServerPlayer actor, GroupKey groupKey,
+                                               LogisticsNode node) {
+        if (actor == null || groupKey == null || node == null
+            || !NodeInteractionValidator.holdsConfigurator(actor)
+            || !NodeInteractionValidator.isDirectInteractionTargetValid(
+            actor, node.gPos().pos(), node.face())
+            || !PermissionService.getInstance().canModify(groupKey.ownerId(), actor)
+            || PlayerGroupStore.get(server).findGroup(groupKey) == null) return null;
+        ServerLevel level = server.getLevel(node.gPos().dimension());
+        if (level == null) return null;
+        LinkManager manager = LinkManager.get(level);
+        FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(node));
+        if (config == null || !config.canPlayerModify(actor)
+            || !config.faceConfig.getGroupKeys().contains(groupKey)) return null;
+        return new ResolvedGroupNode(manager, config);
     }
 
     @Nullable
@@ -151,8 +205,7 @@ public final class ConnectionCommandService {
             return null;
         }
         return new ResolvedConnection(
-            key, firstLevel, secondLevel,
-            firstManager, secondManager, firstConfig, secondConfig);
+            key, firstManager, secondManager, firstConfig, secondConfig);
     }
 
     /**
@@ -183,8 +236,6 @@ public final class ConnectionCommandService {
 
     private record ResolvedConnection(
         ConnectionKey key,
-        ServerLevel firstLevel,
-        ServerLevel secondLevel,
         LinkManager firstManager,
         LinkManager secondManager,
         FaceConfigComposite firstConfig,
@@ -196,6 +247,9 @@ public final class ConnectionCommandService {
         LinkManager manager,
         NodeLifecycleService.DisconnectedRemoval removal
     ) {
+    }
+
+    private record ResolvedGroupNode(LinkManager manager, FaceConfigComposite config) {
     }
 
     private record RateKey(MinecraftServer server, UUID playerId) {

@@ -7,6 +7,7 @@ import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.group.GroupSelectionInvalidator;
+import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
@@ -38,6 +39,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
+    private static final int STORED_NODE_TOOLTIP_LIMIT = 6;
     private static final Map<ToolMode, ModeHandler> HANDLERS = new EnumMap<>(ToolMode.class);
 
     static {
@@ -90,16 +92,30 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         ToolSettings settings = getSettings(stack);
         tooltip.add(Component.translatable("tooltip.staticlogistics.scroll_hint",
             Component.keybind(SLKeyNames.TOOL_MODE_SCROLL)).withStyle(ChatFormatting.GREEN));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.bulk_select_hint",
+            Component.keybind(SLKeyNames.BULK_NODE_SELECTION)).withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode().getDisplayName()));
         String types = settings.getSelectedTypes().stream().map(t -> Component.translatable(t.translationKey()).getString()).collect(Collectors.joining(", "));
         tooltip.add(Component.translatable("tooltip.staticlogistics.type", types.isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(types)));
         tooltip.add(Component.translatable("tooltip.staticlogistics.group", settings.group().isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(settings.group())));
         if (!settings.storedNodes().isEmpty() && settings.storedMode() != null) {
             tooltip.add(Component.translatable("tooltip.staticlogistics.stored_mode", settings.storedMode().getDisplayName()).withStyle(ChatFormatting.GRAY));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.saved_list"));
-            for (LogisticsNode n : settings.storedNodes()) {
-                String nodeStr = n.gPos().pos().toShortString() + " " + n.face();
-                tooltip.add(Component.literal("  " + nodeStr).withStyle(ChatFormatting.WHITE));
+            long blockCount = settings.storedNodes().stream().map(LogisticsNode::gPos).distinct().count();
+            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_summary",
+                blockCount, settings.storedNodes().size()).withStyle(ChatFormatting.WHITE));
+            int visibleCount = Math.min(STORED_NODE_TOOLTIP_LIMIT, settings.storedNodes().size());
+            for (int index = 0; index < visibleCount; index++) {
+                LogisticsNode node = settings.storedNodes().get(index);
+                tooltip.add(Component.literal("  ")
+                    .append(NodeDisplayText.dimension(node.gPos().dimension()))
+                    .append(" · ")
+                    .append(NodeDisplayText.compact(node))
+                    .withStyle(ChatFormatting.GRAY));
+            }
+            int hiddenCount = settings.storedNodes().size() - visibleCount;
+            if (hiddenCount > 0) {
+                tooltip.add(Component.translatable("tooltip.staticlogistics.stored_more", hiddenCount)
+                    .withStyle(ChatFormatting.DARK_GRAY));
             }
         }
         tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_info").withStyle(ChatFormatting.AQUA));
@@ -144,6 +160,16 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
             GroupSelectionInvalidator.clearInvalidSelection(serverLevel.getServer(), stack);
         }
         ToolSettings settings = getSettings(stack);
+
+        if (level.isClientSide && LinkConfiguratorClientHooks.isBulkSelectionActive()
+            && settings.mode().isLinkMode()) {
+            return InteractionResult.SUCCESS;
+        }
+        if (player instanceof ServerPlayer serverPlayer
+            && BulkSelectionInteractionGuard.matches(
+            serverPlayer, context.getClickedPos(), context.getClickedFace())) {
+            return InteractionResult.SUCCESS;
+        }
 
         if (!player.isSecondaryUseActive()) {
             if (player instanceof ServerPlayer serverPlayer) {

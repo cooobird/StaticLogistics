@@ -60,13 +60,26 @@ final class LinkGraphService {
     }
 
     void removeNodeFromGroup(GroupKey groupKey, LogisticsNode node) {
+        removeNodeFromGroup(groupKey, node, false);
+    }
+
+    void removeNodeFromGroupWithoutCleanup(GroupKey groupKey, LogisticsNode node) {
+        removeNodeFromGroup(groupKey, node, true);
+    }
+
+    private void removeNodeFromGroup(
+        GroupKey groupKey,
+        LogisticsNode node,
+        boolean deferCleanup
+    ) {
         FaceConfigComposite config = findConfig(node);
         if (config == null) return;
         Set<LogisticsNode> affected = new LinkedHashSet<>(config.getLinkedNodes(groupKey));
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
             transaction.capture(node);
             captureAvailableStates(transaction, affected);
-            graph.removeNodeFromGroup(groupKey, node);
+            if (deferCleanup) graph.removeNodeFromGroupWithoutCleanup(groupKey, node);
+            else graph.removeNodeFromGroup(groupKey, node);
             affected.forEach(target ->
                 deferConnectionNameRemoval(groupKey, node, target));
             deferEmptyGroupRemoval(groupKey);

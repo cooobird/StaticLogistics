@@ -58,18 +58,26 @@ public final class ReciprocalLinkGraph<N, G> {
     }
 
     public void removeNodeFromGroup(G group, N node) {
+        removeNodeFromGroup(group, node, false);
+    }
+
+    public void removeNodeFromGroupWithoutCleanup(G group, N node) {
+        removeNodeFromGroup(group, node, true);
+    }
+
+    private void removeNodeFromGroup(G group, N node, boolean deferCleanup) {
         if (group == null || node == null) return;
         Endpoint<N, G> endpoint = resolver.apply(node);
         if (endpoint == null || !endpoint.belongsTo(group)) return;
 
         try (Edit ignored = endpoint.beginEdit()) {
             for (N target : List.copyOf(endpoint.linked(group))) {
-                removeEdge(group, node, target, Set.of(node));
+                removeEdge(group, node, target, deferCleanup ? Set.of(node, target) : Set.of(node));
             }
             if (endpoint.belongsTo(group)) endpoint.removeGroup(group);
             normalize(endpoint, group);
         }
-        endpoint.cleanup();
+        if (!deferCleanup) endpoint.cleanup();
     }
 
     public void cascadeRemove(N node, Collection<N> counterparts) {

@@ -98,7 +98,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, FaceConfigur
         });
     }
 
-    private static FaceConfigurationEdit decodeEdit(RegistryFriendlyByteBuf buffer) {
+    static FaceConfigurationEdit decodeEdit(RegistryFriendlyByteBuf buffer) {
         int operation = buffer.readUnsignedByte();
         try {
             return switch (operation) {
@@ -144,7 +144,7 @@ public record C2SConfigureFacePayload(BlockPos pos, Direction face, FaceConfigur
         return new FaceConfigurationEdit.SelectedTypesEdit(ids);
     }
 
-    private static void encodeEdit(RegistryFriendlyByteBuf buffer, FaceConfigurationEdit edit) {
+    static void encodeEdit(RegistryFriendlyByteBuf buffer, FaceConfigurationEdit edit) {
         switch (edit) {
             case FaceConfigurationEdit.BooleanEdit value -> {
                 buffer.writeByte(value.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT

@@ -96,18 +96,16 @@ public class LinkWorldRenderer {
         double flowTime = frameTimeMillis / 1000.0;
         ParticleStatus particleStatus = mc.options.particles().get();
 
-        // 存点预览
+        // 先绘制已有连接，最后覆盖当前存点，确保两种状态不会互相淹没。
         LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
             ? lci.getSettings(stack) : null;
-        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
-            renderStoredNodes(settings, dim, mat, b, visibility, pulse);
-
-        // 选中分组的所有链接
         if (groupKey != null)
             renderGroupLinks(
                 groupKey, connectionKey,
                 dim, mat, b, visibility, pulse,
                 flowTime, particleStatus);
+        if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
+            renderStoredNodes(settings, dim, mat, b, visibility, pulse);
 
         ps.popPose();
         buf.endBatch(PIPE_XRAY);
@@ -126,13 +124,17 @@ public class LinkWorldRenderer {
             BlockPos p = node.gPos().pos();
             if (!visibility.isBlockVisible(p)) continue;
 
-            LogisticsRenderHelper.drawFrame(b, mat, p, 0.8f, 0.8f, 0.8f, 0.4f);
-            double px = p.getX() + 0.5 + node.face().getStepX() * 0.51;
-            double py = p.getY() + 0.5 + node.face().getStepY() * 0.51;
-            double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.51;
+            LogisticsRenderHelper.drawFrame(b, mat, p, 1.0f, 0.95f, 0.2f, 0.48f);
+            double px = p.getX() + 0.5 + node.face().getStepX() * 0.512;
+            double py = p.getY() + 0.5 + node.face().getStepY() * 0.512;
+            double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.512;
             LogisticsRenderHelper.drawFaceQuad(
-                b, mat, px, py, pz, node.face(),
-                faceColor, 0.6f, 0.4f + pulse, 0, 1f);
+                b, mat,
+                px + node.face().getStepX() * 0.003,
+                py + node.face().getStepY() * 0.003,
+                pz + node.face().getStepZ() * 0.003,
+                node.face(),
+                faceColor, 0.58f, 0.30f + pulse * 0.35f, 0, 1f);
         }
     }
 

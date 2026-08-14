@@ -12,6 +12,8 @@ public final class SLKeyNames {
     public static final String BLUEPRINT_PREVIEW_ROTATE = "key.staticlogistics.blueprint_preview_rotate";
     public static final String BLUEPRINT_PREVIEW_MOVE_Y = "key.staticlogistics.blueprint_preview_move_y";
     public static final String TOOL_MODE_SCROLL = "key.staticlogistics.tool_mode_scroll";
+    public static final String BULK_NODE_SELECTION = "key.staticlogistics.bulk_node_selection";
+    public static final String NETWORK_PREVIEW_MULTI_SELECT = "key.staticlogistics.network_preview_multi_select";
     public static final String CLEAR_STORED_NODES = "key.staticlogistics.clear_stored_nodes";
     public static final String BLUEPRINT_UNDO = "key.staticlogistics.blueprint_undo";
     public static final String QUICK_FILTER_MARK = "key.staticlogistics.quick_filter_mark";

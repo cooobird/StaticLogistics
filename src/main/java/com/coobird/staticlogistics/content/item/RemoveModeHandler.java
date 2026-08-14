@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.content.item;
 
 import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
 import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
@@ -8,6 +9,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
@@ -22,6 +24,7 @@ public class RemoveModeHandler implements ModeHandler {
         if (player == null) return InteractionResult.PASS;
         if (!player.isSecondaryUseActive()) return InteractionResult.PASS;
         if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
+            if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.PASS;
             BlockPos pos = context.getClickedPos();
             Direction face = context.getClickedFace();
             LinkManager mgr = LinkManager.get(serverLevel);
@@ -51,7 +54,10 @@ public class RemoveModeHandler implements ModeHandler {
                             : ref.displayName().equals(selectedGroup))
                         .findFirst().orElse(null);
                     if (group == null) return InteractionResult.SUCCESS;
-                    mgr.removeNodeFromGroup(group.key(), mgr.createNodeFromKey(key));
+                    boolean removed = new ConnectionCommandService(serverLevel.getServer())
+                        .deleteNodeFromGroup(serverPlayer,
+                            group.key(), mgr.createNodeFromKey(key));
+                    if (!removed) return InteractionResult.SUCCESS;
 
                     level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 0.8f);
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.group_removed_from_face", selectedGroup), true);

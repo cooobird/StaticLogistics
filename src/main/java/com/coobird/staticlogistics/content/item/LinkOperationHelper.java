@@ -28,10 +28,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 public class LinkOperationHelper {
-    public static final String DEFAULT_GROUP_NAME = "1";
 
     public static void validateStoredNodes(ItemStack stack, ServerLevel level) {
         List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
@@ -97,6 +98,27 @@ public class LinkOperationHelper {
         level.playSound(null, gpos.pos(), SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.8f, 1.5f);
     }
 
+    /**
+     * 批量选点只执行并集操作，避免重复使用组合键时意外取消整片区域。
+     */
+    public static int addNodes(ItemStack stack, Collection<LogisticsNode> candidates, ToolMode mode, Player player, Level level) {
+        if (!mode.isLinkMode() || candidates == null || candidates.isEmpty()) return 0;
+        LinkedHashSet<LogisticsNode> nodes = new LinkedHashSet<>(
+            stack.getOrDefault(SLDataComponents.STORED_NODES.get(), List.of()));
+        int before = nodes.size();
+        for (LogisticsNode node : candidates) {
+            if (nodes.size() >= SLDataComponents.MAX_STORED_NODES) break;
+            nodes.add(node);
+        }
+        if (nodes.size() == before) return 0;
+        if (before == 0) stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
+        stack.set(SLDataComponents.STORED_MODE.get(), mode.getId());
+        stack.set(SLDataComponents.STORED_NODES.get(), List.copyOf(nodes));
+        level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.value(),
+            SoundSource.PLAYERS, 0.8F, 1.5F);
+        return nodes.size() - before;
+    }
+
     public static void clearNodes(ItemStack stack, Player player, Level level) {
         List<LogisticsNode> nodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (nodes == null || nodes.isEmpty()) {
@@ -109,7 +131,7 @@ public class LinkOperationHelper {
         level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.5f, 0.5f);
     }
 
-    public static void executeBatchLink(ItemStack stack, String groupId, LinkConfiguratorItem.ToolSettings settings,
+    public static void executeBatchLink(ItemStack stack, LinkConfiguratorItem.ToolSettings settings,
                                         BlockPos pos, Direction face, ServerLevel level, Player player) {
         // 校验存点人是否当前玩家，防止别人捡到工具冒用
         String storedOwner = stack.get(SLDataComponents.STORED_NODES_OWNER.get());
@@ -131,12 +153,11 @@ public class LinkOperationHelper {
             return;
         }
 
-        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
         GroupRef group;
         try {
-            group = resolveSelectedGroup(globalManager, player, groupId, settings.groupKey());
+            group = resolveSelectedGroup(level, player, settings.groupKey());
         } catch (IllegalArgumentException | IllegalStateException exception) {
-            player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission")
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.select_group_to_link")
                 .withStyle(ChatFormatting.RED), true);
             return;
         }
@@ -169,18 +190,6 @@ public class LinkOperationHelper {
                 clearNodes(stack, player, level);
             }
         }
-    }
-
-    public static boolean performSingleLink(ServerLevel level, LogisticsNode current, LogisticsNode stored, String groupId,
-                                            LinkConfiguratorItem.ToolSettings settings, Player player) {
-        GroupRef group;
-        try {
-            group = GlobalLogisticsManager.get(level.getServer())
-                .resolveOrCreateGroup(player.getUUID(), groupId);
-        } catch (IllegalArgumentException | IllegalStateException exception) {
-            return false;
-        }
-        return performSingleLink(level, current, stored, group, settings, player);
     }
 
     public static boolean performSingleLink(ServerLevel level, LogisticsNode current, LogisticsNode stored, GroupRef group,
@@ -285,20 +294,16 @@ public class LinkOperationHelper {
         }
     }
 
-    private static GroupRef resolveSelectedGroup(GlobalLogisticsManager manager, Player player,
-                                                 String displayName, GroupKey selectedKey) {
-        if (selectedKey == null) return manager.resolveOrCreateGroup(player.getUUID(), displayName);
-        GroupRef selected = PlayerGroupStore.get(player.getServer()).findGroup(selectedKey);
+    private static GroupRef resolveSelectedGroup(ServerLevel level, Player player, GroupKey selectedKey) {
+        if (selectedKey == null) throw new IllegalStateException("Selected group is required");
+        GroupRef selected = PlayerGroupStore.get(level.getServer()).findGroup(selectedKey);
         if (selected != null) {
             if (!GroupService.canModify(selected.key().ownerId(), player)) {
                 throw new IllegalArgumentException("Selected group is unavailable");
             }
             return selected;
         }
-        if (!selectedKey.ownerId().equals(player.getUUID())) {
-            throw new IllegalArgumentException("Selected group is unavailable");
-        }
-        return manager.resolveOrCreateGroup(player.getUUID(), displayName);
+        throw new IllegalArgumentException("Selected group is unavailable");
     }
 
     private static GameProfile resolveOwnerProfile(ServerLevel level, GroupRef group, Player actor) {

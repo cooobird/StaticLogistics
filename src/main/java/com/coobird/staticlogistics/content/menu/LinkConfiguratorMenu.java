@@ -432,23 +432,16 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
             if (!moveItemStackTo(stack, INV_SLOT_START, HOTBAR_SLOT_END, true))
                 return ItemStack.EMPTY;
         } else {
-            if (stack.getItem() instanceof UpgradeItem upg) {
-                for (int i = 0; i < TOTAL_CONFIG_SLOTS; i++) {
-                    Slot cfgSlot = this.slots.get(i);
-                    if (cfgSlot.mayPlace(stack)) {
-                        ItemStack existing = cfgSlot.getItem();
-                        if (existing.isEmpty() || (ItemStack.isSameItemSameComponents(existing, stack) && existing.getCount() < cfgSlot.getMaxStackSize(stack))) {
-                            if (moveItemStackTo(stack, i, i + 1, false)) break;
-                        }
-                    }
+            if (!(stack.getItem() instanceof UpgradeItem)) return ItemStack.EMPTY;
+            boolean moved = false;
+            for (int i = 0; i < TOTAL_CONFIG_SLOTS; i++) {
+                Slot configSlot = this.slots.get(i);
+                if (configSlot.mayPlace(stack) && moveItemStackTo(stack, i, i + 1, false)) {
+                    moved = true;
+                    break;
                 }
             }
-            if (!stack.isEmpty()) {
-                if (index < INV_SLOT_END)
-                    moveItemStackTo(stack, HOTBAR_SLOT_START, HOTBAR_SLOT_END, false);
-                else
-                    moveItemStackTo(stack, INV_SLOT_START, INV_SLOT_END, false);
-            }
+            if (!moved) return ItemStack.EMPTY;
         }
 
         slot.set(stack.isEmpty() ? ItemStack.EMPTY : stack);

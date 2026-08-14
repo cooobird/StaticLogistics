@@ -23,8 +23,4 @@ public class ModCompat {
         return ModList.get().isLoaded("botania");
     }
 
-    public static boolean isCreateLoaded() {
-        return ModList.get().isLoaded("create");
-    }
-
 }

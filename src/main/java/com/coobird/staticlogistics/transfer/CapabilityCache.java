@@ -18,8 +18,6 @@ public final class CapabilityCache {
     private final ServerLevel level;
     private final Map<CacheKey, CacheEntry> caches = new LinkedHashMap<>(256, 0.75F, true);
     private boolean active = true;
-    private long queries;
-    private long invalidations;
 
     public CapabilityCache(ServerLevel level) {
         this.level = level;
@@ -33,13 +31,9 @@ public final class CapabilityCache {
         private boolean valid = true;
     }
 
-    public record Stats(int entries, long queries, long invalidations) {
-    }
-
     @SuppressWarnings("unchecked")
     public <C> C get(BlockPos pos, Direction face, BlockCapability<C, Direction> capability) {
         if (!active) throw new IllegalStateException("Capability cache is not active");
-        queries++;
         CacheKey key = new CacheKey(pos.asLong(), face, capability);
         CacheEntry entry = caches.get(key);
         if (entry == null) {
@@ -49,7 +43,6 @@ public final class CapabilityCache {
             created.cache = BlockCapabilityCache.create(capability, level, pos, face,
                 () -> active && created.valid,
                 () -> {
-                    if (created.valid) invalidations++;
                     created.valid = false;
                     caches.remove(key, created);
                     NodeQueryService.invalidateFace(level, pos, face);
@@ -85,7 +78,6 @@ public final class CapabilityCache {
                 || (face != null && entry.getKey().face() != face)) continue;
             entry.getValue().valid = false;
             iterator.remove();
-            invalidations++;
         }
     }
 
@@ -96,11 +88,6 @@ public final class CapabilityCache {
         Map.Entry<CacheKey, CacheEntry> eldest = iterator.next();
         eldest.getValue().valid = false;
         iterator.remove();
-        invalidations++;
-    }
-
-    public Stats snapshotStats() {
-        return new Stats(caches.size(), queries, invalidations);
     }
 
     public void shutdown() {
