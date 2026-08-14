@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.command;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.group.OwnershipTransferService;
@@ -13,6 +14,7 @@ import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.transfer.*;
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -44,6 +46,8 @@ import java.util.stream.Collectors;
  * 注册模组的所有命令（/sl），包括信息查询、所有权转移、重命名、清理、策略列表和统计。
  */
 public class SLCommands {
+    private static final int LIST_PAGE_SIZE = 8;
+
     /**
      * 注册 /sl 命令及其所有子命令
      */
@@ -81,7 +85,17 @@ public class SLCommands {
                 .then(Commands.literal("reset")
                     .executes(SLCommands::resetStats)))
             .then(Commands.literal("list")
-                .executes(SLCommands::listNodes))
+                .executes(ctx -> listGroups(ctx, 1))
+                .then(Commands.literal("page")
+                    .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                        .executes(ctx -> listGroups(ctx, IntegerArgumentType.getInteger(ctx, "page")))))
+                .then(Commands.literal("group")
+                    .then(Commands.argument("group", StringArgumentType.string())
+                        .suggests(SLCommands::suggestGroups)
+                        .executes(ctx -> listGroupNodes(ctx, 1))
+                        .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                            .executes(ctx -> listGroupNodes(ctx,
+                                IntegerArgumentType.getInteger(ctx, "page")))))))
         );
     }
 
@@ -386,34 +400,96 @@ public class SLCommands {
         return 1;
     }
 
-    private static int listNodes(CommandContext<CommandSourceStack> ctx) {
+    private static int listGroups(CommandContext<CommandSourceStack> ctx, int page) {
         var source = ctx.getSource();
-        var server = source.getServer();
-        var manager = GlobalLogisticsManager.get(server);
-        Set<String> groups = manager.getActiveGroups();
+        var manager = GlobalLogisticsManager.get(source.getServer());
+        List<GroupKey> groups = manager.getActiveGroupKeys().stream()
+            .sorted(Comparator.comparing((GroupKey key) -> groupName(manager, key))
+                .thenComparing(GroupKey::ownerId)
+                .thenComparing(GroupKey::internalId))
+            .toList();
         if (groups.isEmpty()) {
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.no_groups")
                 .withStyle(ChatFormatting.RED), false);
             return 0;
         }
-        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.header")
+
+        int pageCount = pageCount(groups.size());
+        if (!validatePage(source, page, pageCount)) return 0;
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.groups_header", page, pageCount)
             .withStyle(ChatFormatting.GOLD), false);
-        for (String groupId : groups) {
-            Map<LogisticsNode, NodeRole> nodes = manager.getNodesInGroup(groupId);
-            if (nodes.isEmpty()) continue;
+        for (GroupKey groupKey : page(groups, page)) {
+            String groupName = groupName(manager, groupKey);
+            String ownerName = source.getServer().getProfileCache().get(groupKey.ownerId())
+                .map(GameProfile::getName)
+                .orElse(groupKey.ownerId().toString());
+            int nodeCount = manager.getNodesInGroup(groupKey).size();
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.group_entry",
-                groupId, nodes.size()).withStyle(ChatFormatting.AQUA), false);
-            for (var entry : nodes.entrySet()) {
-                LogisticsNode node = entry.getKey();
-                NodeRole role = entry.getValue();
-                String posStr = String.format("%d %d %d",
-                    node.gPos().pos().getX(), node.gPos().pos().getY(), node.gPos().pos().getZ());
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.node_entry",
-                        posStr, node.face().getName(), role.name().toLowerCase())
-                    .withStyle(ChatFormatting.GRAY), false);
-            }
+                groupName, ownerName, nodeCount).withStyle(ChatFormatting.AQUA), false);
+        }
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.groups_help")
+            .withStyle(ChatFormatting.DARK_GRAY), false);
+        return 1;
+    }
+
+    private static int listGroupNodes(CommandContext<CommandSourceStack> ctx, int page) {
+        var source = ctx.getSource();
+        var manager = GlobalLogisticsManager.get(source.getServer());
+        String requestedName = StringArgumentType.getString(ctx, "group");
+        List<GroupKey> matches = manager.getActiveGroupKeys().stream()
+            .filter(key -> requestedName.equals(manager.getGroupDisplayName(key)))
+            .toList();
+        if (matches.isEmpty()) {
+            source.sendFailure(Component.translatable("commands.staticlogistics.list.group_not_found", requestedName));
+            return 0;
+        }
+        if (matches.size() > 1) {
+            source.sendFailure(Component.translatable("commands.staticlogistics.list.group_ambiguous", requestedName));
+            return 0;
+        }
+
+        GroupKey groupKey = matches.getFirst();
+        List<Map.Entry<LogisticsNode, NodeRole>> nodes = manager.getNodesInGroup(groupKey).entrySet().stream()
+            .sorted(Map.Entry.comparingByKey(Comparator
+                .comparing((LogisticsNode node) -> node.gPos().dimension().location().toString())
+                .thenComparingLong(node -> node.gPos().pos().asLong())
+                .thenComparingInt(node -> node.face().ordinal())))
+            .toList();
+        int pageCount = pageCount(nodes.size());
+        if (!validatePage(source, page, pageCount)) return 0;
+
+        source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.group_header",
+            requestedName, page, pageCount).withStyle(ChatFormatting.GOLD), false);
+        for (var entry : page(nodes, page)) {
+            LogisticsNode node = entry.getKey();
+            String position = String.format("%d %d %d", node.gPos().pos().getX(),
+                node.gPos().pos().getY(), node.gPos().pos().getZ());
+            String dimension = node.gPos().dimension().location().toString();
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.list.node_entry",
+                    dimension, position, node.face().getName(), entry.getValue().name().toLowerCase(Locale.ROOT))
+                .withStyle(ChatFormatting.GRAY), false);
         }
         return 1;
+    }
+
+    private static String groupName(GlobalLogisticsManager manager, GroupKey groupKey) {
+        String name = manager.getGroupDisplayName(groupKey);
+        return name == null ? groupKey.internalId().toString() : name;
+    }
+
+    private static int pageCount(int size) {
+        return Math.max(1, (size + LIST_PAGE_SIZE - 1) / LIST_PAGE_SIZE);
+    }
+
+    private static boolean validatePage(CommandSourceStack source, int page, int pageCount) {
+        if (page <= pageCount) return true;
+        source.sendFailure(Component.translatable("commands.staticlogistics.list.invalid_page", page, pageCount));
+        return false;
+    }
+
+    private static <T> List<T> page(List<T> values, int page) {
+        int from = (page - 1) * LIST_PAGE_SIZE;
+        return values.subList(from, Math.min(from + LIST_PAGE_SIZE, values.size()));
     }
 
 }

@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.filter.FilterEvaluator;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.logistics.util.SaturatedMath;
 import com.coobird.staticlogistics.transfer.strategy.ItemExtractionStrategy;
 import com.mojang.logging.LogUtils;
@@ -27,8 +28,8 @@ import java.util.function.Supplier;
 /**
  * 物品资源适配器 —— 带提取策略、过滤器检查、存量维持。
  *
- * <p>extractTyped 返回 {@code ExtractionResult<ItemStack>}，context 中携带槽位索引（{@code Integer}）。
- * executeExtract 使用该索引从源容器精确提取。
+ * <p>extractTyped 返回 {@code ExtractionResult<ItemStack>}，context 中携带精确槽位及其轮询位置。
+ * executeExtract 使用该计划从源容器提交提取，并在成功后推进轮询游标。
  */
 public class ItemResource implements LogisticsResource<IItemHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -42,6 +43,9 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     // 动态复用候选槽位，兼容聚合存储控制器而不设静默 1024 槽上限。
     private static final ThreadLocal<IntArrayList> TL_SLOT_ORDER =
         ThreadLocal.withInitial(() -> new IntArrayList(64));
+
+    private record ExtractionPlan(int slotIndex, int orderIndex, int passCount) {
+    }
 
     @Override
     public ResourceLocation typeId() {
@@ -66,6 +70,11 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     @Override
     public IntSupplier baseStackSizeSupplier() {
         return SLConfig::getItemStack;
+    }
+
+    @Override
+    public int maxTransactionsPerActivation() {
+        return LogisticsConstants.Performance.getMaxItemTransactionsPerActivation();
     }
 
     @Override
@@ -113,7 +122,7 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
                 int s = slotOrder.getInt(idx);
                 ItemStack sim = handle.extractItem(s, limit, true);
                 if (!sim.isEmpty()) {
-                    return ExtractionResult.of(sim, s);
+                    return ExtractionResult.of(sim, new ExtractionPlan(s, idx, passCount));
                 }
             }
             return ExtractionResult.of(ItemStack.EMPTY);
@@ -187,9 +196,23 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     public ExtractionResult<?> executeExtract(IItemHandler handle, ExtractionResult<?> simulated, long requested,
                                               @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                                               @Nullable TransferContext context) {
-        if (!(simulated.context() instanceof Integer slotIdx)) return ExtractionResult.of(ItemStack.EMPTY);
-        ItemStack extracted = handle.extractItem(slotIdx, SaturatedMath.toNonNegativeInt(requested), false);
-        return ExtractionResult.of(extracted, slotIdx);
+        if (!(simulated.context() instanceof ExtractionPlan plan)) return ExtractionResult.of(ItemStack.EMPTY);
+        ItemStack extracted = handle.extractItem(plan.slotIndex(), SaturatedMath.toNonNegativeInt(requested), false);
+        if (!extracted.isEmpty()) advanceStrategy(sourceCfg, context, plan);
+        return ExtractionResult.of(extracted, plan);
+    }
+
+    @Override
+    public boolean advanceRejectedCandidate(ExtractionResult<?> simulated,
+                                            @Nullable FaceConfigComposite sourceCfg,
+                                            @Nullable TransferContext context) {
+        if (!(simulated.context() instanceof ExtractionPlan plan) || sourceCfg == null || context == null) {
+            return false;
+        }
+        ItemExtractionStrategy strategy = ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode());
+        if (!strategy.supportsRejectedCandidateAdvance()) return false;
+        strategy.advanceAfterAttempt(plan.orderIndex(), plan.passCount(), context);
+        return true;
     }
 
     @Override
@@ -201,5 +224,13 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     public Object withAmount(Object value, long amount) {
         return value instanceof ItemStack stack
             ? stack.copyWithCount(SaturatedMath.toNonNegativeInt(amount)) : null;
+    }
+
+    private static void advanceStrategy(@Nullable FaceConfigComposite sourceCfg,
+                                        @Nullable TransferContext context,
+                                        ExtractionPlan plan) {
+        if (sourceCfg == null || context == null) return;
+        ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode())
+            .advanceAfterAttempt(plan.orderIndex(), plan.passCount(), context);
     }
 }

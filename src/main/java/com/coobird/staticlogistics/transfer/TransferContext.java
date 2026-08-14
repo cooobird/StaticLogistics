@@ -42,15 +42,24 @@ public final class TransferContext implements ITransferContext {
     private long limit;
     private boolean isPullMode;
     private long currentTick;
+    private long deadlineNanos;
     private int depth;
     private LinkManager linkManager;
 
     private TransferContext() {
     }
 
+    public static TransferContext obtain(ServerLevel level, LogisticsNode sourceNode,
+                                         FaceConfigComposite sourceConfig, LogisticsResource<?> type,
+                                         long limit, boolean isPullMode, long currentTick,
+                                         LinkManager linkManager) {
+        return obtain(level, sourceNode, sourceConfig, type, limit, isPullMode,
+            currentTick, Long.MAX_VALUE, linkManager);
+    }
+
     public static TransferContext obtain(ServerLevel level, LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
                                          LogisticsResource<?> type, long limit, boolean isPullMode, long currentTick,
-                                         LinkManager linkManager) {
+                                         long deadlineNanos, LinkManager linkManager) {
         TransferContext ctx = POOL.poll();
         if (ctx == null) ctx = new TransferContext();
         ctx.level = level;
@@ -60,6 +69,7 @@ public final class TransferContext implements ITransferContext {
         ctx.limit = limit;
         ctx.isPullMode = isPullMode;
         ctx.currentTick = currentTick;
+        ctx.deadlineNanos = deadlineNanos;
         ctx.depth = 0;
         ctx.linkManager = linkManager;
         return ctx;
@@ -82,7 +92,7 @@ public final class TransferContext implements ITransferContext {
         FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(source.sourceNode()));
         if (config == null) return null;
         TransferContext copied = obtain(sourceLevel, source.sourceNode(), config, expectedType,
-            source.limit(), source.isPullMode(), source.currentTick(), manager);
+            source.limit(), source.isPullMode(), source.currentTick(), Long.MAX_VALUE, manager);
         copied.depth = Math.max(0, source.depth()) + 1;
         return copied;
     }
@@ -95,6 +105,7 @@ public final class TransferContext implements ITransferContext {
         this.limit = 0;
         this.isPullMode = false;
         this.currentTick = 0;
+        this.deadlineNanos = 0L;
         this.depth = 0;
         this.linkManager = null;
         if (POOL.size() < LogisticsConstants.Performance.getTransferContextPoolSize()) {
@@ -103,7 +114,8 @@ public final class TransferContext implements ITransferContext {
     }
 
     public TransferContext withIncrementedDepth() {
-        TransferContext newCtx = obtain(level, sourceNode, sourceConfig, type, limit, isPullMode, currentTick, linkManager);
+        TransferContext newCtx = obtain(
+            level, sourceNode, sourceConfig, type, limit, isPullMode, currentTick, deadlineNanos, linkManager);
         newCtx.depth = this.depth + 1;
         return newCtx;
     }
@@ -147,6 +159,10 @@ public final class TransferContext implements ITransferContext {
 
     public long currentTick() {
         return currentTick;
+    }
+
+    public boolean hasTimeRemaining() {
+        return deadlineNanos == Long.MAX_VALUE || System.nanoTime() - deadlineNanos < 0L;
     }
 
     public int depth() {

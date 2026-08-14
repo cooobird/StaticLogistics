@@ -91,9 +91,11 @@ public final class LogisticsTicker {
         int candidateBudget = (int) Math.clamp(requestedCandidates, 1L, Integer.MAX_VALUE);
         long timeBudget = Math.max(1, LogisticsConstants.Performance.getTickerTimeBudgetNanos());
         long started = System.nanoTime();
+        long deadline = started + timeBudget;
         int candidates = 0;
 
         while (candidates < candidateBudget) {
+            if (System.nanoTime() - deadline >= 0L) break;
             int nodeIndex = cursor.nodeIndex;
             int typeIndex = cursor.typeIndex;
             advanceCursor(cursor, sourceKeys.length, types.length);
@@ -105,7 +107,7 @@ public final class LogisticsTicker {
                 LogisticsResource<?> type = types[typeIndex];
                 if (config.isTypeSelected(type)) {
                     processCandidate(level, dimension, currentTick, state, manager,
-                        sourceKey, config, type);
+                        sourceKey, config, type, deadline);
                 }
             }
 
@@ -123,7 +125,7 @@ public final class LogisticsTicker {
     private static void processCandidate(
         ServerLevel level, ResourceKey<Level> dimension, long currentTick,
         RuntimeState state, LinkManager manager, FaceAddress sourceKey,
-        FaceConfigComposite config, LogisticsResource<?> type
+        FaceConfigComposite config, LogisticsResource<?> type, long deadline
     ) {
         boolean needsCooldown = type.requiresCooldown();
         if (needsCooldown && state.cooldowns.hasCooldown(
@@ -133,7 +135,7 @@ public final class LogisticsTicker {
         LogisticsNode sourceNode = manager.createNodeFromKey(sourceKey);
         long limit = config.getTransferLimit(type);
         TransferContext context = TransferContext.obtain(
-            level, sourceNode, config, type, limit, false, currentTick, manager);
+            level, sourceNode, config, type, limit, false, currentTick, deadline, manager);
         boolean moved;
         try {
             moved = TRANSFER_EXECUTOR.executeTransfer(context);

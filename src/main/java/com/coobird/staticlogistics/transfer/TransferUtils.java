@@ -158,6 +158,14 @@ public class TransferUtils {
         default boolean canInsert(C dest, T stack, LogisticsNode targetNode) {
             return true;
         }
+
+        default int maxTransactionsPerActivation() {
+            return 1;
+        }
+
+        default boolean advanceRejectedCandidate(ExtractionResult<T> simulated) {
+            return false;
+        }
     }
 
 }

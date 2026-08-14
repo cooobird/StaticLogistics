@@ -74,18 +74,20 @@ All filters support blacklist mode (invert match). All match strategies support 
 
 Requires permission level 2.
 
-| Command                             | Description                                         |
-|-------------------------------------|-----------------------------------------------------|
-| /sl info [pos]                      | Show container + 6-face config details at position  |
-| /sl list                            | List all active groups with member nodes            |
-| /sl stats                           | Transfer statistics overview                        |
-| /sl stats recent                    | Last 20 transfers with timestamps                   |
-| /sl stats top                       | Top sender and receiver nodes by count              |
-| /sl stats reset                     | Reset all transfer statistics                       |
-| /sl transfer <from> <to>            | Transfer all node ownership to another player       |
-| /sl transfer <from> group <id> <to> | Transfer a specific group                           |
-| /sl rename <owner> <old> <new>      | Rename a group                                      |
-| /sl cleanup <owner>                 | Delete all nodes owned by a player                  |
+| Command                             | Description                                        |
+|-------------------------------------|----------------------------------------------------|
+| /sl info [pos]                      | Show container + 6-face config details at position |
+| /sl list                            | Show the first page of active logistics groups     |
+| /sl list page <page>                | List active logistics groups by page               |
+| /sl list group <group> [page]       | List nodes in one group by page                    |
+| /sl stats                           | Transfer statistics overview                       |
+| /sl stats recent                    | Last 20 transfers with timestamps                  |
+| /sl stats top                       | Top sender and receiver nodes by count             |
+| /sl stats reset                     | Reset all transfer statistics                      |
+| /sl transfer <from> <to>            | Transfer all node ownership to another player      |
+| /sl transfer <from> group <id> <to> | Transfer a specific group                          |
+| /sl rename <owner> <old> <new>      | Rename a group                                     |
+| /sl cleanup <owner>                 | Delete all nodes owned by a player                 |
 
 ## Server Config
 

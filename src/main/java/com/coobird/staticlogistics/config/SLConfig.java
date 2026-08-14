@@ -73,6 +73,8 @@ public final class SLConfig {
     public static ModConfigSpec.IntValue PERF_TICKER_BATCH_SIZE;
     // 单维度物流调度的软时间预算（微秒）
     public static ModConfigSpec.IntValue PERF_TICKER_TIME_BUDGET_US;
+    // 单次节点激活最多提交的物品槽位事务数
+    public static ModConfigSpec.IntValue PERF_MAX_ITEM_TRANSACTIONS;
     // 冷却清理间隔（tick）
     public static ModConfigSpec.IntValue PERF_CLEAN_INTERVAL;
     // 传输失败后的默认冷却时间（tick）
@@ -117,6 +119,7 @@ public final class SLConfig {
     // 性能设置缓存值
     private static volatile int perfTickerBatchSize = 50;
     private static volatile int perfTickerTimeBudgetUs = 1_500;
+    private static volatile int perfMaxItemTransactions = 16;
     private static volatile int perfCleanInterval = 200;
     private static volatile int perfDefaultCooldown = 10;
     private static volatile int perfBatchCleanThreshold = 500;
@@ -181,6 +184,10 @@ public final class SLConfig {
             .translation("config.staticlogistics.performance.ticker_time_budget_us")
             .comment("Soft scheduler time budget per dimension tick in microseconds.")
             .defineInRange("ticker_time_budget_us", 1_500, 100, 10_000);
+        PERF_MAX_ITEM_TRANSACTIONS = builder
+            .translation("config.staticlogistics.performance.max_item_transactions")
+            .comment("Maximum item slot transactions committed per node activation. Higher values may increase server load.")
+            .defineInRange("max_item_transactions", 16, 1, 256);
         PERF_CLEAN_INTERVAL = builder
             .translation("config.staticlogistics.performance.clean_interval")
             .comment("Cooldown cleanup interval in ticks.")
@@ -266,6 +273,7 @@ public final class SLConfig {
 
         perfTickerBatchSize = PERF_TICKER_BATCH_SIZE.get();
         perfTickerTimeBudgetUs = PERF_TICKER_TIME_BUDGET_US.get();
+        perfMaxItemTransactions = PERF_MAX_ITEM_TRANSACTIONS.get();
         perfCleanInterval = PERF_CLEAN_INTERVAL.get();
         perfDefaultCooldown = PERF_DEFAULT_COOLDOWN.get();
         perfBatchCleanThreshold = PERF_BATCH_CLEAN_THRESHOLD.get();
@@ -344,6 +352,10 @@ public final class SLConfig {
         return perfTickerTimeBudgetUs * 1_000L;
     }
 
+    public static int getMaxItemTransactionsPerActivation() {
+        return perfMaxItemTransactions;
+    }
+
     public static int getPerfCleanInterval() {
         return perfCleanInterval;
     }
@@ -405,6 +417,7 @@ public final class SLConfig {
         tag.putInt("networkMaxBulkEntries", networkMaxBulkEntries);
         tag.putInt("tickerBatchSize", perfTickerBatchSize);
         tag.putInt("tickerTimeBudgetUs", perfTickerTimeBudgetUs);
+        tag.putInt("maxItemTransactions", perfMaxItemTransactions);
         tag.putInt("cleanInterval", perfCleanInterval);
         tag.putInt("defaultCooldown", perfDefaultCooldown);
         tag.putInt("batchCleanThreshold", perfBatchCleanThreshold);
@@ -439,6 +452,8 @@ public final class SLConfig {
         perfTickerBatchSize = tag.getInt("tickerBatchSize");
         perfTickerTimeBudgetUs = tag.contains("tickerTimeBudgetUs")
             ? tag.getInt("tickerTimeBudgetUs") : 1_500;
+        perfMaxItemTransactions = tag.contains("maxItemTransactions")
+            ? tag.getInt("maxItemTransactions") : 16;
         perfCleanInterval = tag.getInt("cleanInterval");
         perfDefaultCooldown = tag.getInt("defaultCooldown");
         perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");

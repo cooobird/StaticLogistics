@@ -33,7 +33,7 @@ import java.util.UUID;
  * 客户端网络预览布局的唯一持久化仓库。
  *
  * <p>布局是玩家本地的显示偏好，不进入服务端物流数据和物品组件。仓库以稳定的
- * 分组身份和方块位置保存节点位置、缩放与平移；GUI 只读写内存状态，在界面
+ * 分组身份和方块位置保存节点位置；GUI 只读写内存状态，在界面
  * 关闭或退出存档时统一原子落盘，避免拖动过程中频繁访问磁盘。
  */
 @OnlyIn(Dist.CLIENT)
@@ -42,13 +42,11 @@ public enum NetworkPreviewLayoutStore {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int FORMAT_VERSION = 3;
+    private static final int FORMAT_VERSION = 4;
     private static final int MAX_GROUPS = 4_096;
     private static final int MAX_NODES_PER_GROUP = 16_384;
     private static final long MAX_FILE_BYTES = 16L * 1024L * 1024L;
     private static final int MAX_VIEW_COORDINATE = 1_000_000;
-    private static final double MIN_STORED_ZOOM = 0.1D;
-    private static final double MAX_STORED_ZOOM = 4.0D;
     private static final Path FILE = FMLPaths.CONFIGDIR.get()
         .resolve("staticlogistics")
         .resolve("network-preview-layouts.json");
@@ -165,12 +163,6 @@ public enum NetworkPreviewLayoutStore {
         GroupKey groupKey = new GroupKey(UUID.fromString(json.get("owner").getAsString()),
             UUID.fromString(json.get("group").getAsString()));
         Layout layout = new Layout();
-        layout.setView(
-            finite(json.get("pan_x").getAsDouble(), 0.0D),
-            finite(json.get("pan_y").getAsDouble(), 0.0D),
-            clamp(finite(json.get("zoom").getAsDouble(), 1.0D),
-                MIN_STORED_ZOOM, MAX_STORED_ZOOM));
-
         JsonArray nodes = json.getAsJsonArray("nodes");
         int count = Math.min(nodes.size(), MAX_NODES_PER_GROUP);
         for (int index = 0; index < count; index++) {
@@ -201,9 +193,6 @@ public enum NetworkPreviewLayoutStore {
         JsonObject json = new JsonObject();
         json.addProperty("owner", groupKey.ownerId().toString());
         json.addProperty("group", groupKey.internalId().toString());
-        json.addProperty("pan_x", layout.panX);
-        json.addProperty("pan_y", layout.panY);
-        json.addProperty("zoom", layout.zoom);
         JsonArray nodes = new JsonArray();
         layout.nodePositions.forEach((node, position) -> {
             JsonObject nodeJson = new JsonObject();
@@ -262,15 +251,11 @@ public enum NetworkPreviewLayoutStore {
     }
 
     /**
-     * 单个分组的可变视图状态，仅由客户端渲染线程访问。
+     * 单个分组的可变节点布局，仅由客户端渲染线程访问。
      */
     public static final class Layout {
         private final Map<LogisticsNode, Position> nodePositions = new LinkedHashMap<>();
         private final Map<GlobalPos, Position> legacyNodePositions = new LinkedHashMap<>();
-        private double panX;
-        private double panY;
-        private double zoom = 1.0D;
-        private boolean viewInitialized;
 
         public Map<LogisticsNode, Position> nodePositions() {
             return nodePositions;
@@ -280,27 +265,5 @@ public enum NetworkPreviewLayoutStore {
             return legacyNodePositions;
         }
 
-        public double panX() {
-            return panX;
-        }
-
-        public double panY() {
-            return panY;
-        }
-
-        public double zoom() {
-            return zoom;
-        }
-
-        public boolean isViewInitialized() {
-            return viewInitialized;
-        }
-
-        public void setView(double panX, double panY, double zoom) {
-            this.panX = panX;
-            this.panY = panY;
-            this.zoom = zoom;
-            this.viewInitialized = true;
-        }
     }
 }

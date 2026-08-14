@@ -168,6 +168,11 @@ public class TransferRegistries {
         }
 
         @Override
+        public int maxTransactionsPerActivation() {
+            return delegate.maxTransactionsPerActivation();
+        }
+
+        @Override
         public TransactionCapabilities transactionCapabilities() {
             return delegate.transactionCapabilities();
         }
@@ -237,6 +242,13 @@ public class TransferRegistries {
                                                   @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                                                   @Nullable TransferContext context) {
             return delegate.executeExtract(handle, simulated, requested, sourceCfg, isPullMode, context);
+        }
+
+        @Override
+        public boolean advanceRejectedCandidate(ExtractionResult<?> simulated,
+                                                @Nullable FaceConfigComposite sourceCfg,
+                                                @Nullable TransferContext context) {
+            return delegate.advanceRejectedCandidate(simulated, sourceCfg, context);
         }
 
         @Override

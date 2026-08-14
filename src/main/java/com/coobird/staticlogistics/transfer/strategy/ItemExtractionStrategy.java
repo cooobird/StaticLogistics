@@ -28,12 +28,18 @@ public interface ItemExtractionStrategy {
     int beginTick(int passCount, TransferContext ctx);
 
     /**
-     * 每个 tick 传输结束后调用，更新游标等持久状态。
+     * 当前候选已成功传输或确定无法被任何目标接收后，推进持久游标。
      *
-     * @param lastProcessedIdx 本轮最后一个成功提取的 slotOrder 中的索引
-     * @param passCount        槽位数量
-     * @param ctx              传输上下文
-     * @param movedAny         本轮是否实际传输了物品
+     * @param processedIdx 当前候选在 slotOrder 中的索引
+     * @param passCount    本次通过过滤的槽位数量
+     * @param ctx          传输上下文
      */
-    void endTick(int lastProcessedIdx, int passCount, TransferContext ctx, boolean movedAny);
+    void advanceAfterAttempt(int processedIdx, int passCount, TransferContext ctx);
+
+    /**
+     * 是否允许在候选被全部目标拒绝后跳到下一候选。
+     */
+    default boolean supportsRejectedCandidateAdvance() {
+        return false;
+    }
 }
