@@ -24,26 +24,26 @@ public record C2SUpdateToolGroupPayload(String groupId, @Nullable GroupKey group
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolGroupPayload>
         STREAM_CODEC = new StreamCodec<>() {
-            @Override
-            public C2SUpdateToolGroupPayload decode(RegistryFriendlyByteBuf buffer) {
-                String groupId = BoundedNetworkCodecs.GROUP_NAME.decode(buffer);
-                GroupKey groupKey =
-                    buffer.readBoolean() ? GroupKey.STREAM_CODEC.decode(buffer) : null;
-                return new C2SUpdateToolGroupPayload(groupId, groupKey);
-            }
+        @Override
+        public C2SUpdateToolGroupPayload decode(RegistryFriendlyByteBuf buffer) {
+            String groupId = BoundedNetworkCodecs.GROUP_NAME.decode(buffer);
+            GroupKey groupKey =
+                buffer.readBoolean() ? GroupKey.STREAM_CODEC.decode(buffer) : null;
+            return new C2SUpdateToolGroupPayload(groupId, groupKey);
+        }
 
-            @Override
-            public void encode(
-                RegistryFriendlyByteBuf buffer,
-                C2SUpdateToolGroupPayload payload
-            ) {
-                BoundedNetworkCodecs.GROUP_NAME.encode(buffer, payload.groupId());
-                buffer.writeBoolean(payload.groupKey() != null);
-                if (payload.groupKey() != null) {
-                    GroupKey.STREAM_CODEC.encode(buffer, payload.groupKey());
-                }
+        @Override
+        public void encode(
+            RegistryFriendlyByteBuf buffer,
+            C2SUpdateToolGroupPayload payload
+        ) {
+            BoundedNetworkCodecs.GROUP_NAME.encode(buffer, payload.groupId());
+            buffer.writeBoolean(payload.groupKey() != null);
+            if (payload.groupKey() != null) {
+                GroupKey.STREAM_CODEC.encode(buffer, payload.groupKey());
             }
-        };
+        }
+    };
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

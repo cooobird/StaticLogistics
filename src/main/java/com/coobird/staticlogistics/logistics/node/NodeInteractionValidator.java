@@ -42,7 +42,7 @@ public final class NodeInteractionValidator {
      */
     public static boolean isDirectInteractionTargetValid(ServerPlayer player, BlockPos pos, Direction face) {
         return isDirectBlockTargetValid(player, pos, face)
-            && TransferUtils.hasLogisticsCapability((ServerLevel) player.level(), pos, face);
+            && TransferUtils.hasLogisticsCapability(player.level(), pos, face);
     }
 
     /**

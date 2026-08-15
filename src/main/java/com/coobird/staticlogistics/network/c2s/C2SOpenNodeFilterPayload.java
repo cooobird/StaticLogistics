@@ -26,10 +26,10 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
     public static final Type<C2SOpenNodeFilterPayload> TYPE = new Type<>(StaticLogistics.asResource("open_node_filter"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenNodeFilterPayload> STREAM_CODEC = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, C2SOpenNodeFilterPayload::pos,
-            Direction.STREAM_CODEC, C2SOpenNodeFilterPayload::face,
-            ByteBufCodecs.BOOL, C2SOpenNodeFilterPayload::input,
-            C2SOpenNodeFilterPayload::new);
+        BlockPos.STREAM_CODEC, C2SOpenNodeFilterPayload::pos,
+        Direction.STREAM_CODEC, C2SOpenNodeFilterPayload::face,
+        ByteBufCodecs.BOOL, C2SOpenNodeFilterPayload::input,
+        C2SOpenNodeFilterPayload::new);
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

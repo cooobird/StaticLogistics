@@ -22,9 +22,9 @@ public record C2SReturnToLinkConfiguratorPayload(BlockPos pos, Direction face) i
     public static final Type<C2SReturnToLinkConfiguratorPayload> TYPE = new Type<>(StaticLogistics.asResource("return_to_link_configurator"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SReturnToLinkConfiguratorPayload> STREAM_CODEC = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::pos,
-            Direction.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::face,
-            C2SReturnToLinkConfiguratorPayload::new);
+        BlockPos.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::pos,
+        Direction.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::face,
+        C2SReturnToLinkConfiguratorPayload::new);
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

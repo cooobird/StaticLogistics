@@ -374,7 +374,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("commands.staticlogistics.list.invalid_page", "Page %d does not exist. Last page: %d.", "第 %d 页不存在，最后一页为第 %d 页。");
 
 
-
         add("commands.staticlogistics.stats.header", "═════ StaticLogistics Stats ═════", "═════ StaticLogistics 传输统计 ═════");
         add("commands.staticlogistics.stats.total", "Total Transfers: %s", "总传输次数：%s");
         add("commands.staticlogistics.stats.amount", "Total Amount: %s", "总传输量：%s");

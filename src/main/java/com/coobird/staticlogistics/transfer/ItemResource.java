@@ -252,9 +252,9 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
 
         @Override
         public boolean advanceRejected(ExtractionResult<?> simulated) {
-            if (!(simulated.context() instanceof ExtractionPlan plan)
-                || plan.sessionIdentity() != sessionIdentity
-                || pendingSlot != plan.slotIndex()) {
+            if (!(simulated.context() instanceof ExtractionPlan(Object identity, int slotIndex))
+                || identity != sessionIdentity
+                || pendingSlot != slotIndex) {
                 return false;
             }
             resolvePendingSlot();

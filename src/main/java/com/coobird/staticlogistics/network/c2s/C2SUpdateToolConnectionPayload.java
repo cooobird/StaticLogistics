@@ -21,24 +21,24 @@ public record C2SUpdateToolConnectionPayload(@Nullable ConnectionKey connectionK
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SUpdateToolConnectionPayload>
         STREAM_CODEC = new StreamCodec<>() {
-            @Override
-            public C2SUpdateToolConnectionPayload decode(RegistryFriendlyByteBuf buffer) {
-                ConnectionKey connectionKey =
-                    buffer.readBoolean() ? ConnectionKey.STREAM_CODEC.decode(buffer) : null;
-                return new C2SUpdateToolConnectionPayload(connectionKey);
-            }
+        @Override
+        public C2SUpdateToolConnectionPayload decode(RegistryFriendlyByteBuf buffer) {
+            ConnectionKey connectionKey =
+                buffer.readBoolean() ? ConnectionKey.STREAM_CODEC.decode(buffer) : null;
+            return new C2SUpdateToolConnectionPayload(connectionKey);
+        }
 
-            @Override
-            public void encode(
-                RegistryFriendlyByteBuf buffer,
-                C2SUpdateToolConnectionPayload payload
-            ) {
-                buffer.writeBoolean(payload.connectionKey() != null);
-                if (payload.connectionKey() != null) {
-                    ConnectionKey.STREAM_CODEC.encode(buffer, payload.connectionKey());
-                }
+        @Override
+        public void encode(
+            RegistryFriendlyByteBuf buffer,
+            C2SUpdateToolConnectionPayload payload
+        ) {
+            buffer.writeBoolean(payload.connectionKey() != null);
+            if (payload.connectionKey() != null) {
+                ConnectionKey.STREAM_CODEC.encode(buffer, payload.connectionKey());
             }
-        };
+        }
+    };
 
     @Override
     public Type<? extends CustomPacketPayload> type() {
