@@ -15,10 +15,7 @@ import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 传输工具类 —— 提供传输协议接口和 capability 查询工具。
@@ -80,6 +77,50 @@ public class TransferUtils {
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * 按资源能力覆盖度返回方块的可用物流面。
+     *
+     * <p>玩家命中的面在覆盖度相同时优先，随后保持原版方向顺序。未选择传输类型时，
+     * 使用全部已注册类型寻找一个可建链面；已经选择类型时，只统计这些类型，避免批量选点
+     * 落到与当前传输目标无关的能力面上。
+     */
+    public static List<Direction> getCapabilityFaces(
+        ServerLevel level,
+        BlockPos pos,
+        Direction preferredFace,
+        Collection<ResourceLocation> selectedTypeIds
+    ) {
+        Set<ResourceLocation> selected = new LinkedHashSet<>(selectedTypeIds);
+        List<LogisticsResource<?>> types = selected.isEmpty()
+            ? List.copyOf(TransferRegistries.getAllActive())
+            : TransferRegistries.getAllActive().stream()
+            .filter(type -> selected.contains(type.typeId()))
+            .toList();
+        if (types.isEmpty()) return List.of();
+
+        List<Direction> directions = new ArrayList<>(Direction.values().length);
+        directions.add(preferredFace);
+        for (Direction direction : Direction.values()) {
+            if (direction != preferredFace) directions.add(direction);
+        }
+
+        List<CapabilityFace> available = new ArrayList<>();
+        for (Direction direction : directions) {
+            int supportedTypes = 0;
+            for (LogisticsResource<?> type : types) {
+                try {
+                    if (type.isPresent(level, pos, direction)) supportedTypes++;
+                } catch (Exception exception) {
+                    LOGGER.error("Capability check failed at {} face {} type {}",
+                        pos, direction, type.typeId(), exception);
+                }
+            }
+            if (supportedTypes > 0) available.add(new CapabilityFace(direction, supportedTypes));
+        }
+        available.sort(Comparator.comparingInt(CapabilityFace::supportedTypes).reversed());
+        return available.stream().map(CapabilityFace::face).toList();
     }
 
     /**
@@ -159,13 +200,18 @@ public class TransferUtils {
             return true;
         }
 
-        default int maxTransactionsPerActivation() {
-            return 1;
+        /**
+         * 单次激活正常结束后，清理仅应在本轮内保留的扫描状态。
+         */
+        default void onActivationCompleted() {
         }
 
         default boolean advanceRejectedCandidate(ExtractionResult<T> simulated) {
             return false;
         }
+    }
+
+    private record CapabilityFace(Direction face, int supportedTypes) {
     }
 
 }

@@ -110,12 +110,13 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
         ResourceValue<V> resource = castResource(value);
         if (resource == null || context == null) return 0L;
         TransferRequest request = request(context, resource.amount());
+        if (!simulate) {
+            return validateAmount(adapter.commitInsert(handle, resource, request),
+                resource.amount(), "commit insert");
+        }
         try {
-            long accepted = simulate
-                ? adapter.simulateInsert(handle, resource, request)
-                : adapter.commitInsert(handle, resource, request);
-            return validateAmount(accepted, resource.amount(),
-                simulate ? "simulation insert" : "commit insert");
+            return validateAmount(adapter.simulateInsert(handle, resource, request),
+                resource.amount(), "simulation insert");
         } catch (RuntimeException exception) {
             LOGGER.error("Resource adapter insert failed for {}", typeId(), exception);
             return 0L;
@@ -135,23 +136,18 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
         SimulationResult<V> simulation = castSimulation(rawSimulation);
         if (simulation == null) return ExtractionResult.of(null);
         TransferRequest request = request(context, requested);
-        try {
-            CommitResult<V> result = adapter.commitExtract(handle, simulation, request);
-            if (result == null || result.status() != CommitResult.Status.SUCCESS
-                || result.resource().isEmpty()) {
-                if (result == null) LOGGER.error("Resource adapter returned null commit result for {}", typeId());
-                return ExtractionResult.of(null);
-            }
-            ResourceValue<V> resource = result.resource().orElseThrow();
-            if (!isValidResource(resource)) {
-                LOGGER.error("Resource adapter returned an invalid committed value for {}", typeId());
-                return ExtractionResult.of(null);
-            }
-            return ExtractionResult.of(resource, simulation);
-        } catch (RuntimeException exception) {
-            LOGGER.error("Resource adapter commit failed for {}", typeId(), exception);
+        CommitResult<V> result = adapter.commitExtract(handle, simulation, request);
+        if (result == null || result.status() != CommitResult.Status.SUCCESS
+            || result.resource().isEmpty()) {
+            if (result == null) LOGGER.error("Resource adapter returned null commit result for {}", typeId());
             return ExtractionResult.of(null);
         }
+        ResourceValue<V> resource = result.resource().orElseThrow();
+        if (!isValidResource(resource)) {
+            LOGGER.error("Resource adapter returned an invalid committed value for {}", typeId());
+            return ExtractionResult.of(null);
+        }
+        return ExtractionResult.of(resource, simulation);
     }
 
     @Override

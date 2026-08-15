@@ -22,10 +22,4 @@ public record TransactionCapabilities(
         return new TransactionCapabilities(true, true, RollbackMode.COMPENSATING);
     }
 
-    /**
-     * 用于提交结果严格等于同 tick 模拟结果、但源句柄不支持反向写入的能力。
-     */
-    public static TransactionCapabilities exactSimulationOnly() {
-        return new TransactionCapabilities(true, true, RollbackMode.NONE);
-    }
 }

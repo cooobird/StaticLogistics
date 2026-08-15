@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkOperationHelper;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -35,6 +36,7 @@ public record C2SClearStoredNodesPayload() implements CustomPacketPayload {
     public static void handle(final C2SClearStoredNodesPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer sp)) return;
+            if (!ServerPacketRateLimiter.allow(sp, ServerPacketRateLimiter.Action.STORED_NODE_CLEAR)) return;
             ItemStack stack = sp.getMainHandItem();
             if (!(stack.getItem() instanceof LinkConfiguratorItem))
                 stack = sp.getOffhandItem();

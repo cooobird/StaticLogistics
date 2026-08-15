@@ -81,16 +81,6 @@ public interface LogisticsResource<C> {
     }
 
     /**
-     * 单次节点激活最多允许提交的独立事务数。
-     *
-     * <p>默认值为 1，以保持连续型资源原有的一次提取语义。需要跨多个离散槽位累计传输的资源
-     * 可以覆写此方法，但仍受本次传输总量限制。
-     */
-    default int maxTransactionsPerActivation() {
-        return 1;
-    }
-
-    /**
      * 声明底层句柄可兑现的事务保证；注册中心会拒绝不满足统一管线要求的实现。
      */
     TransactionCapabilities transactionCapabilities();
@@ -255,14 +245,26 @@ public interface LogisticsResource<C> {
     }
 
     /**
-     * 当前候选资源被全部目标拒绝后尝试推进源端候选位置。
+     * 为一次节点激活建立提取会话。
      *
-     * @return 是否已推进，可继续尝试下一个候选
+     * <p>默认实现保持连续型资源原有语义；需要遍历多个离散槽位的资源可以覆盖此方法，
+     * 在会话内缓存本轮候选位置。</p>
      */
-    default boolean advanceRejectedCandidate(ExtractionResult<?> simulated,
-                                             @Nullable FaceConfigComposite sourceCfg,
-                                             @Nullable TransferContext context) {
-        return false;
+    default ResourceExtractionSession openExtractionSession(
+        C handle, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+        @Nullable TransferContext context
+    ) {
+        return new ResourceExtractionSession() {
+            @Override
+            public ExtractionResult<?> simulate(long amount) {
+                return extractTyped(handle, amount, true, sourceCfg, isPullMode, context);
+            }
+
+            @Override
+            public ExtractionResult<?> execute(ExtractionResult<?> simulated, long requested) {
+                return executeExtract(handle, simulated, requested, sourceCfg, isPullMode, context);
+            }
+        };
     }
 
     /**

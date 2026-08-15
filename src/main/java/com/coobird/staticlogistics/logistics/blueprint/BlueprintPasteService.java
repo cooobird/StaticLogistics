@@ -56,6 +56,7 @@ public final class BlueprintPasteService {
             if (!level.getChunkSource().hasChunk(absPos.getX() >> 4, absPos.getZ() >> 4)
                 || level.getBlockEntity(absPos) == null
                 || !NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), absPos)
+                || !NodeInteractionValidator.canMutateRemote(player, level, absPos)
                 || !canModifyPosition(mgr, absPos, player)) {
                 player.displayClientMessage(
                     Component.translatable("msg.staticlogistics.blueprint.missing_block", absPos.toShortString())
@@ -528,6 +529,7 @@ public final class BlueprintPasteService {
         return level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
             && level.getBlockEntity(pos) != null
             && NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), pos)
+            && NodeInteractionValidator.canMutateRemote(player, level, pos)
             && canModifyPosition(manager, pos, player);
     }
 

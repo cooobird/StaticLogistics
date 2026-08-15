@@ -58,7 +58,7 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
@@ -73,20 +73,22 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
 
     @Override
     public long extract(ISourceCap handle, long amount, boolean simulate) {
+        if (!simulate) return handle.extractSource(SaturatedMath.toNonNegativeInt(amount), false);
         try {
-            return handle.extractSource(SaturatedMath.toNonNegativeInt(amount), simulate);
-        } catch (Exception e) {
-            LOGGER.error("Ars source extract failed", e);
+            return handle.extractSource(SaturatedMath.toNonNegativeInt(amount), true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Ars source extract simulation failed", exception);
             return 0;
         }
     }
 
     @Override
     public long insert(ISourceCap handle, long amount, boolean simulate) {
+        if (!simulate) return handle.receiveSource(SaturatedMath.toNonNegativeInt(amount), false);
         try {
-            return handle.receiveSource(SaturatedMath.toNonNegativeInt(amount), simulate);
-        } catch (Exception e) {
-            LOGGER.error("Ars source insert failed", e);
+            return handle.receiveSource(SaturatedMath.toNonNegativeInt(amount), true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Ars source insert simulation failed", exception);
             return 0;
         }
     }

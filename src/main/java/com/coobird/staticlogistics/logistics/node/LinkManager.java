@@ -295,6 +295,14 @@ public class LinkManager {
         linkGraphService.removeNodeFromGroupWithoutCleanup(groupKey, node);
     }
 
+    boolean purgeInboundReferences(LogisticsNode removedNode) {
+        return linkGraphService.purgeInboundReferences(removedNode);
+    }
+
+    boolean purgeInboundReferences(Collection<LogisticsNode> removedNodes) {
+        return linkGraphService.purgeInboundReferences(removedNodes);
+    }
+
     void cascadeRemove(LogisticsNode node, FaceConfigComposite config) {
         linkGraphService.cascadeRemove(node, config);
     }

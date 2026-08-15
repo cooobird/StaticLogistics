@@ -9,17 +9,18 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.client.resources.PlayerSkin;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 统一渲染玩家真实皮肤头像，并为不在玩家列表中的所有者异步补全档案纹理。
  */
 public final class PlayerAvatarRenderer {
+    private static final int MAX_CACHED_SKINS = 256;
     private static final Map<UUID, CompletableFuture<PlayerSkin>> SKIN_CACHE =
-        new ConcurrentHashMap<>();
+        new LinkedHashMap<>(32, 0.75F, true);
 
     private PlayerAvatarRenderer() {
     }
@@ -29,10 +30,23 @@ public final class PlayerAvatarRenderer {
         PlayerInfo playerInfo = minecraft.getConnection() == null
             ? null : minecraft.getConnection().getPlayerInfo(playerId);
         PlayerSkin skin = playerInfo == null
-            ? SKIN_CACHE.computeIfAbsent(playerId, PlayerAvatarRenderer::loadSkin)
+            ? getOrLoadSkin(playerId)
             .getNow(DefaultPlayerSkin.get(playerId))
             : playerInfo.getSkin();
         PlayerFaceRenderer.draw(graphics, skin, x, y, size);
+    }
+
+    private static CompletableFuture<PlayerSkin> getOrLoadSkin(UUID playerId) {
+        synchronized (SKIN_CACHE) {
+            CompletableFuture<PlayerSkin> cached = SKIN_CACHE.get(playerId);
+            if (cached != null) return cached;
+            CompletableFuture<PlayerSkin> loaded = loadSkin(playerId);
+            SKIN_CACHE.put(playerId, loaded);
+            while (SKIN_CACHE.size() > MAX_CACHED_SKINS) {
+                SKIN_CACHE.remove(SKIN_CACHE.keySet().iterator().next());
+            }
+            return loaded;
+        }
     }
 
     private static CompletableFuture<PlayerSkin> loadSkin(UUID playerId) {

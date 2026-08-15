@@ -43,6 +43,7 @@ public class FaceConfigComposite {
     private final Map<GroupKey, LinkedHashSet<LogisticsNode>> linkedNodesByGroup = new LinkedHashMap<>();
     private final Set<LogisticsNode> linkedNodes = new ScopedUnionSet();
     private long version = 0;
+    private EndpointFingerprint endpointFingerprint;
     private Consumer<FaceConfigComposite> onDirty = (c) -> {
     };
     private final AggregateChangeTracker changeTracker;
@@ -85,6 +86,7 @@ public class FaceConfigComposite {
             globalInputEnabled = snapshot.globalInputEnabled;
             globalOutputEnabled = snapshot.globalOutputEnabled;
             version = snapshot.version;
+            endpointFingerprint = snapshot.endpointFingerprint;
             markDirty();
         }
     }
@@ -437,6 +439,20 @@ public class FaceConfigComposite {
         this.version = v;
     }
 
+    @Nullable
+    public EndpointFingerprint getEndpointFingerprint() {
+        return endpointFingerprint;
+    }
+
+    void bindEndpoint(Object permit, EndpointFingerprint fingerprint) {
+        if (!(permit instanceof LinkMutationPermit)) {
+            throw new IllegalArgumentException("Endpoint binding permit is required");
+        }
+        if (Objects.equals(endpointFingerprint, fingerprint)) return;
+        endpointFingerprint = Objects.requireNonNull(fingerprint, "Endpoint fingerprint must not be null");
+        markDirty();
+    }
+
     /**
      * 序列化为 NBT（含版本、全局开关、链接节点）
      */
@@ -445,6 +461,10 @@ public class FaceConfigComposite {
         tag.putLong("version", version);
         tag.putBoolean("globalInput", globalInputEnabled);
         tag.putBoolean("globalOutput", globalOutputEnabled);
+        if (endpointFingerprint != null) {
+            tag.putString("endpointBlock", endpointFingerprint.blockId().toString());
+            tag.putString("endpointBlockEntity", endpointFingerprint.blockEntityTypeId().toString());
+        }
         if (!linkedNodesByGroup.isEmpty()) {
             CompoundTag scopedTag = new CompoundTag();
             int scopeIndex = 0;
@@ -486,6 +506,7 @@ public class FaceConfigComposite {
         globalOutputEnabled = migrated.getBoolean("globalOutput");
         ConfigSerializer.deserializeMigratedNBT(permit, this, p, migrated);
         if (migrated.contains("version")) version = migrated.getLong("version");
+        endpointFingerprint = decodeEndpointFingerprint(migrated);
         linkedNodesByGroup.clear();
         if (migrated.contains("linkedNodesByGroup")) {
             CompoundTag scopedTag = migrated.getCompound("linkedNodesByGroup");
@@ -525,6 +546,24 @@ public class FaceConfigComposite {
             }
         }
         disableRolesIfDisconnected();
+    }
+
+    @Nullable
+    private static EndpointFingerprint decodeEndpointFingerprint(CompoundTag tag) {
+        if (!tag.contains("endpointBlock") || !tag.contains("endpointBlockEntity")) return null;
+        ResourceLocation blockId = ResourceLocation.tryParse(tag.getString("endpointBlock"));
+        ResourceLocation blockEntityTypeId = ResourceLocation.tryParse(tag.getString("endpointBlockEntity"));
+        if (blockId == null || blockEntityTypeId == null) {
+            throw new IllegalArgumentException("Invalid endpoint fingerprint");
+        }
+        return new EndpointFingerprint(blockId, blockEntityTypeId);
+    }
+
+    public record EndpointFingerprint(ResourceLocation blockId, ResourceLocation blockEntityTypeId) {
+        public EndpointFingerprint {
+            Objects.requireNonNull(blockId, "Endpoint block id must not be null");
+            Objects.requireNonNull(blockEntityTypeId, "Endpoint block entity type id must not be null");
+        }
     }
 
     public boolean isDefault() {

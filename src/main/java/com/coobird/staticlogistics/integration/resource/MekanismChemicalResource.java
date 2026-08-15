@@ -35,7 +35,7 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
@@ -75,11 +75,11 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
 
     @Override
     public ExtractionResult<ChemicalStack> extractTyped(IChemicalHandler handle, long amount, boolean simulate) {
+        if (!simulate) return ExtractionResult.of(handle.extractChemical(amount, Action.EXECUTE));
         try {
-            ChemicalStack extracted = handle.extractChemical(amount, simulate ? Action.SIMULATE : Action.EXECUTE);
-            return ExtractionResult.of(extracted);
-        } catch (Exception e) {
-            LOGGER.error("Mekanism chemical extract failed", e);
+            return ExtractionResult.of(handle.extractChemical(amount, Action.SIMULATE));
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism chemical extract simulation failed", exception);
             return ExtractionResult.of(ChemicalStack.EMPTY);
         }
     }
@@ -87,11 +87,15 @@ public class MekanismChemicalResource implements LogisticsResource<IChemicalHand
     @Override
     public long insertTyped(IChemicalHandler handle, Object value, boolean simulate) {
         if (!(value instanceof ChemicalStack stack) || stack.isEmpty()) return 0;
-        try {
-            ChemicalStack remainder = handle.insertChemical(stack, simulate ? Action.SIMULATE : Action.EXECUTE);
+        if (!simulate) {
+            ChemicalStack remainder = handle.insertChemical(stack, Action.EXECUTE);
             return stack.getAmount() - remainder.getAmount();
-        } catch (Exception e) {
-            LOGGER.error("Mekanism chemical insert failed", e);
+        }
+        try {
+            ChemicalStack remainder = handle.insertChemical(stack, Action.SIMULATE);
+            return stack.getAmount() - remainder.getAmount();
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism chemical insert simulation failed", exception);
             return 0;
         }
     }

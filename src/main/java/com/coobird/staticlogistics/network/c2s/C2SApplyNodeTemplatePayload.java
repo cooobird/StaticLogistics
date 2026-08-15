@@ -80,7 +80,7 @@ public record C2SApplyNodeTemplatePayload(GroupKey groupKey, LogisticsNode sourc
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)
                 || !ServerPacketRateLimiter.allow(
-                player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
+                player, ServerPacketRateLimiter.Action.NODE_TEMPLATE_CONFIGURATION, payload.targets().size())
                 || !(player.containerMenu instanceof LinkConfiguratorMenu menu)
                 || !menu.hasTarget()
                 || !payload.groupKey().equals(menu.getRemoteGroupKey())

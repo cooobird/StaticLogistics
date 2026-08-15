@@ -5,11 +5,9 @@ import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.filter.FilterEvaluator;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.logistics.util.SaturatedMath;
 import com.coobird.staticlogistics.transfer.strategy.ItemExtractionStrategy;
 import com.mojang.logging.LogUtils;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -28,8 +26,7 @@ import java.util.function.Supplier;
 /**
  * 物品资源适配器 —— 带提取策略、过滤器检查、存量维持。
  *
- * <p>extractTyped 返回 {@code ExtractionResult<ItemStack>}，context 中携带精确槽位及其轮询位置。
- * executeExtract 使用该计划从源容器提交提取，并在成功后推进轮询游标。
+ * <p>每次节点激活只扫描一次物理槽位，并由提取会话保存候选位置与遍历进度。
  */
 public class ItemResource implements LogisticsResource<IItemHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -37,14 +34,10 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
-    // 动态复用候选槽位，兼容聚合存储控制器而不设静默 1024 槽上限。
-    private static final ThreadLocal<IntArrayList> TL_SLOT_ORDER =
-        ThreadLocal.withInitial(() -> new IntArrayList(64));
-
-    private record ExtractionPlan(int slotIndex, int orderIndex, int passCount) {
+    private record ExtractionPlan(Object sessionIdentity, int slotIndex) {
     }
 
     @Override
@@ -73,11 +66,6 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public int maxTransactionsPerActivation() {
-        return LogisticsConstants.Performance.getMaxItemTransactionsPerActivation();
-    }
-
-    @Override
     public @Nullable IItemHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         return level.getCapability(Capabilities.ItemHandler.BLOCK, pos, face);
     }
@@ -88,48 +76,11 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public ExtractionResult<?> extractTyped(IItemHandler handle, long amount, boolean simulate,
-                                            @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                            @Nullable TransferContext context) {
-        if (sourceCfg == null) return ExtractionResult.of(ItemStack.EMPTY);
-        try {
-            int limit = SaturatedMath.toNonNegativeInt(amount);
-            int slots = handle.getSlots();
-            if (slots <= 0) return ExtractionResult.of(ItemStack.EMPTY);
-
-            IntArrayList slotOrder = TL_SLOT_ORDER.get();
-            slotOrder.clear();
-            for (int s = 0; s < slots; s++) {
-                ItemStack sim = handle.extractItem(s, limit, true);
-                if (sim.isEmpty()) continue;
-                if (!FilterEvaluator.isItemOutputAllowed(sim, sourceCfg)) continue;
-                slotOrder.add(s);
-            }
-            int passCount = slotOrder.size();
-            if (passCount == 0) return ExtractionResult.of(ItemStack.EMPTY);
-
-            // 提取策略
-            int startIdx = 0;
-            if (context != null) {
-                ItemExtractionStrategy strategy = ItemExtractionStrategy.forMode(
-                    sourceCfg.linkConfig.getExtractionMode());
-                startIdx = strategy.beginTick(passCount, context);
-            }
-
-            // 按策略顺序查找第一个可用槽位
-            for (int count = 0; count < passCount; count++) {
-                int idx = (startIdx + count) % passCount;
-                int s = slotOrder.getInt(idx);
-                ItemStack sim = handle.extractItem(s, limit, true);
-                if (!sim.isEmpty()) {
-                    return ExtractionResult.of(sim, new ExtractionPlan(s, idx, passCount));
-                }
-            }
-            return ExtractionResult.of(ItemStack.EMPTY);
-        } catch (Exception e) {
-            LOGGER.error("Item extract failed", e);
-            return ExtractionResult.of(ItemStack.EMPTY);
-        }
+    public ResourceExtractionSession openExtractionSession(
+        IItemHandler handle, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+        @Nullable TransferContext context
+    ) {
+        return new ItemExtractionSession(handle, sourceCfg, isPullMode, context);
     }
 
     @Override
@@ -137,17 +88,27 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
                             @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                             @Nullable TransferContext context) {
         if (!(value instanceof ItemStack stack) || stack.isEmpty()) return 0;
+        if (!simulate) return insertIntoHandler(handle, stack, false);
         try {
-            ItemStack remain = simulate ? stack.copy() : stack;
-            for (int i = 0; i < handle.getSlots(); i++) {
-                remain = handle.insertItem(i, remain, simulate);
-                if (remain.isEmpty()) break;
-            }
-            return stack.getCount() - remain.getCount();
-        } catch (Exception e) {
-            LOGGER.error("Item insert failed", e);
+            return insertIntoHandler(handle, stack, true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Item insert simulation failed", exception);
             return 0;
         }
+    }
+
+    private static long insertIntoHandler(IItemHandler handle, ItemStack stack, boolean simulate) {
+        ItemStack remain = simulate ? stack.copy() : stack;
+        int accepted = 0;
+        for (int i = 0; i < handle.getSlots(); i++) {
+            ItemStack next = handle.insertItem(i, remain, simulate);
+            if (next == null) throw new IllegalStateException("Item handler returned null");
+            remain = next;
+            accepted = Math.max(0, Math.min(
+                stack.getCount(), stack.getCount() - remain.getCount()));
+            if (remain.isEmpty()) break;
+        }
+        return accepted;
     }
 
     @Override
@@ -193,29 +154,6 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public ExtractionResult<?> executeExtract(IItemHandler handle, ExtractionResult<?> simulated, long requested,
-                                              @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
-                                              @Nullable TransferContext context) {
-        if (!(simulated.context() instanceof ExtractionPlan plan)) return ExtractionResult.of(ItemStack.EMPTY);
-        ItemStack extracted = handle.extractItem(plan.slotIndex(), SaturatedMath.toNonNegativeInt(requested), false);
-        if (!extracted.isEmpty()) advanceStrategy(sourceCfg, context, plan);
-        return ExtractionResult.of(extracted, plan);
-    }
-
-    @Override
-    public boolean advanceRejectedCandidate(ExtractionResult<?> simulated,
-                                            @Nullable FaceConfigComposite sourceCfg,
-                                            @Nullable TransferContext context) {
-        if (!(simulated.context() instanceof ExtractionPlan plan) || sourceCfg == null || context == null) {
-            return false;
-        }
-        ItemExtractionStrategy strategy = ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode());
-        if (!strategy.supportsRejectedCandidateAdvance()) return false;
-        strategy.advanceAfterAttempt(plan.orderIndex(), plan.passCount(), context);
-        return true;
-    }
-
-    @Override
     public long amountOf(Object value) {
         return value instanceof ItemStack stack ? stack.getCount() : -1L;
     }
@@ -226,11 +164,139 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
             ? stack.copyWithCount(SaturatedMath.toNonNegativeInt(amount)) : null;
     }
 
-    private static void advanceStrategy(@Nullable FaceConfigComposite sourceCfg,
-                                        @Nullable TransferContext context,
-                                        ExtractionPlan plan) {
-        if (sourceCfg == null || context == null) return;
-        ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode())
-            .advanceAfterAttempt(plan.orderIndex(), plan.passCount(), context);
+    /**
+     * 单次激活以流式游标遍历物理槽位，每个槽位本轮最多检查一次。
+     */
+    private static final class ItemExtractionSession implements ResourceExtractionSession {
+        private final IItemHandler handle;
+        private final @Nullable FaceConfigComposite sourceCfg;
+        private final boolean pullMode;
+        private final @Nullable TransferContext context;
+        private final int slotCount;
+        private final int startSlot;
+        private final Object sessionIdentity = new Object();
+        private int scannedSlots;
+        private int pendingSlot = -1;
+
+        private ItemExtractionSession(IItemHandler handle, @Nullable FaceConfigComposite sourceCfg,
+                                      boolean pullMode, @Nullable TransferContext context) {
+            this.handle = handle;
+            this.sourceCfg = sourceCfg;
+            this.pullMode = pullMode;
+            this.context = context;
+            this.slotCount = readSlotCount(handle);
+            this.startSlot = sourceCfg != null && context != null && slotCount > 0
+                ? ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode())
+                .beginActivation(slotCount, context) : 0;
+        }
+
+        @Override
+        public ExtractionResult<?> simulate(long amount) {
+            if (sourceCfg == null) return ExtractionResult.of(ItemStack.EMPTY);
+            int limit = SaturatedMath.toNonNegativeInt(amount);
+            if (pendingSlot >= 0) {
+                try {
+                    ItemStack stack = handle.extractItem(pendingSlot, limit, true);
+                    if (!stack.isEmpty() && isAllowed(stack)) {
+                        return ExtractionResult.of(
+                            stack, new ExtractionPlan(sessionIdentity, pendingSlot));
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Item extract simulation failed", e);
+                }
+                resolvePendingSlot();
+            }
+            while (pendingSlot < 0 && scannedSlots < slotCount
+                && (context == null || context.hasTimeRemaining())) {
+                int slot = (startSlot + scannedSlots++) % slotCount;
+                try {
+                    ItemStack stack = handle.extractItem(slot, limit, true);
+                    if (!stack.isEmpty() && isAllowed(stack)) {
+                        pendingSlot = slot;
+                        return ExtractionResult.of(stack, new ExtractionPlan(sessionIdentity, slot));
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("Item extract simulation failed", e);
+                }
+                advanceCursor(slot);
+            }
+            return ExtractionResult.of(ItemStack.EMPTY);
+        }
+
+        @Override
+        public ExtractionResult<?> execute(ExtractionResult<?> simulated, long requested) {
+            if (!(simulated.value() instanceof ItemStack expected)
+                || !(simulated.context() instanceof ExtractionPlan plan)
+                || plan.sessionIdentity() != sessionIdentity
+                || pendingSlot != plan.slotIndex()) {
+                return ExtractionResult.of(ItemStack.EMPTY);
+            }
+            try {
+                int amount = SaturatedMath.toNonNegativeInt(requested);
+                ItemStack current;
+                try {
+                    current = handle.extractItem(plan.slotIndex(), amount, true);
+                } catch (RuntimeException exception) {
+                    LOGGER.error("Item extract simulation failed", exception);
+                    return ExtractionResult.of(ItemStack.EMPTY, plan);
+                }
+                if (current.isEmpty() || !ItemStack.isSameItemSameComponents(expected, current)
+                    || sourceCfg == null || !isAllowed(current)) {
+                    return ExtractionResult.of(ItemStack.EMPTY, plan);
+                }
+                return ExtractionResult.of(handle.extractItem(plan.slotIndex(), amount, false), plan);
+            } finally {
+                resolvePendingSlot();
+            }
+        }
+
+        @Override
+        public boolean advanceRejected(ExtractionResult<?> simulated) {
+            if (!(simulated.context() instanceof ExtractionPlan plan)
+                || plan.sessionIdentity() != sessionIdentity
+                || pendingSlot != plan.slotIndex()) {
+                return false;
+            }
+            resolvePendingSlot();
+            return true;
+        }
+
+        @Override
+        public void onCompleted() {
+            if (sourceCfg == null || context == null) return;
+            // 只有真正遍历完全部物理槽位才结束一轮顺序扫描。若只是本次传输额度耗尽，
+            // 必须保留下一个槽位游标，避免高产容器持续补充前部槽位时饿死后部槽位。
+            if (scannedSlots >= slotCount) {
+                ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode()).finishActivation(context);
+            }
+        }
+
+        private boolean isAllowed(ItemStack stack) {
+            if (sourceCfg == null) return false;
+            return pullMode ? FilterEvaluator.isItemInputAllowed(stack, sourceCfg)
+                : FilterEvaluator.isItemOutputAllowed(stack, sourceCfg);
+        }
+
+        private void resolvePendingSlot() {
+            if (pendingSlot < 0) return;
+            int slot = pendingSlot;
+            pendingSlot = -1;
+            advanceCursor(slot);
+        }
+
+        private void advanceCursor(int slot) {
+            if (sourceCfg == null || context == null) return;
+            ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode())
+                .advanceAfterAttempt(slot, slotCount, context);
+        }
+
+        private static int readSlotCount(IItemHandler handle) {
+            try {
+                return Math.max(0, handle.getSlots());
+            } catch (Exception e) {
+                LOGGER.error("Item slot count query failed", e);
+                return 0;
+            }
+        }
     }
 }

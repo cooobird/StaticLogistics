@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * 传输执行器 —— 协调目标选择和传输处理器，完成一次完整的传输尝试。
  *
- * <p>调用方（{@link com.coobird.staticlogistics.transfer.LogisticsTicker}）
+ * <p>调用方（{@link LogisticsTicker}）
  * 已完成冷却检查后才调用此方法。
  *
  * <p>执行流程：

@@ -40,6 +40,10 @@ A Minecraft logistics mod for NeoForge 1.21.1 with item, fluid, energy, and inte
 - Click a group to expand its links. Double-click groups or links to rename them, and right-click to remove them.
 - Renaming a group to an existing name merges both groups when they have the same owner.
 - Select nodes in the network preview to configure their faces, or select a connection to highlight and manage only that link.
+- Hold the configurable multi-select key while clicking nodes to add or remove them from the selection. Hold it and drag
+  empty preview space to box-select nodes; right-click empty preview space to clear the selection.
+- Drag any selected node to move the whole selection together. Reopening the configurator automatically centers the
+  visible network.
 - Drag nodes to arrange the layout, drag empty preview space to pan, and use the mouse wheel for proportional zoom.
 - Node positions, zoom, and pan are saved with the world. Selecting a whole group or one link also controls the world preview scope.
 - Valid links use the normal line color; out-of-range links use a warning color and explain their direction and distance in a tooltip.
@@ -109,8 +113,8 @@ botania_mana_stack_size = 1000
 provider_size = 1000           # Expected provider index capacity (not a node limit)
 load_factor = 0.75             # Cache load factor
 max_bulk_entries = 100         # Max entries per sync packet
-ticker_batch_size = 50         # Nodes per tick
-ticker_time_budget_us = 1500   # Soft logistics scheduler budget per dimension tick (microseconds)
+ticker_batch_size = 50         # Node/type candidates shared per server tick
+ticker_time_budget_us = 1500   # Shared logistics scheduler budget per server tick (microseconds)
 clean_interval = 200           # Cooldown cleanup interval (ticks)
 default_cooldown = 10          # Cooldown after failed transfer (ticks)
 batch_clean_threshold = 500    # Cooldown entries before batch clean

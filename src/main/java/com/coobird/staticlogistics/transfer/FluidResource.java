@@ -32,7 +32,7 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
@@ -74,22 +74,22 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
     public ExtractionResult<?> extractTyped(IFluidHandler handle, long amount, boolean simulate,
                                             @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                                             @Nullable TransferContext context) {
+        FluidStack drained;
         try {
-            FluidStack drained = handle.drain(SaturatedMath.toNonNegativeInt(amount), IFluidHandler.FluidAction.SIMULATE);
-            if (drained.isEmpty()) return ExtractionResult.of(FluidStack.EMPTY);
-            // 输出过滤器检查
-            if (sourceCfg != null && !isFluidAllowed(sourceCfg, drained, isPullMode)) {
-                return ExtractionResult.of(FluidStack.EMPTY);
-            }
-            if (!simulate) {
-                FluidStack actual = handle.drain(drained.getAmount(), IFluidHandler.FluidAction.EXECUTE);
-                return ExtractionResult.of(actual);
-            }
-            return ExtractionResult.of(drained);
-        } catch (Exception e) {
-            LOGGER.error("Fluid extract failed", e);
+            drained = handle.drain(SaturatedMath.toNonNegativeInt(amount), IFluidHandler.FluidAction.SIMULATE);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Fluid extract simulation failed", exception);
             return ExtractionResult.of(FluidStack.EMPTY);
         }
+        if (drained.isEmpty()) return ExtractionResult.of(FluidStack.EMPTY);
+        // 在真实提取前完成输出过滤，避免先修改外部容器再拒绝事务。
+        if (sourceCfg != null && !isFluidAllowed(sourceCfg, drained, isPullMode)) {
+            return ExtractionResult.of(FluidStack.EMPTY);
+        }
+        if (!simulate) {
+            return ExtractionResult.of(handle.drain(drained.getAmount(), IFluidHandler.FluidAction.EXECUTE));
+        }
+        return ExtractionResult.of(drained);
     }
 
     @Override
@@ -97,10 +97,11 @@ public class FluidResource implements LogisticsResource<IFluidHandler> {
                             @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
                             @Nullable TransferContext context) {
         if (!(value instanceof FluidStack stack) || stack.isEmpty()) return 0;
+        if (!simulate) return handle.fill(stack, IFluidHandler.FluidAction.EXECUTE);
         try {
-            return handle.fill(stack, simulate ? IFluidHandler.FluidAction.SIMULATE : IFluidHandler.FluidAction.EXECUTE);
-        } catch (Exception e) {
-            LOGGER.error("Fluid insert failed", e);
+            return handle.fill(stack, IFluidHandler.FluidAction.SIMULATE);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Fluid insert simulation failed", exception);
             return 0;
         }
     }

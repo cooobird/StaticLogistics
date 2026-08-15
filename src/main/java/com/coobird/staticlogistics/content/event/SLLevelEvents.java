@@ -21,6 +21,7 @@ import java.util.List;
 @EventBusSubscriber(modid = StaticLogistics.MODID)
 public class SLLevelEvents {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final int INTEGRITY_SCAN_INTERVAL = 200;
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
@@ -53,8 +54,11 @@ public class SLLevelEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
+        if (event.isCanceled()) return;
         if (event.getLevel() instanceof ServerLevel level) {
-            LinkManager.get(level).invalidateCapabilityCache(event.getPos());
+            LinkManager manager = LinkManager.get(level);
+            manager.onBlockRemoved(event.getPos());
+            manager.invalidateCapabilityCache(event.getPos());
         }
     }
 
@@ -76,6 +80,9 @@ public class SLLevelEvents {
         manager.tick();
         for (ServerLevel level : event.getServer().getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
+            if (level.getGameTime() % INTEGRITY_SCAN_INTERVAL == 0) {
+                mgr.markOrphanScanNeeded();
+            }
             if (mgr.isOrphanScanNeeded()) {
                 mgr.validateOrphanedConfigs();
             }

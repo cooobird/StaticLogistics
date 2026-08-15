@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.jetbrains.annotations.Nullable;
@@ -40,7 +41,20 @@ public final class NodeInteractionValidator {
      * 直接方块交互必须由服务端视线精确命中请求的方块面。
      */
     public static boolean isDirectInteractionTargetValid(ServerPlayer player, BlockPos pos, Direction face) {
-        if (!isPhysicalTargetValid(player, pos, face)) return false;
+        return isDirectBlockTargetValid(player, pos, face)
+            && TransferUtils.hasLogisticsCapability((ServerLevel) player.level(), pos, face);
+    }
+
+    /**
+     * 批量选取的种子只校验方块命中，具体可用面由服务端随后统一枚举。
+     */
+    public static boolean isDirectBlockTargetValid(ServerPlayer player, BlockPos pos, Direction face) {
+        if (player == null || pos == null || face == null
+            || !(player.level() instanceof ServerLevel level)
+            || !level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
+            || !NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), pos)
+            || level.getBlockEntity(pos) == null
+            || !player.mayBuild() || !level.mayInteract(player, pos)) return false;
         HitResult hit = player.pick(Math.sqrt(NodeInteractionRules.MAX_REACH_SQUARED), 0.0F, false);
         return hit instanceof BlockHitResult blockHit
             && blockHit.getType() == HitResult.Type.BLOCK
@@ -50,8 +64,18 @@ public final class NodeInteractionValidator {
 
     public static boolean canUseExisting(ServerPlayer player, BlockPos pos, Direction face,
                                          @Nullable FaceConfigComposite config) {
-        return config != null && isPhysicalTargetValid(player, pos, face)
+        return config != null && player.level() instanceof ServerLevel level
+            && canMutateRemote(player, level, pos)
+            && isPhysicalTargetValid(player, pos, face)
             && config.canPlayerModify(player);
+    }
+
+    /**
+     * 校验远程节点写操作是否仍受当前世界保护规则允许。
+     */
+    public static boolean canMutateRemote(Player player, ServerLevel level, BlockPos pos) {
+        return player != null && level != null && pos != null
+            && player.mayBuild() && level.mayInteract(player, pos);
     }
 
 }

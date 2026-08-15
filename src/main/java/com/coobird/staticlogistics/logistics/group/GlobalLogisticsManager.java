@@ -182,18 +182,36 @@ public class GlobalLogisticsManager {
      * 无增量索引，按需查询。适用于低频 API 调用。
      */
     public Set<LogisticsNode> getSourcesLinkedTo(LogisticsNode target) {
-        Set<LogisticsNode> sources = new LinkedHashSet<>();
+        if (target == null) return Set.of();
+        return getSourcesLinkedTo(Set.of(target)).getOrDefault(target, Set.of());
+    }
+
+    /**
+     * 一次全局扫描查找指向多个目标的源节点，避免批量修复时为每个目标重复遍历全部面配置。
+     */
+    public Map<LogisticsNode, Set<LogisticsNode>> getSourcesLinkedTo(Collection<LogisticsNode> targets) {
+        Set<LogisticsNode> targetSet = targets == null
+            ? Set.of()
+            : targets.stream().filter(Objects::nonNull)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (targetSet.isEmpty()) return Map.of();
+
+        Map<LogisticsNode, Set<LogisticsNode>> sourcesByTarget = new LinkedHashMap<>();
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager mgr = LinkManager.get(level);
             for (FaceAddress faceKey : mgr.getAllConfigKeys()) {
                 FaceConfigComposite cfg = mgr.getFaceConfig(faceKey);
                 if (cfg == null) continue;
-                if (cfg.getLinkedNodes().contains(target)) {
-                    sources.add(mgr.createNodeFromKey(faceKey));
+                LogisticsNode source = null;
+                for (LogisticsNode target : cfg.getLinkedNodes()) {
+                    if (!targetSet.contains(target)) continue;
+                    if (source == null) source = mgr.createNodeFromKey(faceKey);
+                    sourcesByTarget.computeIfAbsent(target, ignored -> new LinkedHashSet<>()).add(source);
                 }
             }
         }
-        return sources;
+        sourcesByTarget.replaceAll((target, sources) -> Set.copyOf(sources));
+        return Map.copyOf(sourcesByTarget);
     }
 
     public void markGroupDirty(String groupId) {
@@ -376,6 +394,11 @@ public class GlobalLogisticsManager {
         if (group == null) return false;
 
         List<LogisticsNode> nodes = collectGroupNodes(groupKey).stream().distinct().toList();
+        for (LogisticsNode node : nodes) {
+            ServerLevel nodeLevel = server.getLevel(node.gPos().dimension());
+            if (nodeLevel == null || !NodeInteractionValidator.canMutateRemote(
+                actor, nodeLevel, node.gPos().pos())) return false;
+        }
 
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
             transaction.captureAll(nodes);

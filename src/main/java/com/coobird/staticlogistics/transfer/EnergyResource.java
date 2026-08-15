@@ -64,7 +64,7 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
@@ -79,20 +79,22 @@ public class EnergyResource implements LogisticsResource<IEnergyStorage> {
 
     @Override
     public long extract(IEnergyStorage handle, long amount, boolean simulate) {
+        if (!simulate) return handle.extractEnergy(SaturatedMath.toNonNegativeInt(amount), false);
         try {
-            return handle.extractEnergy(SaturatedMath.toNonNegativeInt(amount), simulate);
-        } catch (Exception e) {
-            LOGGER.error("Energy extract failed", e);
+            return handle.extractEnergy(SaturatedMath.toNonNegativeInt(amount), true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Energy extract simulation failed", exception);
             return 0;
         }
     }
 
     @Override
     public long insert(IEnergyStorage handle, long amount, boolean simulate) {
+        if (!simulate) return handle.receiveEnergy(SaturatedMath.toNonNegativeInt(amount), false);
         try {
-            return handle.receiveEnergy(SaturatedMath.toNonNegativeInt(amount), simulate);
-        } catch (Exception e) {
-            LOGGER.error("Energy insert failed", e);
+            return handle.receiveEnergy(SaturatedMath.toNonNegativeInt(amount), true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Energy insert simulation failed", exception);
             return 0;
         }
     }

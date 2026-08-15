@@ -12,16 +12,14 @@ import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.common.NeoForge;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -79,6 +77,7 @@ class FaceConfigHandler {
         config.setOnDirty(cfg -> changeHandler.onFaceConfigChanged(key, pos, face, cfg));
         if (isNew) {
             config.setVersion(parent.nextVersion(key));
+            bindCurrentEndpoint(config, pos);
         }
         return config;
     }
@@ -233,17 +232,50 @@ class FaceConfigHandler {
         int end = Math.min(orphanScanCursor + ORPHAN_SCAN_BATCH, orphanKeys.length);
         MinecraftServer server = level.getServer();
         Set<BlockPos> removedPositions = new LinkedHashSet<>();
+        Set<LogisticsNode> missingBlockTargets = new LinkedHashSet<>();
+        Set<LogisticsNode> missingFaceTargets = new LinkedHashSet<>();
         for (int i = orphanScanCursor; i < end; i++) {
             FaceAddress key = orphanKeys[i];
             FaceConfigComposite cfg = faceConfigService.get(key);
             if (cfg == null) continue;
             LogisticsNode node = parent.createNodeFromKey(key);
-            if (level.getBlockEntity(node.gPos().pos()) == null) {
-                removedPositions.add(node.gPos().pos());
-            } else {
+            BlockPos pos = node.gPos().pos();
+            if (level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) {
+                FaceConfigComposite.EndpointFingerprint currentFingerprint = currentEndpointFingerprint(pos);
+                if (currentFingerprint == null) {
+                    removedPositions.add(pos);
+                    continue;
+                }
+                FaceConfigComposite.EndpointFingerprint savedFingerprint = cfg.getEndpointFingerprint();
+                if (savedFingerprint == null) {
+                    cfg.bindEndpoint(MUTATION_PERMIT, currentFingerprint);
+                } else if (!savedFingerprint.equals(currentFingerprint)) {
+                    removedPositions.add(pos);
+                    continue;
+                }
+            }
+            if (!removedPositions.contains(pos)) {
+                for (LogisticsNode target : cfg.getLinkedNodes()) {
+                    ServerLevel targetLevel = server.getLevel(target.gPos().dimension());
+                    BlockPos targetPos = target.gPos().pos();
+                    if (targetLevel == null
+                        || !targetLevel.getChunkSource().hasChunk(targetPos.getX() >> 4, targetPos.getZ() >> 4)) {
+                        continue;
+                    }
+                    FaceConfigComposite targetConfig = LinkManager.get(targetLevel)
+                        .getFaceConfig(FaceAddress.of(target));
+                    var targetState = targetLevel.getBlockState(targetPos);
+                    if (targetState.isAir()) {
+                        missingBlockTargets.add(target);
+                    } else if (targetConfig == null) {
+                        missingFaceTargets.add(target);
+                    }
+                }
                 for (GroupKey groupKey
                     : new ArrayList<>(cfg.faceConfig.getGroupKeys())) {
-                    if (GlobalLogisticsManager.get(server).getNodeGroupService().getNodesInGroup(groupKey).isEmpty()) {
+                    if (GlobalLogisticsManager.get(server).getNodeGroupService()
+                        .getNodesInGroup(groupKey).isEmpty()
+                        && cfg.getLinkedNodes(groupKey).isEmpty()) {
                         parent.removeNodeFromGroup(groupKey, node);
                     }
                 }
@@ -254,6 +286,22 @@ class FaceConfigHandler {
             for (BlockPos pos : removedPositions) {
                 LinkOperationHelper.cleanStoredNodesForPos(level, pos);
             }
+        }
+        Map<ServerLevel, Set<BlockPos>> missingPositionsByLevel = new LinkedHashMap<>();
+        for (LogisticsNode target : missingBlockTargets) {
+            ServerLevel targetLevel = server.getLevel(target.gPos().dimension());
+            if (targetLevel == null) continue;
+            missingPositionsByLevel.computeIfAbsent(targetLevel, ignored -> new LinkedHashSet<>())
+                .add(target.gPos().pos());
+        }
+        missingPositionsByLevel.forEach((targetLevel, positions) -> {
+            LinkManager.get(targetLevel).onBlocksRemovedBulk(positions);
+            positions.forEach(pos -> LinkOperationHelper.cleanStoredNodesForPos(targetLevel, pos));
+        });
+        if (!missingBlockTargets.isEmpty() || !missingFaceTargets.isEmpty()) {
+            Set<LogisticsNode> missingTargets = new LinkedHashSet<>(missingBlockTargets);
+            missingTargets.addAll(missingFaceTargets);
+            parent.purgeInboundReferences(missingTargets);
         }
         if (end >= orphanKeys.length) {
             orphanScanNeeded = false;
@@ -266,6 +314,20 @@ class FaceConfigHandler {
 
     Set<FaceAddress> getAllConfigKeys() {
         return Set.copyOf(configRepository.keySet());
+    }
+
+    private void bindCurrentEndpoint(FaceConfigComposite config, BlockPos pos) {
+        FaceConfigComposite.EndpointFingerprint fingerprint = currentEndpointFingerprint(pos);
+        if (fingerprint != null) config.bindEndpoint(MUTATION_PERMIT, fingerprint);
+    }
+
+    @Nullable
+    private FaceConfigComposite.EndpointFingerprint currentEndpointFingerprint(BlockPos pos) {
+        var blockEntity = level.getBlockEntity(pos);
+        if (blockEntity == null || level.getBlockState(pos).isAir()) return null;
+        return new FaceConfigComposite.EndpointFingerprint(
+            BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()),
+            BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()));
     }
 
     private record DeferredRemovalEffectsKey(LinkManager manager, LogisticsNode node) {

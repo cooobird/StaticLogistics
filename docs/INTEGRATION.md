@@ -103,7 +103,10 @@ StaticLogisticsApi.resourceAdapters().register(new MyResource(), 10);
 5. `resize` 构造指定数量的不可变资源值；
 6. 支持反向写入的源端在后续提交失败时，由 `rollback` 把余量补偿回源端。
 
-`TransactionCapabilities` 必须如实声明句柄是否提供精确模拟和补偿能力。不能可靠补偿、但能严格兑现模拟结果的单向能力应声明 `exactSimulationOnly()`；不能可靠补偿的适配器不得声明 `exactCompensating()`。
+`TransactionCapabilities` 必须如实声明句柄是否提供精确模拟、精确缩量和回滚能力。统一管线只接受回滚模式为 `NATIVE` 或
+`COMPENSATING` 的适配器；回滚模式为 `NONE` 的适配器不满足注册条件。不能可靠补偿的适配器不得声明 `exactCompensating()`。
+
+真实提交阶段抛出异常时，管线无法证明底层是否已经修改状态，因此会把本次传输标记为“提交状态未知”并立即终止，不会将其伪装成普通的零传输继续重试。适配器应让模拟阶段安全返回失败，但不得吞掉真实提交异常。
 
 底层能力使用 `int` 参数时，适配器应自行做非负饱和转换；公共 SPI 不暴露内部节点配置或传输上下文对象，过滤、权限和存量维持由统一管线处理。
 
@@ -124,7 +127,7 @@ StaticLogisticsApi.resourceAdapters().register(new MyResource(), BIT_MY_TYPE);
 |---------------------------|--------------------------|----------------------------|
 | `typeId()`                | ResourceLocation 格式的唯一标识 | `"modid:type_name"`        |
 | `color()`                 | ARGB 颜色值                 | `0xAARRGGBB`               |
-| 注册参数 `stableBitOffset` | 稳定类型序号                    | 非负且唯一；0-31 会额外写入旧 mask 兼容值 |
+| 注册参数 `stableBitOffset`    | 稳定类型序号                   | 非负且唯一；0-31 会额外写入旧 mask 兼容值 |
 | `translationKey()`        | GUI 显示文本                 | 需提供 lang 文件                |
 | `iconSupplier()`          | 类型图标的 ItemStack          | —                          |
 | `baseStackSizeSupplier()` | 单次基础传输量                  | 读取 config 配置               |

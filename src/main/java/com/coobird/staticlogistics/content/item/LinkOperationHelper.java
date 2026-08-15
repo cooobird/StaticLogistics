@@ -196,6 +196,7 @@ public class LinkOperationHelper {
                                             LinkConfiguratorItem.ToolSettings settings, Player player) {
         // 允许不选类型就链接（mask=0）→ 节点不会传输，方便后续插入过滤
         if (!(player instanceof ServerPlayer serverPlayer)
+            || group == null
             || !NodeInteractionValidator.holdsConfigurator(serverPlayer)
             || !NodeInteractionValidator.isDirectInteractionTargetValid(
             serverPlayer, current.gPos().pos(), current.face())
@@ -212,6 +213,7 @@ public class LinkOperationHelper {
         ServerLevel storedLevel = level.getServer().getLevel(stored.gPos().dimension());
         if (storedLevel == null) return false;
         BlockPos storedPos = stored.gPos().pos();
+        if (!serverPlayer.mayBuild() || !storedLevel.mayInteract(serverPlayer, storedPos)) return false;
         boolean storedChunkLoaded = storedLevel.getChunkSource().hasChunk(
             storedPos.getX() >> 4, storedPos.getZ() >> 4);
         if (storedChunkLoaded && (storedLevel.getBlockEntity(storedPos) == null

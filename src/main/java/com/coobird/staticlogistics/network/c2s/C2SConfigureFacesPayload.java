@@ -78,7 +78,7 @@ public record C2SConfigureFacesPayload(GroupKey groupKey, List<LogisticsNode> no
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)
                 || !ServerPacketRateLimiter.allow(
-                player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
+                player, ServerPacketRateLimiter.Action.BATCH_FACE_CONFIGURATION, payload.nodes().size())
                 || !(player.containerMenu instanceof LinkConfiguratorMenu menu)
                 || !payload.groupKey().equals(menu.getRemoteGroupKey())
                 || !menu.allowsEdit(payload.edit())) return;

@@ -10,6 +10,7 @@ import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import net.minecraft.ChatFormatting;
@@ -20,6 +21,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -37,21 +39,23 @@ import java.util.List;
 public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
                                         ToolMode mode) implements CustomPacketPayload {
     private static final int MAX_NODES = SLDataComponents.MAX_STORED_NODES;
+    private static final int MAX_VISITED = MAX_NODES * 4;
     private static final int MAX_AXIS_DISTANCE = 24;
+    private static final long SCAN_BUDGET_NANOS = 5_000_000L;
     public static final Type<C2SBulkSelectNodesPayload> TYPE =
         new Type<>(StaticLogistics.asResource("bulk_select_nodes"));
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SBulkSelectNodesPayload> STREAM_CODEC =
         new StreamCodec<>() {
             @Override
             public C2SBulkSelectNodesPayload decode(RegistryFriendlyByteBuf buffer) {
-                return new C2SBulkSelectNodesPayload(buffer.readBlockPos(),
-                    buffer.readEnum(Direction.class), ToolMode.fromId(buffer.readVarInt()));
+                return new C2SBulkSelectNodesPayload(BlockPos.STREAM_CODEC.decode(buffer),
+                    Direction.STREAM_CODEC.decode(buffer), ToolMode.fromId(buffer.readVarInt()));
             }
 
             @Override
             public void encode(RegistryFriendlyByteBuf buffer, C2SBulkSelectNodesPayload payload) {
-                buffer.writeBlockPos(payload.origin());
-                buffer.writeEnum(payload.face());
+                BlockPos.STREAM_CODEC.encode(buffer, payload.origin());
+                Direction.STREAM_CODEC.encode(buffer, payload.face());
                 buffer.writeVarInt(payload.mode().getId());
             }
         };
@@ -66,13 +70,16 @@ public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
             if (!(context.player() instanceof ServerPlayer player)
                 || !payload.mode().isLinkMode()
                 || !ServerPacketRateLimiter.allow(
-                player, ServerPacketRateLimiter.Action.BULK_NODE_SELECTION)) return;
+                player, ServerPacketRateLimiter.Action.BULK_NODE_SELECTION)
+                || !NodeInteractionValidator.isDirectBlockTargetValid(
+                player, payload.origin(), payload.face())) return;
             ItemStack stack = ToolSettingsTarget.findConfigurator(player);
             if (!(stack.getItem() instanceof LinkConfiguratorItem item)
-                || item.getSettings(stack).mode() != payload.mode()
                 || player.distanceToSqr(Vec3.atCenterOf(payload.origin())) > 100.0D) return;
+            LinkConfiguratorItem.ToolSettings settings = item.getSettings(stack);
+            if (settings.mode() != payload.mode()) return;
             BulkSelectionInteractionGuard.mark(player, payload.origin(), payload.face());
-            List<LogisticsNode> found = collect(player, payload);
+            List<LogisticsNode> found = collect(player, payload, settings.selectedTypeIds());
             int added = LinkOperationHelper.addNodes(
                 stack, found, payload.mode(), player, player.serverLevel());
             player.displayClientMessage(Component.translatable(
@@ -81,8 +88,11 @@ public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
         });
     }
 
-    private static List<LogisticsNode> collect(ServerPlayer player,
-                                               C2SBulkSelectNodesPayload payload) {
+    private static List<LogisticsNode> collect(
+        ServerPlayer player,
+        C2SBulkSelectNodesPayload payload,
+        List<ResourceLocation> selectedTypeIds
+    ) {
         var level = player.serverLevel();
         Block seedBlock = level.getBlockState(payload.origin()).getBlock();
         LinkManager manager = LinkManager.get(level);
@@ -90,17 +100,21 @@ public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
         LinkedHashSet<BlockPos> visited = new LinkedHashSet<>();
         List<LogisticsNode> result = new ArrayList<>();
         pending.add(payload.origin());
-        while (!pending.isEmpty() && visited.size() < MAX_NODES * 8
-            && result.size() < MAX_NODES) {
+        long deadline = System.nanoTime() + SCAN_BUDGET_NANOS;
+        while (!pending.isEmpty() && visited.size() < MAX_VISITED
+            && result.size() < MAX_NODES && System.nanoTime() - deadline < 0L) {
             BlockPos pos = pending.removeFirst();
             if (!visited.add(pos) || !inside(payload.origin(), pos)
-                || !level.hasChunkAt(pos)
-                || level.getBlockState(pos).getBlock() != seedBlock) continue;
-            if (TransferUtils.hasLogisticsCapability(level, pos, payload.face())) {
-                FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, payload.face()));
+                || !level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
+                || level.getBlockState(pos).getBlock() != seedBlock
+                || !player.mayBuild() || !level.mayInteract(player, pos)) continue;
+            for (Direction face : TransferUtils.getCapabilityFaces(
+                level, pos, payload.face(), selectedTypeIds)) {
+                FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, face));
                 if (config == null || config.canPlayerAccess(player)) {
                     result.add(new LogisticsNode(
-                        GlobalPos.of(level.dimension(), pos.immutable()), payload.face()));
+                        GlobalPos.of(level.dimension(), pos.immutable()), face));
+                    break;
                 }
             }
             for (Direction direction : Direction.values()) pending.addLast(pos.relative(direction));

@@ -3,11 +3,13 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -36,6 +38,9 @@ public record C2SUpdateBlueprintPreviewPayload(BlockPos previewAnchor,
     public static void handle(final C2SUpdateBlueprintPreviewPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             var player = context.player();
+            if (!(player instanceof ServerPlayer serverPlayer)
+                || !ServerPacketRateLimiter.allow(serverPlayer,
+                ServerPacketRateLimiter.Action.BLUEPRINT_PREVIEW)) return;
             ItemStack stack = player.getItemInHand(InteractionHand.MAIN_HAND);
             if (!(stack.getItem() instanceof BlueprintItem)) {
                 stack = player.getItemInHand(InteractionHand.OFF_HAND);

@@ -56,7 +56,7 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
@@ -71,48 +71,41 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
 
     @Override
     public long extract(IHeatHandler handle, long amount, boolean simulate) {
+        if (!simulate) return transferHeatOut(handle, amount, false);
         try {
-            int capacitorCount = handle.getHeatCapacitorCount();
-            if (capacitorCount <= 0) return 0;
-
-            // 计算总热量
-            double totalHeat = 0;
-            for (int i = 0; i < capacitorCount; i++) {
-                totalHeat += handle.getTemperature(i) * handle.getHeatCapacity(i);
-            }
-
-            // 限制提取量为实际可用热量
-            long actualAmount = Math.min(amount, (long) totalHeat);
-            if (actualAmount <= 0) return 0;
-
-            if (simulate) {
-                return actualAmount;
-            } else {
-                double totalCapacity = handle.getTotalHeatCapacity();
-                if (totalCapacity <= 0) return 0;
-                for (int i = 0; i < capacitorCount; i++) {
-                    double ratio = handle.getHeatCapacity(i) / totalCapacity;
-                    double toExtract = actualAmount * ratio;
-                    handle.handleHeat(i, -toExtract);
-                }
-                return actualAmount;
-            }
-        } catch (Exception e) {
-            LOGGER.error("Mekanism heat extract failed", e);
+            return transferHeatOut(handle, amount, true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism heat extract simulation failed", exception);
             return 0;
         }
     }
 
     @Override
     public long insert(IHeatHandler handle, long amount, boolean simulate) {
-        try {
-            if (!simulate) {
-                handle.handleHeat(amount);
-            }
-            return amount;
-        } catch (Exception e) {
-            LOGGER.error("Mekanism heat insert failed", e);
-            return 0;
+        if (!simulate) {
+            handle.handleHeat(amount);
         }
+        return amount;
+    }
+
+    private static long transferHeatOut(IHeatHandler handle, long amount, boolean simulate) {
+        int capacitorCount = handle.getHeatCapacitorCount();
+        if (capacitorCount <= 0) return 0;
+
+        double totalHeat = 0;
+        for (int i = 0; i < capacitorCount; i++) {
+            totalHeat += handle.getTemperature(i) * handle.getHeatCapacity(i);
+        }
+
+        long actualAmount = Math.min(amount, (long) totalHeat);
+        if (actualAmount <= 0 || simulate) return actualAmount;
+
+        double totalCapacity = handle.getTotalHeatCapacity();
+        if (totalCapacity <= 0) return 0;
+        for (int i = 0; i < capacitorCount; i++) {
+            double ratio = handle.getHeatCapacity(i) / totalCapacity;
+            handle.handleHeat(i, -(actualAmount * ratio));
+        }
+        return actualAmount;
     }
 }

@@ -11,23 +11,26 @@ import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.transfer.strategy.StrategyBasedTargetSelector;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.LevelEvent;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 在服务器主线程按候选操作数和软时间预算公平驱动物流网络。
+ * 在服务器主线程中按全局候选数量和共享软时间预算公平驱动物流网络。
  *
- * <p>游标精确到“节点 × 资源类型”，在每次执行前先前移，因此即使单次第三方能力调用
- * 超过预算，下一刻也会从下一个候选继续，不会让后续节点长期饥饿。
+ * <p>服务器中的所有维度共享同一份 Tick 预算。调度器在维度之间轮转，并为每个维度分别保存
+ * “节点 × 资源类型”游标，因此预算耗尽后仍能从公平的断点继续，不会让靠后的维度或节点长期饥饿。
  */
 @EventBusSubscriber(modid = StaticLogistics.MODID)
 public final class LogisticsTicker {
@@ -39,13 +42,37 @@ public final class LogisticsTicker {
     private static int cachedTypesGeneration = -1;
 
     private static final class SchedulerCursor {
-        int nodeIndex;
-        int typeIndex;
+        FaceAddress nextNode;
+        ResourceLocation nextType;
     }
 
     private static final class RuntimeState {
         final CooldownManager cooldowns = new CooldownManager();
         final Map<ResourceKey<Level>, SchedulerCursor> schedulers = new HashMap<>();
+        ResourceKey<Level> nextDimension;
+    }
+
+    private static final class DimensionWork {
+        final ServerLevel level;
+        final ResourceKey<Level> dimension;
+        final long currentTick;
+        final LinkManager manager;
+        final FaceAddress[] sourceKeys;
+        final SchedulerCursor cursor;
+        int nodeIndex;
+        int typeIndex;
+
+        DimensionWork(ServerLevel level, LinkManager manager, FaceAddress[] sourceKeys,
+                      SchedulerCursor cursor, int nodeIndex, int typeIndex) {
+            this.level = level;
+            this.dimension = level.dimension();
+            this.currentTick = level.getGameTime();
+            this.manager = manager;
+            this.sourceKeys = sourceKeys;
+            this.cursor = cursor;
+            this.nodeIndex = nodeIndex;
+            this.typeIndex = typeIndex;
+        }
     }
 
     private LogisticsTicker() {
@@ -55,9 +82,9 @@ public final class LogisticsTicker {
         return RUNTIMES.computeIfAbsent(server, ignored -> new RuntimeState());
     }
 
-    @SubscribeEvent
-    public static void onLevelTick(LevelTickEvent.Post event) {
-        if (event.getLevel() instanceof ServerLevel level) tick(level);
+    @SubscribeEvent(priority = EventPriority.LOW)
+    public static void onServerTick(ServerTickEvent.Post event) {
+        tick(event.getServer());
     }
 
     @SubscribeEvent
@@ -67,59 +94,100 @@ public final class LogisticsTicker {
             if (state == null) return;
             state.cooldowns.clearForDimension(level.dimension());
             state.schedulers.remove(level.dimension());
+            if (level.dimension().equals(state.nextDimension)) state.nextDimension = null;
         }
     }
 
-    private static void tick(ServerLevel level) {
-        ResourceKey<Level> dimension = level.dimension();
-        long currentTick = level.getGameTime();
-        RuntimeState state = state(level.getServer());
-
-        state.cooldowns.tick(dimension, currentTick);
-        LinkManager manager = LinkManager.get(level);
-        manager.flushPendingNetworkSync();
-
-        FaceAddress[] sourceKeys = manager.getActiveProviderKeysArray();
-        LogisticsResource<?>[] types = getCachedTypes();
-        SchedulerCursor cursor = state.schedulers.computeIfAbsent(dimension, ignored -> new SchedulerCursor());
-        if (sourceKeys.length == 0 || types.length == 0) return;
-
-        cursor.nodeIndex = Math.floorMod(cursor.nodeIndex, sourceKeys.length);
-        cursor.typeIndex = Math.floorMod(cursor.typeIndex, types.length);
-        long requestedCandidates = (long) LogisticsConstants.Performance.getTickerBatchSize()
-            * types.length;
-        int candidateBudget = (int) Math.clamp(requestedCandidates, 1L, Integer.MAX_VALUE);
-        long timeBudget = Math.max(1, LogisticsConstants.Performance.getTickerTimeBudgetNanos());
+    private static void tick(MinecraftServer server) {
         long started = System.nanoTime();
+        long timeBudget = Math.max(1, LogisticsConstants.Performance.getTickerTimeBudgetNanos());
         long deadline = started + timeBudget;
+        RuntimeState state = state(server);
+        LogisticsResource<?>[] types = getCachedTypes();
+        List<DimensionWork> workByDimension = collectDimensionWork(server, state, types, deadline);
+        if (workByDimension.isEmpty()) return;
+
+        int dimensionIndex = findDimensionIndex(workByDimension, state.nextDimension);
+        long requestedCandidates = (long) LogisticsConstants.Performance.getTickerBatchSize() * types.length;
+        int candidateBudget = (int) Math.clamp(requestedCandidates, 1L, Integer.MAX_VALUE);
         int candidates = 0;
 
-        while (candidates < candidateBudget) {
-            if (System.nanoTime() - deadline >= 0L) break;
-            int nodeIndex = cursor.nodeIndex;
-            int typeIndex = cursor.typeIndex;
-            advanceCursor(cursor, sourceKeys.length, types.length);
+        while (candidates < candidateBudget && System.nanoTime() - deadline < 0L) {
+            DimensionWork work = workByDimension.get(dimensionIndex);
+            dimensionIndex = (dimensionIndex + 1) % workByDimension.size();
+            state.nextDimension = workByDimension.get(dimensionIndex).dimension;
+            int nodeIndex = work.nodeIndex;
+            int typeIndex = work.typeIndex;
+            advanceCursor(work, types);
             candidates++;
 
-            FaceAddress sourceKey = sourceKeys[nodeIndex];
-            FaceConfigComposite config = manager.getFaceConfig(sourceKey);
+            FaceAddress sourceKey = work.sourceKeys[nodeIndex];
+            FaceConfigComposite config = work.manager.getFaceConfig(sourceKey);
             if (config != null && !config.isDefault()) {
                 LogisticsResource<?> type = types[typeIndex];
                 if (config.isTypeSelected(type)) {
-                    processCandidate(level, dimension, currentTick, state, manager,
+                    processCandidate(work.level, work.dimension, work.currentTick, state, work.manager,
                         sourceKey, config, type, deadline);
                 }
             }
 
-            if (System.nanoTime() - started >= timeBudget) break;
         }
     }
 
-    private static void advanceCursor(SchedulerCursor cursor, int nodeCount, int typeCount) {
-        cursor.typeIndex++;
-        if (cursor.typeIndex < typeCount) return;
-        cursor.typeIndex = 0;
-        cursor.nodeIndex = (cursor.nodeIndex + 1) % nodeCount;
+    private static List<DimensionWork> collectDimensionWork(
+        MinecraftServer server, RuntimeState state, LogisticsResource<?>[] types, long deadline
+    ) {
+        List<DimensionWork> workByDimension = new ArrayList<>();
+        for (ServerLevel level : server.getAllLevels()) {
+            ResourceKey<Level> dimension = level.dimension();
+            state.cooldowns.tick(dimension, level.getGameTime());
+            LinkManager manager = LinkManager.get(level);
+            manager.flushPendingNetworkSync();
+            if (types.length == 0 || System.nanoTime() - deadline >= 0L) continue;
+
+            FaceAddress[] sourceKeys = manager.getActiveProviderKeysArray();
+            if (sourceKeys.length == 0) continue;
+            SchedulerCursor cursor = state.schedulers.computeIfAbsent(dimension, ignored -> new SchedulerCursor());
+            int nodeIndex = findNodeIndex(sourceKeys, cursor.nextNode);
+            int typeIndex = findTypeIndex(types, cursor.nextType);
+            workByDimension.add(new DimensionWork(
+                level, manager, sourceKeys, cursor, nodeIndex, typeIndex));
+        }
+        return workByDimension;
+    }
+
+    private static int findDimensionIndex(List<DimensionWork> workByDimension, ResourceKey<Level> nextDimension) {
+        if (nextDimension == null) return 0;
+        for (int i = 0; i < workByDimension.size(); i++) {
+            if (workByDimension.get(i).dimension.equals(nextDimension)) return i;
+        }
+        return 0;
+    }
+
+    private static int findNodeIndex(FaceAddress[] sourceKeys, FaceAddress nextNode) {
+        if (nextNode == null) return 0;
+        for (int i = 0; i < sourceKeys.length; i++) {
+            if (sourceKeys[i].equals(nextNode)) return i;
+        }
+        return 0;
+    }
+
+    private static int findTypeIndex(LogisticsResource<?>[] types, ResourceLocation nextType) {
+        if (nextType == null) return 0;
+        for (int i = 0; i < types.length; i++) {
+            if (types[i].typeId().equals(nextType)) return i;
+        }
+        return 0;
+    }
+
+    private static void advanceCursor(DimensionWork work, LogisticsResource<?>[] types) {
+        work.typeIndex++;
+        if (work.typeIndex >= types.length) {
+            work.typeIndex = 0;
+            work.nodeIndex = (work.nodeIndex + 1) % work.sourceKeys.length;
+        }
+        work.cursor.nextNode = work.sourceKeys[work.nodeIndex];
+        work.cursor.nextType = types[work.typeIndex].typeId();
     }
 
     private static void processCandidate(
@@ -137,13 +205,16 @@ public final class LogisticsTicker {
         TransferContext context = TransferContext.obtain(
             level, sourceNode, config, type, limit, false, currentTick, deadline, manager);
         boolean moved;
+        boolean completedWithinBudget;
         try {
             moved = TRANSFER_EXECUTOR.executeTransfer(context);
+            completedWithinBudget = context.hasTimeRemaining();
         } finally {
             context.recycle();
         }
 
         if (!needsCooldown) return;
+        if (!moved && !completedWithinBudget) return;
         int cooldown = moved ? getActualInterval(config)
             : LogisticsConstants.Performance.getDefaultCooldownTicks();
         state.cooldowns.setCooldown(
@@ -180,13 +251,12 @@ public final class LogisticsTicker {
     }
 
     /**
-     * 配置热重载后清除旧冷却，让新间隔和基础传输量从下一游戏刻生效。
+     * 配置热重载后清除旧冷却，使新间隔立即生效；公平调度断点保持不变。
      */
     public static void onConfigReload(MinecraftServer server) {
         RuntimeState runtime = RUNTIMES.get(server);
         if (runtime == null) return;
         runtime.cooldowns.clearAll();
-        runtime.schedulers.clear();
     }
 
     private static LogisticsResource<?>[] getCachedTypes() {

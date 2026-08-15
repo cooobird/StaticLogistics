@@ -7,6 +7,9 @@ import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.server.level.ServerLevel;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
+
 /**
  * 将 {@link LogisticsResource} 适配为 {@link TransferUtils.TransferProtocol} 的协议适配器。
  *
@@ -21,6 +24,8 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
     private final @Nullable FaceConfigComposite sourceCfg;
     private final boolean isPullMode;
     private final @Nullable TransferContext transferContext;
+    private final Map<C, ResourceExtractionSession> extractionSessions = new IdentityHashMap<>();
+    private final Map<Object, ResourceExtractionSession> candidateSessions = new IdentityHashMap<>();
     private long targetLimit = Long.MAX_VALUE;
 
     public ResourceAdapterProtocol(LogisticsResource<C> adapter,
@@ -35,8 +40,10 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
 
     @Override
     public ExtractionResult<Object> simulateExtract(C source, long max) {
+        ResourceExtractionSession session = extractionSession(source);
         @SuppressWarnings("unchecked")
-        ExtractionResult<Object> result = (ExtractionResult<Object>) adapter.extractTyped(source, max, true, sourceCfg, isPullMode, transferContext);
+        ExtractionResult<Object> result = (ExtractionResult<Object>) session.simulate(max);
+        if (result.context() != null) candidateSessions.put(result.context(), session);
         return result;
     }
 
@@ -53,9 +60,10 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
 
     @Override
     public ExtractionResult<Object> executeExtract(C source, ExtractionResult<Object> simulated, long requested) {
+        ResourceExtractionSession session = extractionSession(source);
+        if (simulated.context() != null) candidateSessions.remove(simulated.context());
         @SuppressWarnings("unchecked")
-        ExtractionResult<Object> actual = (ExtractionResult<Object>) adapter.executeExtract(
-            source, simulated, requested, sourceCfg, isPullMode, transferContext);
+        ExtractionResult<Object> actual = (ExtractionResult<Object>) session.execute(simulated, requested);
         return actual;
     }
 
@@ -85,20 +93,22 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
     }
 
     @Override
-    public int maxTransactionsPerActivation() {
-        return Math.max(1, adapter.maxTransactionsPerActivation());
+    public void onActivationCompleted() {
+        extractionSessions.values().forEach(ResourceExtractionSession::onCompleted);
     }
 
     @Override
     public boolean advanceRejectedCandidate(ExtractionResult<Object> simulated) {
-        return adapter.advanceRejectedCandidate(simulated, sourceCfg, transferContext);
+        if (simulated.context() == null) return false;
+        ResourceExtractionSession session = candidateSessions.remove(simulated.context());
+        return session != null && session.advanceRejected(simulated);
     }
 
     @Override
     public boolean canInsert(C dest, Object value, LogisticsNode targetNode) {
         targetLimit = Long.MAX_VALUE;
         if (transferContext == null) return true;
-        // 拉模式下不过滤目标端（源端过滤已在 extractTyped 中处理）
+        // 拉模式下不过滤目标端（源端过滤已由提取会话处理）
         if (isPullMode) return true;
         // 查找目标面配置，检查输入过滤器
         ServerLevel targetLevel = transferContext.level().getServer().getLevel(
@@ -108,6 +118,11 @@ public class ResourceAdapterProtocol<C> implements TransferUtils.TransferProtoco
         if (targetCfg == null) return true;
         targetLimit = Math.max(0L, adapter.maxInsertToTarget(dest, value, targetCfg));
         return targetLimit > 0L && adapter.canInsertToTarget(dest, value, targetCfg);
+    }
+
+    private ResourceExtractionSession extractionSession(C source) {
+        return extractionSessions.computeIfAbsent(source,
+            handle -> adapter.openExtractionSession(handle, sourceCfg, isPullMode, transferContext));
     }
 
 }

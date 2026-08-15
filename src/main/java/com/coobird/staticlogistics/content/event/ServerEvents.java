@@ -13,6 +13,7 @@ import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintUndoManager;
 import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
@@ -69,6 +70,7 @@ public class ServerEvents {
         LogisticsTicker.release(event.getServer());
         NodeQueryService.release(event.getServer());
         ConnectionCommandService.release(event.getServer());
+        GroupCommandService.release(event.getServer());
         BulkSelectionInteractionGuard.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
     }
