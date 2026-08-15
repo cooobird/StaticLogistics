@@ -55,10 +55,8 @@ import java.util.Objects;
 public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfiguratorMenu> {
     private static final int RESPONSIVE_MARGIN = 4;
     private static final int OUTER_WIDTH = SLGuiTextures.LinkConfigurator.WIDTH;
-    private static final int OUTER_TOP_OFFSET = TitleBar.Y_OFFSET
-        - SLGuiTextures.Title.CONTENT_INSET;
-    private static final int OUTER_BOTTOM_OFFSET = SLGuiTextures.LinkConfigurator.HEIGHT
-        - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
+    private static final int OUTER_TOP_OFFSET = TitleBar.Y_OFFSET - SLGuiTextures.Title.CONTENT_INSET;
+    private static final int OUTER_BOTTOM_OFFSET = SLGuiTextures.LinkConfigurator.HEIGHT - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
     private static final int OUTER_HEIGHT = OUTER_BOTTOM_OFFSET - OUTER_TOP_OFFSET;
     private static final int TITLE_RIGHT_PADDING = 8;
     private static final int TITLE_Y = 6;

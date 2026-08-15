@@ -184,7 +184,6 @@ public final class NetworkPreviewPanel {
             0.0D);
         graphics.pose().scale((float) transform.zoom, (float) transform.zoom, 1.0F);
         graphics.pose().translate(-transform.centerX, -transform.centerY, 0.0D);
-        Map<FlowTarget, DirectionMarker> directionMarkers = new LinkedHashMap<>();
         for (ClientConnection connection : connections) {
             Point first = positions.get(connection.first());
             Point second = positions.get(connection.second());
@@ -192,10 +191,8 @@ public final class NetworkPreviewPanel {
             VisualNode firstNode = nodes.get(connection.first());
             VisualNode secondNode = nodes.get(connection.second());
             if (firstNode == null || secondNode == null) continue;
-            renderConnection(graphics, connection, first, second,
-                firstNode, secondNode, transform, directionMarkers);
+            renderConnection(graphics, connection, first, second, firstNode, secondNode, transform);
         }
-        directionMarkers.values().forEach(marker -> renderDirectionMarker(graphics, marker));
         for (var entry : nodes.entrySet()) {
             Point point = positions.get(entry.getKey());
             if (point != null) {
@@ -226,8 +223,7 @@ public final class NetworkPreviewPanel {
         Font font
     ) {
         nodes.computeIfAbsent(node, ignored -> {
-            String title = nodeName(node) + " · "
-                + NodeDisplayText.direction(node.face()).getString();
+            String title = nodeName(node) + " · " + NodeDisplayText.direction(node.face()).getString();
             String position = node.gPos().pos().toShortString();
             int contentWidth = Math.max(font.width(title), font.width(position)) + 8;
             int width = Math.max(contentWidth, MIN_NODE_WIDTH);
@@ -240,14 +236,11 @@ public final class NetworkPreviewPanel {
         Map<LogisticsNode, VisualNode> nodes,
         int x, int y, int width, int height) {
         Map<LogisticsNode, NetworkPreviewLayoutEngine.Size> sizes = new LinkedHashMap<>();
-        nodes.forEach((node, visual) -> sizes.put(node,
-            new NetworkPreviewLayoutEngine.Size(visual.width, NODE_HEIGHT)));
+        nodes.forEach((node, visual) -> sizes.put(node, new NetworkPreviewLayoutEngine.Size(visual.width, NODE_HEIGHT)));
         Map<LogisticsNode, Point> automatic = new LinkedHashMap<>();
-        NetworkPreviewLayoutEngine.layout(connections, sizes, width).forEach((node, point) ->
-            automatic.put(node, new Point(point.x(), point.y())));
+        NetworkPreviewLayoutEngine.layout(connections, sizes, width).forEach((node, point) -> automatic.put(node, new Point(point.x(), point.y())));
 
-        NetworkPreviewLayoutStore.Layout storedLayout =
-            NetworkPreviewLayoutStore.INSTANCE.getOrCreate(Objects.requireNonNull(groupKey));
+        NetworkPreviewLayoutStore.Layout storedLayout = NetworkPreviewLayoutStore.INSTANCE.getOrCreate(Objects.requireNonNull(groupKey));
         Map<LogisticsNode, NetworkPreviewLayoutStore.Position> saved = storedLayout.nodePositions();
         /*
          * 不在增量拓扑同步期间删除暂时不可见的节点布局。分组真正删除时由布局仓库的
@@ -269,8 +262,7 @@ public final class NetworkPreviewPanel {
         currentLocalPositions.clear();
         currentLocalPositions.putAll(localPositions);
         Map<LogisticsNode, Point> result = new LinkedHashMap<>(localPositions.size());
-        localPositions.forEach((node, point) -> result.put(node,
-            new Point(x + point.x, y + point.y)));
+        localPositions.forEach((node, point) -> result.put(node, new Point(x + point.x, y + point.y)));
         return result;
     }
 
@@ -287,8 +279,7 @@ public final class NetworkPreviewPanel {
         automatic.keySet().forEach(node ->
             nodesByPosition.computeIfAbsent(node.gPos(), ignored -> new ArrayList<>()).add(node));
         layout.legacyNodePositions().forEach((position, savedPosition) -> {
-            List<LogisticsNode> matching = new ArrayList<>(
-                nodesByPosition.getOrDefault(position, List.of()));
+            List<LogisticsNode> matching = new ArrayList<>(nodesByPosition.getOrDefault(position, List.of()));
             matching.sort(Comparator.comparing(NetworkPreviewPanel::nodeKey));
             double startY = savedPosition.y() - (matching.size() - 1) * (NODE_HEIGHT + NODE_GAP) / 2.0D;
             for (int index = 0; index < matching.size(); index++) {
@@ -341,29 +332,21 @@ public final class NetworkPreviewPanel {
         Point second,
         VisualNode firstNode,
         VisualNode secondNode,
-        ViewTransform transform,
-        Map<FlowTarget, DirectionMarker> directionMarkers
+        ViewTransform transform
     ) {
-        ConnectionPorts ports = ConnectionPorts.resolve(
-            first, firstNode.width, second, secondNode.width);
-        CurvePoint start = ports.firstAnchor;
-        CurvePoint end = ports.secondAnchor;
-        double startX = start.x;
-        double startY = start.y;
-        double endX = end.x;
-        double endY = end.y;
+        boolean firstOnLeft = first.x <= second.x;
+        double startX = firstOnLeft ? first.x + firstNode.width : first.x;
+        double startY = first.y + NODE_HEIGHT / 2.0D;
+        double endX = firstOnLeft ? second.x : second.x + secondNode.width;
+        double endY = second.y + NODE_HEIGHT / 2.0D;
         ConnectionKey selectedKey = SelectionContext.getFocusedConnectionKey();
         boolean selected = connection.key().equals(selectedKey);
         int segments = Math.max(24, (int) Math.ceil(Math.hypot(
             endX - startX, endY - startY) / 2.0D));
         List<CurvePoint> centerLine = new ArrayList<>(segments + 1);
         double deltaX = endX - startX;
-        double deltaY = endY - startY;
-        boolean horizontal = Math.abs(deltaX) >= Math.abs(deltaY);
-        double firstControlX = horizontal ? startX + deltaX * 0.42D : startX;
-        double firstControlY = horizontal ? startY : startY + deltaY * 0.42D;
-        double secondControlX = horizontal ? endX - deltaX * 0.42D : endX;
-        double secondControlY = horizontal ? endY : endY - deltaY * 0.42D;
+        double firstControlX = startX + deltaX * 0.42D;
+        double secondControlX = endX - deltaX * 0.42D;
         for (int i = 0; i <= segments; i++) {
             double t = i / (double) segments;
             double inverse = 1.0D - t;
@@ -372,8 +355,8 @@ public final class NetworkPreviewPanel {
                 + 3.0D * inverse * t * t * secondControlX
                 + t * t * t * endX;
             double py = inverse * inverse * inverse * startY
-                + 3.0D * inverse * inverse * t * firstControlY
-                + 3.0D * inverse * t * t * secondControlY
+                + 3.0D * inverse * inverse * t * startY
+                + 3.0D * inverse * t * t * endY
                 + t * t * t * endY;
             centerLine.add(new CurvePoint(px, py));
         }
@@ -398,24 +381,14 @@ public final class NetworkPreviewPanel {
 
         List<Point> hitPoints = new ArrayList<>(
             centerLine.size() * activeDirections);
-        double laneOffset = activeDirections == 2 ? 4.0D : 0.0D;
+        double laneOffset = activeDirections == 2 ? 7.0D : 0.0D;
         if (forward.active) {
-            FlowEndpoint endpoint = new FlowEndpoint(ports.secondSide, end);
-            List<CurvePoint> branch = activeDirections == 2
-                ? offsetCurveInterior(centerLine, -laneOffset) : centerLine;
-            renderDirection(graphics, hitPoints, branch,
-                forward, selected, transform);
-            registerDirectionMarker(
-                directionMarkers, connection.second(), endpoint, forward);
+            renderDirection(graphics, hitPoints, centerLine,
+                forward, true, -laneOffset, selected, transform);
         }
         if (backward.active) {
-            FlowEndpoint endpoint = new FlowEndpoint(ports.firstSide, start);
-            List<CurvePoint> branch = activeDirections == 2
-                ? offsetCurveInterior(centerLine, laneOffset) : centerLine;
-            renderDirection(graphics, hitPoints, branch,
-                backward, selected, transform);
-            registerDirectionMarker(
-                directionMarkers, connection.first(), endpoint, backward);
+            renderDirection(graphics, hitPoints, centerLine,
+                backward, false, laneOffset, selected, transform);
         }
         connectionHits.add(new ConnectionHit(connection, List.copyOf(hitPoints)));
     }
@@ -427,11 +400,14 @@ public final class NetworkPreviewPanel {
     private static void renderDirection(
         GuiGraphics graphics,
         List<Point> hitPoints,
-        List<CurvePoint> line,
+        List<CurvePoint> centerLine,
         DirectionState direction,
+        boolean startToEnd,
+        double offsetY,
         boolean selected,
         ViewTransform transform
     ) {
+        List<CurvePoint> line = offsetLine(centerLine, offsetY);
         if (selected) {
             drawSmoothLine(graphics, line,
                 SELECTED_CONNECTION_COLOR, SELECTED_CONNECTION_LINE_WIDTH, !direction.allowed);
@@ -439,71 +415,56 @@ public final class NetworkPreviewPanel {
         int semanticColor = direction.color();
         drawSmoothLine(graphics, line, semanticColor,
             CONNECTION_LINE_WIDTH, !direction.allowed);
+        drawDirectionArrow(graphics, line, startToEnd,
+            semanticColor, CONNECTION_LINE_WIDTH);
         line.stream().map(transform::apply).forEach(hitPoints::add);
     }
 
     /**
-     * 双向连接只在曲线中段错开，节点边缘保持准确汇合。
+     * 双向连接使用两条完整错开的曲线，避免方向信息挤在同一条线上。
      */
-    private static List<CurvePoint> offsetCurveInterior(
-        List<CurvePoint> centerLine,
-        double offset
-    ) {
-        if (centerLine.size() < 2 || Math.abs(offset) < 0.001D) return centerLine;
-        CurvePoint start = centerLine.get(0);
-        CurvePoint end = centerLine.get(centerLine.size() - 1);
-        double deltaX = end.x - start.x;
-        double deltaY = end.y - start.y;
-        double length = Math.hypot(deltaX, deltaY);
-        if (length < 0.001D) return centerLine;
-        double normalX = -deltaY / length;
-        double normalY = deltaX / length;
+    private static List<CurvePoint> offsetLine(List<CurvePoint> centerLine, double offsetY) {
+        if (offsetY == 0.0D) return centerLine;
         List<CurvePoint> result = new ArrayList<>(centerLine.size());
-        for (int index = 0; index < centerLine.size(); index++) {
-            double progress = index / (double) (centerLine.size() - 1);
-            double interiorOffset = Math.sin(Math.PI * progress) * offset;
-            CurvePoint point = centerLine.get(index);
-            result.add(new CurvePoint(
-                point.x + normalX * interiorOffset,
-                point.y + normalY * interiorOffset));
+        for (CurvePoint point : centerLine) {
+            result.add(new CurvePoint(point.x, point.y + offsetY));
         }
         return List.copyOf(result);
     }
 
     /**
-     * 同一目标节点同一接入侧只保留一个方向标记。连接线仍逐条绘制，
-     * 因此汇总箭头不会破坏单条连接的选取、高亮与状态表达。
+     * 每条传输方向在自己的目标端绘制箭头，保证双向连接清晰可辨。
      */
-    private static void registerDirectionMarker(
-        Map<FlowTarget, DirectionMarker> markers,
-        LogisticsNode target,
-        FlowEndpoint endpoint,
-        DirectionState direction
-    ) {
-        FlowTarget key = new FlowTarget(target, endpoint.side);
-        DirectionMarker candidate = new DirectionMarker(
-            endpoint.anchor, endpoint.side,
-            1, direction.allowed ? 0 : 1, direction.isNearLimit() ? 1 : 0);
-        markers.merge(key, candidate, DirectionMarker::merge);
-    }
-
-    private static void renderDirectionMarker(
+    private static void drawDirectionArrow(
         GuiGraphics graphics,
-        DirectionMarker marker
+        List<CurvePoint> line,
+        boolean startToEnd,
+        int color,
+        double width
     ) {
-        int color = marker.color();
-        CurvePoint tip = marker.anchor;
-        double directionX = marker.side.directionX;
-        double directionY = marker.side.directionY;
-        double baseX = tip.x - directionX * 6.0D;
-        double baseY = tip.y - directionY * 6.0D;
-        double normalX = -directionY * 3.0D;
-        double normalY = directionX * 3.0D;
-        List<CurvePoint> points = List.of(
+        int arrowIndex = startToEnd ? line.size() - 1 : 0;
+        CurvePoint before = line.get(Math.max(0, arrowIndex - 2));
+        CurvePoint after = line.get(Math.min(line.size() - 1, arrowIndex + 2));
+        double directionX = after.x - before.x;
+        double directionY = after.y - before.y;
+        double length = Math.hypot(directionX, directionY);
+        if (length < 0.001D) return;
+        directionX /= length;
+        directionY /= length;
+        if (!startToEnd) {
+            directionX = -directionX;
+            directionY = -directionY;
+        }
+        CurvePoint tip = line.get(arrowIndex);
+        double baseX = tip.x - directionX * 5.0D;
+        double baseY = tip.y - directionY * 5.0D;
+        double normalX = -directionY * 2.8D;
+        double normalY = directionX * 2.8D;
+        List<CurvePoint> arrow = List.of(
             new CurvePoint(baseX + normalX, baseY + normalY),
             tip,
             new CurvePoint(baseX - normalX, baseY - normalY));
-        drawLineStrip(graphics, points, 0, points.size(), color, CONNECTION_LINE_WIDTH);
+        drawLineStrip(graphics, arrow, 0, arrow.size(), color, width);
     }
 
     /**
@@ -923,95 +884,6 @@ public final class NetworkPreviewPanel {
      * 保留亚像素精度的曲线采样点，避免 GPU 线带沿整数网格折动。
      */
     private record CurvePoint(double x, double y) {
-    }
-
-    private enum AnchorSide {
-        LEFT(1.0D, 0.0D),
-        RIGHT(-1.0D, 0.0D),
-        TOP(0.0D, 1.0D),
-        BOTTOM(0.0D, -1.0D);
-
-        private final double directionX;
-        private final double directionY;
-
-        AnchorSide(double directionX, double directionY) {
-            this.directionX = directionX;
-            this.directionY = directionY;
-        }
-
-        private CurvePoint anchor(Point target, int targetWidth) {
-            return switch (this) {
-                case LEFT -> new CurvePoint(target.x, target.y + NODE_HEIGHT / 2.0D);
-                case RIGHT -> new CurvePoint(target.x + targetWidth, target.y + NODE_HEIGHT / 2.0D);
-                case TOP -> new CurvePoint(target.x + targetWidth / 2.0D, target.y);
-                case BOTTOM -> new CurvePoint(target.x + targetWidth / 2.0D, target.y + NODE_HEIGHT);
-            };
-        }
-    }
-
-    /**
-     * 曲线与箭头共享同一对端口；有水平距离时始终采用类图式左右端口。
-     */
-    private record ConnectionPorts(
-        AnchorSide firstSide,
-        CurvePoint firstAnchor,
-        AnchorSide secondSide,
-        CurvePoint secondAnchor
-    ) {
-        private static ConnectionPorts resolve(
-            Point first,
-            int firstWidth,
-            Point second,
-            int secondWidth
-        ) {
-            double firstCenterX = first.x + firstWidth / 2.0D;
-            double secondCenterX = second.x + secondWidth / 2.0D;
-            AnchorSide firstSide;
-            AnchorSide secondSide;
-            if (Math.abs(firstCenterX - secondCenterX) >= 0.001D) {
-                boolean firstIsLeft = firstCenterX < secondCenterX;
-                firstSide = firstIsLeft ? AnchorSide.RIGHT : AnchorSide.LEFT;
-                secondSide = firstIsLeft ? AnchorSide.LEFT : AnchorSide.RIGHT;
-            } else {
-                boolean firstIsAbove = first.y < second.y;
-                firstSide = firstIsAbove ? AnchorSide.BOTTOM : AnchorSide.TOP;
-                secondSide = firstIsAbove ? AnchorSide.TOP : AnchorSide.BOTTOM;
-            }
-            return new ConnectionPorts(
-                firstSide, firstSide.anchor(first, firstWidth),
-                secondSide, secondSide.anchor(second, secondWidth));
-        }
-    }
-
-    private record FlowEndpoint(AnchorSide side, CurvePoint anchor) {
-    }
-
-    private record FlowTarget(LogisticsNode target, AnchorSide side) {
-    }
-
-    private record DirectionMarker(
-        CurvePoint anchor,
-        AnchorSide side,
-        int total,
-        int blocked,
-        int nearLimit
-    ) {
-        private DirectionMarker merge(DirectionMarker other) {
-            return new DirectionMarker(
-                anchor, side,
-                total + other.total,
-                blocked + other.blocked,
-                nearLimit + other.nearLimit);
-        }
-
-        private boolean allBlocked() {
-            return blocked == total;
-        }
-
-        private int color() {
-            if (allBlocked()) return 0xFFFF6868;
-            return blocked > 0 || nearLimit > 0 ? 0xFFFFD45A : 0xFF98FB98;
-        }
     }
 
     /**
