@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.ExtractionResult;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
@@ -57,24 +58,24 @@ public class MekanismInfusionResource implements LogisticsResource<IInfusionHand
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
     public @Nullable IInfusionHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
-        return com.coobird.staticlogistics.transfer.CapabilityCache.get(
+        return CapabilityCache.get(
             level, pos, face, mekanism.common.capabilities.Capabilities.INFUSION_HANDLER);
     }
 
     @Override
     public ExtractionResult<?> extractTyped(IInfusionHandler handle, long amount, boolean simulate) {
+        if (!simulate) return ExtractionResult.of(handle.extractChemical(amount, Action.EXECUTE));
         try {
-            InfusionStack extracted = handle.extractChemical(amount, simulate ? Action.SIMULATE : Action.EXECUTE);
-            return ExtractionResult.of(extracted);
-        } catch (Exception e) {
-            LOGGER.error("Mekanism infusion extract failed", e);
+            return ExtractionResult.of(handle.extractChemical(amount, Action.SIMULATE));
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism infusion extract simulation failed", exception);
             return ExtractionResult.of(InfusionStack.EMPTY);
         }
     }
@@ -82,11 +83,15 @@ public class MekanismInfusionResource implements LogisticsResource<IInfusionHand
     @Override
     public long insertTyped(IInfusionHandler handle, Object value, boolean simulate) {
         if (!(value instanceof InfusionStack stack) || stack.isEmpty()) return 0;
-        try {
-            InfusionStack remainder = handle.insertChemical(stack, simulate ? Action.SIMULATE : Action.EXECUTE);
+        if (!simulate) {
+            InfusionStack remainder = handle.insertChemical(stack, Action.EXECUTE);
             return stack.getAmount() - remainder.getAmount();
-        } catch (Exception e) {
-            LOGGER.error("Mekanism infusion insert failed", e);
+        }
+        try {
+            InfusionStack remainder = handle.insertChemical(stack, Action.SIMULATE);
+            return stack.getAmount() - remainder.getAmount();
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism infusion insert simulation failed", exception);
             return 0;
         }
     }

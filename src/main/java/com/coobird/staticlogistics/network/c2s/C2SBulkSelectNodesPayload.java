@@ -10,6 +10,7 @@ import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import net.minecraft.ChatFormatting;
@@ -37,7 +38,9 @@ import java.util.List;
 public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
                                         ToolMode mode) implements IPortPacket.C2S {
     private static final int MAX_NODES = SLDataComponents.MAX_STORED_NODES;
+    private static final int MAX_VISITED = MAX_NODES * 4;
     private static final int MAX_AXIS_DISTANCE = 24;
+    private static final long SCAN_BUDGET_NANOS = 5_000_000L;
     public static final ResourceLocation ID = StaticLogistics.asResource("bulk_select_nodes");
     public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SBulkSelectNodesPayload> STREAM_CODEC =
         new PortStreamCodec<>() {
@@ -62,21 +65,27 @@ public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
 
     @Override
     public void work(ServerPlayer player) {
-        if (!mode().isLinkMode() || !ServerPacketRateLimiter.allow(
-            player, ServerPacketRateLimiter.Action.BULK_NODE_SELECTION)) return;
+        if (!mode().isLinkMode()
+            || !ServerPacketRateLimiter.allow(
+            player, ServerPacketRateLimiter.Action.BULK_NODE_SELECTION)
+            || !NodeInteractionValidator.isDirectBlockTargetValid(player, origin(), face())) return;
         ItemStack stack = ToolSettingsTarget.findConfigurator(player);
         if (!(stack.getItem() instanceof LinkConfiguratorItem item)
-            || item.getSettings(stack).mode() != mode()
             || player.distanceToSqr(Vec3.atCenterOf(origin())) > 100.0D) return;
+        LinkConfiguratorItem.ToolSettings settings = item.getSettings(stack);
+        if (settings.mode() != mode()) return;
         BulkSelectionInteractionGuard.mark(player, origin(), face());
-        List<LogisticsNode> found = collect(player);
+        List<LogisticsNode> found = collect(player, settings.selectedTypeIds());
         int added = LinkOperationHelper.addNodes(stack, found, mode(), player, player.serverLevel());
         player.displayClientMessage(Component.translatable(
                 "msg.staticlogistics.bulk_nodes_added", added, found.size())
             .withStyle(added > 0 ? ChatFormatting.GREEN : ChatFormatting.GRAY), true);
     }
 
-    private List<LogisticsNode> collect(ServerPlayer player) {
+    private List<LogisticsNode> collect(
+        ServerPlayer player,
+        List<ResourceLocation> selectedTypeIds
+    ) {
         var level = player.serverLevel();
         Block seedBlock = level.getBlockState(origin()).getBlock();
         LinkManager manager = LinkManager.get(level);
@@ -84,14 +93,21 @@ public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
         LinkedHashSet<BlockPos> visited = new LinkedHashSet<>();
         List<LogisticsNode> result = new ArrayList<>();
         pending.add(origin());
-        while (!pending.isEmpty() && visited.size() < MAX_NODES * 8 && result.size() < MAX_NODES) {
+        long deadline = System.nanoTime() + SCAN_BUDGET_NANOS;
+        while (!pending.isEmpty() && visited.size() < MAX_VISITED && result.size() < MAX_NODES
+            && System.nanoTime() - deadline < 0L) {
             BlockPos pos = pending.removeFirst();
-            if (!visited.add(pos) || !inside(pos) || !level.hasChunkAt(pos)
-                || level.getBlockState(pos).getBlock() != seedBlock) continue;
-            if (TransferUtils.hasLogisticsCapability(level, pos, face())) {
-                FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, face()));
+            if (!visited.add(pos) || !inside(pos)
+                || !level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
+                || level.getBlockState(pos).getBlock() != seedBlock
+                || !player.mayBuild() || !level.mayInteract(player, pos)) continue;
+            for (Direction candidateFace : TransferUtils.getCapabilityFaces(
+                level, pos, face(), selectedTypeIds)) {
+                FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, candidateFace));
                 if (config == null || config.canPlayerAccess(player)) {
-                    result.add(new LogisticsNode(GlobalPos.of(level.dimension(), pos.immutable()), face()));
+                    result.add(new LogisticsNode(
+                        GlobalPos.of(level.dimension(), pos.immutable()), candidateFace));
+                    break;
                 }
             }
             for (Direction direction : Direction.values()) pending.addLast(pos.relative(direction));

@@ -18,6 +18,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -177,6 +178,7 @@ public class LinkOperationHelper {
                                             LinkConfiguratorItem.ToolSettings settings, Player player) {
         if (!(player instanceof ServerPlayer serverPlayer)
             || current.equals(stored)
+            || group == null
             || !NodeInteractionValidator.holdsConfigurator(serverPlayer)
             || !NodeInteractionValidator.isDirectInteractionTargetValid(
             serverPlayer, current.gPos().pos(), current.face())) return false;
@@ -186,18 +188,19 @@ public class LinkOperationHelper {
         if (currentCfg != null && !currentCfg.canPlayerModify(player)) return false;
 
         ServerLevel storedLevel = level.getServer().getLevel(stored.gPos().dimension());
-        if (storedLevel == null
-            || !storedLevel.getChunkSource().hasChunk(
-            stored.gPos().pos().getX() >> 4, stored.gPos().pos().getZ() >> 4)
-            || storedLevel.getBlockEntity(stored.gPos().pos()) == null
-            || !TransferUtils.hasLogisticsCapability(
-            storedLevel, stored.gPos().pos(), stored.face())) return false;
+        if (storedLevel == null) return false;
+        BlockPos storedPos = stored.gPos().pos();
+        if (!serverPlayer.mayBuild() || !storedLevel.mayInteract(serverPlayer, storedPos)) return false;
+        boolean storedChunkLoaded = storedLevel.getChunkSource().hasChunk(
+            storedPos.getX() >> 4, storedPos.getZ() >> 4);
+        if (storedChunkLoaded && (storedLevel.getBlockEntity(storedPos) == null
+            || !TransferUtils.hasLogisticsCapability(storedLevel, storedPos, stored.face()))) return false;
 
         LinkManager storedMgr = LinkManager.get(storedLevel);
         FaceConfigComposite storedCfg = storedMgr.getFaceConfig(FaceAddress.of(stored));
         if (storedCfg != null && !storedCfg.canPlayerModify(player)) return false;
 
-        if (group == null || !GroupService.canModify(group.key().ownerId(), player)) return false;
+        if (!GroupService.canModify(group.key().ownerId(), player)) return false;
         if (currentCfg != null && currentCfg.faceConfig.getOwner() != null
             && !currentCfg.faceConfig.getOwner().equals(group.key().ownerId())) return false;
         if (storedCfg != null && storedCfg.faceConfig.getOwner() != null
@@ -285,7 +288,7 @@ public class LinkOperationHelper {
      * 只有面首次获得输出角色时，才使用配置器中的类型初始化输出选择。
      */
     private static void enableOutput(FaceConfigComposite config,
-                                     List<net.minecraft.resources.ResourceLocation> selectedTypeIds) {
+                                     List<ResourceLocation> selectedTypeIds) {
         boolean wasEnabled = config.isGlobalOutputEnabled();
         config.setGlobalOutputEnabled(true);
         if (!wasEnabled) config.setSelectedTypeIds(selectedTypeIds);

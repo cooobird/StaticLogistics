@@ -5,7 +5,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -17,6 +16,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -520,8 +520,11 @@ public class TagBarWidget {
             for (int i = 0; i < fluidHandler.getTanks(); i++) {
                 FluidStack fs = fluidHandler.getFluidInTank(i);
                 if (!fs.isEmpty()) {
-                    BuiltInRegistries.FLUID.wrapAsHolder(fs.getFluid()).tags()
-                        .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID)));
+                    var fluidTags = ForgeRegistries.FLUIDS.tags();
+                    if (fluidTags != null) {
+                        fluidTags.getReverseTag(fs.getFluid()).ifPresent(reverse -> reverse.getTagKeys()
+                            .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID))));
+                    }
                 }
             }
         }
@@ -537,8 +540,11 @@ public class TagBarWidget {
     public static List<EnhancedTagOption> collectEnhancedTagOptionsForFluid(Fluid fluid) {
         if (fluid == null) return List.of();
         List<EnhancedTagOption> all = new ArrayList<>();
-        BuiltInRegistries.FLUID.wrapAsHolder(fluid).tags()
-            .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID)));
+        var fluidTags = ForgeRegistries.FLUIDS.tags();
+        if (fluidTags != null) {
+            fluidTags.getReverseTag(fluid).ifPresent(reverse -> reverse.getTagKeys()
+                .forEach(tag -> all.add(new EnhancedTagOption(tag, TagType.FLUID))));
+        }
         Map<ResourceLocation, EnhancedTagOption> unique = new LinkedHashMap<>();
         for (EnhancedTagOption opt : all) {
             unique.putIfAbsent(opt.rawTag.location(), opt);

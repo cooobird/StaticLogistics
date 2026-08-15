@@ -159,7 +159,8 @@ public class GroupPanel {
 
     public void render(GuiGraphics g, Font font, ItemStack stack,
                        @Nullable ClientConnection selectedConnection,
-                       int leftPos, int topPos, int mx, int my, float partialTick) {
+                       int leftPos, int topPos, int mx, int my, float partialTick,
+                       double interfaceScale) {
         this.hoveredGroup = null;
         this.hoveredConnection = null;
         int sx = leftPos + SIDE_PANEL_X;
@@ -169,7 +170,7 @@ public class GroupPanel {
         this.searchBox.render(g, mx, my, partialTick);
 
         renderGroupList(
-            g, font, stack, selectedConnection, sx, topPos, mx, my);
+            g, font, stack, selectedConnection, sx, topPos, mx, my, interfaceScale);
 
         if (this.renameBox.isVisible()) {
             this.renameBox.render(g, mx, my, partialTick);
@@ -181,7 +182,8 @@ public class GroupPanel {
 
     private void renderGroupList(GuiGraphics g, Font font, ItemStack stack,
                                  @Nullable ClientConnection selectedConnection,
-                                 int sx, int topPos, int mx, int my) {
+                                 int sx, int topPos, int mx, int my,
+                                 double interfaceScale) {
         List<GroupConnectionTreeModel.Row> rows = getVisibleRows(stack);
         int maxScroll = getMaxScroll();
         renderScrollBar(g, sx + SCROLLBAR_X, topPos + SCROLLBAR_Y, mx, my, maxScroll);
@@ -189,8 +191,8 @@ public class GroupPanel {
         int listX = sx + LIST_OFFSET_X;
         int listY = topPos + LIST_OFFSET_Y;
         int addRowY = getAddRowY(listY);
-        g.enableScissor(listX - 2, listY, listX + SELECTION_WIDTH + 2,
-            addRowY);
+        GuiScissor.enable(g, interfaceScale, listX - 2, listY,
+            listX + SELECTION_WIDTH + 2, addRowY);
 
         String currentGroupId = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), "");
         GroupKey currentGroupKey = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());

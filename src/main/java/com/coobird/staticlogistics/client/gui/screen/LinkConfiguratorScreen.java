@@ -54,6 +54,13 @@ import java.util.Objects;
  * 否则会重置鼠标、焦点和拖动状态。
  */
 public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfiguratorMenu> {
+    private static final int RESPONSIVE_MARGIN = 4;
+    private static final int OUTER_WIDTH = SLGuiTextures.LinkConfigurator.WIDTH;
+    private static final int OUTER_TOP_OFFSET = TitleBar.Y_OFFSET
+        - SLGuiTextures.Title.CONTENT_INSET;
+    private static final int OUTER_BOTTOM_OFFSET = SLGuiTextures.LinkConfigurator.HEIGHT
+        - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
+    private static final int OUTER_HEIGHT = OUTER_BOTTOM_OFFSET - OUTER_TOP_OFFSET;
     private static final int TITLE_RIGHT_PADDING = 8;
     private static final int TITLE_Y = 6;
     private static final int HIDDEN_VANILLA_INVENTORY_LABEL_Y = 1000;
@@ -87,6 +94,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private NodeConfigurationPanel nodeConfigurationPanel;
     private ConfirmationDialog confirmationDialog;
     private boolean previewExpanded;
+    private double interfaceScale = 1.0D;
+    private int virtualWidth;
+    private int virtualHeight;
 
     public LinkConfiguratorScreen(LinkConfiguratorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -96,7 +106,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     protected void init() {
         this.imageWidth = SLGuiTextures.LinkConfigurator.CONTENT_WIDTH;
         this.imageHeight = SLGuiTextures.LinkConfigurator.CONTENT_HEIGHT;
+        updateResponsiveViewport();
         super.init();
+        this.leftPos = (virtualWidth - OUTER_WIDTH) / 2
+            + SLGuiTextures.LinkConfigurator.CONTENT_INSET;
+        this.topPos = (virtualHeight - OUTER_HEIGHT) / 2 - OUTER_TOP_OFFSET;
         this.titleLabelX = this.imageWidth - this.font.width(this.title) - TITLE_RIGHT_PADDING;
         this.titleLabelY = TITLE_Y;
         // 原版物品栏标签由 atlas 区域标题替代，移出可视范围避免重复绘制。
@@ -141,9 +155,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         renderPreviewToggle(graphics, mouseX, mouseY);
         if (!previewExpanded) {
             preview.render(graphics, font, previewLeft(), previewTop(),
-                previewWidth(), previewHeight(), mouseX, mouseY);
+                previewWidth(), previewHeight(), mouseX, mouseY, interfaceScale);
             groupPanel.render(graphics, font, stack, preview.getSelectedConnection(),
-                leftPos, topPos, mouseX, mouseY, partialTick);
+                leftPos, topPos, mouseX, mouseY, partialTick, interfaceScale);
             renderCurrentConnection(graphics);
             nodeConfigurationPanel.render(graphics, mouseX, mouseY);
         }
@@ -151,10 +165,22 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        int virtualMouseX = toVirtual(mouseX);
+        int virtualMouseY = toVirtual(mouseY);
+        graphics.pose().pushPose();
+        graphics.pose().scale((float) interfaceScale, (float) interfaceScale, 1.0F);
+        renderInterface(graphics, virtualMouseX, virtualMouseY, partialTick);
+        graphics.pose().popPose();
+    }
+
+    /**
+     * 所有容器内容始终在同一套虚拟坐标中绘制，避免视觉缩放后槽位与鼠标命中区域错位。
+     */
+    private void renderInterface(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
         if (previewExpanded) renderExpandedPreview(graphics, mouseX, mouseY);
         if (confirmationDialog != null && confirmationDialog.isOpen()) {
-            confirmationDialog.render(graphics, font, width, height, mouseX, mouseY);
+            confirmationDialog.render(graphics, font, virtualWidth, virtualHeight, mouseX, mouseY);
             return;
         }
 
@@ -244,7 +270,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             graphics.drawString(font, font.plainSubstrByWidth(second, maximumWidth),
                 x, y + CONNECTION_SECOND_LINE_Y, COLOR_SECONDARY, false);
         } else if (selectedNode != null) {
-            graphics.drawString(font, compactNode(selectedNode),
+            Component selectedText = preview.getSelectedNodes().size() > 1
+                ? Component.translatable("gui.staticlogistics.network_preview.selected_nodes",
+                preview.getSelectedNodes().size())
+                : compactNode(selectedNode);
+            graphics.drawString(font, selectedText,
                 x, y + CONNECTION_SINGLE_LINE_Y, COLOR_ACCENT, false);
         } else {
             int maximumWidth = SLGuiTextures.LinkConfigurator.CONNECTION_WIDTH
@@ -294,12 +324,16 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        mouseX = toVirtual(mouseX);
+        mouseY = toVirtual(mouseY);
         if (confirmationDialog != null && confirmationDialog.isOpen()) {
-            return confirmationDialog.mouseClicked(mouseX, mouseY, button, width, height);
+            return confirmationDialog.mouseClicked(
+                mouseX, mouseY, button, virtualWidth, virtualHeight);
         }
         if (button == 0 && NodeConfigControls.hitOpBtn(mouseX, mouseY,
             leftPos + PREVIEW_TOGGLE_X, topPos + PREVIEW_TOGGLE_Y)) {
             previewExpanded = !previewExpanded;
+            preview.resetView();
             SoundUtil.playClickSound();
             return true;
         }
@@ -311,6 +345,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                     SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
                 LogisticsNode node = preview.getSelectedNode();
                 if (node != null) openNode(node);
+                else clearNodeTarget();
                 return true;
             }
             return true;
@@ -523,6 +558,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+        mouseX = toVirtual(mouseX);
+        mouseY = toVirtual(mouseY);
         if (TransferTypeGrid.mouseScrolled(
             mouseX, mouseY, scrollY, leftPos, topPos)) return true;
         if (groupPanel.mouseScrolled(mouseX, mouseY, scrollY, leftPos, topPos)) return true;
@@ -534,6 +571,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button,
                                 double dragX, double dragY) {
+        mouseX = toVirtual(mouseX);
+        mouseY = toVirtual(mouseY);
+        dragX /= interfaceScale;
+        dragY /= interfaceScale;
         if (groupPanel.mouseDragged(mouseY, topPos)) return true;
         if (preview.mouseDragged(dragX, dragY)) return true;
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -541,15 +582,41 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        mouseX = toVirtual(mouseX);
+        mouseY = toVirtual(mouseY);
         groupPanel.mouseReleased();
         ConnectionKey focusBeforeRelease = SelectionContext.getFocusedConnectionKey();
         if (preview.mouseReleased()) {
             if (!Objects.equals(focusBeforeRelease,
                 SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
-            if (preview.getSelectedNode() == null) clearNodeTarget();
+            LogisticsNode selectedNode = preview.getSelectedNode();
+            if (selectedNode == null) {
+                clearNodeTarget();
+            } else if (preview.selectionChangedOnLastRelease()) {
+                openNode(selectedNode);
+            }
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    /**
+     * 界面尺寸较大、逻辑窗口放不下完整配置器时，仅缩放本界面，不修改玩家的全局设置。
+     */
+    private void updateResponsiveViewport() {
+        double widthScale = (width - RESPONSIVE_MARGIN * 2.0D) / OUTER_WIDTH;
+        double heightScale = (height - RESPONSIVE_MARGIN * 2.0D) / OUTER_HEIGHT;
+        interfaceScale = Math.max(0.1D, Math.min(1.0D, Math.min(widthScale, heightScale)));
+        virtualWidth = Math.max(OUTER_WIDTH, (int) Math.floor(width / interfaceScale));
+        virtualHeight = Math.max(OUTER_HEIGHT, (int) Math.floor(height / interfaceScale));
+    }
+
+    private int toVirtual(int coordinate) {
+        return (int) Math.floor(coordinate / interfaceScale);
+    }
+
+    private double toVirtual(double coordinate) {
+        return coordinate / interfaceScale;
     }
 
     @Override
@@ -766,7 +833,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             EXPANDED_PREVIEW_FRAME_WIDTH,
             EXPANDED_PREVIEW_FRAME_HEIGHT);
         preview.render(graphics, font, previewLeft(), previewTop(),
-            previewWidth(), previewHeight(), mouseX, mouseY);
+            previewWidth(), previewHeight(), mouseX, mouseY, interfaceScale);
         graphics.pose().popPose();
     }
 

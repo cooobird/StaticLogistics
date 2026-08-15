@@ -55,7 +55,7 @@ public class UpgradeItem extends Item implements LogisticsUpgrade {
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, @org.jetbrains.annotations.Nullable net.minecraft.world.level.Level level, List<Component> tooltip, TooltipFlag flag) {
+    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(type.getDescription().withStyle(ChatFormatting.GRAY));
 
         if (type == UpgradeType.DIMENSION) {

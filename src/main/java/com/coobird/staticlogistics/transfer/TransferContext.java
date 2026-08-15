@@ -54,7 +54,7 @@ public final class TransferContext implements ITransferContext {
                                          long limit, boolean isPullMode, long currentTick,
                                          LinkManager linkManager) {
         return obtain(level, sourceNode, sourceConfig, type, limit, isPullMode,
-            currentTick, Long.MAX_VALUE, linkManager);
+            currentTick, System.nanoTime() + LogisticsConstants.Performance.getTickerTimeBudgetNanos(), linkManager);
     }
 
     public static TransferContext obtain(ServerLevel level, LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
@@ -91,8 +91,11 @@ public final class TransferContext implements ITransferContext {
         LinkManager manager = LinkManager.get(sourceLevel);
         FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(source.sourceNode()));
         if (config == null) return null;
+        long deadline = source instanceof TransferContext transferContext
+            ? transferContext.deadlineNanos
+            : System.nanoTime() + LogisticsConstants.Performance.getTickerTimeBudgetNanos();
         TransferContext copied = obtain(sourceLevel, source.sourceNode(), config, expectedType,
-            source.limit(), source.isPullMode(), source.currentTick(), Long.MAX_VALUE, manager);
+            source.limit(), source.isPullMode(), source.currentTick(), deadline, manager);
         copied.depth = Math.max(0, source.depth()) + 1;
         return copied;
     }

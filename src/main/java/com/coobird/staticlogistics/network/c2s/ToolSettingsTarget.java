@@ -3,6 +3,8 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -15,11 +17,13 @@ final class ToolSettingsTarget {
     }
 
     static ItemStack findConfigurator(Player player) {
+        if (!isAllowed(player)) return ItemStack.EMPTY;
         ItemStack menuStack = findMenuConfigurator(player);
         return menuStack.isEmpty() ? findInHands(player, false) : menuStack;
     }
 
     static ItemStack findSelectionTool(Player player) {
+        if (!isAllowed(player)) return ItemStack.EMPTY;
         ItemStack menuStack = findMenuConfigurator(player);
         return menuStack.isEmpty() ? findInHands(player, true) : menuStack;
     }
@@ -42,5 +46,10 @@ final class ToolSettingsTarget {
     private static boolean isSupported(ItemStack stack, boolean allowBlueprint) {
         return stack.getItem() instanceof LinkConfiguratorItem
             || allowBlueprint && stack.getItem() instanceof BlueprintItem;
+    }
+
+    private static boolean isAllowed(Player player) {
+        return player instanceof ServerPlayer serverPlayer
+            && ServerPacketRateLimiter.allow(serverPlayer, ServerPacketRateLimiter.Action.TOOL_SETTINGS);
     }
 }

@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.ExtractionResult;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
@@ -58,24 +59,24 @@ public class MekanismSlurryResource implements LogisticsResource<ISlurryHandler>
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
     public @Nullable ISlurryHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
-        return com.coobird.staticlogistics.transfer.CapabilityCache.get(
+        return CapabilityCache.get(
             level, pos, face, mekanism.common.capabilities.Capabilities.SLURRY_HANDLER);
     }
 
     @Override
     public ExtractionResult<?> extractTyped(ISlurryHandler handle, long amount, boolean simulate) {
+        if (!simulate) return ExtractionResult.of(handle.extractChemical(amount, Action.EXECUTE));
         try {
-            SlurryStack extracted = handle.extractChemical(amount, simulate ? Action.SIMULATE : Action.EXECUTE);
-            return ExtractionResult.of(extracted);
-        } catch (Exception e) {
-            LOGGER.error("Mekanism slurry extract failed", e);
+            return ExtractionResult.of(handle.extractChemical(amount, Action.SIMULATE));
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism slurry extract simulation failed", exception);
             return ExtractionResult.of(SlurryStack.EMPTY);
         }
     }
@@ -83,11 +84,15 @@ public class MekanismSlurryResource implements LogisticsResource<ISlurryHandler>
     @Override
     public long insertTyped(ISlurryHandler handle, Object value, boolean simulate) {
         if (!(value instanceof SlurryStack stack) || stack.isEmpty()) return 0;
-        try {
-            SlurryStack remainder = handle.insertChemical(stack, simulate ? Action.SIMULATE : Action.EXECUTE);
+        if (!simulate) {
+            SlurryStack remainder = handle.insertChemical(stack, Action.EXECUTE);
             return stack.getAmount() - remainder.getAmount();
-        } catch (Exception e) {
-            LOGGER.error("Mekanism slurry insert failed", e);
+        }
+        try {
+            SlurryStack remainder = handle.insertChemical(stack, Action.SIMULATE);
+            return stack.getAmount() - remainder.getAmount();
+        } catch (RuntimeException exception) {
+            LOGGER.error("Mekanism slurry insert simulation failed", exception);
             return 0;
         }
     }

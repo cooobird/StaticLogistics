@@ -20,8 +20,6 @@ public final class DistributionStrategyRegistry {
     private static final List<DistributionStrategy> VALUES = new ArrayList<>();
     private static final Map<String, DistributionStrategy> LEGACY_MAP = new HashMap<>();
 
-    // ── 内置策略 ──
-
     public static final DistributionStrategy SEQUENTIAL = registerInternal(
         StaticLogistics.asResource("sequential"), SequentialGroupSorter.INSTANCE, "SEQUENTIAL");
     public static final DistributionStrategy ROUND_ROBIN = registerInternal(

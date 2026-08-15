@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.logistics.filter;
 
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -34,7 +35,7 @@ public class TagLogisticsFilter extends AbstractLogisticsFilter {
     }
 
     @Override
-    protected boolean testItem(net.minecraft.world.item.ItemStack stack) {
+    protected boolean testItem(ItemStack stack) {
         for (TagKey<Item> tag : excludedItemTags) {
             if (stack.is(tag)) return false;
         }

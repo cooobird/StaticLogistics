@@ -4,6 +4,7 @@ import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtens
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -39,6 +40,8 @@ public record C2SUpdateBlueprintPreviewPayload(BlockPos previewAnchor,
 
     @Override
     public void work(ServerPlayer player) {
+        if (!ServerPacketRateLimiter.allow(
+            player, ServerPacketRateLimiter.Action.BLUEPRINT_PREVIEW)) return;
         ItemStack stack = player.getItemInHand(InteractionHand.MAIN_HAND);
         if (!(stack.getItem() instanceof BlueprintItem)) {
             stack = player.getItemInHand(InteractionHand.OFF_HAND);

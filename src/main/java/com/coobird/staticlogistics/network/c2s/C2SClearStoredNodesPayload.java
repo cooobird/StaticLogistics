@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkOperationHelper;
+import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -30,6 +31,8 @@ public record C2SClearStoredNodesPayload() implements IPortPacket.C2S {
 
     @Override
     public void work(ServerPlayer player) {
+        if (!ServerPacketRateLimiter.allow(
+            player, ServerPacketRateLimiter.Action.STORED_NODE_CLEAR)) return;
         ItemStack stack = player.getMainHandItem();
         if (!(stack.getItem() instanceof LinkConfiguratorItem))
             stack = player.getOffhandItem();

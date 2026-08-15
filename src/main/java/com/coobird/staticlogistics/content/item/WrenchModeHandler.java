@@ -1,11 +1,10 @@
 package com.coobird.staticlogistics.content.item;
 
 import com.coobird.staticlogistics.integration.ModCompat;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
 import mekanism.additions.common.AdditionsTags;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
@@ -31,6 +30,10 @@ public class WrenchModeHandler implements ModeHandler {
         BlockPos pos = context.getClickedPos();
         BlockState state = level.getBlockState(pos);
         if (state.isAir()) return InteractionResult.SUCCESS;
+        if (!level.isClientSide && (!player.mayBuild() || !level.mayInteract(player, pos))) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.no_permission"), true);
+            return InteractionResult.FAIL;
+        }
         if (!level.isClientSide && player.isSecondaryUseActive()) return dismantle(level, player, pos, state);
         if (!level.isClientSide && !player.isSecondaryUseActive()) return rotateBlock(level, pos, state);
         return InteractionResult.SUCCESS;
@@ -57,17 +60,13 @@ public class WrenchModeHandler implements ModeHandler {
     }
 
     private InteractionResult dismantle(Level level, Player player, BlockPos pos, BlockState state) {
-        if (!(level instanceof ServerLevel serverLevel)) return InteractionResult.SUCCESS;
-        if (!player.mayBuild()) {
+        if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.SUCCESS;
+        if (!player.mayBuild() || !level.mayInteract(player, pos)) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.no_permission"), true);
             return InteractionResult.FAIL;
         }
         if (isMekanismPlastic(state)) {
-            LinkManager mgr = LinkManager.get(serverLevel);
-            mgr.onBlockRemoved(pos);
-            ItemStack dropStack = new ItemStack(state.getBlock().asItem());
-            level.destroyBlock(pos, false);
-            if (!player.addItem(dropStack)) player.drop(dropStack, false);
+            if (!serverPlayer.gameMode.destroyBlock(pos)) return InteractionResult.FAIL;
             level.playSound(null, pos, SoundEvents.ITEM_PICKUP, SoundSource.BLOCKS, 0.5f, 1.5f);
             return InteractionResult.SUCCESS;
         }

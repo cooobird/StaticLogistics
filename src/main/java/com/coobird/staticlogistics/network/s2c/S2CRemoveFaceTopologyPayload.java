@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.core.registries.Registries;
@@ -75,7 +76,7 @@ public record S2CRemoveFaceTopologyPayload(List<Entry> entries) implements IPort
 
     @Override
     public void work(Player player) {
-        net.minecraft.client.Minecraft.getInstance().execute(() -> {
+        Minecraft.getInstance().execute(() -> {
             for (Entry entry : entries()) {
                 ClientLinkData.INSTANCE.removeFaceTopology(entry.pos(), entry.face(), entry.version());
             }

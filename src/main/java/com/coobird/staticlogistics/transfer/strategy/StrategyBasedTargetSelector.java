@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.transfer.strategy;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
+import com.coobird.staticlogistics.api.type.GroupSorter;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
@@ -16,8 +17,8 @@ import java.util.*;
 /**
  * 基于分发策略的目标选择器。
  * <p>
- * 目标收集 + 频道过滤在这里统一做，每个 priority 组内的排序
- * 委托给 {@link com.coobird.staticlogistics.api.type.GroupSorter}（每种分发策略独立实现）。
+ * 目标收集与基础资格过滤在这里统一完成，每个 priority 组内的排序
+ * 委托给 {@link GroupSorter}（每种分发策略独立实现）。
  * <p>
  * 线程安全：所有操作在服务器主线程上执行。复用字段避免每次分配。
  */

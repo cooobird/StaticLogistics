@@ -19,8 +19,10 @@ public record TransferFailureReason(ResourceLocation id, String translationKey) 
     public static final TransferFailureReason CHUNK_UNLOADED = register(StaticLogistics.asResource("chunk_unloaded"), "failure.staticlogistics.chunk_unloaded");
     public static final TransferFailureReason CAPABILITY_NULL = register(StaticLogistics.asResource("no_capability"), "failure.staticlogistics.no_capability");
     public static final TransferFailureReason EVENT_CANCELLED = register(StaticLogistics.asResource("event_cancelled"), "failure.staticlogistics.event_cancelled");
+    public static final TransferFailureReason SIMULATION_FAILED = register(StaticLogistics.asResource("simulation_failed"), "failure.staticlogistics.simulation_failed");
     public static final TransferFailureReason TARGET_REJECTED = register(StaticLogistics.asResource("target_rejected"), "failure.staticlogistics.target_rejected");
     public static final TransferFailureReason SOURCE_COMMIT_FAILED = register(StaticLogistics.asResource("source_commit_failed"), "failure.staticlogistics.source_commit_failed");
+    public static final TransferFailureReason COMMIT_STATE_UNKNOWN = register(StaticLogistics.asResource("commit_state_unknown"), "failure.staticlogistics.commit_state_unknown");
     public static final TransferFailureReason ROLLBACK_FAILED = register(StaticLogistics.asResource("rollback_failed"), "failure.staticlogistics.rollback_failed");
 
     public static TransferFailureReason register(ResourceLocation id, String translationKey) {

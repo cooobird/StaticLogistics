@@ -28,6 +28,11 @@ public final class GroupCommandService {
         this.globalManager = GlobalLogisticsManager.get(server);
     }
 
+    public static void release(MinecraftServer server) {
+        if (server == null) return;
+        LAST_MUTATION_TICK.keySet().removeIf(key -> key.server() == server);
+    }
+
     public GroupRef create(ServerPlayer actor, String displayName) {
         if (actor == null) throw new IllegalArgumentException("Group actor is required");
         String normalized = GroupConstraints.normalizeName(displayName);

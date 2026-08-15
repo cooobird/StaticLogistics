@@ -96,7 +96,6 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.connection.rename_hint", "Double-click to rename this connection", "双击重命名此连接");
         add("gui.staticlogistics.connection.delete_hint", "Right-click to delete this connection", "右键删除此连接");
         add("gui.staticlogistics.connection.open_config", "Open Side Configuration", "打开此侧配置");
-        add("gui.staticlogistics.linked_node_config", "Linked Node Configuration", "连接节点配置");
         add("gui.staticlogistics.input", "Input", "输入");
         add("gui.staticlogistics.output", "Output", "输出");
         add("gui.staticlogistics.groups_and_connections", "Groups and Connections", "分组与连接");
@@ -128,9 +127,13 @@ public class SLLanguageProvider extends LanguageProvider {
             "Select a node or connection in the preview", "请在预览中选择节点或连接");
         add("gui.staticlogistics.network_preview.controls", "Preview Controls", "预览操作");
         add("gui.staticlogistics.network_preview.multi_select_hint",
-            "Hold %s and click nodes to select multiple", "按住 %s 点击节点可进行复选");
+            "Hold %s and click nodes to add or remove them", "按住 %s 点击节点可加入或移除复选");
+        add("gui.staticlogistics.network_preview.box_select_hint",
+            "Hold %s and drag empty space to box-select nodes", "按住 %s 拖动空白区域可框选节点");
         add("gui.staticlogistics.network_preview.drag_selected_hint",
             "Drag a selected node to move the selection together", "拖动已选节点可整体移动所选节点");
+        add("gui.staticlogistics.network_preview.clear_selection_hint",
+            "Right-click empty space to clear the selection", "右击空白区域可清空当前选择");
         add("gui.staticlogistics.network_preview.zoom_hint",
             "Scroll to zoom; drag empty space to pan", "滚轮缩放；拖动空白区域平移预览");
         add("gui.staticlogistics.network_preview.select_node_to_configure",
@@ -419,18 +422,6 @@ public class SLLanguageProvider extends LanguageProvider {
                 此值不会限制实际活跃节点数量。
                 默认：1000，范围：100-10000。""");
 
-        add("config.staticlogistics.cache.load_factor", "Cache Load Factor", "缓存加载因子");
-        add("config.staticlogistics.cache.load_factor.tooltip",
-            """
-                Affects cache performance. 0.75 is recommended.
-                Don't change unless you know what you're doing.
-                Default: 0.75, Range: 0.1-1.0.""",
-            """
-                影响缓存性能。推荐使用 0.75。
-                除非你知道自己在做什么，否则不要修改。
-                默认：0.75，范围：0.1-1.0。""");
-
-
         add("config.staticlogistics.network.max_bulk_entries", "Max Bulk Entries", "最大批量条目数");
         add("config.staticlogistics.network.max_bulk_entries.tooltip",
             """
@@ -445,33 +436,21 @@ public class SLLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.performance.ticker_batch_size", "Ticker Scan Budget", "定时器扫描预算");
         add("config.staticlogistics.performance.ticker_batch_size.tooltip",
             """
-                Base node/type candidates scanned per tick. Lower = less lag, Higher = faster.
+                Base node/type candidates shared across all dimensions per server tick. Lower = less lag, Higher = faster.
                 Default: 50, Range: 10-200.""",
             """
-                每刻扫描的节点/类型候选基数。越小越流畅，越大响应越快。
+                所有维度在每个服务器 Tick 中共享的节点/类型候选基数。越小越流畅，越大响应越快。
                 默认：50，范围：10-200。""");
 
         add("config.staticlogistics.performance.ticker_time_budget_us",
-            "Ticker Time Budget (μs)", "定时器时间预算（微秒）");
+            "Server Tick Time Budget (μs)", "服务器每刻时间预算（微秒）");
         add("config.staticlogistics.performance.ticker_time_budget_us.tooltip",
             """
-                Soft time limit for logistics scheduling in each dimension tick.
+                Shared soft time limit for logistics scheduling in each server tick.
                 Default: 1500, Range: 100-10000.""",
             """
-                每个维度每刻用于物流调度的软时间上限。
+                所有维度在每个服务器 Tick 中共享的物流调度软时间上限。
                 默认：1500，范围：100-10000。""");
-
-        add("config.staticlogistics.performance.max_item_transactions",
-            "Item Transfer Batch Limit", "单次物品传输批次上限");
-        add("config.staticlogistics.performance.max_item_transactions.tooltip",
-            """
-                Maximum item transactions committed by one node activation.
-                Increase for high-throughput machines; excessive values may increase server load.
-                Default: 16, Range: 1-256.""",
-            """
-                单个节点每次激活最多提交的物品传输批次数。
-                高产机器可适当提高，数值过大可能增加服务器负载。
-                默认：16，范围：1-256。""");
 
         add("config.staticlogistics.performance.clean_interval", "Clean Interval (Ticks)", "清理间隔(Tick)");
         add("config.staticlogistics.performance.clean_interval.tooltip",
@@ -620,7 +599,9 @@ public class SLLanguageProvider extends LanguageProvider {
         add("failure.staticlogistics.target_rejected", "Target Rejected Resource", "目标拒绝接收资源");
         add("failure.staticlogistics.event_cancelled", "Event Cancelled", "事件取消");
         add("failure.staticlogistics.source_commit_failed", "Source Commit Failed", "源端提交失败");
+        add("failure.staticlogistics.simulation_failed", "Transfer Simulation Failed", "传输模拟失败");
         add("failure.staticlogistics.rollback_failed", "Rollback Failed", "回滚失败");
+        add("failure.staticlogistics.commit_state_unknown", "Commit State Unknown", "提交状态未知");
 
         for (DistributionStrategy strategy : DistributionStrategyRegistry.getValues()) {
             String zh = switch (strategy.id().getPath()) {

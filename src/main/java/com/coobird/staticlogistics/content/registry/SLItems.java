@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.transfer.UpgradeTier;
 import com.coobird.staticlogistics.transfer.UpgradeType;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
@@ -19,7 +20,7 @@ import static com.coobird.staticlogistics.StaticLogistics.chineseProviders;
  * 注册模组的所有物品，包括连接配置器、各种升级插件（速度/范围/堆叠/过滤）。
  */
 public class SLItems {
-    public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(net.minecraft.core.registries.Registries.ITEM, StaticLogistics.MODID);
+    public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(Registries.ITEM, StaticLogistics.MODID);
 
     /**
      * 连接配置器：核心工具，用于配置物流节点之间的连接

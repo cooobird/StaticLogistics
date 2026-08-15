@@ -5,6 +5,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
@@ -26,7 +27,7 @@ public record LogisticsNode(GlobalPos gPos, Direction face) {
     }
 
     private static GlobalPos readGlobalPos(PortRegistryFriendlyByteBuf buf) {
-        ResourceKey<Level> dim = buf.readResourceKey(net.minecraft.core.registries.Registries.DIMENSION);
+        ResourceKey<Level> dim = buf.readResourceKey(Registries.DIMENSION);
         BlockPos pos = buf.readBlockPos();
         return GlobalPos.of(dim, pos);
     }

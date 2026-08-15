@@ -7,10 +7,8 @@ import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 分组作用域链接图的存储适配服务。
@@ -102,6 +100,47 @@ final class LinkGraphService {
             globalManager.cleanupOrphanedGroupIds(config.faceConfig.getOwner());
             transaction.commit();
         }
+    }
+
+    /**
+     * 清除指向已不存在端点的所有反向引用。
+     *
+     * <p>该入口不依赖被移除端点仍保有本地面配置，因此可以修复单边残留的损坏拓扑。
+     */
+    boolean purgeInboundReferences(LogisticsNode removedNode) {
+        if (removedNode == null) return false;
+        return purgeInboundReferences(List.of(removedNode));
+    }
+
+    /**
+     * 以一次全局索引扫描和一个事务清除多个已消失端点的反向引用。
+     */
+    boolean purgeInboundReferences(Collection<LogisticsNode> removedNodes) {
+        Set<LogisticsNode> removed = removedNodes == null
+            ? Set.of()
+            : removedNodes.stream().filter(Objects::nonNull)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (removed.isEmpty()) return false;
+
+        Map<LogisticsNode, Set<LogisticsNode>> sourcesByTarget =
+            globalManager.getSourcesLinkedTo(removed);
+        if (sourcesByTarget.isEmpty()) return false;
+        Set<LogisticsNode> counterparts = sourcesByTarget.values().stream()
+            .flatMap(Collection::stream)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
+            removed.forEach(transaction::captureState);
+            captureAvailableStates(transaction, counterparts);
+            sourcesByTarget.forEach((target, sources) -> sources.forEach(source -> {
+                Set<GroupKey> groups = groupsConnecting(target, source);
+                if (graph.removeEdge(target, source)) {
+                    groups.forEach(group -> deferConnectionNameRemoval(group, target, source));
+                }
+            }));
+            transaction.commit();
+        }
+        return true;
     }
 
     void repairReciprocalEdges(LogisticsNode node, FaceConfigComposite config) {

@@ -10,6 +10,7 @@ import com.coobird.staticlogistics.network.TopologyPagePartitioner;
 import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import org.mesdag.portlib.network.IPortPacket;
@@ -155,7 +156,7 @@ public record S2CAccessSnapshotPayload(
 
     @Override
     public void work(Player player) {
-        net.minecraft.client.Minecraft.getInstance().execute(() ->
+        Minecraft.getInstance().execute(() ->
             ClientLinkData.INSTANCE.acceptAuthoritativeSnapshotPage(
                 sequence(), pageIndex(), pageCount(), faces(), links(), groups()));
     }

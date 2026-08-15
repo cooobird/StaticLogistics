@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.gregtechceu.gtceu.api.capability.GTCapability;
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
@@ -86,14 +87,14 @@ public class GregTechEnergyResource implements LogisticsResource<IEnergyContaine
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
     public @Nullable IEnergyContainer resolve(ServerLevel level, BlockPos pos, Direction face) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
-        IEnergyContainer cap = com.coobird.staticlogistics.transfer.CapabilityCache.get(
+        IEnergyContainer cap = CapabilityCache.get(
             level, pos, face, GTCapability.CAPABILITY_ENERGY_CONTAINER);
         if (cap != null) return cap;
         if (be instanceof CableBlockEntity cable) {
@@ -104,35 +105,41 @@ public class GregTechEnergyResource implements LogisticsResource<IEnergyContaine
 
     @Override
     public long extract(IEnergyContainer handle, long amount, boolean simulate) {
+        if (!simulate) return transferEnergyOut(handle, amount, false);
         try {
-            long stored = handle.getEnergyStored();
-            if (stored <= 0) return 0;
-            long actual = Math.min(stored, amount);
-            if (actual <= 0) return 0;
-            if (!simulate) {
-                handle.changeEnergy(-actual);
-            }
-            return actual;
-        } catch (Exception e) {
-            LOGGER.error("GregTech EU extract failed", e);
+            return transferEnergyOut(handle, amount, true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("GregTech EU extract simulation failed", exception);
             return 0;
         }
     }
 
     @Override
     public long insert(IEnergyContainer handle, long amount, boolean simulate) {
+        if (!simulate) return transferEnergyIn(handle, amount, false);
         try {
-            long canInsert = handle.getEnergyCanBeInserted();
-            if (canInsert <= 0) return 0;
-            long actual = Math.min(canInsert, amount);
-            if (actual <= 0) return 0;
-            if (!simulate) {
-                handle.changeEnergy(actual);
-            }
-            return actual;
-        } catch (Exception e) {
-            LOGGER.error("GregTech EU insert failed", e);
+            return transferEnergyIn(handle, amount, true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("GregTech EU insert simulation failed", exception);
             return 0;
         }
+    }
+
+    private static long transferEnergyOut(IEnergyContainer handle, long amount, boolean simulate) {
+        long stored = handle.getEnergyStored();
+        if (stored <= 0) return 0;
+        long actual = Math.min(stored, amount);
+        if (actual <= 0) return 0;
+        if (!simulate) handle.changeEnergy(-actual);
+        return actual;
+    }
+
+    private static long transferEnergyIn(IEnergyContainer handle, long amount, boolean simulate) {
+        long canInsert = handle.getEnergyCanBeInserted();
+        if (canInsert <= 0) return 0;
+        long actual = Math.min(canInsert, amount);
+        if (actual <= 0) return 0;
+        if (!simulate) handle.changeEnergy(actual);
+        return actual;
     }
 }

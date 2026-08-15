@@ -9,7 +9,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
@@ -22,6 +21,7 @@ import net.minecraftforge.client.extensions.common.IClientFluidTypeExtensions;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -155,7 +155,7 @@ public class FilterGridWidget {
                         tooltip.add(fs.getDisplayName());
                         if (mc != null && mc.options.advancedItemTooltips) {
                             tooltip.add(Component.literal(
-                                    BuiltInRegistries.FLUID.getKey(fluid).toString())
+                                    ForgeRegistries.FLUIDS.getKey(fluid).toString())
                                 .withStyle(ChatFormatting.DARK_GRAY));
                         }
                         g.renderComponentTooltip(font, tooltip, mx, my);
@@ -324,7 +324,11 @@ public class FilterGridWidget {
             for (int i = 0; i < handler.getTanks(); i++) {
                 FluidStack fs = handler.getFluidInTank(i);
                 if (!fs.isEmpty()) {
-                    BuiltInRegistries.FLUID.wrapAsHolder(fs.getFluid()).tags().forEach(all::add);
+                    var fluidTags = ForgeRegistries.FLUIDS.tags();
+                    if (fluidTags != null) {
+                        fluidTags.getReverseTag(fs.getFluid())
+                            .ifPresent(reverse -> reverse.getTagKeys().forEach(all::add));
+                    }
                 }
             }
         }

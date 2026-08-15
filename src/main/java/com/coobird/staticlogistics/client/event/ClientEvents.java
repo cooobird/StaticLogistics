@@ -14,10 +14,12 @@ import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.*;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -78,24 +80,24 @@ public class ClientEvents {
         BlueprintClientHooks.install(
             stack -> Minecraft.getInstance().setScreen(new BlueprintGroupScreen(stack)),
             (stack, tooltip) -> {
-                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                tooltip.add(Component.translatable(
                     "tooltip.staticlogistics.blueprint.use",
-                    net.minecraft.network.chat.Component.keybind("key.sneak")
-                ).withStyle(net.minecraft.ChatFormatting.GRAY));
-                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                    Component.keybind("key.sneak")
+                ).withStyle(ChatFormatting.GRAY));
+                tooltip.add(Component.translatable(
                     "tooltip.staticlogistics.blueprint.scroll",
                     SLKeyMappings.BLUEPRINT_PREVIEW_MOVE.getTranslatedKeyMessage(),
                     SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE.getTranslatedKeyMessage(),
                     SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y.getTranslatedKeyMessage()
-                ).withStyle(net.minecraft.ChatFormatting.GRAY));
-                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                ).withStyle(ChatFormatting.GRAY));
+                tooltip.add(Component.translatable(
                     "tooltip.staticlogistics.blueprint.undo",
                     SLKeyMappings.BLUEPRINT_UNDO.getTranslatedKeyMessage()
-                ).withStyle(net.minecraft.ChatFormatting.GRAY));
-                tooltip.add(net.minecraft.network.chat.Component.translatable(
+                ).withStyle(ChatFormatting.GRAY));
+                tooltip.add(Component.translatable(
                     "tooltip.staticlogistics.blueprint.clear",
-                    net.minecraft.network.chat.Component.keybind("key.sneak")
-                ).withStyle(net.minecraft.ChatFormatting.GRAY));
+                    Component.keybind("key.sneak")
+                ).withStyle(ChatFormatting.GRAY));
             },
             itemId -> {
                 Player player = Minecraft.getInstance().player;

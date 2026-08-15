@@ -1,6 +1,9 @@
 package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.api.group.GroupRef;
+import com.coobird.staticlogistics.content.item.LinkOperationHelper;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.persistence.ContainerRepository;
@@ -226,7 +229,7 @@ public class LinkManager {
         faceConfigHandler.removeFaceConfigDataOnly(address);
     }
 
-    public void restoreFaceSnapshot(LogisticsNode node, net.minecraft.nbt.CompoundTag snapshot) {
+    public void restoreFaceSnapshot(LogisticsNode node, CompoundTag snapshot) {
         faceConfigHandler.restoreFaceSnapshot(node, snapshot);
     }
 
@@ -261,14 +264,13 @@ public class LinkManager {
     }
 
     public void renameGroupMetadata(LogisticsNode node,
-                                    com.coobird.staticlogistics.api.group.GroupKey groupKey,
+                                    GroupKey groupKey,
                                     String displayName) {
         faceConfigHandler.renameGroupMetadata(node, groupKey, displayName);
     }
 
     public void mergeGroupMetadata(LogisticsNode node,
-                                   com.coobird.staticlogistics.api.group.GroupRef source,
-                                   com.coobird.staticlogistics.api.group.GroupRef target) {
+                                   GroupRef source, GroupRef target) {
         faceConfigHandler.mergeGroupMetadata(node, source, target);
     }
 
@@ -281,22 +283,22 @@ public class LinkManager {
     }
 
     public void addNodeToGroup(LogisticsNode node,
-                               com.coobird.staticlogistics.api.group.GroupRef group) {
+                               GroupRef group) {
         faceConfigHandler.addNodeToGroup(node, group);
     }
 
-    public void addLink(com.coobird.staticlogistics.api.group.GroupKey groupKey,
+    public void addLink(GroupKey groupKey,
                         LogisticsNode first, LogisticsNode second) {
         linkGraphService.addEdge(groupKey, first, second);
     }
 
-    public void removeLink(com.coobird.staticlogistics.api.group.GroupKey groupKey,
+    public void removeLink(GroupKey groupKey,
                            LogisticsNode first, LogisticsNode second) {
         linkGraphService.removeEdge(groupKey, first, second);
     }
 
     public void removeLinkWithoutCleanup(
-        com.coobird.staticlogistics.api.group.GroupKey groupKey,
+        GroupKey groupKey,
         LogisticsNode first,
         LogisticsNode second
     ) {
@@ -313,16 +315,24 @@ public class LinkManager {
         lifecycleService.applyDisconnectedRemoval(removal);
     }
 
-    public void removeNodeFromGroup(com.coobird.staticlogistics.api.group.GroupKey groupKey,
+    public void removeNodeFromGroup(GroupKey groupKey,
                                     LogisticsNode node) {
         linkGraphService.removeNodeFromGroup(groupKey, node);
     }
 
     public void removeNodeFromGroupWithoutCleanup(
-        com.coobird.staticlogistics.api.group.GroupKey groupKey,
+        GroupKey groupKey,
         LogisticsNode node
     ) {
         linkGraphService.removeNodeFromGroupWithoutCleanup(groupKey, node);
+    }
+
+    boolean purgeInboundReferences(LogisticsNode removedNode) {
+        return linkGraphService.purgeInboundReferences(removedNode);
+    }
+
+    boolean purgeInboundReferences(Collection<LogisticsNode> removedNodes) {
+        return linkGraphService.purgeInboundReferences(removedNodes);
     }
 
     void cascadeRemove(LogisticsNode node, FaceConfigComposite config) {
@@ -357,7 +367,7 @@ public class LinkManager {
 
     public void onBlockRemoved(BlockPos pos) {
         lifecycleService.destroyBlocks(List.of(pos));
-        com.coobird.staticlogistics.content.item.LinkOperationHelper.cleanStoredNodesForPos(level, pos);
+        LinkOperationHelper.cleanStoredNodesForPos(level, pos);
     }
 
     // 容器配置（委托 ContainerConfigService）

@@ -3,7 +3,9 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
+import com.coobird.staticlogistics.transfer.TransferContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
@@ -22,8 +24,8 @@ import java.util.function.Supplier;
 
 /**
  * Botania 魔力资源适配器（Forge 1.20.1）。
- * 方块实体直接实现 {@link ManaReceiver}，无需 Forge Capability；
- * {@link GeneratingFlowerBlockEntity} 作为源，ManaReceiver 作为目标。
+ * 方块实体直接实现 {@link ManaReceiver}，无需 Forge Capability。
+ * 产能花只提供魔力；魔力池与魔力收集器既可提供也可接收魔力；其他接收器仅作为接收端。
  */
 public class BotaniaManaResource implements LogisticsResource<BotaniaManaResource.ManaHandle> {
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("botania_mana");
@@ -55,16 +57,17 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     /**
-     * 魔力句柄，区分源（产能花）和目标（ManaReceiver）。
+     * 魔力句柄，区分产能花与 ManaReceiver。
      */
     public static final class ManaHandle {
         private final @Nullable GeneratingFlowerBlockEntity flower;
         private final @Nullable ManaReceiver receiver;
         private int currentMana;
+        private boolean nonDepletingSource;
 
         private ManaHandle(@Nullable GeneratingFlowerBlockEntity flower,
                            @Nullable ManaReceiver receiver,
@@ -84,11 +87,11 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
             return new ManaHandle(null, receiver, current);
         }
 
-        boolean isSource() {
-            return flower != null;
+        boolean canExtract() {
+            return flower != null || receiver instanceof ManaPool || receiver instanceof ManaCollector;
         }
 
-        boolean isTarget() {
+        boolean canInsert() {
             return receiver != null;
         }
 
@@ -96,10 +99,22 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
             return currentMana;
         }
 
-        void addMana(int amount) {
-            if (receiver != null) receiver.receiveMana(amount);
-            else if (flower != null) flower.addMana(amount);
-            currentMana += amount;
+        int changeMana(int amount) {
+            int before = currentMana;
+            if (receiver != null) {
+                receiver.receiveMana(amount);
+                currentMana = receiver.getCurrentMana();
+            } else if (flower != null) {
+                flower.addMana(amount);
+                currentMana = flower.getMana();
+            }
+            int changed = currentMana - before;
+            // 创造型魔力池的读数不会下降，但应保持无限魔力源语义。
+            if (amount < 0 && receiver instanceof ManaPool && before > 0 && changed == 0) {
+                nonDepletingSource = true;
+                return amount;
+            }
+            return changed;
         }
 
         int availableSpace() {
@@ -137,20 +152,27 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
 
     @Override
     public long extract(ManaHandle handle, long amount, boolean simulate) {
-        if (!handle.isSource()) return 0;
+        if (!handle.canExtract()) return 0;
         long actual = Math.min(handle.currentMana(), amount);
         if (actual <= 0) return 0;
-        if (!simulate) handle.addMana((int) -actual);
-        return actual;
+        return simulate ? actual : Math.max(0L, -(long) handle.changeMana((int) -actual));
     }
 
     @Override
     public long insert(ManaHandle handle, long amount, boolean simulate) {
-        if (!handle.isTarget()) return 0;
+        if (!handle.canInsert()) return 0;
         long space = handle.availableSpace();
         if (space <= 0) return 0;
         long actual = Math.min(amount, space);
-        if (!simulate) handle.addMana((int) actual);
-        return actual;
+        return simulate ? actual : Math.max(0L, handle.changeMana((int) actual));
+    }
+
+    @Override
+    public boolean rollback(ManaHandle source, Object value, long amount,
+                            @Nullable FaceConfigComposite sourceConfig, boolean pullMode,
+                            @Nullable TransferContext context) {
+        if (!(value instanceof Number) || amount <= 0L || amount > Integer.MAX_VALUE) return amount <= 0L;
+        int restored = source.changeMana((int) amount);
+        return restored >= amount || source.nonDepletingSource;
     }
 }

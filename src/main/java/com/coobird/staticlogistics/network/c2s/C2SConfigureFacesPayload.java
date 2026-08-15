@@ -76,7 +76,7 @@ public record C2SConfigureFacesPayload(GroupKey groupKey, List<LogisticsNode> no
 
     @Override
     public void work(ServerPlayer player) {
-        if (!ServerPacketRateLimiter.allow(player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
+        if (!ServerPacketRateLimiter.allow(player, ServerPacketRateLimiter.Action.BATCH_FACE_CONFIGURATION, nodes().size())
             || !(player.containerMenu instanceof LinkConfiguratorMenu menu)
             || !groupKey().equals(menu.getRemoteGroupKey())
             || !menu.allowsEdit(edit())) return;

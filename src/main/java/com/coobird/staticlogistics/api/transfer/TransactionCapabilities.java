@@ -22,7 +22,4 @@ public record TransactionCapabilities(
         return new TransactionCapabilities(true, true, RollbackMode.COMPENSATING);
     }
 
-    public static TransactionCapabilities exactSimulationOnly() {
-        return new TransactionCapabilities(true, true, RollbackMode.NONE);
-    }
 }

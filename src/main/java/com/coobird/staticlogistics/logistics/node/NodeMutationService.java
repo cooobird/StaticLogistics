@@ -47,6 +47,8 @@ public final class NodeMutationService {
             || !NodeInteractionValidator.holdsConfigurator(player)) return null;
         ServerLevel level = player.server.getLevel(node.gPos().dimension());
         if (level == null) return null;
+        BlockPos pos = node.gPos().pos();
+        if (!NodeInteractionValidator.canMutateRemote(player, level, pos)) return null;
         LinkManager manager = LinkManager.get(level);
         FaceAddress key = FaceAddress.of(node);
         FaceConfigComposite config = manager.getFaceConfig(key);
@@ -54,7 +56,7 @@ public final class NodeMutationService {
             || !config.faceConfig.containsGroup(groupKey)
             || !config.canPlayerModify(player)) return null;
         return new ValidatedNode(
-            player, level, manager, key, node.gPos().pos(), node.face(), config);
+            player, level, manager, key, pos, node.face(), config);
     }
 
     public boolean configure(ValidatedNode node, FaceConfigurationEdit edit) {

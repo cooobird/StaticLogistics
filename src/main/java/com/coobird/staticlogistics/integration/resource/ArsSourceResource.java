@@ -54,7 +54,7 @@ public class ArsSourceResource implements LogisticsResource<ISourceTile> {
 
     @Override
     public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactSimulationOnly();
+        return TransactionCapabilities.exactCompensating();
     }
 
     @Override
@@ -68,33 +68,39 @@ public class ArsSourceResource implements LogisticsResource<ISourceTile> {
 
     @Override
     public long extract(ISourceTile handle, long amount, boolean simulate) {
+        if (!simulate) return transferSourceOut(handle, amount, false);
         try {
-            int available = handle.getSource();
-            if (available <= 0) return 0;
-            int actual = (int) Math.min(available, amount);
-            if (!simulate) {
-                handle.removeSource(actual);
-            }
-            return actual;
-        } catch (Exception e) {
-            LOGGER.error("Ars source extract failed", e);
+            return transferSourceOut(handle, amount, true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Ars source extract simulation failed", exception);
             return 0;
         }
     }
 
     @Override
     public long insert(ISourceTile handle, long amount, boolean simulate) {
+        if (!simulate) return transferSourceIn(handle, amount, false);
         try {
-            int space = handle.getMaxSource() - handle.getSource();
-            if (space <= 0) return 0;
-            int actual = (int) Math.min(space, amount);
-            if (!simulate) {
-                handle.addSource(actual);
-            }
-            return actual;
-        } catch (Exception e) {
-            LOGGER.error("Ars source insert failed", e);
+            return transferSourceIn(handle, amount, true);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Ars source insert simulation failed", exception);
             return 0;
         }
+    }
+
+    private static long transferSourceOut(ISourceTile handle, long amount, boolean simulate) {
+        int available = handle.getSource();
+        if (available <= 0) return 0;
+        int actual = (int) Math.min(available, amount);
+        if (!simulate) handle.removeSource(actual);
+        return actual;
+    }
+
+    private static long transferSourceIn(ISourceTile handle, long amount, boolean simulate) {
+        int space = handle.getMaxSource() - handle.getSource();
+        if (space <= 0) return 0;
+        int actual = (int) Math.min(space, amount);
+        if (!simulate) handle.addSource(actual);
+        return actual;
     }
 }

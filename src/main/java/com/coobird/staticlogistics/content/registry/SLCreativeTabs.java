@@ -24,8 +24,7 @@ public class SLCreativeTabs {
         () -> CreativeModeTab.builder()
             .title(Component.translatable("itemGroup.staticlogistics"))
             .icon(() -> new ItemStack(SLItems.LINK_CONFIGURATOR.get()))
-            .displayItems((parameters, output) -> {
-                SLItems.ITEMS.getEntries().forEach(entry -> output.accept(((net.minecraftforge.registries.RegistryObject<? extends net.minecraft.world.item.Item>) entry).get()));
-            })
+            .displayItems((parameters, output) ->
+                SLItems.ITEMS.getEntries().forEach(entry -> output.accept(entry.get())))
             .build());
 }

@@ -12,8 +12,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 鑺傜偣銆佸鍣ㄩ厤缃笌鍗囩骇鐗╃Щ浜ょ殑缁熶竴鐢熷懡鍛ㄦ湡鐢ㄤ緥銆? *
- * <p>鍥惧眰鍙骇鐢熷鍎垮€欓€夛紱鏈湇鍔″喅瀹氭槸鍚﹀垹闄ら潰锛屽苟淇濊瘉鍗囩骇鐗╃Щ浜ゅ彂鐢熷湪閰嶇疆鍒犻櫎涔嬪墠銆?
+ * 节点、容器配置与升级物移交的统一生命周期服务。
+ * <p>图层只产生孤儿候选；本服务决定是否删除面，并保证升级物移交发生在配置删除之前。
  */
 public final class NodeLifecycleService {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -37,7 +37,7 @@ public final class NodeLifecycleService {
     }
 
     /**
-     * 鐗╃悊閿€姣佷竴鎵规柟鍧楋紱姣忎釜浣嶇疆鐙珛澶辫触锛屽叾浠栦綅缃户缁鐞嗐€?
+     * 物理销毁一批方块；每个位置独立失败，其他位置继续处理。
      */
     public RemovalReport destroyBlocks(Collection<BlockPos> positions) {
         int removed = 0;
@@ -55,7 +55,7 @@ public final class NodeLifecycleService {
     }
 
     /**
-     * 鏄惧紡鍒犻櫎涓€涓潰锛涜繃婊ゅ崌绾у厛绉讳氦锛屽鍣ㄧ骇鍗囩骇涓嶅彈褰卞搷銆?
+     * 显式删除一个面；过滤升级先移交，容器级升级不受影响。
      */
     public boolean removeFace(FaceAddress key) {
         FaceHandle face = findFace(key);
@@ -71,7 +71,7 @@ public final class NodeLifecycleService {
     }
 
     /**
-     * 鍙垹闄ょ湡姝ｆ病鏈夎竟銆佽鑹插拰闈㈣繃婊ゅ崌绾х殑瀛ゅ効闈€?
+     * 只删除真正没有链接、角色和面过滤升级的孤儿面。
      */
     public boolean removeOrphan(LogisticsNode node, FaceConfigComposite expected) {
         if (node == null || expected == null
@@ -86,7 +86,7 @@ public final class NodeLifecycleService {
     }
 
     /**
-     * 鍐荤粨鏈淮搴﹀緟鍒犻櫎鐨勫绔嬮潰銆佸叡浜鍣ㄥ拰鍗囩骇鏉ユ簮銆?
+     * 冻结本次待删除的孤立面、共享容器和升级来源。
      */
     public DisconnectedRemoval prepareDisconnectedRemoval(Collection<LogisticsNode> nodes) {
         if (nodes == null) {
@@ -128,7 +128,7 @@ public final class NodeLifecycleService {
     }
 
     /**
-     * 搴旂敤宸茬粡鍐荤粨鐨勫绔嬬鍒犻櫎锛涘崌绾хЩ浜ょ敱澶栧眰浜嬪姟缁熶竴鎺у埗銆?
+     * 应用已经冻结的孤立端删除；升级移交由外层事务统一控制。
      */
     public void applyDisconnectedRemoval(DisconnectedRemoval removal) {
         if (removal == null) throw new IllegalArgumentException("Disconnected removal is required");
@@ -251,8 +251,9 @@ public final class NodeLifecycleService {
     }
 
     /**
-     * 涓€鎵瑰緟绉讳氦鐨勫崌绾х墿鏉ユ簮銆?     *
-     * <p>榛樿鏋勯€犲櫒瑕嗙洊鏁翠釜鐗╁搧澶勭悊鍣紱妲戒綅鑼冨洿鏋勯€犲櫒鐢ㄤ簬鍙Щ浜ゆ煇涓€渚ц繃婊ゅ櫒锛?     * 閬垮厤鍏抽棴杈撳叆鎴栬緭鍑烘椂璇彇鍙︿竴渚т粛鍦ㄤ娇鐢ㄧ殑杩囨护鍣ㄣ€?/p>
+     * 一批待移交的升级物来源。
+     * <p>默认构造器覆盖整个物品处理器；槽位范围构造器用于只移交某一侧过滤器，
+     * 避免关闭输入或输出时误取另一侧仍在使用的过滤器。</p>
      */
     public record UpgradeSource(
         BlockPos pos,

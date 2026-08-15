@@ -58,9 +58,10 @@ public class TransferRegistries {
         Objects.requireNonNull(adapter.valueType(), "Resource value type must not be null");
         TransactionCapabilities capabilities = Objects.requireNonNull(
             adapter.transactionCapabilities(), "Transaction capabilities must not be null");
-        if (!capabilities.exactSimulation() || !capabilities.exactSplit()) {
+        if (!capabilities.exactSimulation() || !capabilities.exactSplit()
+            || capabilities.rollbackMode() == TransactionCapabilities.RollbackMode.NONE) {
             throw new IllegalArgumentException(
-                "Resource adapter must support exact simulation and value splitting: " + adapter.typeId());
+                "Resource adapter must support exact simulation, value splitting and rollback: " + adapter.typeId());
         }
         registerAdapter(new TypedResourceAdapterBridge<>(adapter, bitOffset), bitOffset);
     }
@@ -87,9 +88,10 @@ public class TransferRegistries {
     private static void validateTransactionalContract(LogisticsResource<?> adapter) {
         TransactionCapabilities capabilities = Objects.requireNonNull(
             adapter.transactionCapabilities(), "Transaction capabilities must not be null");
-        if (!capabilities.exactSimulation() || !capabilities.exactSplit()) {
+        if (!capabilities.exactSimulation() || !capabilities.exactSplit()
+            || capabilities.rollbackMode() == TransactionCapabilities.RollbackMode.NONE) {
             throw new IllegalArgumentException(
-                "Logistics resource must support exact simulation and value splitting: " + adapter.typeId());
+                "Logistics resource must support exact simulation, value splitting and rollback: " + adapter.typeId());
         }
     }
 
@@ -155,11 +157,6 @@ public class TransferRegistries {
         @Override
         public boolean requiresValidLinks() {
             return delegate.requiresValidLinks();
-        }
-
-        @Override
-        public int maxTransactionsPerActivation() {
-            return delegate.maxTransactionsPerActivation();
         }
 
         @Override
@@ -232,10 +229,11 @@ public class TransferRegistries {
         }
 
         @Override
-        public boolean advanceRejectedCandidate(ExtractionResult<?> simulated,
-                                                @Nullable FaceConfigComposite sourceCfg,
-                                                @Nullable TransferContext context) {
-            return delegate.advanceRejectedCandidate(simulated, sourceCfg, context);
+        public ResourceExtractionSession openExtractionSession(
+            C handle, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+            @Nullable TransferContext context
+        ) {
+            return delegate.openExtractionSession(handle, sourceCfg, isPullMode, context);
         }
 
         @Override

@@ -8,8 +8,7 @@ public enum ToolMode implements StringRepresentable {
     WRENCH("wrench", ChatFormatting.YELLOW, 0),
     LINK_AS_INSERT("link_as_input", ChatFormatting.AQUA, 1),
     LINK_AS_EXTRACT("link_as_output", ChatFormatting.GOLD, 2),
-    REMOVE("remove", ChatFormatting.RED, 3),
-    NODE_CONFIG("node_config", ChatFormatting.LIGHT_PURPLE, 4);
+    REMOVE("remove", ChatFormatting.RED, 3);
 
     private final String name;
     private final ChatFormatting color;
@@ -33,6 +32,7 @@ public enum ToolMode implements StringRepresentable {
         for (ToolMode mode : values()) {
             if (mode.id == id) return mode;
         }
+        // 旧版“节点配置”模式 ID 4 已迁移到默认建链模式。
         return LINK_AS_INSERT;
     }
 

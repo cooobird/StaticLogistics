@@ -9,13 +9,19 @@ import com.coobird.staticlogistics.content.item.BulkSelectionInteractionGuard;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.integration.ModCompat;
+import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintUndoManager;
+import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
+import com.coobird.staticlogistics.transfer.LogisticsTicker;
+import com.coobird.staticlogistics.transfer.NodeQueryService;
+import com.coobird.staticlogistics.transfer.TransferLogManager;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -23,6 +29,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -60,14 +67,15 @@ public class ServerEvents {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         if (ModList.get().isLoaded("ftbteams")) {
-            com.coobird.staticlogistics.integration.ftb.FTBEventHandlers.clearPending();
+            FTBEventHandlers.clearPending();
         }
         BlueprintUndoManager.release(event.getServer());
-        com.coobird.staticlogistics.transfer.TransferLogManager.release(event.getServer());
-        com.coobird.staticlogistics.transfer.LogisticsTicker.release(event.getServer());
-        com.coobird.staticlogistics.logistics.group.ConnectionCommandService.release(event.getServer());
+        TransferLogManager.release(event.getServer());
+        LogisticsTicker.release(event.getServer());
+        ConnectionCommandService.release(event.getServer());
+        GroupCommandService.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
-        com.coobird.staticlogistics.transfer.NodeQueryService.release(event.getServer());
+        NodeQueryService.release(event.getServer());
         BulkSelectionInteractionGuard.release(event.getServer());
     }
 
@@ -160,7 +168,7 @@ public class ServerEvents {
         event.setUseBlock(Event.Result.DENY);
         event.setUseItem(Event.Result.DENY);
         event.setCanceled(true);
-        event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
+        event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
     @SubscribeEvent

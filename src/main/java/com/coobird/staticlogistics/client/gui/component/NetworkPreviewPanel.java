@@ -18,6 +18,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -27,19 +28,25 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 /**
- * 连接配置器中的拓扑预览。
+ * 连接配置器中的数据流拓扑预览。
  *
  * <p>这里只保存当前界面的平移、缩放与选择状态，节点位置由本地布局仓库持久化，
- * 拓扑真相始终来自 {@link ClientLinkData}。
+ * 拓扑真相始终来自 {@link ClientLinkData}。节点采用信息卡片表达，每条连接保留独立曲线，
+ * 仅合并同一接入侧的终点箭头，避免高扇入节点出现箭头堆叠或梳子状共享母线。
  */
 public final class NetworkPreviewPanel {
-    private static final int NODE_WIDTH = 72;
+    private static final int MIN_NODE_WIDTH = 72;
     private static final int NODE_HEIGHT = 27;
     private static final int LAYOUT_PADDING = 1;
     private static final int NODE_GAP = 5;
-    private static final int COMPONENT_GAP = 14;
     private static final int SELECTED_CONNECTION_COLOR = 0xFFFFD45A;
+    private static final double CONNECTION_LINE_WIDTH = 2.0D;
+    private static final double SELECTED_CONNECTION_LINE_WIDTH = 4.0D;
+    private static final int BOX_SELECTION_COLOR = 0xFF98FB98;
+    private static final int BOX_SELECTION_FILL = 0x303A8F4A;
+    private static final double BOX_SELECTION_THRESHOLD = 3.0D;
     private static final double MIN_ZOOM = 0.35D;
+    private static final double MIN_AUTO_FIT_ZOOM = 0.72D;
     private static final double MAX_ZOOM = 1.8D;
 
     private final List<NodeHit> nodeHits = new ArrayList<>();
@@ -56,6 +63,17 @@ public final class NetworkPreviewPanel {
     private boolean centerViewOnNextLayout = true;
     private boolean panning;
     private double panningDistance;
+    private boolean boxSelecting;
+    private double boxStartX;
+    private double boxStartY;
+    private double boxEndX;
+    private double boxEndY;
+    private int previewX;
+    private int previewY;
+    private int previewWidth;
+    private int previewHeight;
+    private boolean selectionChangedOnLastRelease;
+    private final LinkedHashSet<LogisticsNode> boxSelectionCandidates = new LinkedHashSet<>();
     @Nullable
     private LogisticsNode draggingNode;
     private final LinkedHashSet<LogisticsNode> draggingNodes = new LinkedHashSet<>();
@@ -70,6 +88,8 @@ public final class NetworkPreviewPanel {
         this.zoom = 1.0D;
         this.centerViewOnNextLayout = true;
         this.panning = false;
+        this.boxSelecting = false;
+        this.boxSelectionCandidates.clear();
         this.draggingNode = null;
         this.draggingNodes.clear();
     }
@@ -80,6 +100,13 @@ public final class NetworkPreviewPanel {
 
     public void flushLayout() {
         NetworkPreviewLayoutStore.INSTANCE.flush();
+    }
+
+    /**
+     * 让下一帧按当前画布尺寸重新计算可读的居中视图。
+     */
+    public void resetView() {
+        centerViewOnNextLayout = true;
     }
 
     public boolean isShowingGroup(GroupKey groupKey) {
@@ -123,11 +150,11 @@ public final class NetworkPreviewPanel {
     }
 
     public void render(GuiGraphics graphics, Font font, int x, int y, int width, int height,
-                       int mouseX, int mouseY) {
+                       int mouseX, int mouseY, double interfaceScale) {
         nodeHits.clear();
         connectionHits.clear();
         // 调用方传入的就是 atlas 内部可绘制区，不再重复推算外框缩进。
-        graphics.enableScissor(x, y, x + width, y + height);
+        GuiScissor.enable(graphics, interfaceScale, x, y, x + width, y + height);
 
         List<ClientConnection> connections = groupKey == null
             ? List.of() : ClientLinkData.INSTANCE.getConnectionsForGroup(groupKey);
@@ -141,7 +168,7 @@ public final class NetworkPreviewPanel {
             return;
         }
 
-        Map<LogisticsNode, VisualNode> nodes = collectNodes(connections);
+        Map<LogisticsNode, VisualNode> nodes = collectNodes(connections, font);
         Map<LogisticsNode, Point> positions = layout(connections, nodes, x, y, width, height);
         ViewTransform transform = new ViewTransform(
             x + width / 2.0D,
@@ -157,12 +184,18 @@ public final class NetworkPreviewPanel {
             0.0D);
         graphics.pose().scale((float) transform.zoom, (float) transform.zoom, 1.0F);
         graphics.pose().translate(-transform.centerX, -transform.centerY, 0.0D);
+        Map<FlowTarget, DirectionMarker> directionMarkers = new LinkedHashMap<>();
         for (ClientConnection connection : connections) {
             Point first = positions.get(connection.first());
             Point second = positions.get(connection.second());
             if (first == null || second == null) continue;
-            renderConnection(graphics, connection, first, second, transform);
+            VisualNode firstNode = nodes.get(connection.first());
+            VisualNode secondNode = nodes.get(connection.second());
+            if (firstNode == null || secondNode == null) continue;
+            renderConnection(graphics, connection, first, second,
+                firstNode, secondNode, transform, directionMarkers);
         }
+        directionMarkers.values().forEach(marker -> renderDirectionMarker(graphics, marker));
         for (var entry : nodes.entrySet()) {
             Point point = positions.get(entry.getKey());
             if (point != null) {
@@ -170,29 +203,48 @@ public final class NetworkPreviewPanel {
             }
         }
         graphics.pose().popPose();
+        renderSelectionBox(graphics);
         graphics.disableScissor();
     }
 
-    private Map<LogisticsNode, VisualNode> collectNodes(List<ClientConnection> connections) {
+    private Map<LogisticsNode, VisualNode> collectNodes(
+        List<ClientConnection> connections,
+        Font font
+    ) {
         Map<LogisticsNode, VisualNode> nodes = new LinkedHashMap<>();
         for (ClientConnection connection : connections) {
-            collectNode(nodes, connection.first(), connection.firstTopology());
-            collectNode(nodes, connection.second(), connection.secondTopology());
+            collectNode(nodes, connection.first(), connection.firstTopology(), font);
+            collectNode(nodes, connection.second(), connection.secondTopology(), font);
         }
         return nodes;
     }
 
-    private static void collectNode(Map<LogisticsNode, VisualNode> nodes,
-                                    LogisticsNode node, FaceTopology topology) {
-        nodes.putIfAbsent(node, new VisualNode(node, topology));
+    private void collectNode(
+        Map<LogisticsNode, VisualNode> nodes,
+        LogisticsNode node,
+        FaceTopology topology,
+        Font font
+    ) {
+        nodes.computeIfAbsent(node, ignored -> {
+            String title = nodeName(node) + " · "
+                + NodeDisplayText.direction(node.face()).getString();
+            String position = node.gPos().pos().toShortString();
+            int contentWidth = Math.max(font.width(title), font.width(position)) + 8;
+            int width = Math.max(contentWidth, MIN_NODE_WIDTH);
+            return new VisualNode(node, topology, title, position, width);
+        });
     }
 
     private Map<LogisticsNode, Point> layout(
         List<ClientConnection> connections,
         Map<LogisticsNode, VisualNode> nodes,
         int x, int y, int width, int height) {
-        Map<LogisticsNode, Point> automatic = buildTopologyLayout(
-            connections, nodes.keySet(), width);
+        Map<LogisticsNode, NetworkPreviewLayoutEngine.Size> sizes = new LinkedHashMap<>();
+        nodes.forEach((node, visual) -> sizes.put(node,
+            new NetworkPreviewLayoutEngine.Size(visual.width, NODE_HEIGHT)));
+        Map<LogisticsNode, Point> automatic = new LinkedHashMap<>();
+        NetworkPreviewLayoutEngine.layout(connections, sizes, width).forEach((node, point) ->
+            automatic.put(node, new Point(point.x(), point.y())));
 
         NetworkPreviewLayoutStore.Layout storedLayout =
             NetworkPreviewLayoutStore.INSTANCE.getOrCreate(Objects.requireNonNull(groupKey));
@@ -212,142 +264,13 @@ public final class NetworkPreviewPanel {
                     (int) Math.round(point.x()), (int) Math.round(point.y())));
             }
         });
-        if (centerViewOnNextLayout) centerView(localPositions, x, y, width, height);
+        if (centerViewOnNextLayout) centerView(localPositions, nodes, width, height);
 
         currentLocalPositions.clear();
         currentLocalPositions.putAll(localPositions);
         Map<LogisticsNode, Point> result = new LinkedHashMap<>(localPositions.size());
         localPositions.forEach((node, point) -> result.put(node,
             new Point(x + point.x, y + point.y)));
-        return result;
-    }
-
-    /**
-     * 生成分层拓扑布局：先拆分独立连通分量，再按传输方向确定层级，最后用相邻层
-     * 重心排序减少交叉。双向和停用连接使用稳定身份确定展示方向，不改变真实传输语义。
-     */
-    private static Map<LogisticsNode, Point> buildTopologyLayout(
-        List<ClientConnection> connections, Set<LogisticsNode> nodes, int width) {
-        Map<LogisticsNode, Set<LogisticsNode>> neighbors = new LinkedHashMap<>();
-        nodes.forEach(node -> neighbors.put(node, new LinkedHashSet<>()));
-        for (ClientConnection connection : connections) {
-            neighbors.get(connection.first()).add(connection.second());
-            neighbors.get(connection.second()).add(connection.first());
-        }
-        List<Set<LogisticsNode>> components = connectedComponents(neighbors);
-        List<TopologyComponent> layouts = components.stream()
-            .map(component -> layoutComponent(component, neighbors))
-            .sorted(Comparator.comparing(layout -> nodeKey(layout.firstNode())))
-            .toList();
-
-        Map<LogisticsNode, Point> result = new LinkedHashMap<>();
-        int componentY = LAYOUT_PADDING;
-        int left = 18;
-        int right = Math.max(left, width - NODE_WIDTH - 18);
-        for (TopologyComponent component : layouts) {
-            int maximumLayer = component.layers().keySet().stream()
-                .mapToInt(Integer::intValue).max().orElse(0);
-            int componentHeight = component.layers().values().stream()
-                .mapToInt(layer -> NODE_HEIGHT + Math.max(0, layer.size() - 1)
-                    * (NODE_HEIGHT + NODE_GAP))
-                .max().orElse(NODE_HEIGHT);
-            for (var entry : component.layers().entrySet()) {
-                int x = maximumLayer == 0 ? (left + right) / 2
-                    : Mth.lerpInt(entry.getKey() / (float) maximumLayer, left, right);
-                List<LogisticsNode> layer = entry.getValue();
-                int layerHeight = NODE_HEIGHT + Math.max(0, layer.size() - 1)
-                    * (NODE_HEIGHT + NODE_GAP);
-                int y = componentY + (componentHeight - layerHeight) / 2;
-                for (LogisticsNode node : layer) {
-                    result.put(node, new Point(x, y));
-                    y += NODE_HEIGHT + NODE_GAP;
-                }
-            }
-            componentY += componentHeight + COMPONENT_GAP;
-        }
-        return result;
-    }
-
-    private static List<Set<LogisticsNode>> connectedComponents(
-        Map<LogisticsNode, Set<LogisticsNode>> neighbors) {
-        List<Set<LogisticsNode>> result = new ArrayList<>();
-        Set<LogisticsNode> visited = new HashSet<>();
-        neighbors.keySet().stream().sorted(Comparator.comparing(NetworkPreviewPanel::nodeKey))
-            .forEach(start -> {
-                if (!visited.add(start)) return;
-                LinkedHashSet<LogisticsNode> component = new LinkedHashSet<>();
-                ArrayDeque<LogisticsNode> pending = new ArrayDeque<>();
-                pending.add(start);
-                while (!pending.isEmpty()) {
-                    LogisticsNode node = pending.removeFirst();
-                    component.add(node);
-                    neighbors.getOrDefault(node, Set.of()).stream()
-                        .sorted(Comparator.comparing(NetworkPreviewPanel::nodeKey))
-                        .filter(visited::add).forEach(pending::addLast);
-                }
-                result.add(component);
-            });
-        return result;
-    }
-
-    private static TopologyComponent layoutComponent(
-        Set<LogisticsNode> component,
-        Map<LogisticsNode, Set<LogisticsNode>> neighbors
-    ) {
-        LogisticsNode root = component.stream().min(
-            Comparator.<LogisticsNode>comparingInt(node ->
-                    -neighbors.getOrDefault(node, Set.of()).size())
-                .thenComparing(NetworkPreviewPanel::nodeKey)).orElseThrow();
-        Map<LogisticsNode, Integer> depth = new LinkedHashMap<>();
-        ArrayDeque<LogisticsNode> pending = new ArrayDeque<>();
-        depth.put(root, 0);
-        pending.add(root);
-        while (!pending.isEmpty()) {
-            LogisticsNode node = pending.removeFirst();
-            List<LogisticsNode> adjacent = neighbors.getOrDefault(node, Set.of()).stream()
-                .filter(component::contains)
-                .sorted(Comparator.comparing(NetworkPreviewPanel::nodeKey)).toList();
-            for (LogisticsNode next : adjacent) {
-                if (depth.putIfAbsent(next, depth.get(node) + 1) == null) pending.addLast(next);
-            }
-        }
-        Map<Integer, List<LogisticsNode>> layers = new TreeMap<>();
-        component.forEach(node -> layers.computeIfAbsent(depth.get(node), ignored -> new ArrayList<>()).add(node));
-        layers.values().forEach(layer -> layer.sort(Comparator.comparing(NetworkPreviewPanel::nodeKey)));
-        improveTopologyOrder(layers, neighbors, depth);
-        return new TopologyComponent(component.stream()
-            .min(Comparator.comparing(NetworkPreviewPanel::nodeKey)).orElseThrow(), layers);
-    }
-
-    private static void improveTopologyOrder(
-        Map<Integer, List<LogisticsNode>> layers,
-        Map<LogisticsNode, Set<LogisticsNode>> neighbors,
-        Map<LogisticsNode, Integer> depth
-    ) {
-        for (int pass = 0; pass < 4; pass++) {
-            Map<LogisticsNode, Integer> previousOrder = Map.of();
-            for (Map.Entry<Integer, List<LogisticsNode>> entry : layers.entrySet()) {
-                int layerDepth = entry.getKey();
-                Map<LogisticsNode, Integer> order = previousOrder;
-                entry.getValue().sort(Comparator
-                    .<LogisticsNode>comparingDouble(node -> barycenter(
-                        neighbors.getOrDefault(node, Set.of()).stream()
-                            .filter(adjacent -> depth.get(adjacent) < layerDepth).toList(), order))
-                    .thenComparing(NetworkPreviewPanel::nodeKey));
-                previousOrder = indexOrder(entry.getValue());
-            }
-        }
-    }
-
-    private static double barycenter(Collection<LogisticsNode> nodes,
-                                     Map<LogisticsNode, Integer> order) {
-        return nodes.stream().filter(order::containsKey).mapToInt(order::get)
-            .average().orElse(Double.MAX_VALUE);
-    }
-
-    private static Map<LogisticsNode, Integer> indexOrder(List<LogisticsNode> nodes) {
-        Map<LogisticsNode, Integer> result = new HashMap<>();
-        for (int index = 0; index < nodes.size(); index++) result.put(nodes.get(index), index);
         return result;
     }
 
@@ -360,7 +283,7 @@ public final class NetworkPreviewPanel {
         Map<LogisticsNode, Point> automatic
     ) {
         if (layout.legacyNodePositions().isEmpty()) return false;
-        Map<net.minecraft.core.GlobalPos, List<LogisticsNode>> nodesByPosition = new LinkedHashMap<>();
+        Map<GlobalPos, List<LogisticsNode>> nodesByPosition = new LinkedHashMap<>();
         automatic.keySet().forEach(node ->
             nodesByPosition.computeIfAbsent(node.gPos(), ignored -> new ArrayList<>()).add(node));
         layout.legacyNodePositions().forEach((position, savedPosition) -> {
@@ -381,8 +304,12 @@ public final class NetworkPreviewPanel {
     /**
      * 根据已保存的节点布局重建临时视图，使每次打开界面都能看到位于画布中心的网络。
      */
-    private void centerView(Map<LogisticsNode, Point> positions, int viewportX, int viewportY,
-                            int viewportWidth, int viewportHeight) {
+    private void centerView(
+        Map<LogisticsNode, Point> positions,
+        Map<LogisticsNode, VisualNode> nodes,
+        int viewportWidth,
+        int viewportHeight
+    ) {
         centerViewOnNextLayout = false;
         if (positions.isEmpty()) {
             panX = 0.0D;
@@ -391,8 +318,9 @@ public final class NetworkPreviewPanel {
             return;
         }
         int minimumX = positions.values().stream().mapToInt(Point::x).min().orElse(0);
-        int maximumX = positions.values().stream()
-            .mapToInt(point -> point.x + NODE_WIDTH).max().orElse(viewportWidth);
+        int maximumX = positions.entrySet().stream()
+            .mapToInt(entry -> entry.getValue().x + nodes.get(entry.getKey()).width)
+            .max().orElse(viewportWidth);
         int minimumY = positions.values().stream().mapToInt(Point::y).min().orElse(0);
         int maximumY = positions.values().stream()
             .mapToInt(point -> point.y + NODE_HEIGHT).max().orElse(viewportHeight);
@@ -400,9 +328,10 @@ public final class NetworkPreviewPanel {
         int contentHeight = Math.max(1, maximumY - minimumY);
         double widthScale = (viewportWidth - LAYOUT_PADDING * 2.0D) / contentWidth;
         double heightScale = (viewportHeight - LAYOUT_PADDING * 2.0D) / contentHeight;
-        zoom = Mth.clamp(Math.min(widthScale, heightScale), MIN_ZOOM, 1.0D);
-        panX = (viewportX + viewportWidth / 2.0D - (minimumX + maximumX) / 2.0D) * zoom;
-        panY = (viewportY + viewportHeight / 2.0D - (minimumY + maximumY) / 2.0D) * zoom;
+        zoom = Mth.clamp(Math.min(widthScale, heightScale), MIN_AUTO_FIT_ZOOM, 1.0D);
+        // 节点位置和平移量均使用预览内部坐标，避免重复叠加屏幕绝对坐标。
+        panX = (viewportWidth / 2.0D - (minimumX + maximumX) / 2.0D) * zoom;
+        panY = (viewportHeight / 2.0D - (minimumY + maximumY) / 2.0D) * zoom;
     }
 
     private void renderConnection(
@@ -410,20 +339,31 @@ public final class NetworkPreviewPanel {
         ClientConnection connection,
         Point first,
         Point second,
-        ViewTransform transform
+        VisualNode firstNode,
+        VisualNode secondNode,
+        ViewTransform transform,
+        Map<FlowTarget, DirectionMarker> directionMarkers
     ) {
-        boolean firstOnLeft = first.x <= second.x;
-        int startX = firstOnLeft ? first.x + NODE_WIDTH : first.x;
-        int startY = first.y + NODE_HEIGHT / 2;
-        int endX = firstOnLeft ? second.x : second.x + NODE_WIDTH;
-        int endY = second.y + NODE_HEIGHT / 2;
+        ConnectionPorts ports = ConnectionPorts.resolve(
+            first, firstNode.width, second, secondNode.width);
+        CurvePoint start = ports.firstAnchor;
+        CurvePoint end = ports.secondAnchor;
+        double startX = start.x;
+        double startY = start.y;
+        double endX = end.x;
+        double endY = end.y;
         ConnectionKey selectedKey = SelectionContext.getFocusedConnectionKey();
         boolean selected = connection.key().equals(selectedKey);
-        int segments = Math.max(24, Math.abs(endX - startX) / 2);
+        int segments = Math.max(24, (int) Math.ceil(Math.hypot(
+            endX - startX, endY - startY) / 2.0D));
         List<CurvePoint> centerLine = new ArrayList<>(segments + 1);
-        int deltaX = endX - startX;
-        double firstControlX = startX + deltaX * 0.42D;
-        double secondControlX = endX - deltaX * 0.42D;
+        double deltaX = endX - startX;
+        double deltaY = endY - startY;
+        boolean horizontal = Math.abs(deltaX) >= Math.abs(deltaY);
+        double firstControlX = horizontal ? startX + deltaX * 0.42D : startX;
+        double firstControlY = horizontal ? startY : startY + deltaY * 0.42D;
+        double secondControlX = horizontal ? endX - deltaX * 0.42D : endX;
+        double secondControlY = horizontal ? endY : endY - deltaY * 0.42D;
         for (int i = 0; i <= segments; i++) {
             double t = i / (double) segments;
             double inverse = 1.0D - t;
@@ -432,8 +372,8 @@ public final class NetworkPreviewPanel {
                 + 3.0D * inverse * t * t * secondControlX
                 + t * t * t * endX;
             double py = inverse * inverse * inverse * startY
-                + 3.0D * inverse * inverse * t * startY
-                + 3.0D * inverse * t * t * endY
+                + 3.0D * inverse * inverse * t * firstControlY
+                + 3.0D * inverse * t * t * secondControlY
                 + t * t * t * endY;
             centerLine.add(new CurvePoint(px, py));
         }
@@ -448,9 +388,9 @@ public final class NetworkPreviewPanel {
         if (activeDirections == 0) {
             if (selected) {
                 drawSmoothLine(graphics, centerLine,
-                    SELECTED_CONNECTION_COLOR, 3.5D, true);
+                    SELECTED_CONNECTION_COLOR, SELECTED_CONNECTION_LINE_WIDTH, true);
             }
-            drawSmoothLine(graphics, centerLine, 0xFF888888, 1.5D, true);
+            drawSmoothLine(graphics, centerLine, 0xFF888888, CONNECTION_LINE_WIDTH, true);
             connectionHits.add(new ConnectionHit(connection,
                 centerLine.stream().map(transform::apply).toList()));
             return;
@@ -458,14 +398,24 @@ public final class NetworkPreviewPanel {
 
         List<Point> hitPoints = new ArrayList<>(
             centerLine.size() * activeDirections);
-        double offset = activeDirections == 2 ? 7.0D : 0.0D;
+        double laneOffset = activeDirections == 2 ? 4.0D : 0.0D;
         if (forward.active) {
-            renderDirection(graphics, hitPoints, centerLine,
-                forward, true, -offset, selected, transform);
+            FlowEndpoint endpoint = new FlowEndpoint(ports.secondSide, end);
+            List<CurvePoint> branch = activeDirections == 2
+                ? offsetCurveInterior(centerLine, -laneOffset) : centerLine;
+            renderDirection(graphics, hitPoints, branch,
+                forward, selected, transform);
+            registerDirectionMarker(
+                directionMarkers, connection.second(), endpoint, forward);
         }
         if (backward.active) {
-            renderDirection(graphics, hitPoints, centerLine,
-                backward, false, offset, selected, transform);
+            FlowEndpoint endpoint = new FlowEndpoint(ports.firstSide, start);
+            List<CurvePoint> branch = activeDirections == 2
+                ? offsetCurveInterior(centerLine, laneOffset) : centerLine;
+            renderDirection(graphics, hitPoints, branch,
+                backward, selected, transform);
+            registerDirectionMarker(
+                directionMarkers, connection.first(), endpoint, backward);
         }
         connectionHits.add(new ConnectionHit(connection, List.copyOf(hitPoints)));
     }
@@ -477,74 +427,83 @@ public final class NetworkPreviewPanel {
     private static void renderDirection(
         GuiGraphics graphics,
         List<Point> hitPoints,
-        List<CurvePoint> centerLine,
+        List<CurvePoint> line,
         DirectionState direction,
-        boolean startToEnd,
-        double offsetY,
         boolean selected,
         ViewTransform transform
     ) {
-        List<CurvePoint> line = offsetLine(centerLine, offsetY);
         if (selected) {
             drawSmoothLine(graphics, line,
-                SELECTED_CONNECTION_COLOR, 3.5D, !direction.allowed);
+                SELECTED_CONNECTION_COLOR, SELECTED_CONNECTION_LINE_WIDTH, !direction.allowed);
         }
         int semanticColor = direction.color();
         drawSmoothLine(graphics, line, semanticColor,
-            1.5D, !direction.allowed);
-        drawDirectionArrow(graphics, line, startToEnd,
-            semanticColor, 1.5D);
+            CONNECTION_LINE_WIDTH, !direction.allowed);
         line.stream().map(transform::apply).forEach(hitPoints::add);
     }
 
-    private static List<CurvePoint> offsetLine(
+    /**
+     * 双向连接只在曲线中段错开，节点边缘保持准确汇合。
+     */
+    private static List<CurvePoint> offsetCurveInterior(
         List<CurvePoint> centerLine,
-        double offsetY
+        double offset
     ) {
-        if (offsetY == 0.0D) return centerLine;
+        if (centerLine.size() < 2 || Math.abs(offset) < 0.001D) return centerLine;
+        CurvePoint start = centerLine.get(0);
+        CurvePoint end = centerLine.get(centerLine.size() - 1);
+        double deltaX = end.x - start.x;
+        double deltaY = end.y - start.y;
+        double length = Math.hypot(deltaX, deltaY);
+        if (length < 0.001D) return centerLine;
+        double normalX = -deltaY / length;
+        double normalY = deltaX / length;
         List<CurvePoint> result = new ArrayList<>(centerLine.size());
-        for (CurvePoint point : centerLine) {
-            result.add(new CurvePoint(point.x, point.y + offsetY));
+        for (int index = 0; index < centerLine.size(); index++) {
+            double progress = index / (double) (centerLine.size() - 1);
+            double interiorOffset = Math.sin(Math.PI * progress) * offset;
+            CurvePoint point = centerLine.get(index);
+            result.add(new CurvePoint(
+                point.x + normalX * interiorOffset,
+                point.y + normalY * interiorOffset));
         }
-        return result;
+        return List.copyOf(result);
     }
 
     /**
-     * 箭头固定在目标节点边缘之前，并沿目标端切线绘制。
-     * 这样箭头表达的是明确终点，不会被位于曲线中部的距离标签遮挡。
+     * 同一目标节点同一接入侧只保留一个方向标记。连接线仍逐条绘制，
+     * 因此汇总箭头不会破坏单条连接的选取、高亮与状态表达。
      */
-    private static void drawDirectionArrow(
-        GuiGraphics graphics,
-        List<CurvePoint> line,
-        boolean startToEnd,
-        int color,
-        double width
+    private static void registerDirectionMarker(
+        Map<FlowTarget, DirectionMarker> markers,
+        LogisticsNode target,
+        FlowEndpoint endpoint,
+        DirectionState direction
     ) {
-        int arrowIndex = startToEnd ? line.size() - 1 : 0;
-        CurvePoint before = line.get(Math.max(0, arrowIndex - 2));
-        CurvePoint after = line.get(Math.min(line.size() - 1, arrowIndex + 2));
-        double directionX = after.x - before.x;
-        double directionY = after.y - before.y;
-        double length = Math.hypot(directionX, directionY);
-        if (length < 0.001D) return;
-        directionX /= length;
-        directionY /= length;
-        if (!startToEnd) {
-            directionX = -directionX;
-            directionY = -directionY;
-        }
+        FlowTarget key = new FlowTarget(target, endpoint.side);
+        DirectionMarker candidate = new DirectionMarker(
+            endpoint.anchor, endpoint.side,
+            1, direction.allowed ? 0 : 1, direction.isNearLimit() ? 1 : 0);
+        markers.merge(key, candidate, DirectionMarker::merge);
+    }
 
-        CurvePoint tip = line.get(arrowIndex);
-        double baseX = tip.x - directionX * 5.0D;
-        double baseY = tip.y - directionY * 5.0D;
-        double normalX = -directionY * 2.8D;
-        double normalY = directionX * 2.8D;
-        List<CurvePoint> arrow = List.of(
+    private static void renderDirectionMarker(
+        GuiGraphics graphics,
+        DirectionMarker marker
+    ) {
+        int color = marker.color();
+        CurvePoint tip = marker.anchor;
+        double directionX = marker.side.directionX;
+        double directionY = marker.side.directionY;
+        double baseX = tip.x - directionX * 6.0D;
+        double baseY = tip.y - directionY * 6.0D;
+        double normalX = -directionY * 3.0D;
+        double normalY = directionX * 3.0D;
+        List<CurvePoint> points = List.of(
             new CurvePoint(baseX + normalX, baseY + normalY),
             tip,
-            new CurvePoint(baseX - normalX, baseY - normalY)
-        );
-        drawLineStrip(graphics, arrow, 0, arrow.size(), color, width);
+            new CurvePoint(baseX - normalX, baseY - normalY));
+        drawLineStrip(graphics, points, 0, points.size(), color, CONNECTION_LINE_WIDTH);
     }
 
     /**
@@ -602,22 +561,23 @@ public final class NetworkPreviewPanel {
         FaceTopology topology = visualNode.topology();
         boolean primarySelected = node.equals(selectedNode);
         boolean selected = selectedNodes.contains(node);
-        int border = primarySelected ? 0xFF98FB98 : selected ? 0xFFFFD45A : 0xFF767676;
-        int background = primarySelected ? 0xFF315B36 : selected ? 0xFF5A5130 : 0xFF3A3A3A;
-        graphics.fill(point.x, point.y, point.x + NODE_WIDTH, point.y + NODE_HEIGHT, border);
+        boolean boxCandidate = boxSelectionCandidates.contains(node) && !selected;
+        int border = primarySelected ? 0xFF98FB98
+            : selected ? 0xFFFFD45A : boxCandidate ? BOX_SELECTION_COLOR : 0xFF767676;
+        int background = primarySelected ? 0xFF315B36
+            : selected ? 0xFF5A5130 : boxCandidate ? 0xFF3F5942 : 0xFF3A3A3A;
+        int nodeWidth = visualNode.width;
+        graphics.fill(point.x, point.y, point.x + nodeWidth, point.y + NODE_HEIGHT, border);
         graphics.fill(point.x + 2, point.y + 2,
-            point.x + NODE_WIDTH - 2, point.y + NODE_HEIGHT - 2, background);
+            point.x + nodeWidth - 2, point.y + NODE_HEIGHT - 2, background);
 
-        String title = nodeName(node) + " · "
-            + NodeDisplayText.direction(node.face()).getString();
-        graphics.drawString(font, font.plainSubstrByWidth(title, NODE_WIDTH - 8),
+        graphics.drawString(font, font.plainSubstrByWidth(visualNode.title, nodeWidth - 8),
             point.x + 4, point.y + 4, primarySelected ? 0xFF98FB98 : selected ? 0xFFFFD45A : 0xFFEDEDED, false);
-        String position = node.gPos().pos().toShortString();
-        graphics.drawString(font, font.plainSubstrByWidth(position, NODE_WIDTH - 8),
+        graphics.drawString(font, font.plainSubstrByWidth(visualNode.positionText, nodeWidth - 8),
             point.x + 4, point.y + 15, 0xFFAAAAAA, false);
         Point screenPoint = transform.apply(point);
         nodeHits.add(new NodeHit(visualNode, topology, screenPoint.x, screenPoint.y,
-            Math.max(1, (int) Math.round(NODE_WIDTH * transform.zoom)),
+            Math.max(1, (int) Math.round(nodeWidth * transform.zoom)),
             Math.max(1, (int) Math.round(NODE_HEIGHT * transform.zoom))));
     }
 
@@ -672,7 +632,10 @@ public final class NetworkPreviewPanel {
                 .withStyle(ChatFormatting.GOLD),
             Component.translatable("gui.staticlogistics.network_preview.multi_select_hint",
                 SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT.getTranslatedKeyMessage()),
+            Component.translatable("gui.staticlogistics.network_preview.box_select_hint",
+                SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT.getTranslatedKeyMessage()),
             Component.translatable("gui.staticlogistics.network_preview.drag_selected_hint"),
+            Component.translatable("gui.staticlogistics.network_preview.clear_selection_hint"),
             Component.translatable("gui.staticlogistics.network_preview.zoom_hint")
         ), mouseX, mouseY);
     }
@@ -724,10 +687,11 @@ public final class NetworkPreviewPanel {
     public boolean mouseClicked(double mouseX, double mouseY, int button,
                                 int x, int y, int width, int height) {
         if (!isInside(mouseX, mouseY, x, y, width, height)) return false;
+        boolean multiSelect = SLKeyMappings.isKeyDown(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT);
         for (NodeHit hit : nodeHits) {
             if (!hit.contains(mouseX, mouseY)) continue;
             LogisticsNode clickedNode = hit.node.representative();
-            if (SLKeyMappings.isKeyDown(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT) && button == 0) {
+            if (multiSelect && button == 0) {
                 toggleNodeSelection(clickedNode);
             } else if (button == 0 && selectedNodes.contains(clickedNode)) {
                 selectedNode = clickedNode;
@@ -738,7 +702,7 @@ public final class NetworkPreviewPanel {
             }
             SelectionContext.clearConnectionFocus();
             draggingNode = button == 0
-                && !SLKeyMappings.isKeyDown(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT)
+                && !multiSelect
                 ? hit.node.position() : null;
             draggingNodes.clear();
             if (draggingNode != null) {
@@ -746,6 +710,8 @@ public final class NetworkPreviewPanel {
                     ? selectedNodes : List.of(draggingNode));
             }
             panning = false;
+            boxSelecting = false;
+            boxSelectionCandidates.clear();
             panningDistance = 0.0D;
             SoundUtil.playClickSound();
             return true;
@@ -756,6 +722,8 @@ public final class NetworkPreviewPanel {
             draggingNode = null;
             draggingNodes.clear();
             panning = false;
+            boxSelecting = false;
+            boxSelectionCandidates.clear();
             panningDistance = 0.0D;
             SoundUtil.playClickSound();
             return true;
@@ -763,14 +731,33 @@ public final class NetworkPreviewPanel {
         if (button == 0) {
             draggingNode = null;
             draggingNodes.clear();
-            panning = true;
+            if (multiSelect) {
+                beginBoxSelection(mouseX, mouseY, x, y, width, height);
+            } else {
+                panning = true;
+                boxSelecting = false;
+                boxSelectionCandidates.clear();
+            }
             panningDistance = 0.0D;
+            return true;
+        }
+        if (button == 1 && (!selectedNodes.isEmpty() || getSelectedConnection() != null)) {
+            selectedNode = null;
+            selectedNodes.clear();
+            SelectionContext.clearConnectionFocus();
+            SoundUtil.playClickSound();
             return true;
         }
         return false;
     }
 
     public boolean mouseDragged(double deltaX, double deltaY) {
+        if (boxSelecting) {
+            boxEndX = Mth.clamp(boxEndX + deltaX, previewX, previewX + previewWidth);
+            boxEndY = Mth.clamp(boxEndY + deltaY, previewY, previewY + previewHeight);
+            updateBoxSelectionCandidatesFromHits();
+            return true;
+        }
         if (draggingNode != null && groupKey != null) {
             Map<LogisticsNode, NetworkPreviewLayoutStore.Position> layout =
                 NetworkPreviewLayoutStore.INSTANCE.getOrCreate(groupKey)
@@ -802,23 +789,90 @@ public final class NetworkPreviewPanel {
     }
 
     /**
-     * 结束节点拖动或画布平移，并告知上层是否应拦截本次释放事件。
+     * 结束节点拖动、框选或画布平移，并告知上层是否应拦截本次释放事件。
      *
      * <p>若把预览内开始的释放事件继续交给容器界面，原版槽位拖拽状态可能被意外结束，
-     * 这正是空白取消选择后偶发异常的来源。
+     * 因此预览负责完整消费自身发起的拖动与平移操作。
      */
     public boolean mouseReleased() {
-        boolean handled = panning || draggingNode != null;
-        if (panning && panningDistance < 2.0D) {
-            selectedNode = null;
-            selectedNodes.clear();
-            SelectionContext.clearConnectionFocus();
+        selectionChangedOnLastRelease = false;
+        boolean handled = boxSelecting || panning || draggingNode != null;
+        if (boxSelecting && selectionBoxHasArea()) {
+            LogisticsNode lastAdded = null;
+            for (LogisticsNode node : boxSelectionCandidates) {
+                if (selectedNodes.add(node)) lastAdded = node;
+            }
+            if (lastAdded != null) {
+                selectedNode = lastAdded;
+                SelectionContext.clearConnectionFocus();
+                selectionChangedOnLastRelease = true;
+                SoundUtil.playClickSound();
+            }
         }
         panning = false;
         panningDistance = 0.0D;
+        boxSelecting = false;
+        boxSelectionCandidates.clear();
         draggingNode = null;
         draggingNodes.clear();
         return handled;
+    }
+
+    public boolean selectionChangedOnLastRelease() {
+        return selectionChangedOnLastRelease;
+    }
+
+    private void beginBoxSelection(double mouseX, double mouseY,
+                                   int x, int y, int width, int height) {
+        previewX = x;
+        previewY = y;
+        previewWidth = width;
+        previewHeight = height;
+        boxStartX = boxEndX = mouseX;
+        boxStartY = boxEndY = mouseY;
+        boxSelecting = true;
+        panning = false;
+        boxSelectionCandidates.clear();
+    }
+
+    private void updateBoxSelectionCandidatesFromHits() {
+        if (!selectionBoxHasArea()) {
+            boxSelectionCandidates.clear();
+            return;
+        }
+        boxSelectionCandidates.clear();
+        for (NodeHit hit : nodeHits) {
+            // 以节点卡片中心是否落入选框为准，避免只擦到边框就意外选中。
+            double centerX = hit.x + hit.width / 2.0D;
+            double centerY = hit.y + hit.height / 2.0D;
+            if (isInsideSelectionBox(centerX, centerY)) {
+                boxSelectionCandidates.add(hit.node.representative());
+            }
+        }
+    }
+
+    private boolean selectionBoxHasArea() {
+        return Math.abs(boxEndX - boxStartX) >= BOX_SELECTION_THRESHOLD
+            || Math.abs(boxEndY - boxStartY) >= BOX_SELECTION_THRESHOLD;
+    }
+
+    private boolean isInsideSelectionBox(double x, double y) {
+        return x >= Math.min(boxStartX, boxEndX) && x <= Math.max(boxStartX, boxEndX)
+            && y >= Math.min(boxStartY, boxEndY) && y <= Math.max(boxStartY, boxEndY)
+            && isInside(x, y, previewX, previewY, previewWidth, previewHeight);
+    }
+
+    private void renderSelectionBox(GuiGraphics graphics) {
+        if (!boxSelecting || !selectionBoxHasArea()) return;
+        int left = (int) Math.floor(Math.min(boxStartX, boxEndX));
+        int top = (int) Math.floor(Math.min(boxStartY, boxEndY));
+        int right = (int) Math.ceil(Math.max(boxStartX, boxEndX));
+        int bottom = (int) Math.ceil(Math.max(boxStartY, boxEndY));
+        graphics.fill(left, top, right, bottom, BOX_SELECTION_FILL);
+        graphics.fill(left, top, right, top + 1, BOX_SELECTION_COLOR);
+        graphics.fill(left, bottom - 1, right, bottom, BOX_SELECTION_COLOR);
+        graphics.fill(left, top, left + 1, bottom, BOX_SELECTION_COLOR);
+        graphics.fill(right - 1, top, right, bottom, BOX_SELECTION_COLOR);
     }
 
     private void toggleNodeSelection(LogisticsNode node) {
@@ -868,14 +922,99 @@ public final class NetworkPreviewPanel {
     private record Point(int x, int y) {
     }
 
-    private record TopologyComponent(LogisticsNode firstNode,
-                                     Map<Integer, List<LogisticsNode>> layers) {
-    }
-
     /**
      * 保留亚像素精度的曲线采样点，避免 GPU 线带沿整数网格折动。
      */
     private record CurvePoint(double x, double y) {
+    }
+
+    private enum AnchorSide {
+        LEFT(1.0D, 0.0D),
+        RIGHT(-1.0D, 0.0D),
+        TOP(0.0D, 1.0D),
+        BOTTOM(0.0D, -1.0D);
+
+        private final double directionX;
+        private final double directionY;
+
+        AnchorSide(double directionX, double directionY) {
+            this.directionX = directionX;
+            this.directionY = directionY;
+        }
+
+        private CurvePoint anchor(Point target, int targetWidth) {
+            return switch (this) {
+                case LEFT -> new CurvePoint(target.x, target.y + NODE_HEIGHT / 2.0D);
+                case RIGHT -> new CurvePoint(target.x + targetWidth, target.y + NODE_HEIGHT / 2.0D);
+                case TOP -> new CurvePoint(target.x + targetWidth / 2.0D, target.y);
+                case BOTTOM -> new CurvePoint(target.x + targetWidth / 2.0D, target.y + NODE_HEIGHT);
+            };
+        }
+    }
+
+    /**
+     * 曲线与箭头共享同一对端口；有水平距离时始终采用类图式左右端口。
+     */
+    private record ConnectionPorts(
+        AnchorSide firstSide,
+        CurvePoint firstAnchor,
+        AnchorSide secondSide,
+        CurvePoint secondAnchor
+    ) {
+        private static ConnectionPorts resolve(
+            Point first,
+            int firstWidth,
+            Point second,
+            int secondWidth
+        ) {
+            double firstCenterX = first.x + firstWidth / 2.0D;
+            double secondCenterX = second.x + secondWidth / 2.0D;
+            AnchorSide firstSide;
+            AnchorSide secondSide;
+            if (Math.abs(firstCenterX - secondCenterX) >= 0.001D) {
+                boolean firstIsLeft = firstCenterX < secondCenterX;
+                firstSide = firstIsLeft ? AnchorSide.RIGHT : AnchorSide.LEFT;
+                secondSide = firstIsLeft ? AnchorSide.LEFT : AnchorSide.RIGHT;
+            } else {
+                boolean firstIsAbove = first.y < second.y;
+                firstSide = firstIsAbove ? AnchorSide.BOTTOM : AnchorSide.TOP;
+                secondSide = firstIsAbove ? AnchorSide.TOP : AnchorSide.BOTTOM;
+            }
+            return new ConnectionPorts(
+                firstSide, firstSide.anchor(first, firstWidth),
+                secondSide, secondSide.anchor(second, secondWidth));
+        }
+    }
+
+    private record FlowEndpoint(AnchorSide side, CurvePoint anchor) {
+    }
+
+    private record FlowTarget(LogisticsNode target, AnchorSide side) {
+    }
+
+    private record DirectionMarker(
+        CurvePoint anchor,
+        AnchorSide side,
+        int total,
+        int blocked,
+        int nearLimit
+    ) {
+        private DirectionMarker merge(DirectionMarker other) {
+            return new DirectionMarker(
+                anchor, side,
+                total + other.total,
+                blocked + other.blocked,
+                nearLimit + other.nearLimit);
+        }
+
+        private boolean allBlocked() {
+            return blocked == total;
+        }
+
+        private int color() {
+            if (allBlocked()) return 0xFFFF6868;
+            return blocked > 0 || nearLimit > 0 ? 0xFFFFD45A : 0xFF98FB98;
+        }
     }
 
     /**
@@ -917,7 +1056,13 @@ public final class NetworkPreviewPanel {
         }
     }
 
-    private record VisualNode(LogisticsNode representative, FaceTopology topology) {
+    private record VisualNode(
+        LogisticsNode representative,
+        FaceTopology topology,
+        String title,
+        String positionText,
+        int width
+    ) {
         private LogisticsNode position() {
             return representative;
         }

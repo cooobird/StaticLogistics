@@ -13,6 +13,7 @@ import com.coobird.staticlogistics.network.TopologyPagePartitioner;
 import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
@@ -178,7 +179,7 @@ public record S2CTopologyUpdatePayload(
 
     @Override
     public void work(Player player) {
-        net.minecraft.client.Minecraft.getInstance().execute(() ->
+        Minecraft.getInstance().execute(() ->
             ClientLinkData.INSTANCE.acceptTopologyUpdatePage(
                 sequence(), pageIndex(), pageCount(), faces(), links()));
     }

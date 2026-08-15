@@ -191,6 +191,10 @@ public final class ConnectionCommandService {
         ServerLevel firstLevel = server.getLevel(key.first().gPos().dimension());
         ServerLevel secondLevel = server.getLevel(key.second().gPos().dimension());
         if (firstLevel == null || secondLevel == null) return null;
+        if (!NodeInteractionValidator.canMutateRemote(
+            actor, firstLevel, key.first().gPos().pos())
+            || !NodeInteractionValidator.canMutateRemote(
+            actor, secondLevel, key.second().gPos().pos())) return null;
         LinkManager firstManager = LinkManager.get(firstLevel);
         LinkManager secondManager = LinkManager.get(secondLevel);
         FaceConfigComposite firstConfig = firstManager.getFaceConfig(FaceAddress.of(key.first()));

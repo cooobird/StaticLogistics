@@ -76,7 +76,7 @@ public record C2SApplyNodeTemplatePayload(GroupKey groupKey, LogisticsNode sourc
 
     @Override
     public void work(ServerPlayer player) {
-        if (!ServerPacketRateLimiter.allow(player, ServerPacketRateLimiter.Action.FACE_CONFIGURATION)
+        if (!ServerPacketRateLimiter.allow(player, ServerPacketRateLimiter.Action.NODE_TEMPLATE_CONFIGURATION, targets().size())
             || !(player.containerMenu instanceof LinkConfiguratorMenu menu)
             || !menu.hasTarget()
             || !groupKey().equals(menu.getRemoteGroupKey())

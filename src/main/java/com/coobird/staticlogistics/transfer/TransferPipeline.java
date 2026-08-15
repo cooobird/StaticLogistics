@@ -6,11 +6,13 @@ import com.coobird.staticlogistics.api.event.PostTransferEvent;
 import com.coobird.staticlogistics.api.event.PreTransferEvent;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.common.MinecraftForge;
+import org.slf4j.Logger;
 
 import java.util.HashSet;
 import java.util.List;
@@ -20,6 +22,8 @@ import java.util.Set;
  * 传输管线 —— 编排一次完整的传输流程。
  */
 public final class TransferPipeline {
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private TransferPipeline() {
     }
 
@@ -41,16 +45,19 @@ public final class TransferPipeline {
         }
         if (localContainer == null) return false;
 
-        C localCap = capGetter.get(localLevel, localPos, localFace);
+        C localCap;
+        try {
+            localCap = capGetter.get(localLevel, localPos, localFace);
+        } catch (RuntimeException exception) {
+            LOGGER.error("Source capability query failed at {} face {}", localPos, localFace, exception);
+            return false;
+        }
         if (localCap == null) return false;
 
         boolean movedAny = false;
-        int attemptBudget = Math.max(1, protocol.maxTransactionsPerActivation());
-        int attempts = 0;
         Set<Object> rejectedCandidateContexts = null;
 
-        while (remaining > 0L && attempts < attemptBudget
-            && (context == null || context.hasTimeRemaining())) {
+        while (remaining > 0L && (context == null || context.hasTimeRemaining())) {
             boolean movedThisPass = false;
             boolean candidateSeen = false;
             boolean terminalFailure = false;
@@ -85,7 +92,17 @@ public final class TransferPipeline {
                     continue;
                 }
 
-                C remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
+                C remoteCap;
+                try {
+                    remoteCap = capGetter.get(remoteLevel, remoteNode.gPos().pos(), remoteNode.face());
+                } catch (RuntimeException exception) {
+                    LOGGER.error("Target capability query failed at {} face {}",
+                        remoteNode.gPos().pos(), remoteNode.face(), exception);
+                    if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.CAPABILITY_NULL);
+                    }
+                    continue;
+                }
                 if (remoteCap == null) {
                     if (context != null && context.sourceConfig() != null
                         && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
@@ -116,14 +133,30 @@ public final class TransferPipeline {
                 long targetAccepted = 0;
                 boolean transferComplete = true;
                 TransferFailureReason commitFailure = null;
-                ExtractionResult<T> simulated = protocol.simulateExtract(from, remaining);
-                if (!protocol.isEmpty(simulated)) {
+                ExtractionResult<T> simulated;
+                boolean simulatedEmpty;
+                boolean targetCanInsert;
+                long simulatedAccepted;
+                try {
+                    simulated = protocol.simulateExtract(from, remaining);
+                    simulatedEmpty = protocol.isEmpty(simulated);
+                    targetCanInsert = !simulatedEmpty
+                        && protocol.canInsert(to, simulated.value(), remoteNode);
+                    simulatedAccepted = targetCanInsert
+                        ? Math.min(remaining, Math.max(0L,
+                        protocol.simulateInsert(to, simulated.value()))) : 0L;
+                } catch (RuntimeException exception) {
+                    LOGGER.error("Transfer simulation failed from {} to {}", localPos, remoteNode, exception);
+                    if (context != null) {
+                        logFailure(context, remoteNode, TransferFailureReason.SIMULATION_FAILED);
+                    }
+                    continue;
+                }
+                if (!simulatedEmpty) {
                     candidateSeen = true;
                     rejectedCandidate = simulated;
                 }
-                if (!protocol.isEmpty(simulated) && protocol.canInsert(to, simulated.value(), remoteNode)) {
-                    long simulatedAccepted = Math.min(remaining,
-                        Math.max(0L, protocol.simulateInsert(to, simulated.value())));
+                if (!simulatedEmpty && targetCanInsert) {
                     if (simulatedAccepted > 0L) {
                         TransferTransaction.Result result = TransferTransaction.commit(
                             protocol, from, to, simulated, simulatedAccepted, remoteNode);
@@ -131,6 +164,9 @@ public final class TransferPipeline {
                         transferComplete = result.failure() == TransferTransaction.Failure.NONE;
                         if (result.failure() == TransferTransaction.Failure.SOURCE_COMMIT_FAILED) {
                             commitFailure = TransferFailureReason.SOURCE_COMMIT_FAILED;
+                            terminalFailure = true;
+                        } else if (result.failure() == TransferTransaction.Failure.COMMIT_STATE_UNKNOWN) {
+                            commitFailure = TransferFailureReason.COMMIT_STATE_UNKNOWN;
                             terminalFailure = true;
                         } else if (result.failure() == TransferTransaction.Failure.ROLLBACK_FAILED) {
                             commitFailure = TransferFailureReason.ROLLBACK_FAILED;
@@ -142,7 +178,7 @@ public final class TransferPipeline {
                     } else if (context != null) {
                         logFailure(context, remoteNode, TransferFailureReason.TARGET_REJECTED);
                     }
-                } else if (!protocol.isEmpty(simulated) && context != null) {
+                } else if (!simulatedEmpty && context != null) {
                     logFailure(context, remoteNode, TransferFailureReason.TARGET_REJECTED);
                 }
 
@@ -150,7 +186,6 @@ public final class TransferPipeline {
                     remaining -= targetAccepted;
                     movedAny = true;
                     movedThisPass = true;
-                    attempts++;
                 }
 
                 // 日志 + Post 事件
@@ -163,11 +198,11 @@ public final class TransferPipeline {
                         srcNode, dstNode, context.typeId(), targetAccepted, transferComplete);
                     MinecraftForge.EVENT_BUS.post(postEvent);
                 }
-                if (remaining <= 0L || attempts >= attemptBudget || terminalFailure
+                if (remaining <= 0L || terminalFailure
                     || context != null && !context.hasTimeRemaining()) break;
             }
 
-            if (terminalFailure || remaining <= 0L || attempts >= attemptBudget) break;
+            if (terminalFailure || remaining <= 0L) break;
             if (movedThisPass) continue;
             if (!candidateSeen || rejectedCandidate == null || rejectedCandidate.context() == null) break;
             if (rejectedCandidateContexts == null) rejectedCandidateContexts = new HashSet<>();
@@ -175,7 +210,9 @@ public final class TransferPipeline {
                 || !protocol.advanceRejectedCandidate(rejectedCandidate)) {
                 break;
             }
-            attempts++;
+        }
+        if (context == null || context.hasTimeRemaining()) {
+            protocol.onActivationCompleted();
         }
         return movedAny;
     }

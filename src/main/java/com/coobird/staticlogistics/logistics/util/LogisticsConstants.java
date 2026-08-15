@@ -31,13 +31,6 @@ public final class LogisticsConstants {
             return SLConfig.getCacheProviderSize();
         }
 
-        /**
-         * 缓存加载因子
-         */
-        public static float getCacheLoadFactor() {
-            return SLConfig.getCacheLoadFactor();
-        }
-
     }
 
     /**
@@ -81,17 +74,10 @@ public final class LogisticsConstants {
         }
 
         /**
-         * 单维度每刻物流调度的软时间预算。
+         * 全服务器物流调度每 Tick 共享的软时间预算。
          */
         public static long getTickerTimeBudgetNanos() {
             return SLConfig.getPerfTickerTimeBudgetNanos();
-        }
-
-        /**
-         * 单次节点激活最多提交的物品传输事务数。
-         */
-        public static int getMaxItemTransactionsPerActivation() {
-            return SLConfig.getMaxItemTransactionsPerActivation();
         }
 
         /**
@@ -128,28 +114,6 @@ public final class LogisticsConstants {
         public static int getTransferContextPoolSize() {
             return SLConfig.getPerfContextPoolSize();
         }
-    }
-
-    /**
-     * 线程管理相关常量
-     * 控制后台线程的关闭行为
-     */
-    public static final class Thread {
-
-        private Thread() {
-        }
-
-        /**
-         * 正常关闭超时时间（秒）
-         * 等待任务完成的超时时间，超时后尝试强制关闭
-         */
-        public static final long SHUTDOWN_TIMEOUT_SECONDS = 5L;
-
-        /**
-         * 强制关闭超时时间（秒）
-         * 强制关闭后等待线程终止的超时时间
-         */
-        public static final long FORCE_SHUTDOWN_TIMEOUT_SECONDS = 2L;
     }
 
     /**

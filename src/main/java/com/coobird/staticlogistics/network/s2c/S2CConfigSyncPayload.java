@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.config.SLConfig;
+import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
@@ -33,6 +34,6 @@ public record S2CConfigSyncPayload(CompoundTag configValues) implements IPortPac
 
     @Override
     public void work(Player player) {
-        net.minecraft.client.Minecraft.getInstance().execute(() -> SLConfig.applyServerConfig(configValues));
+        Minecraft.getInstance().execute(() -> SLConfig.applyServerConfig(configValues));
     }
 }
