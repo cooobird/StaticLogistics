@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
@@ -75,7 +76,7 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
                 buffer.writeBoolean(input);
                 buffer.writeItem(upgradeStack);
                 buffer.writeResourceLocation(menu.getTargetNode().gPos().dimension().location());
-                menu.getRemoteGroupKey().STREAM_CODEC.encode(
+                GroupKey.STREAM_CODEC.encode(
                     (PortRegistryFriendlyByteBuf) buffer, menu.getRemoteGroupKey());
             });
     }

@@ -143,10 +143,8 @@ public class TransferUtils {
         if (!sourceConfig.isGlobalOutputEnabled() || !targetConfig.isGlobalInputEnabled()) return false;
         if (!sourceConfig.faceConfig.containsGroup(groupKey)
             || !targetConfig.faceConfig.containsGroup(groupKey)) return false;
-        if (!sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
-            || !targetConfig.getLinkedNodes(groupKey).contains(sourceNode)) return false;
-
-        return true;
+        return sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
+            && targetConfig.getLinkedNodes(groupKey).contains(sourceNode);
     }
 
     public interface TransferProtocol<C, T> {

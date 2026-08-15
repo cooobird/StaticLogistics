@@ -170,8 +170,8 @@ public enum NetworkPreviewLayoutStore {
             ResourceLocation dimensionId = ResourceLocation.parse(nodeJson.get("dimension").getAsString());
             ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, dimensionId);
             GlobalPos position = GlobalPos.of(dimension, new BlockPos(
-                    nodeJson.get("x").getAsInt(),
-                    nodeJson.get("y").getAsInt(),
+                nodeJson.get("x").getAsInt(),
+                nodeJson.get("y").getAsInt(),
                 nodeJson.get("z").getAsInt()));
             Position viewPosition = new Position(
                 clamp(finite(nodeJson.get("view_x").getAsDouble(), 0.0D),

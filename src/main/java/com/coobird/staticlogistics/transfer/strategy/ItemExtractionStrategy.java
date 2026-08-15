@@ -32,7 +32,7 @@ public interface ItemExtractionStrategy {
      *
      * @param processedSlot 当前候选的真实槽位下标
      * @param slotCount     源句柄公开的真实槽位数量
-     * @param ctx          传输上下文
+     * @param ctx           传输上下文
      */
     void advanceAfterAttempt(int processedSlot, int slotCount, TransferContext ctx);
 

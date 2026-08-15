@@ -24,7 +24,7 @@ public final class TeamPacketSync {
         Set<UUID> recipients = PermissionService.getInstance().teamMembersOf(player.getUUID());
         for (UUID memberId : recipients) {
             ServerPlayer member = player.server.getPlayerList().getPlayer(memberId);
-            if (member == null || !permissions.canAccess(ownerId, member)) continue;
+            if (!permissions.canAccess(ownerId, member)) continue;
             SLNetwork.HANDLER.sendToPlayer(member, payload);
             sentToPlayer |= member.getUUID().equals(player.getUUID());
         }
@@ -47,7 +47,7 @@ public final class TeamPacketSync {
         boolean sentToPlayer = false;
         for (UUID memberId : recipients) {
             ServerPlayer member = player.server.getPlayerList().getPlayer(memberId);
-            if (member == null || !permissions.canAccess(ownerId, member)) continue;
+            if (!permissions.canAccess(ownerId, member)) continue;
             sendTopologyTo(member, sanitize(updates, member, permissions), store);
             sentToPlayer |= member.getUUID().equals(player.getUUID());
         }
