@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.logistics.filter;
 
+import com.coobird.staticlogistics.transfer.UpgradeType;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -75,6 +76,27 @@ public record FilterData(
             Objects.requireNonNull(slot, "Filter tag slot must not be null"),
             Set.copyOf(Objects.requireNonNull(tags, "Filter tag set must not be null"))));
         return Map.copyOf(copy);
+    }
+
+    /**
+     * 按过滤器的真实匹配语义生成可持久化、可传输的数据。
+     * 基础过滤与标签过滤只按物品身份工作，因此不保留与匹配无关的组件数据。
+     */
+    public FilterData normalizedFor(UpgradeType type) {
+        if (type != UpgradeType.BASIC_FILTER && type != UpgradeType.TAG_FILTER) return this;
+        Map<String, ItemStack> normalizedItems = new LinkedHashMap<>();
+        boolean changed = false;
+        for (var entry : items.entrySet()) {
+            ItemStack stack = entry.getValue();
+            ItemStack normalized = stack.isEmpty()
+                ? ItemStack.EMPTY : new ItemStack(stack.getItem(), 1);
+            normalizedItems.put(entry.getKey(), normalized);
+            changed |= stack.getCount() != normalized.getCount()
+                || !ItemStack.isSameItemSameTags(stack, normalized);
+        }
+        if (!changed) return this;
+        return new FilterData(normalizedItems, fluids, isBlacklist, nbtMatchMode,
+            tagSlots, excludedTagSlots, fluidFilterTags, excludedFluidTags, ignoreDamage);
     }
 
     private static final Codec<Set<TagKey<Item>>> TAG_SET_CODEC =
@@ -332,6 +354,18 @@ public record FilterData(
     }
 
     private static void validateForNetwork(FilterData data) {
+        validateStructure(data);
+        int totalTagText = 0;
+        for (ItemStack stack : data.items().values()) {
+            totalTagText += validateItemStructure(stack, false);
+            if (totalTagText > MAX_TOTAL_ITEM_TAG_TEXT) {
+                throw new EncoderException(
+                    "Filter items exceed maximum NBT size " + MAX_TOTAL_ITEM_TAG_TEXT);
+            }
+        }
+    }
+
+    private static void validateStructure(FilterData data) {
         if (data.items().size() > MAX_SLOT_COUNT || data.fluids().size() > MAX_SLOT_COUNT
             || data.tagSlots().size() > MAX_SLOT_COUNT || data.excludedTagSlots().size() > MAX_SLOT_COUNT
             || data.fluidFilterTags().size() > MAX_SLOT_COUNT || data.excludedFluidTags().size() > MAX_SLOT_COUNT) {
@@ -346,19 +380,11 @@ public record FilterData(
         }
         data.items().keySet().forEach(FilterData::validateEncodedSlotKey);
         data.fluids().keySet().forEach(FilterData::validateEncodedSlotKey);
-        int totalTagText = 0;
-        for (ItemStack stack : data.items().values()) {
-            totalTagText += validateItemStructure(stack, false);
-            if (totalTagText > MAX_TOTAL_ITEM_TAG_TEXT) {
-                throw new EncoderException(
-                    "Filter items exceed maximum NBT size " + MAX_TOTAL_ITEM_TAG_TEXT);
-            }
-        }
     }
 
     private static DataResult<FilterData> validatePersistent(FilterData data) {
         try {
-            validateForNetwork(data);
+            validateStructure(data);
             return DataResult.success(data);
         } catch (RuntimeException exception) {
             return DataResult.error(() -> "Invalid filter data: " + exception.getMessage());
@@ -399,6 +425,10 @@ public record FilterData(
         }
     }
 
+    /**
+     * 网络边界同时校验结构规模与编码体积；持久化读取只校验结构，
+     * 使旧版标签过滤数据能够先被读取，再按实际升级类型完成规范化迁移。
+     */
     private static int validateItemStructure(ItemStack stack, boolean decoding) {
         int tagTextLength = stack.hasTag() ? stack.getTag().toString().length() : 0;
         if (tagTextLength > MAX_ITEM_TAG_TEXT) {

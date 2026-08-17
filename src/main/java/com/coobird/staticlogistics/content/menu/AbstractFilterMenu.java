@@ -46,7 +46,7 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
     private void updateFilterData(UnaryOperator<FilterData> operator) {
         ItemStack currentStack = getFilterStack();
         FilterData current = getFilterData();
-        FilterData updated = operator.apply(current);
+        FilterData updated = operator.apply(current).normalizedFor(getActiveUpgradeType());
         PortItemStackExtension.setData(currentStack, SLDataComponents.FILTER_DATA.get(), updated);
         this.broadcastChanges();
     }
@@ -349,7 +349,14 @@ public abstract class AbstractFilterMenu extends AbstractContainerMenu {
     }
 
     public FilterData getFilterData() {
-        return PortItemStackExtension.getDataOrDefault(getFilterStack(), SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+        ItemStack stack = getFilterStack();
+        FilterData current = PortItemStackExtension.getDataOrDefault(
+            stack, SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+        FilterData normalized = current.normalizedFor(getActiveUpgradeType());
+        if (normalized != current) {
+            PortItemStackExtension.setData(stack, SLDataComponents.FILTER_DATA.get(), normalized);
+        }
+        return normalized;
     }
 
     @Override

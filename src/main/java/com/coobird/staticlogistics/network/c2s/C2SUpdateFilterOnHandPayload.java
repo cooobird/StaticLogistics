@@ -42,7 +42,8 @@ public record C2SUpdateFilterOnHandPayload(FilterData filter) implements IPortPa
         if (!(player.containerMenu instanceof HandFilterMenu menu) || !menu.stillValid(player)) return;
         ItemStack stack = menu.getBoundStack();
         if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
-        PortItemStackExtension.setData(stack, SLDataComponents.FILTER_DATA.get(), filter);
+        FilterData normalized = filter.normalizedFor(upgrade.getType());
+        PortItemStackExtension.setData(stack, SLDataComponents.FILTER_DATA.get(), normalized);
         menu.broadcastChanges();
         player.inventoryMenu.broadcastChanges();
     }

@@ -1,8 +1,11 @@
 package com.coobird.staticlogistics.network.c2s;
 
+import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -39,6 +42,13 @@ public record C2SOpenHandFilterPayload(boolean offhand) implements IPortPacket.C
         InteractionHand hand = offhand ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
         ItemStack stack = player.getItemInHand(hand);
         if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
+        FilterData current = PortItemStackExtension.getDataOrDefault(
+            stack, SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+        FilterData normalized = current.normalizedFor(upgrade.getType());
+        if (normalized != current) {
+            PortItemStackExtension.setData(
+                stack, SLDataComponents.FILTER_DATA.get(), normalized);
+        }
         int inventorySlot = offhand ? Inventory.SLOT_OFFHAND : player.getInventory().selected;
         NetworkHooks.openScreen(player, new SimpleMenuProvider(
             (id, inv, p) -> new HandFilterMenu(id, inv, stack, inventorySlot),
