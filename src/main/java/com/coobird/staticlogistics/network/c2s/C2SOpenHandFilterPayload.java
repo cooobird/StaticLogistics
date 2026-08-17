@@ -3,6 +3,8 @@ package com.coobird.staticlogistics.network.c2s;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -36,6 +38,12 @@ public record C2SOpenHandFilterPayload(boolean offhand) implements CustomPacketP
                     ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
                 ItemStack stack = sp.getItemInHand(hand);
                 if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
+                FilterData current = stack.getOrDefault(
+                    SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+                FilterData normalized = current.normalizedFor(upgrade.getType());
+                if (normalized != current) {
+                    stack.set(SLDataComponents.FILTER_DATA.get(), normalized);
+                }
                 int inventorySlot = payload.offhand()
                     ? Inventory.SLOT_OFFHAND : sp.getInventory().selected;
                 sp.openMenu(new SimpleMenuProvider(

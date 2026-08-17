@@ -36,7 +36,8 @@ public record C2SUpdateFilterOnHandPayload(FilterData filter) implements CustomP
                 if (!(sp.containerMenu instanceof HandFilterMenu menu) || !menu.stillValid(sp)) return;
                 ItemStack stack = menu.getBoundStack();
                 if (!(stack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
-                stack.set(SLDataComponents.FILTER_DATA.get(), payload.filter());
+                FilterData normalized = payload.filter().normalizedFor(upgrade.getType());
+                stack.set(SLDataComponents.FILTER_DATA.get(), normalized);
                 menu.broadcastChanges();
                 sp.inventoryMenu.broadcastChanges();
             }

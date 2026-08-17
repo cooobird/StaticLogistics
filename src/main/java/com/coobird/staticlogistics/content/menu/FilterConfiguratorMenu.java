@@ -125,9 +125,10 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
      * 将客户端编辑结果同时提交到面配置权威栈和当前菜单同步状态。
      */
     public void commitFilterData(FilterData filter, ItemStack authoritativeStack) {
-        authoritativeStack.set(SLDataComponents.FILTER_DATA.get(), filter);
+        FilterData normalized = filter.normalizedFor(getActiveUpgradeType());
+        authoritativeStack.set(SLDataComponents.FILTER_DATA.get(), normalized);
         if (upgradeStack != authoritativeStack) {
-            upgradeStack.set(SLDataComponents.FILTER_DATA.get(), filter);
+            upgradeStack.set(SLDataComponents.FILTER_DATA.get(), normalized);
         }
         syncFromStack(upgradeStack);
         broadcastChanges();

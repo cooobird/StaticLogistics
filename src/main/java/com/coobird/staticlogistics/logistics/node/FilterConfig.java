@@ -22,6 +22,12 @@ public class FilterConfig {
         }
 
         @Override
+        protected void onLoad() {
+            super.onLoad();
+            normalizeStoredData();
+        }
+
+        @Override
         public int getSlotLimit(int slot) {
             return 1;
         }
@@ -46,13 +52,30 @@ public class FilterConfig {
     }
 
     /**
+     * 载入旧数据时按升级类型清理不参与匹配的物品组件。
+     */
+    private void normalizeStoredData() {
+        for (int slot = 0; slot < upgrades.getSlots(); slot++) {
+            ItemStack stack = upgrades.getStackInSlot(slot);
+            if (!(stack.getItem() instanceof LogisticsUpgrade upgrade)
+                || !upgrade.isFilterUpgrade()) continue;
+            FilterData current = stack.getOrDefault(
+                SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+            FilterData normalized = current.normalizedFor(upgrade.getType());
+            if (normalized != current) {
+                stack.set(SLDataComponents.FILTER_DATA.get(), normalized);
+            }
+        }
+    }
+
+    /**
      * 将过滤条件写入权威升级物；升级类型不合法时不产生修改。
      */
     public boolean applyFilterData(ItemStack stack, FilterData data) {
         if (!(stack.getItem() instanceof LogisticsUpgrade upgrade) || !upgrade.isFilterUpgrade()) {
             return false;
         }
-        stack.set(SLDataComponents.FILTER_DATA.get(), data);
+        stack.set(SLDataComponents.FILTER_DATA.get(), data.normalizedFor(upgrade.getType()));
         markDirty();
         return true;
     }
