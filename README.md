@@ -2,124 +2,292 @@
 
 **[English](README.md)** | **[中文](README_ZH.md)**
 
-A Minecraft logistics mod for NeoForge 1.21.1 with item, fluid, energy, and integration-resource transfer, visual network management, cross-dimension links, upgrades, filters, group permissions, and blueprints.
+StaticLogistics is a pipe-free logistics mod for NeoForge 1.21.1. It treats an exact block face as a node, transfers
+items, fluids, energy, and optional integration resources across configurable distances and dimensions, and uses one
+Link Configurator for linking, grouping, previewing, and configuration.
 
-## Features
+## Current Architecture
 
-- **Unified Link Configurator** — Manage groups, connections, the network preview, endpoint settings, upgrades, filters, resource types, and player inventory from one screen
-- **Interactive network preview** — Select and drag nodes, pan, zoom, highlight links, inspect direction and range warnings, and preserve custom layouts
-- **Cross-dimension transfer** — The Dimension Upgrade removes both dimension and normal distance restrictions
-- **4 tool modes** — Wrench, Link as Input, Link as Output, Remove Links
-- **Per-face configuration** — Each endpoint controls input and output independently; input settings cover filters, priority, and stock keeping, while output settings cover filters, upgrades, distribution, extraction, and resource types
-- **7 upgrade types, 5 tiers each** — Speed, Range, Stack (Iron → Gold → Diamond → Netherite → Nether Star), plus Dimension, Basic Filter, Tag Filter, NBT Filter
-- **Smart filtering** — Basic (item whitelist/blacklist), Tag (item + fluid tags), NBT (exact/partial NBT matching) with 4 match strategies: EXACT, CONTAINS, SMART_CONTAINS, IGNORE
-- **2 extraction modes** — Sequential, Slot Round-Robin
-- **5 distribution strategies** — Sequential, Round-Robin, Nearest, Furthest, Random
-- **Transfer events** — `PreTransferEvent` (cancellable) and `PostTransferEvent` for third-party hooking
-- **Group and connection management** — Expand grouped links, rename or remove individual entries, and merge same-owner groups
-- **FTB Teams integration** — team-based ownership and permissions
-- **Blueprints** — Preview a whole group or one connection, move and rotate it, undo changes, and paste it to blocks
-- **Full /sl command tree** — info, list, stats, transfer, rename, cleanup
-- **Configurable performance** — ticker batch size, cooldown intervals, cache sizes, object pool size
+```text
+Owner
+└─ Group (stable internal ID + editable display name)
+   └─ Connection (individually nameable)
+      ├─ Endpoint A: dimension + block position + face
+      └─ Endpoint B: dimension + block position + face
+```
+
+- **A node is a block face, not a whole block.** Different faces of one container are distinct nodes and can have
+  different input/output roles.
+- **A connection is only the topology between two endpoints.** Runtime direction follows the enabled roles on both ends,
+  so one connection can be one-way, bidirectional, or temporarily inactive.
+- **Groups have explicit owners.** Display names are not identities; renaming preserves links, and renaming to an
+  existing same-owner group merges them.
+- **Output types belong to output faces.** Accepted types shown on an input face are derived from connected outputs, not
+  stored as another editable list.
+- **Speed, range, stack, and dimension capabilities belong to the container.** Every linked face on the same block
+  shares one container upgrade inventory.
+- **Filters and transfer rules belong to a face.** Input/output filters, priority, stock keeping, distribution,
+  extraction, and output types are persisted per face.
+- **The server is authoritative.** It validates and commits group identity, ownership, permissions, links,
+  configuration, and item returns.
+
+The old standalone node-configuration mode has been removed. The Link Configurator is the only entry point for node
+settings, group management, and network preview.
+
+## Main Features
+
+- One unified configurator for tool modes, resource types, topology, groups, connections, node settings, and inventory
+- Face-addressed links that distinguish dimension, position, and side
+- Interactive topology preview with pan, zoom, node dragging, box selection, multi-selection, group dragging, batch
+  configuration, and link highlighting
+- Owner-scoped groups and individually named connections with create, rename, merge, and confirmed deletion
+- World rendering scoped to a whole group or a single connection
+- Container-shared speed, range, stack, and cross-dimensional upgrades
+- Independent input and output filters
+- Runtime-extensible transfer type registry
+- Blueprint capture, preview, paste, rotation, movement, and undo
+- Player ownership, FTB Teams access, and administrative commands
+- Public resource-adapter API and pre/post transfer events
+
 ## Getting Started
 
-1. Craft the **Link Configurator**
-2. Hold the Link Configurator and right-click in air to open the unified configurator, then create or select a group
-3. Select Link as Output or Link as Input and right-click the block faces to connect
-4. Select a node from the group list or network preview, then configure its input, output, upgrades, and filters in the lower panel
+1. Craft and hold a **Link Configurator**.
+2. Right-click normally to open it, then create and select a group.
+3. Select the resource types that new output faces should enable by default. A connection may be created with no type
+   and configured later.
+4. Select either “Select point as Insert” or “Select point as Extract,” then sneak-right-click one or more block faces
+   to record them.
+5. Switch to the opposite selection mode and sneak-right-click the other endpoint. Every recorded face is linked to the
+   current face.
+6. Select a node in the network preview and configure its roles, filters, upgrades, and transfer rules in the lower
+   panel.
 
-| Mode           | Right-click on block face                                  |
-|----------------|------------------------------------------------------------|
-| Wrench         | Remove logistics configuration while preserving block data |
-| Link as Input  | Use the selected face as the receiving endpoint            |
-| Link as Output | Use the selected face as the sending endpoint              |
-| Remove Links   | Remove links associated with that face                     |
+Example: to send one chest into three machines, record the three machine faces in Insert mode, switch to Extract mode,
+and sneak-right-click the chest face.
 
-## Configurator and Network Preview
+### Configurator Controls
 
-- Click a group to expand its links. Double-click groups or links to rename them, and right-click to remove them.
-- Renaming a group to an existing name merges both groups when they have the same owner.
-- Select nodes in the network preview to configure their faces, or select a connection to highlight and manage only that link.
-- Hold the configurable multi-select key while clicking nodes to add or remove them from the selection. Hold it and drag
-  empty preview space to box-select nodes; right-click empty preview space to clear the selection.
-- Drag any selected node to move the whole selection together. Reopening the configurator automatically centers the
-  visible network.
-- Drag nodes to arrange the layout, drag empty preview space to pan, and use the mouse wheel for proportional zoom.
-- Node positions, zoom, and pan are saved with the world. Selecting a whole group or one link also controls the world preview scope.
-- Valid links use the normal line color; out-of-range links use a warning color and explain their direction and distance in a tooltip.
+| Action                                   | Result                                            |
+|------------------------------------------|---------------------------------------------------|
+| Normal right-click                       | Open the unified configurator                     |
+| Sneak + right-click a node               | Perform the current tool mode                     |
+| Configured mode-switch key + wheel       | Change tool mode                                  |
+| Configured bulk-select key + right-click | Select connected matching blocks and usable faces |
+| Sneak-right-click air                    | Clear recorded nodes                              |
+
+### Tool Modes
+
+| Mode                    | Purpose                                           |
+|-------------------------|---------------------------------------------------|
+| Wrench                  | Perform supported wrench or dismantle actions     |
+| Select point as Insert  | Record endpoints that receive resources           |
+| Select point as Extract | Record endpoints that provide resources           |
+| Remove Links            | Remove links on this face from the selected group |
+
+When a connection, group, or endpoint role releases filters or upgrades, items return to the acting player's inventory
+first and only drop when the inventory is full.
+
+## Configurator Screen
+
+The screen has four clear responsibilities:
+
+- **Top toolbar:** tool mode, resource-type pages, and default types for new links; when an output node is selected, it
+  edits that face instead.
+- **Network preview:** the real face-level topology of the selected group or connection.
+- **Groups and connections:** preview scope, expansion, creation, rename, and deletion.
+- **Node configuration:** settings for one or multiple selected preview nodes.
+
+Tool mode and resource selection are independent states. Group selection and single-connection focus are also stored
+independently.
+
+### Network Preview
+
+- Click a node to select and configure it; click a line to focus that connection.
+- Hold the configurable multi-select key and click nodes to add or remove them.
+- Hold the same key and drag empty space to box-select nodes.
+- Drag a selected node to move the selection together; drag normal empty space to pan.
+- Scroll to zoom proportionally around the cursor.
+- Right-click empty space to clear the selection.
+- Custom node positions are stored locally on the client and restored by stable group identity; reopening the screen
+  recenters the current topology.
+- Normal links use the regular color. Out-of-range or currently blocked links use a warning color and explain the reason
+  on hover.
+- Faces at the same block position remain separate nodes.
+
+Batch apply copies the source node's resource types, filters, container upgrades, and side-specific settings to every
+selected node. The server validates the operation and settles all inventory changes atomically.
+
+### Groups and Connections
+
+- Groups and individual connections can be selected, renamed, or deleted.
+- Destructive actions use confirmation dialogs.
+- Renaming a group to an existing same-owner name merges both groups and their links.
+- Selecting a group previews all of it; selecting one connection limits both UI and world preview to that connection.
+- Deleting a connection removes reciprocal references from both endpoints. Disconnected faces do not retain meaningless
+  input/output roles.
+
+## Node Configuration Model
+
+### Input Side
+
+- Enable or disable the input role
+- Input filter
+- Priority
+- Stock keeping
+- Read-only accepted types derived from connected outputs
+
+### Output Side
+
+- Enable or disable the output role
+- Output filter
+- Output resource types
+- Container-shared upgrades
+- Target distribution strategy
+- Item-slot extraction strategy
+
+Disabling one role pauses that direction without deleting the topology. Re-enabling it continues using the existing
+connection.
+
+## Transfer Types
+
+Built-in types:
+
+- Items
+- Fluids
+- Energy
+
+Optional integrations register extra types only when their mods are loaded:
+
+| Mod         | Resource types  |
+|-------------|-----------------|
+| Mekanism    | Chemicals, Heat |
+| Ars Nouveau | Source          |
+| Botania     | Mana            |
+
+The type bar is backed by the runtime registry and supports pagination. Third-party mods can register stable types
+through the public `ResourceAdapter<C, V>` SPI. See [the integration guide](docs/INTEGRATION.md).
+
+An output face with no selected type keeps its links but starts no transfers. Jade's “Transfer Types” comes from the
+actual output selection; “Accepted Types” is derived from connected outputs rather than guessed from available
+capabilities.
 
 ## Upgrades
 
-| Type         | Tiers                                       | Effect                                  |
-|--------------|---------------------------------------------|-----------------------------------------|
-| Speed        | Iron, Gold, Diamond, Netherite, Nether Star | Transfer speed multiplier               |
-| Range        | Iron, Gold, Diamond, Netherite, Nether Star | Search radius multiplier                |
-| Stack        | Iron, Gold, Diamond, Netherite, Nether Star | Transfer amount multiplier              |
-| Dimension    | Single                                      | Enable cross-dimension transfer         |
-| Basic Filter | Single                                      | Item whitelist/blacklist                |
-| Tag Filter   | Single                                      | Filter by item/fluid tags               |
-| NBT Filter   | Single                                      | Filter by NBT data (partial/full match) |
+Speed, range, and stack upgrades have Iron, Gold, Diamond, Netherite, and Nether Star tiers. The Dimension Upgrade is a
+separate single-tier item.
 
-Upgrade multipliers are configurable per tier in staticlogistics.toml.
+| Container capability | Effect                                                                                                                     |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------|
+| Speed                | Reduces the interval between container activations                                                                         |
+| Range / Dimension    | Range increases maximum distance; Dimension permits cross-dimensional transfer and removes the normal distance restriction |
+| Stack                | Increases the resource amount transferable per activation                                                                  |
 
-## Filtering
+Upgrades belong to the container, not to one connection. They remain while the same container still has another valid
+link and are returned when the last relevant link is removed or the container is dismantled.
 
-| Filter Type | Matches                                        |
-|-------------|------------------------------------------------|
-| Basic       | Specific items and/or fluids                   |
-| Tag         | Items or fluids belonging to specific tags     |
-| NBT         | Items with matching NBT data (partial or full) |
+Tier multipliers are configurable in `config/staticlogistics.toml`. Reloaded values apply to existing networks without
+reconnecting them.
 
-All filters support blacklist mode (invert match). All match strategies support items and fluids.
+## Filters
 
-**Match strategies:** EXACT — CONTAINS — SMART_CONTAINS — IGNORE
+Filters are separate plugin items, not tiers of the performance upgrades.
 
-## Commands (/sl)
+| Filter       | Matches                                                                                  |
+|--------------|------------------------------------------------------------------------------------------|
+| Basic Filter | Specific item or fluid identities                                                        |
+| Tag Filter   | Included and explicitly excluded item/fluid tags                                         |
+| NBT Filter   | An item and its data components, with partial/full matching and optional damage ignoring |
 
-Requires permission level 2.
+All three filters support whitelist and blacklist behavior. Input and output sides have independent slots. Basic and tag
+filters retain only identity data needed for matching; NBT filters preserve the template components needed for
+comparison.
 
-| Command                             | Description                                        |
-|-------------------------------------|----------------------------------------------------|
-| /sl info [pos]                      | Show container + 6-face config details at position |
-| /sl list                            | Show the first page of active logistics groups     |
-| /sl list page <page>                | List active logistics groups by page               |
-| /sl list group <group> [page]       | List nodes in one group by page                    |
-| /sl stats                           | Transfer statistics overview                       |
-| /sl stats recent                    | Last 20 transfers with timestamps                  |
-| /sl stats top                       | Top sender and receiver nodes by count             |
-| /sl stats reset                     | Reset all transfer statistics                      |
-| /sl transfer <from> <to>            | Transfer all node ownership to another player      |
-| /sl transfer <from> group <id> <to> | Transfer a specific group                          |
-| /sl rename <owner> <old> <new>      | Rename a group                                     |
-| /sl cleanup <owner>                 | Delete all nodes owned by a player                 |
+## Transfer Rules
 
-## Server Config
+### Target Distribution
 
-config/staticlogistics.toml
+- Sequential
+- Round-robin
+- Nearest
+- Furthest
+- Random
+
+### Item Extraction
+
+- Sequential
+- Slot round-robin
+
+Item extraction scans usable container slots and skips filtered or non-insertable candidates instead of remaining stuck
+on the first slots. Large networks are scheduled with fair cursors, failure cooldowns, candidate batches, and a soft
+per-tick time budget so one network cannot monopolize a server tick.
+
+Transfers only access loaded endpoints that still expose the required capability; remote links do not force-load chunks.
+Breaking or correctly dismantling an endpoint removes its reciprocal links.
+
+## Blueprints
+
+The Logistics Blueprint copies existing logistics configuration; it does not replace the configurator:
+
+1. Expand a group in the blueprint group screen.
+2. Select a whole group or one connection to restrict the world preview.
+3. Select two region corners to capture.
+4. Preview at the destination, move or rotate, then confirm paste.
+5. Use the configurable undo key to revert the last paste when needed.
+
+Paste validates permissions, destination bounds, and required upgrade items. The blueprint tooltip reports the captured
+region and upgrade requirements.
+
+## Ownership and Permissions
+
+- The first write claims a node for an owner; later mutations are checked against that owner.
+- Groups use stable internal identities; display names are player-facing labels only.
+- With FTB Teams installed, team-member access follows the shared team policy.
+- Administrative commands require permission level 2.
+
+## Commands
+
+| Command                               | Description                                         |
+|---------------------------------------|-----------------------------------------------------|
+| `/sl info [pos]`                      | Inspect a container and all six face configurations |
+| `/sl list`                            | Show the first group page                           |
+| `/sl list page <page>`                | List groups by page                                 |
+| `/sl list group <group> [page]`       | List one group by page                              |
+| `/sl stats`                           | Show transfer statistics                            |
+| `/sl stats recent`                    | Show recent transfers                               |
+| `/sl stats top`                       | Show top sending and receiving nodes                |
+| `/sl stats reset`                     | Reset statistics                                    |
+| `/sl transfer <from> <to>`            | Transfer all logistics ownership                    |
+| `/sl transfer <from> group <id> <to>` | Transfer one group                                  |
+| `/sl rename <owner> <old> <new>`      | Rename or merge a group                             |
+| `/sl cleanup <owner>`                 | Remove one player's logistics data                  |
+
+## Server Configuration
+
+Current `config/staticlogistics.toml` structure:
+
 ```toml
 [general]
-default_radius = 16            # Default search radius (blocks)
-default_tick_interval = 20     # Base interval between transfers (ticks)
-auto_clean_stored_nodes = true # Auto-clean stored node refs after batch linking
-item_stack_size = 64           # Items per transfer
-fluid_stack_size = 250         # mB per transfer
-energy_stack_size = 1024       # FE per transfer
+default_radius = 16
+default_tick_interval = 20
+auto_clean_stored_nodes = true
+item_stack_size = 64
+fluid_stack_size = 250
+energy_stack_size = 1024
 mek_chemical_stack_size = 250
 mek_heat_stack_size = 1000
 ars_source_stack_size = 100
 botania_mana_stack_size = 1000
 
 [performance]
-provider_size = 1000           # Expected provider index capacity (not a node limit)
-load_factor = 0.75             # Cache load factor
-max_bulk_entries = 100         # Max entries per sync packet
-ticker_batch_size = 50         # Node/type candidates shared per server tick
-ticker_time_budget_us = 1500   # Shared logistics scheduler budget per server tick (microseconds)
-clean_interval = 200           # Cooldown cleanup interval (ticks)
-default_cooldown = 10          # Cooldown after failed transfer (ticks)
-batch_clean_threshold = 500    # Cooldown entries before batch clean
-batch_clean_size = 200         # Entries cleaned per batch
-context_pool_size = 100        # TransferContext pool size
+provider_size = 1000
+max_bulk_entries = 100
+ticker_batch_size = 50
+ticker_time_budget_us = 1500
+clean_interval = 200
+default_cooldown = 10
+batch_clean_threshold = 500
+batch_clean_size = 200
+context_pool_size = 100
 
 [upgrades]
 iron_multiplier = 2
@@ -127,21 +295,30 @@ gold_multiplier = 4
 diamond_multiplier = 8
 netherite_multiplier = 16
 nether_star_multiplier = 64
-
-[filter]
-component_strategy_overrides = []  # Format: "namespace:id=STRATEGY"
 ```
 
-## Mod Integrations
+- Resource `*_stack_size` values are base amounts per transfer.
+- `ticker_batch_size` is the candidate polling base per tick, not a total-node limit.
+- `ticker_time_budget_us` is a soft budget shared by all dimensions; unfinished work resumes on later ticks.
+- `provider_size` only pre-sizes the scheduler index.
+- Upgrade multipliers and base transfer amounts hot-reload into existing networks.
 
-| Mod         | Transfer types               | Implementation                     |
-|-------------|------------------------------|------------------------------------|
-| Mekanism    | Chemical, Heat               | Internal `ResourceAdapter` bridges |
-| Ars Nouveau | Source                       | Internal `ResourceAdapter` bridge  |
-| Botania     | Mana                         | Internal `ResourceAdapter` bridge  |
-| FTB Teams   | Team permissions & ownership | `FTBEventHandlers`                 |
+## Save Compatibility
 
-Third-party integrations use the public `ResourceAdapter<C, V>` SPI. Built-in optional integrations use the internal bridge directly. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
+- Resource types use stable IDs and bit offsets, so registry ordering does not disconnect existing links.
+- Legacy type masks, group names, links, and face-storage data migrate on load.
+- Group rename changes only the display name, not its stable identity.
+- Network-preview layout is stored locally on the client and never changes the server transfer topology.
+
+## Developer Extension
+
+- Public adapter SPI: `StaticLogisticsApi.resourceAdapters()`
+- Cancellable `PreTransferEvent`
+- Post-commit `PostTransferEvent`
+- Registrable distribution strategies
+
+Third parties should depend only on public API packages; internal `LogisticsResource` and node implementations are not
+stable integration contracts. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 ## License
 
