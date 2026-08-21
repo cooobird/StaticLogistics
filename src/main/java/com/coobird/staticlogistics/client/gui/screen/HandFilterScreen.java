@@ -59,7 +59,8 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
 
     @Override
     protected void sendFilterUpdate() {
-        PacketDistributor.sendToServer(new C2SUpdateFilterOnHandPayload(menu.getFilterData()));
+        PacketDistributor.sendToServer(new C2SUpdateFilterOnHandPayload(
+            menu.getActiveUpgradeType(), menu.getFilterData()));
     }
 
     @Override

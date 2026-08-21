@@ -4,6 +4,8 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
@@ -39,6 +41,7 @@ public class SLMenuTypes {
         TYPES.register("hand_filter", () -> IMenuTypeExtension.create((id, inv, buf) -> {
             int inventorySlot = buf.readVarInt();
             ItemStack stack = ItemStack.STREAM_CODEC.decode(buf);
+            stack.set(SLDataComponents.FILTER_DATA.get(), FilterData.STREAM_CODEC.decode(buf));
             return new HandFilterMenu(id, inv, stack, inventorySlot);
         }));
 }

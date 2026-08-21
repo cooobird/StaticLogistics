@@ -52,6 +52,7 @@ public record C2SOpenHandFilterPayload(boolean offhand) implements CustomPacketP
                 ), buf -> {
                     buf.writeVarInt(inventorySlot);
                     ItemStack.STREAM_CODEC.encode(buf, stack);
+                    FilterData.STREAM_CODEC.encode(buf, normalized);
                 });
             }
         });

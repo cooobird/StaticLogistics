@@ -2,8 +2,11 @@ package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
 import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
@@ -49,7 +52,10 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
             int slotIndex = payload.input() ? 0 : 1;
             if (!menu.getSlot(slotIndex).isActive()) return;
             ItemStack upgradeStack = menu.getSlot(slotIndex).getItem();
-            if (upgradeStack.isEmpty()) return;
+            if (!(upgradeStack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
+            FilterData currentFilter = upgradeStack.getOrDefault(SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+            FilterData filter = currentFilter.normalizedFor(upgrade.getType());
+            if (filter != currentFilter) upgradeStack.set(SLDataComponents.FILTER_DATA.get(), filter);
 
             var transferType = TransferRegistries.get(StaticLogistics.asResource("item"));
             if (transferType == null) return;
@@ -64,6 +70,7 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
                     buffer.writeResourceLocation(transferType.typeId());
                     buffer.writeBoolean(payload.input());
                     ItemStack.STREAM_CODEC.encode(buffer, upgradeStack);
+                    FilterData.STREAM_CODEC.encode(buffer, filter);
                     buffer.writeResourceLocation(menu.getTargetDimension().location());
                     GroupKey.STREAM_CODEC.encode(
                         buffer, menu.getRemoteGroupKey());

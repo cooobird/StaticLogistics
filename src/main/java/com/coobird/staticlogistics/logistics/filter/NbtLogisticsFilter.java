@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.logistics.filter;
 
 import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
 
@@ -44,10 +45,7 @@ public class NbtLogisticsFilter extends AbstractLogisticsFilter {
             var type = typed.type();
             if (ignoreDamage && type == DataComponents.DAMAGE) continue;
             // 自定义数据 / 实体数据 / 方块实体 —— 序列化后很难语义匹配，跳过
-            if (type == DataComponents.CUSTOM_DATA
-                || type == DataComponents.ENTITY_DATA
-                || type == DataComponents.BLOCK_ENTITY_DATA
-                || type == DataComponents.BUCKET_ENTITY_DATA) continue;
+            if (isIgnoredComponent(type)) continue;
             Object tgtVal = tgt.get(type);
             if (tgtVal == null) return false;
             if (!typed.value().equals(tgtVal)) return false;
@@ -63,10 +61,7 @@ public class NbtLogisticsFilter extends AbstractLogisticsFilter {
         for (var typed : src) {
             var type = typed.type();
             if (ignoreDamage && type == DataComponents.DAMAGE) continue;
-            if (type == DataComponents.CUSTOM_DATA
-                || type == DataComponents.ENTITY_DATA
-                || type == DataComponents.BLOCK_ENTITY_DATA
-                || type == DataComponents.BUCKET_ENTITY_DATA) continue;
+            if (isIgnoredComponent(type)) continue;
             Object tgtVal = tgt.get(type);
             if (!typed.value().equals(tgtVal)) return false;
         }
@@ -74,13 +69,21 @@ public class NbtLogisticsFilter extends AbstractLogisticsFilter {
         for (var typed : tgt) {
             var type = typed.type();
             if (ignoreDamage && type == DataComponents.DAMAGE) continue;
-            if (type == DataComponents.CUSTOM_DATA
-                || type == DataComponents.ENTITY_DATA
-                || type == DataComponents.BLOCK_ENTITY_DATA
-                || type == DataComponents.BUCKET_ENTITY_DATA) continue;
+            if (isIgnoredComponent(type)) continue;
             if (src.get(type) == null) return false;
         }
         return true;
+    }
+
+    /**
+     * 返回 NBT 过滤器不会参与比较的组件类型。
+     * 规范化、持久化与实际匹配必须共用同一规则，避免保存无效的大型组件数据。
+     */
+    public static boolean isIgnoredComponent(DataComponentType<?> type) {
+        return type == DataComponents.CUSTOM_DATA
+            || type == DataComponents.ENTITY_DATA
+            || type == DataComponents.BLOCK_ENTITY_DATA
+            || type == DataComponents.BUCKET_ENTITY_DATA;
     }
 
     @Override

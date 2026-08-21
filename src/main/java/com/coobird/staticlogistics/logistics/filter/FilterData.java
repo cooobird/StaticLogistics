@@ -6,6 +6,7 @@ import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -81,16 +82,29 @@ public record FilterData(
 
     /**
      * 按过滤器的真实匹配语义生成可持久化、可传输的数据。
-     * 基础过滤与标签过滤只按物品身份工作，因此不保留与匹配无关的组件数据。
+     * 基础过滤与标签过滤只保留物品身份；NBT 过滤移除其匹配规则明确忽略的组件。
      */
     public FilterData normalizedFor(UpgradeType type) {
-        if (type != UpgradeType.BASIC_FILTER && type != UpgradeType.TAG_FILTER) return this;
+        if (type != UpgradeType.BASIC_FILTER && type != UpgradeType.TAG_FILTER
+            && type != UpgradeType.NBT_FILTER) return this;
         Map<String, ItemStack> normalizedItems = new LinkedHashMap<>();
         boolean changed = false;
         for (var entry : items.entrySet()) {
             ItemStack stack = entry.getValue();
-            ItemStack normalized = stack.isEmpty()
-                ? ItemStack.EMPTY : new ItemStack(stack.getItem(), 1);
+            ItemStack normalized;
+            if (stack.isEmpty()) {
+                normalized = ItemStack.EMPTY;
+            } else if (type == UpgradeType.NBT_FILTER) {
+                normalized = stack.copyWithCount(1);
+                List<DataComponentType<?>> ignoredComponents = new ArrayList<>();
+                normalized.getComponents().forEach(component -> {
+                    if (NbtLogisticsFilter.isIgnoredComponent(component.type()))
+                        ignoredComponents.add(component.type());
+                });
+                ignoredComponents.forEach(normalized::remove);
+            } else {
+                normalized = new ItemStack(stack.getItem(), 1);
+            }
             normalizedItems.put(entry.getKey(), normalized);
             changed |= stack.getCount() != normalized.getCount()
                 || !ItemStack.isSameItemSameComponents(stack, normalized);

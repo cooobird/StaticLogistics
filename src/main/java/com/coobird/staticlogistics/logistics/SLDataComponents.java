@@ -101,7 +101,7 @@ public class SLDataComponents {
             .networkSynchronized(ByteBufCodecs.VAR_INT));
 
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<FilterData>> FILTER_DATA =
-        register("filter_data", builder -> builder.persistent(FilterData.CODEC).networkSynchronized(FilterData.STREAM_CODEC));
+        register("filter_data", builder -> builder.persistent(FilterData.CODEC));
 
     private static <T> DeferredHolder<DataComponentType<?>, DataComponentType<T>> register(String name, UnaryOperator<DataComponentType.Builder<T>> builder) {
         return DATA_COMPONENT_TYPES.register(name, () -> builder.apply(DataComponentType.builder()).build());
