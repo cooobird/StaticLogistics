@@ -7,7 +7,8 @@ import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
-import net.minecraft.network.FriendlyByteBuf;
+import com.coobird.staticlogistics.transfer.UpgradeType;
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
@@ -15,20 +16,30 @@ import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
-public record C2SUpdateFilterOnHandPayload(FilterData filter) implements IPortPacket.C2S {
+public record C2SUpdateFilterOnHandPayload(UpgradeType filterType, FilterData filter) implements IPortPacket.C2S {
     public static final ResourceLocation ID = StaticLogistics.asResource("update_filter_on_hand");
     public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SUpdateFilterOnHandPayload> STREAM_CODEC = new PortStreamCodec<>() {
         @Override
         public C2SUpdateFilterOnHandPayload decode(PortRegistryFriendlyByteBuf buffer) {
-            FriendlyByteBuf fbuf = buffer;
-            return new C2SUpdateFilterOnHandPayload(FilterData.STREAM_CODEC.decode(buffer));
+            UpgradeType filterType = buffer.readEnum(UpgradeType.class);
+            if (!isFilterType(filterType)) throw new DecoderException("Invalid filter upgrade type: " + filterType);
+            return new C2SUpdateFilterOnHandPayload(filterType, FilterData.STREAM_CODEC.decode(buffer));
         }
 
         @Override
         public void encode(PortRegistryFriendlyByteBuf buffer, C2SUpdateFilterOnHandPayload value) {
-            FilterData.STREAM_CODEC.encode(buffer, value.filter());
+            if (!isFilterType(value.filterType())) {
+                throw new IllegalArgumentException("Invalid filter upgrade type: " + value.filterType());
+            }
+            buffer.writeEnum(value.filterType());
+            // 类型只决定客户端写包时的数据表示；服务端仍以真实物品类型为准。
+            FilterData.STREAM_CODEC.encode(buffer, value.filter().normalizedFor(value.filterType()));
         }
     };
+
+    private static boolean isFilterType(UpgradeType type) {
+        return type == UpgradeType.BASIC_FILTER || type == UpgradeType.TAG_FILTER || type == UpgradeType.NBT_FILTER;
+    }
 
     @Override
     public ResourceLocation identifier() {

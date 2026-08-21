@@ -126,7 +126,7 @@ public class SLDataComponents {
         DATA_COMPONENT_TYPES.builder("stored_mode", b -> b.persistent(Codec.INT).networkSynchronized(PortByteBufCodecs.VAR_INT));
 
     public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<FilterData>> FILTER_DATA =
-        DATA_COMPONENT_TYPES.builder("filter_data", b -> b.persistent(FilterData.CODEC).networkSynchronized(FilterData.STREAM_CODEC));
+        DATA_COMPONENT_TYPES.builder("filter_data", b -> b.persistent(FilterData.CODEC));
 
     public static final PortRegistryEntry<PortDataComponentType<?>, PortDataComponentType<CompoundTag>> STORED_BE_NBT =
         DATA_COMPONENT_TYPES.builder("stored_block_entity", b -> b.persistent(CompoundTag.CODEC));

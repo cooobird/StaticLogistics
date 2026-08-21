@@ -1,10 +1,13 @@
 package com.coobird.staticlogistics.network.c2s;
 
+import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.logistics.node.*;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import net.minecraft.core.BlockPos;
@@ -61,9 +64,17 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
         ItemStack upgradeStack = menu.getSlot(slotIndex).getItem();
         if (!(upgradeStack.getItem() instanceof UpgradeItem upgrade)
             || !upgrade.isFilterUpgrade()) return;
+        FilterData currentFilter = PortItemStackExtension.getDataOrDefault(
+            upgradeStack, SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+        FilterData filter = currentFilter.normalizedFor(upgrade.getType());
+        if (filter != currentFilter) {
+            PortItemStackExtension.setData(upgradeStack, SLDataComponents.FILTER_DATA.get(), filter);
+        }
 
         var transferType = TransferRegistries.get(StaticLogistics.asResource("item"));
         if (transferType == null) return;
+        ItemStack menuStack = upgradeStack.copy();
+        PortItemStackExtension.removeData(menuStack, SLDataComponents.FILTER_DATA.get());
         NetworkHooks.openScreen(player,
             new SimpleMenuProvider((id, inventory, ignored) -> new FilterConfiguratorMenu(
                 id, inventory, menu.getTargetNode(), menu.getRemoteGroupKey(),
@@ -74,7 +85,8 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
                 buffer.writeEnum(face);
                 buffer.writeResourceLocation(transferType.typeId());
                 buffer.writeBoolean(input);
-                buffer.writeItem(upgradeStack);
+                buffer.writeItem(menuStack);
+                FilterData.STREAM_CODEC.encode((PortRegistryFriendlyByteBuf) buffer, filter);
                 buffer.writeResourceLocation(menu.getTargetNode().gPos().dimension().location());
                 GroupKey.STREAM_CODEC.encode(
                     (PortRegistryFriendlyByteBuf) buffer, menu.getRemoteGroupKey());

@@ -1,11 +1,14 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
 import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
+import com.coobird.staticlogistics.transfer.UpgradeType;
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.FriendlyByteBuf;
@@ -19,6 +22,7 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos,
                                            Direction face,
                                            ResourceLocation typeId,
                                            boolean isInput,
+                                           UpgradeType filterType,
                                            FilterData filter) implements IPortPacket.C2S {
     public static final ResourceLocation ID = StaticLogistics.asResource("update_filter_on_item");
     public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SUpdateFilterOnItemPayload> STREAM_CODEC = new PortStreamCodec<>() {
@@ -29,8 +33,10 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos,
             Direction face = fbuf.readEnum(Direction.class);
             ResourceLocation typeId = fbuf.readResourceLocation();
             boolean isInput = fbuf.readBoolean();
+            UpgradeType filterType = fbuf.readEnum(UpgradeType.class);
+            if (!isFilterType(filterType)) throw new DecoderException("Invalid filter upgrade type: " + filterType);
             FilterData filter = FilterData.STREAM_CODEC.decode(buffer);
-            return new C2SUpdateFilterOnItemPayload(pos, face, typeId, isInput, filter);
+            return new C2SUpdateFilterOnItemPayload(pos, face, typeId, isInput, filterType, filter);
         }
 
         @Override
@@ -40,9 +46,18 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos,
             fbuf.writeEnum(value.face());
             fbuf.writeResourceLocation(value.typeId());
             fbuf.writeBoolean(value.isInput());
-            FilterData.STREAM_CODEC.encode(buffer, value.filter());
+            if (!isFilterType(value.filterType())) {
+                throw new IllegalArgumentException("Invalid filter upgrade type: " + value.filterType());
+            }
+            fbuf.writeEnum(value.filterType());
+            // 类型只决定客户端写包时的数据表示；服务端仍以已安装过滤器为准。
+            FilterData.STREAM_CODEC.encode(buffer, value.filter().normalizedFor(value.filterType()));
         }
     };
+
+    private static boolean isFilterType(UpgradeType type) {
+        return type == UpgradeType.BASIC_FILTER || type == UpgradeType.TAG_FILTER || type == UpgradeType.NBT_FILTER;
+    }
 
     @Override
     public ResourceLocation identifier() {
@@ -64,9 +79,12 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos,
         if (node == null) return;
         int slotIndex = isInput ? 0 : 1;
         var upgradeStack = node.config().filterConfig.getUpgrades().getStackInSlot(slotIndex);
-        if (menu.matchesInstalledFilter(node.config())
-            && mutations.updateFilter(node, typeId, isInput, filter)) {
-            menu.commitFilterData(filter, upgradeStack);
+        if (upgradeStack.getItem() instanceof UpgradeItem upgrade
+            && menu.matchesInstalledFilter(node.config())) {
+            FilterData normalized = filter.normalizedFor(upgrade.getType());
+            if (mutations.updateFilter(node, typeId, isInput, normalized)) {
+                menu.commitFilterData(normalized, upgradeStack);
+            }
         }
     }
 }

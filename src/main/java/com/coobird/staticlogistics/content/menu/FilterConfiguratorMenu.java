@@ -65,6 +65,8 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
         LogisticsResource<?> type = TransferRegistries.get(buf.readResourceLocation());
         boolean isInput = buf.readBoolean();
         ItemStack upgradeStack = buf.readItem();
+        PortItemStackExtension.setData(upgradeStack, SLDataComponents.FILTER_DATA.get(),
+            FilterData.STREAM_CODEC.decode((PortRegistryFriendlyByteBuf) buf));
         if (type == null) throw new IllegalArgumentException("Unknown transfer type");
         ResourceKey<Level> dimension = ResourceKey.create(
             Registries.DIMENSION, buf.readResourceLocation());

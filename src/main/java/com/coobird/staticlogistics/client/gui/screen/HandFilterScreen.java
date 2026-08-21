@@ -59,7 +59,8 @@ public class HandFilterScreen extends BaseFilterScreen<HandFilterMenu> {
 
     @Override
     protected void sendFilterUpdate() {
-        SLNetwork.HANDLER.sendToServer(new C2SUpdateFilterOnHandPayload(menu.getFilterData()));
+        SLNetwork.HANDLER.sendToServer(new C2SUpdateFilterOnHandPayload(
+            menu.getActiveUpgradeType(), menu.getFilterData()));
     }
 
     @Override

@@ -50,12 +50,15 @@ public record C2SOpenHandFilterPayload(boolean offhand) implements IPortPacket.C
                 stack, SLDataComponents.FILTER_DATA.get(), normalized);
         }
         int inventorySlot = offhand ? Inventory.SLOT_OFFHAND : player.getInventory().selected;
+        ItemStack menuStack = stack.copy();
+        PortItemStackExtension.removeData(menuStack, SLDataComponents.FILTER_DATA.get());
         NetworkHooks.openScreen(player, new SimpleMenuProvider(
             (id, inv, p) -> new HandFilterMenu(id, inv, stack, inventorySlot),
             Component.translatable("gui.staticlogistics.hand_filter")
         ), buf -> {
             buf.writeVarInt(inventorySlot);
-            buf.writeItem(stack);
+            buf.writeItem(menuStack);
+            FilterData.STREAM_CODEC.encode((PortRegistryFriendlyByteBuf) buf, normalized);
         });
     }
 }
