@@ -1,5 +1,7 @@
 package com.coobird.staticlogistics.transfer;
 
+import com.coobird.staticlogistics.integration.ModCompat;
+import com.coobird.staticlogistics.integration.create.CreateContraptionService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -34,6 +36,9 @@ public final class CapabilityCache {
     @SuppressWarnings("unchecked")
     public <C> C get(BlockPos pos, Direction face, BlockCapability<C, Direction> capability) {
         if (!active) throw new IllegalStateException("Capability cache is not active");
+        if (ModCompat.isCreateLoaded() && CreateContraptionService.isMounted(level, pos)) {
+            return CreateContraptionService.getCapability(level, pos, face, capability);
+        }
         CacheKey key = new CacheKey(pos.asLong(), face, capability);
         CacheEntry entry = caches.get(key);
         if (entry == null) {

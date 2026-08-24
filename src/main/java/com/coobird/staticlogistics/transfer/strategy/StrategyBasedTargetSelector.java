@@ -45,7 +45,7 @@ public class StrategyBasedTargetSelector {
                 FaceConfigComposite targetCfg = LinkManager.get(targetLevel)
                     .getFaceConfig(FaceAddress.of(target));
                 if (targetCfg != null && TransferUtils.isTransferLinkActive(
-                    sourceNode, sourceConfig, target, targetCfg, groupKey)) {
+                    level.getServer(), sourceNode, sourceConfig, target, targetCfg, groupKey)) {
                     targets.put(target, targetCfg);
                 }
             });
@@ -71,7 +71,7 @@ public class StrategyBasedTargetSelector {
                 if (group.size() <= 1) {
                     sorted.addAll(group);
                 } else {
-                    sorted.addAll(sorter.sort(group, sourcePos, sourceNode, globalManager::getCursor));
+                    sorted.addAll(sorter.sort(level, group, sourcePos, sourceNode, globalManager::getCursor));
                 }
                 start = end;
             }

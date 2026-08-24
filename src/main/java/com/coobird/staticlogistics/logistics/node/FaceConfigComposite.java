@@ -331,6 +331,32 @@ public class FaceConfigComposite {
             nodes.forEach(node -> consumer.accept(groupKey, node)));
     }
 
+    /**
+     * 批量替换结构搬移前后的节点地址，并保持分组作用域不变。
+     */
+    boolean remapLinkedNodes(Map<LogisticsNode, LogisticsNode> replacements) {
+        if (replacements.isEmpty() || linkedNodesByGroup.isEmpty()) return false;
+        boolean changed = false;
+        Map<GroupKey, LinkedHashSet<LogisticsNode>> remapped = new LinkedHashMap<>();
+        for (var scope : linkedNodesByGroup.entrySet()) {
+            LinkedHashSet<LogisticsNode> nodes = new LinkedHashSet<>();
+            for (LogisticsNode node : scope.getValue()) {
+                LogisticsNode replacement = replacements.getOrDefault(node, node);
+                nodes.add(replacement);
+                changed |= replacement != node;
+            }
+            if (!nodes.isEmpty()) remapped.put(scope.getKey(), nodes);
+        }
+        if (changed) {
+            try (BulkEdit ignored = beginBulkEdit()) {
+                linkedNodesByGroup.clear();
+                linkedNodesByGroup.putAll(remapped);
+                markDirty();
+            }
+        }
+        return changed;
+    }
+
     public boolean removeLinkedNode(LinkMutationPermit permit, GroupKey groupKey, LogisticsNode node) {
         if (permit == null) throw new IllegalArgumentException("Link mutation permit is required");
         LinkedHashSet<LogisticsNode> nodes = linkedNodesByGroup.get(groupKey);

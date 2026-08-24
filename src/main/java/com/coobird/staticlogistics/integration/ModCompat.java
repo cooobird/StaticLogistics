@@ -23,4 +23,12 @@ public class ModCompat {
         return ModList.get().isLoaded("botania");
     }
 
+    public static boolean isSableLoaded() {
+        return ModList.get().isLoaded("sable");
+    }
+
+    public static boolean isCreateLoaded() {
+        return ModList.get().isLoaded("create");
+    }
+
 }

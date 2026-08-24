@@ -7,6 +7,7 @@ import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.group.GroupSelectionInvalidator;
+import com.coobird.staticlogistics.logistics.redstone.RedstonePointSelectionSession;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
@@ -127,6 +128,13 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
+        if (player instanceof ServerPlayer serverPlayer
+            && RedstonePointSelectionSession.cancel(serverPlayer)) {
+            player.displayClientMessage(Component.translatable(
+                    "message.staticlogistics.redstone.selection_cancelled")
+                .withStyle(ChatFormatting.GRAY), true);
+            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        }
         if (!player.isSecondaryUseActive()) {
             if (player instanceof ServerPlayer serverPlayer) {
                 openConfigurator(serverPlayer);

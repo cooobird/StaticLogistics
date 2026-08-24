@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -78,6 +79,16 @@ public class ContainerConfig {
 
     public void unlinkFace(FaceAddress faceKey) {
         linkedFaceKeys.remove(faceKey);
+    }
+
+    void remapLinkedFaces(Map<FaceAddress, FaceAddress> replacements) {
+        if (replacements.isEmpty() || linkedFaceKeys.isEmpty()) return;
+        Set<FaceAddress> remapped = new LinkedHashSet<>();
+        for (FaceAddress face : linkedFaceKeys) {
+            remapped.add(replacements.getOrDefault(face, face));
+        }
+        linkedFaceKeys.clear();
+        linkedFaceKeys.addAll(remapped);
     }
 
     public long getSpeedMultiplier() {

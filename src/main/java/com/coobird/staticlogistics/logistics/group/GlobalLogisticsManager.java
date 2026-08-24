@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.node.*;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import com.coobird.staticlogistics.transfer.TransferCursorService;
@@ -443,6 +444,7 @@ public class GlobalLogisticsManager {
                 receipt.commit();
             }
         }
+        RedstoneControlStore.get(server).removeGroup(groupKey);
         GroupSelectionInvalidator.clearOnlineSelections(server, groupKey);
         return true;
     }
@@ -489,6 +491,7 @@ public class GlobalLogisticsManager {
             groupDisplayNames.remove(groupKey);
             transaction.commit();
         }
+        RedstoneControlStore.get(server).removeGroup(groupKey);
         GroupSelectionInvalidator.clearOnlineSelections(server, groupKey);
         syncGroupDirectory(groupKey.ownerId());
         return true;

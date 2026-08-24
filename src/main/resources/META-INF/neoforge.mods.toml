@@ -14,6 +14,14 @@ description = '''${mod_description}'''
 [[mixins]]
 config = "${mod_id}.mixins.json"
 
+[[mixins]]
+config = "${mod_id}.create.mixins.json"
+requiredMods = ["create"]
+
+[[mixins]]
+config = "${mod_id}.sable.mixins.json"
+requiredMods = ["sable"]
+
 [[dependencies."${mod_id}"]]
 modId = "neoforge"
 type = "required"

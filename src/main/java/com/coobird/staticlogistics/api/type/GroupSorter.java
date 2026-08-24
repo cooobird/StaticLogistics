@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.api.type;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.TransferCursorProvider;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 
 import java.util.List;
 
@@ -22,4 +23,13 @@ public interface GroupSorter {
      */
     List<LogisticsNode> sort(List<LogisticsNode> group, BlockPos sourcePos,
                              LogisticsNode sourceNode, TransferCursorProvider cursorProvider);
+
+    /**
+     * 带世界上下文的排序入口，供动态子世界按真实位置排序。第三方旧实现继续复用原入口。
+     */
+    default List<LogisticsNode> sort(ServerLevel level, List<LogisticsNode> group,
+                                     BlockPos sourcePos, LogisticsNode sourceNode,
+                                     TransferCursorProvider cursorProvider) {
+        return sort(group, sourcePos, sourceNode, cursorProvider);
+    }
 }

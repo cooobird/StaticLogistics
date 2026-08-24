@@ -5,11 +5,13 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
 import com.coobird.staticlogistics.client.data.LinkSelectionScope;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.integration.sable.DynamicNodeSpace;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -22,7 +24,6 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -33,8 +34,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -52,6 +55,13 @@ import java.util.Set;
  */
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
+    private static float renderPartialTick;
+    /**
+     * 保留连接最近出现过的传输方向，使被关闭的方向显示为静止而不是突然消失。
+     */
+    private static final Map<ConnectionKey, FlowAnimationState> FLOW_STATES =
+        new HashMap<>();
+    private static Level flowStateLevel;
     public static final RenderType PIPE_XRAY = RenderType.create(
         "pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
         RenderType.CompositeState.builder()
@@ -69,6 +79,10 @@ public class LinkWorldRenderer {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
+        if (flowStateLevel != mc.level) {
+            FLOW_STATES.clear();
+            flowStateLevel = mc.level;
+        }
 
         ItemStack stack = getActiveConfigurator(mc);
         if (stack.isEmpty()) return;
@@ -95,15 +109,19 @@ public class LinkWorldRenderer {
         float pulse = (float) Math.sin(frameTimeMillis / 200.0) * 0.03f;
         double flowTime = frameTimeMillis / 1000.0;
         ParticleStatus particleStatus = mc.options.particles().get();
+        renderPartialTick = event.getPartialTick().getGameTimeDeltaPartialTick(true);
 
         // 先绘制已有连接，最后覆盖当前存点，确保两种状态不会互相淹没。
         LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
             ? lci.getSettings(stack) : null;
-        if (groupKey != null)
+        if (groupKey != null) {
             renderGroupLinks(
                 groupKey, connectionKey,
                 dim, mat, b, visibility, pulse,
                 flowTime, particleStatus);
+            renderRedstoneControlPoints(
+                groupKey, dim, mat, b, visibility, pulse);
+        }
         if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
             renderStoredNodes(settings, dim, mat, b, visibility, pulse);
 
@@ -122,20 +140,49 @@ public class LinkWorldRenderer {
         for (LogisticsNode node : settings.storedNodes()) {
             if (!node.gPos().dimension().equals(dim)) continue;
             BlockPos p = node.gPos().pos();
-            if (!visibility.isBlockVisible(p)) continue;
+            Level level = Minecraft.getInstance().level;
+            if (level == null) continue;
+            Vec3 center = DynamicNodeSpace.blockCenter(level, p, renderPartialTick);
+            Vec3 normal = DynamicNodeSpace.faceNormal(level, p, node.face(), renderPartialTick);
+            Vec3 axis1 = DynamicNodeSpace.faceAxis1(level, p, node.face(), renderPartialTick);
+            Vec3 axis2 = DynamicNodeSpace.faceAxis2(level, p, node.face(), renderPartialTick);
+            BlockPos worldPos = BlockPos.containing(center);
+            if (!visibility.isBlockVisible(worldPos)) continue;
 
-            LogisticsRenderHelper.drawFrame(b, mat, p, 1.0f, 0.95f, 0.2f, 0.48f);
-            double px = p.getX() + 0.5 + node.face().getStepX() * 0.512;
-            double py = p.getY() + 0.5 + node.face().getStepY() * 0.512;
-            double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.512;
+            drawNodeFrame(b, mat, level, p, center, 1.0f, 0.95f, 0.2f, 0.48f);
+            Vec3 faceCenter = center.add(normal.scale(0.512));
             LogisticsRenderHelper.drawFaceQuad(
-                b, mat,
-                px + node.face().getStepX() * 0.003,
-                py + node.face().getStepY() * 0.003,
-                pz + node.face().getStepZ() * 0.003,
-                node.face(),
+                b, mat, faceCenter.add(normal.scale(0.003)), normal, axis1, axis2,
                 faceColor, 0.58f, 0.30f + pulse * 0.35f, 0, 1f);
         }
+    }
+
+    /**
+     * 已绑定的检测点使用红石色线框和顶面标记，与物流节点状态面区分。
+     */
+    private static void renderRedstoneControlPoints(
+        GroupKey groupKey,
+        ResourceKey<Level> dimension,
+        Matrix4f matrix,
+        VertexConsumer buffer,
+        WorldOverlayVisibility visibility,
+        float pulse
+    ) {
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return;
+        ClientRedstoneControlData.ControlGroup control =
+            ClientRedstoneControlData.INSTANCE.getSelectedControlGroup(groupKey);
+        if (control == null
+            || !control.binding().controller().dimension().equals(dimension)) return;
+        BlockPos position = control.binding().controller().pos();
+        boolean powered = control.powered();
+        Vec3 center = DynamicNodeSpace.blockCenter(level, position, renderPartialTick);
+        BlockPos worldPosition = BlockPos.containing(center);
+        if (!visibility.isBlockVisible(worldPosition)) return;
+        float brightness = powered ? 1.0F : 0.45F;
+        drawNodeFrame(buffer, matrix, level, position, center,
+            brightness, 0.12F * brightness, 0.08F * brightness,
+            powered ? 0.62F : 0.34F);
     }
 
     private static void renderGroupLinks(
@@ -147,6 +194,11 @@ public class LinkWorldRenderer {
         double flowTime, ParticleStatus particleStatus) {
         Set<BlockPos> renderedFrames = new HashSet<>();
         List<ClientConnection> connections = ClientLinkData.INSTANCE.getConnectionsForGroup(groupKey);
+        Set<ConnectionKey> currentConnections = connections.stream()
+            .map(ClientConnection::key)
+            .collect(java.util.stream.Collectors.toSet());
+        FLOW_STATES.keySet().removeIf(key -> key.groupKey().equals(groupKey)
+            && !currentConnections.contains(key));
         boolean wholeGroup = focusedConnection == null;
         if (focusedConnection != null) {
             ClientConnection focused = findConnection(
@@ -224,15 +276,21 @@ public class LinkWorldRenderer {
     ) {
         if (!node.gPos().dimension().equals(dimension)) return;
         BlockPos position = node.gPos().pos();
-        if (!visibility.isBlockVisible(position)) return;
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return;
+        Vec3 center = DynamicNodeSpace.blockCenter(level, position, renderPartialTick);
+        Vec3 normal = DynamicNodeSpace.faceNormal(level, position, node.face(), renderPartialTick);
+        Vec3 axis1 = DynamicNodeSpace.faceAxis1(level, position, node.face(), renderPartialTick);
+        Vec3 axis2 = DynamicNodeSpace.faceAxis2(level, position, node.face(), renderPartialTick);
+        BlockPos worldPosition = BlockPos.containing(center);
+        if (!visibility.isBlockVisible(worldPosition)) return;
         if (renderedFrames.add(position)) {
-            LogisticsRenderHelper.drawFrame(
-                buffer, matrix, position,
+            drawNodeFrame(buffer, matrix, level, position, center,
                 1.0F, 1.0F, 1.0F, 0.25F);
         }
         if (renderedFaces.add(node)) {
             LogisticsRenderHelper.drawFaceStatus(
-                buffer, matrix, position, node.face(),
+                buffer, matrix, center.add(normal.scale(0.508)), normal, axis1, axis2,
                 LogisticsRenderHelper.INPUT_COLOR,
                 LogisticsRenderHelper.OUTPUT_COLOR,
                 topology.role().canReceive(),
@@ -257,17 +315,34 @@ public class LinkWorldRenderer {
         }
         BlockPos firstPosition = first.gPos().pos();
         BlockPos secondPosition = second.gPos().pos();
-        if (!visibility.isConnectionVisible(firstPosition, secondPosition)) return;
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return;
+        BlockPos firstWorldPosition = BlockPos.containing(
+            DynamicNodeSpace.blockCenter(level, firstPosition, renderPartialTick));
+        BlockPos secondWorldPosition = BlockPos.containing(
+            DynamicNodeSpace.blockCenter(level, secondPosition, renderPartialTick));
+        if (!visibility.isConnectionVisible(firstWorldPosition, secondWorldPosition)) return;
 
-        if (connection.transfersFirstToSecond()) {
+        boolean activeFirstToSecond = connection.transfersFirstToSecond();
+        boolean activeSecondToFirst = connection.transfersSecondToFirst();
+        ConnectionKey connectionKey = connection.key();
+        ClientRedstoneControlData.State redstoneState =
+            ClientRedstoneControlData.INSTANCE.get(connectionKey);
+        boolean redstoneAllowed = redstoneState == null || redstoneState.allowed();
+        FlowAnimationState flowState = FLOW_STATES.computeIfAbsent(
+            connectionKey, ignored -> new FlowAnimationState());
+        flowState.update(flowTime, activeFirstToSecond,
+            activeSecondToFirst, redstoneAllowed);
+
+        if (flowState.firstToSecondVisible) {
             drawFlow(first, connection.firstTopology(),
                 second, connection.secondTopology(),
-                matrix, buffer, flowTime, particleStatus);
+                matrix, buffer, flowState.firstToSecondTime, particleStatus);
         }
-        if (connection.transfersSecondToFirst()) {
+        if (flowState.secondToFirstVisible) {
             drawFlow(second, connection.secondTopology(),
                 first, connection.firstTopology(),
-                matrix, buffer, flowTime, particleStatus);
+                matrix, buffer, flowState.secondToFirstTime, particleStatus);
         }
     }
 
@@ -282,10 +357,10 @@ public class LinkWorldRenderer {
         ParticleStatus particleStatus
     ) {
         Vec3 start = faceOffset(
-            source.gPos().pos(), source.face(),
+            source,
             sourceTopology.role().canReceive() ? 0.3F : 0.0F);
         Vec3 end = faceOffset(
-            target.gPos().pos(), target.face(),
+            target,
             targetTopology.role().canSend() ? -0.3F : 0.0F);
         LogisticsRenderHelper.drawFlowParticles(
             buffer, matrix, start, end,
@@ -293,16 +368,63 @@ public class LinkWorldRenderer {
     }
 
     /**
+     * 每个方向使用独立累计时间；暂停时不再累计，恢复后从原位置继续。
+     */
+    private static final class FlowAnimationState {
+        private boolean firstToSecondVisible;
+        private boolean secondToFirstVisible;
+        private double firstToSecondTime;
+        private double secondToFirstTime;
+        private double lastFrameTime = Double.NaN;
+
+        private void update(double frameTime, boolean firstActive,
+                            boolean secondActive, boolean redstoneAllowed) {
+            firstToSecondVisible |= firstActive;
+            secondToFirstVisible |= secondActive;
+            if (!firstToSecondVisible && !secondToFirstVisible) {
+                // 首次同步时若连接已经完全关闭，仍显示一组静止标记表达“已暂停”。
+                firstToSecondVisible = true;
+            }
+            if (Double.isNaN(lastFrameTime)) {
+                lastFrameTime = frameTime;
+                return;
+            }
+            double elapsed = Math.max(0.0D,
+                Math.min(0.25D, frameTime - lastFrameTime));
+            if (redstoneAllowed && firstActive) firstToSecondTime += elapsed;
+            if (redstoneAllowed && secondActive) secondToFirstTime += elapsed;
+            lastFrameTime = frameTime;
+        }
+    }
+
+    /**
      * 计算面片中心位置，支持半面片偏移（与 drawFaceQuad 的 offset 对齐）
      */
-    private static Vec3 faceOffset(BlockPos pos, Direction face, float offset) {
-        Vec3 n = Vec3.atLowerCornerOf(face.getNormal());
-        Vec3 center = Vec3.atCenterOf(pos).add(n.scale(0.52));
+    private static Vec3 faceOffset(LogisticsNode node, float offset) {
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return Vec3.atCenterOf(node.gPos().pos());
+        Vec3 n = DynamicNodeSpace.faceNormal(
+            level, node.gPos().pos(), node.face(), renderPartialTick);
+        Vec3 across = DynamicNodeSpace.faceAxis2(
+            level, node.gPos().pos(), node.face(), renderPartialTick);
+        Vec3 center = DynamicNodeSpace.blockCenter(
+            level, node.gPos().pos(), renderPartialTick).add(n.scale(0.52));
         if (offset == 0f) return center;
-        Vec3 a1 = (Math.abs(n.y) > 0.5) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
-        Vec3 a2 = n.cross(a1).normalize();
         float size = 0.85f;
-        return center.add(a2.scale(offset * size));
+        return center.add(across.scale(offset * size));
+    }
+
+    private static void drawNodeFrame(VertexConsumer buffer, Matrix4f matrix,
+                                      Level level, BlockPos position, Vec3 center,
+                                      float r, float g, float b, float a) {
+        Vec3 xAxis = DynamicNodeSpace.vectorToWorld(
+            level, position, new Vec3(1, 0, 0), renderPartialTick);
+        Vec3 yAxis = DynamicNodeSpace.vectorToWorld(
+            level, position, new Vec3(0, 1, 0), renderPartialTick);
+        Vec3 zAxis = DynamicNodeSpace.vectorToWorld(
+            level, position, new Vec3(0, 0, 1), renderPartialTick);
+        LogisticsRenderHelper.drawFrame(
+            buffer, matrix, center, xAxis, yAxis, zAxis, r, g, b, a);
     }
 
     private static ItemStack getActiveConfigurator(Minecraft mc) {

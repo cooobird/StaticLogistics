@@ -5,6 +5,7 @@ import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.gui.component.*;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
@@ -21,6 +22,8 @@ import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
@@ -91,6 +94,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private NodeConfigurationPanel nodeConfigurationPanel;
     private ConfirmationDialog confirmationDialog;
     private boolean previewExpanded;
+    private Button redstoneControlButton;
+    private int redstoneQueryCooldown;
+    private int redstoneGroupQueryCooldown;
     private double interfaceScale = 1.0D;
     private int virtualWidth;
     private int virtualHeight;
@@ -132,6 +138,14 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         // 左下节点区复用当前 Menu；页签切换不会创建新容器界面。
         nodeConfigurationPanel = new NodeConfigurationPanel(menu, font, this::openFilter, this::selectSide, SoundUtil::playClickSound, preview::getSelectedNodes);
         nodeConfigurationPanel.init(leftPos, topPos, this::addRenderableWidget);
+        redstoneControlButton = Button.builder(
+                Component.translatable("gui.staticlogistics.redstone.bind"),
+                ignored -> selectRedstoneControlPoint())
+            .bounds(leftPos + SLGuiTextures.LinkConfigurator.CONNECTION_X + 77,
+                topPos + SLGuiTextures.LinkConfigurator.CONNECTION_Y + 2, 62, 13)
+            .build();
+        addRenderableWidget(redstoneControlButton);
+        updateRedstoneControlButton();
     }
 
     @Override
@@ -175,11 +189,13 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private void renderInterface(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
         if (previewExpanded) renderExpandedPreview(graphics, mouseX, mouseY);
+        if (previewExpanded && redstoneControlButton != null) {
+            redstoneControlButton.render(graphics, mouseX, mouseY, partialTick);
+        }
         if (confirmationDialog != null && confirmationDialog.isOpen()) {
             confirmationDialog.render(graphics, font, virtualWidth, virtualHeight, mouseX, mouseY);
             return;
         }
-
         /*
          * 玩家背包和快捷栏必须完整走原版容器 Tooltip 流程，才能保留物品名称、
          * 附魔、数据组件以及其他模组追加的 Tooltip。配置槽由节点区域在原版
@@ -224,6 +240,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             stack.get(SLDataComponents.SELECTED_CONNECTION_KEY.get()),
             SelectionContext.getFocusedConnectionKey())) {
             syncFocusedConnection(false);
+        }
+        updateRedstoneControlButton();
+        if (--redstoneQueryCooldown <= 0) {
+            queryFocusedRedstoneControl();
+            redstoneQueryCooldown = 10;
+        }
+        if (--redstoneGroupQueryCooldown <= 0) {
+            queryVisibleRedstoneControls();
+            redstoneGroupQueryCooldown = 10;
         }
     }
 
@@ -327,11 +352,39 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             return confirmationDialog.mouseClicked(
                 mouseX, mouseY, button, virtualWidth, virtualHeight);
         }
+        if (button == 0) {
+            NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
+                preview.getRedstoneControlFrameAt(mouseX, mouseY);
+            if (controlFrame != null) {
+                ClientRedstoneControlData.INSTANCE.selectControlGroup(
+                    controlFrame.groupKey(), controlFrame.binding());
+                SoundUtil.playClickSound();
+                return true;
+            }
+        } else if (button == 1) {
+            NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
+                preview.getRedstoneControlFrameAt(mouseX, mouseY);
+            if (controlFrame != null) {
+                confirmationDialog = new ConfirmationDialog(
+                    Component.translatable("gui.staticlogistics.redstone.remove_group"),
+                    Component.translatable(
+                        "gui.staticlogistics.redstone.confirm_remove_group",
+                        controlFrame.connections().size()),
+                    () -> removeRedstoneControlGroup(controlFrame));
+                SoundUtil.playClickSound();
+                return true;
+            }
+        }
         if (button == 0 && NodeConfigControls.hitOpBtn(mouseX, mouseY,
             leftPos + PREVIEW_TOGGLE_X, topPos + PREVIEW_TOGGLE_Y)) {
             previewExpanded = !previewExpanded;
             preview.resetView();
+            updateRedstoneControlButton();
             SoundUtil.playClickSound();
+            return true;
+        }
+        if (redstoneControlButton != null
+            && redstoneControlButton.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
         if (previewExpanded) {
@@ -342,7 +395,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                     SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
                 LogisticsNode node = preview.getSelectedNode();
                 if (node != null) openNode(node);
-                else clearNodeTarget();
+                else if (preview.getSelectedConnection() == null) clearNodeTarget();
                 return true;
             }
             return true;
@@ -421,7 +474,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             LogisticsNode node = preview.getSelectedNode();
             if (node != null) {
                 openNode(node);
-            } else {
+            } else if (preview.getSelectedConnection() == null) {
                 clearNodeTarget();
             }
             return true;
@@ -628,6 +681,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                 else if (groupPanel.isRenameBoxVisible()) handleConfirmRename();
                 return true;
             }
+            if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)) {
+                return true;
+            }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
         if (groupPanel.isCreatingGroup()
@@ -639,6 +695,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 groupPanel.cancelCreateGroup();
                 setFocused(null);
+                return true;
+            }
+            if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)) {
                 return true;
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
@@ -761,6 +820,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         }
         PacketDistributor.sendToServer(
             new C2SUpdateToolGroupPayload(groupName, groupKey));
+        redstoneGroupQueryCooldown = 0;
         if (playSound) SoundUtil.playClickSound();
     }
 
@@ -780,7 +840,102 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         }
         PacketDistributor.sendToServer(
             new C2SUpdateToolConnectionPayload(connectionKey));
+        queryFocusedRedstoneControl();
+        updateRedstoneControlButton();
         if (playSound) SoundUtil.playClickSound();
+    }
+
+    private void queryFocusedRedstoneControl() {
+        ConnectionKey connection = SelectionContext.getFocusedConnectionKey();
+        if (connection != null) {
+            PacketDistributor.sendToServer(new C2SQueryRedstoneControlPayload(connection));
+        }
+    }
+
+    private void queryVisibleRedstoneControls() {
+        GroupKey groupKey = toolStack().get(SLDataComponents.SELECTED_GROUP_KEY.get());
+        if (groupKey != null) {
+            PacketDistributor.sendToServer(new C2SQueryRedstoneGroupPayload(groupKey));
+        }
+    }
+
+    private void selectRedstoneControlPoint() {
+        List<ConnectionKey> connections = preview.getRedstoneControlSelection();
+        if (connections.isEmpty()) return;
+        if (hasShiftDown() && connections.size() == 1) {
+            PacketDistributor.sendToServer(
+                new C2SSetRedstoneControlPayload(connections.getFirst(), false));
+            redstoneQueryCooldown = 2;
+            SoundUtil.playClickSound();
+            return;
+        }
+        PacketDistributor.sendToServer(
+            new C2SBeginRedstonePointSelectionPayload(connections));
+        SoundUtil.playClickSound();
+        onClose();
+    }
+
+    private void removeRedstoneControlGroup(
+        NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame
+    ) {
+        if (ClientRedstoneControlData.INSTANCE.isControlGroupSelected(
+            controlFrame.groupKey(), controlFrame.binding())) {
+            ClientRedstoneControlData.INSTANCE.selectControlGroup(null, null);
+        }
+        PacketDistributor.sendToServer(new C2SRemoveRedstoneControlGroupPayload(
+            controlFrame.groupKey(), controlFrame.binding()));
+        redstoneGroupQueryCooldown = 2;
+        SoundUtil.playClickSound();
+    }
+
+    private void updateRedstoneControlButton() {
+        if (redstoneControlButton == null) return;
+        List<ConnectionKey> connections = preview.getRedstoneControlSelection();
+        ConnectionKey connection = connections.size() == 1 ? connections.getFirst() : null;
+        if (previewExpanded) {
+            redstoneControlButton.setX(leftPos + EXPANDED_PREVIEW_FRAME_X
+                + EXPANDED_PREVIEW_FRAME_WIDTH - 70);
+            redstoneControlButton.setY(topPos + EXPANDED_PREVIEW_FRAME_Y + 3);
+        } else {
+            redstoneControlButton.setX(leftPos
+                + SLGuiTextures.LinkConfigurator.CONNECTION_X + 77);
+            redstoneControlButton.setY(topPos
+                + SLGuiTextures.LinkConfigurator.CONNECTION_Y + 2);
+        }
+        redstoneControlButton.visible = true;
+        redstoneControlButton.active = !connections.isEmpty();
+
+        if (connections.isEmpty()) {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.select_links"));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                "gui.staticlogistics.redstone.tooltip.select_links")));
+            return;
+        }
+
+        if (connections.size() > 1) {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.bind_count", connections.size()));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                "gui.staticlogistics.redstone.tooltip.bind_count", connections.size())));
+            return;
+        }
+
+        ClientRedstoneControlData.State state =
+            ClientRedstoneControlData.INSTANCE.get(connection);
+        if (state != null && state.bound()) {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.rebind"));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                state.powered()
+                    ? "gui.staticlogistics.redstone.tooltip.powered"
+                    : "gui.staticlogistics.redstone.tooltip.unpowered")));
+        } else {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.bind"));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                "gui.staticlogistics.redstone.tooltip.bind")));
+        }
     }
 
     private ItemStack toolStack() {

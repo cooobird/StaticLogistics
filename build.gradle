@@ -114,6 +114,23 @@ repositories {
         url = 'https://maven.terraformersmc.com/'
     }
     maven { url = "https://maven.createmod.net" } // Create, Ponder, Flywheel
+    maven {
+        name = "Fuzs Mod Resources"
+        url = uri("https://raw.githubusercontent.com/Fuzss/modresources/main/maven/")
+        content { includeGroup("fuzs.forgeconfigapiport") }
+    }
+    exclusiveContent { // Sable
+        forRepository {
+            maven {
+                url = "https://maven.ryanhcode.dev/releases"
+                name = "RyanHCode Maven"
+            }
+        }
+        filter {
+            includeGroup("dev.ryanhcode.sable")
+            includeGroup("dev.ryanhcode.sable-companion")
+        }
+    }
     maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
     maven {
         name = "Refined Storage"
@@ -160,6 +177,14 @@ dependencies {
     runtimeOnly ("com.tterrag.registrate:Registrate:${registrate_version}")
     compileOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
     runtimeOnly ("com.simibubi.create:create-${minecraft_version}:${create_version}:slim") { transitive = false }
+
+    compileOnly("dev.ryanhcode.sable:sable-common-${project.minecraft_version}:${project.sable_version}")
+    runtimeOnly("dev.ryanhcode.sable:sable-neoforge-${project.minecraft_version}:${project.sable_version}") {
+        // 工作区已经提供机械动力的 slim 开发依赖。
+        exclude group: "com.simibubi.create", module: "create-${project.minecraft_version}"
+        // Veil 是 Sable 的可选编译依赖，服务端兼容测试不需要它。
+        exclude group: "foundry.veil", module: "veil-neoforge-${project.minecraft_version}"
+    }
 
     compileOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"
     runtimeOnly "curse.maven:pneumaticcraft-repressurized-281849:${pneumaticcraft_version}"

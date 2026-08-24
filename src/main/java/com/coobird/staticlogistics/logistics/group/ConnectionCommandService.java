@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.event.PlayerEvents;
 import com.coobird.staticlogistics.logistics.node.*;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -58,6 +59,7 @@ public final class ConnectionCommandService {
         if (connection == null || !tryAcquireMutation(actor)) return false;
         try {
             removeConnectionAndOrphans(actor, connection);
+            RedstoneControlStore.get(server).unbind(connection.key());
             refreshAuthorizedClients(actor);
             return true;
         } catch (RuntimeException exception) {

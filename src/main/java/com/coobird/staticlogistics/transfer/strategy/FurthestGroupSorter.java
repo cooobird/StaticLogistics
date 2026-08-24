@@ -3,7 +3,9 @@ package com.coobird.staticlogistics.transfer.strategy;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.TransferCursorProvider;
 import com.coobird.staticlogistics.api.type.GroupSorter;
+import com.coobird.staticlogistics.integration.sable.DynamicNodeSpace;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -31,6 +33,25 @@ public enum FurthestGroupSorter implements GroupSorter {
 
         List<LogisticsNode> result = new ArrayList<>(n);
         for (int i = 0; i < n; i++) result.add(group.get(idx[i]));
+        return result;
+    }
+
+    @Override
+    public List<LogisticsNode> sort(ServerLevel level, List<LogisticsNode> group,
+                                    BlockPos sourcePos, LogisticsNode sourceNode,
+                                    TransferCursorProvider cursorProvider) {
+        int n = group.size();
+        if (n <= 1) return new ArrayList<>(group);
+        Integer[] indices = new Integer[n];
+        double[] distances = new double[n];
+        for (int i = 0; i < n; i++) {
+            distances[i] = DynamicNodeSpace.distanceSquared(
+                level, sourcePos, group.get(i).gPos().pos());
+            indices[i] = i;
+        }
+        Arrays.sort(indices, Comparator.comparingDouble((Integer index) -> distances[index]).reversed());
+        List<LogisticsNode> result = new ArrayList<>(n);
+        for (int index : indices) result.add(group.get(index));
         return result;
     }
 }

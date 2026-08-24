@@ -597,6 +597,9 @@ public class BlueprintGroupScreen extends Screen {
                 this.lastSeenVersion = -1;
                 return true;
             }
+            if (Minecraft.getInstance().options.keyInventory.matches(k, s)) {
+                return true;
+            }
             return super.keyPressed(k, s, m);
         }
         if (Minecraft.getInstance().options.keyInventory.matches(k, s) || k == 256) {

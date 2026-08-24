@@ -143,6 +143,30 @@ public class PlayerGroupStore extends SavedData {
     }
 
     /**
+     * Sable 换址后同步使用节点坐标作为身份一部分的连接显示名。
+     */
+    public void remapConnectionNodes(Map<com.coobird.staticlogistics.api.LogisticsNode,
+        com.coobird.staticlogistics.api.LogisticsNode> replacements) {
+        if (replacements == null || replacements.isEmpty() || connectionNames.isEmpty()) return;
+        Map<ConnectionKey, String> remapped = new LinkedHashMap<>();
+        boolean changed = false;
+        for (var entry : connectionNames.entrySet()) {
+            ConnectionKey key = entry.getKey();
+            var first = replacements.getOrDefault(key.first(), key.first());
+            var second = replacements.getOrDefault(key.second(), key.second());
+            ConnectionKey next = first.equals(key.first()) && second.equals(key.second())
+                ? key : new ConnectionKey(key.groupKey(), first, second);
+            changed |= next != key;
+            remapped.putIfAbsent(next, entry.getValue());
+        }
+        if (changed) {
+            connectionNames.clear();
+            connectionNames.putAll(remapped);
+            setDirty();
+        }
+    }
+
+    /**
      * 同一所有者分组合并时迁移连接名称。
      *
      * <p>目标分组已有同一连接名称时保留目标值；返回值记录完整补偿信息，供外层节点事务回滚。

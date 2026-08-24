@@ -4,6 +4,8 @@ import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.PostTransferEvent;
 import com.coobird.staticlogistics.api.event.PreTransferEvent;
+import com.coobird.staticlogistics.integration.ModCompat;
+import com.coobird.staticlogistics.integration.create.CreateContraptionService;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.mojang.logging.LogUtils;
@@ -96,7 +98,8 @@ public final class TransferPipeline {
                 boolean isSameDim = remoteNode.isInSameDimension(localLevel.dimension());
 
                 LogisticsCalculator.TransferRangeAssessment range = LogisticsCalculator.assessTransferRange(
-                    GlobalPos.of(localLevel.dimension(), localPos), remoteNode.gPos(), localContainer);
+                    localLevel, GlobalPos.of(localLevel.dimension(), localPos),
+                    remoteNode.gPos(), localContainer);
                 if (range.crossDimension() && !range.allowed()) {
                     if (context != null) {
                         logFailure(context, remoteNode, TransferFailureReason.NO_DIMENSION_UPGRADE);
@@ -136,7 +139,9 @@ public final class TransferPipeline {
                 if (remoteCap == null) {
                     // 脏链接清理
                     if (context != null && context.sourceConfig() != null
-                        && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null) {
+                        && remoteLevel.getBlockEntity(remoteNode.gPos().pos()) == null
+                        && !(ModCompat.isCreateLoaded() && CreateContraptionService.isMounted(
+                        remoteLevel, remoteNode.gPos().pos()))) {
                         cleanStaleTarget(remoteNode, context);
                     }
                     if (context != null) {

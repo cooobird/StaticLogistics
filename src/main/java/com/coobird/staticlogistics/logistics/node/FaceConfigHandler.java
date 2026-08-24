@@ -5,6 +5,8 @@ import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.content.item.LinkOperationHelper;
+import com.coobird.staticlogistics.integration.ModCompat;
+import com.coobird.staticlogistics.integration.create.CreateContraptionService;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
@@ -240,18 +242,22 @@ class FaceConfigHandler {
             if (cfg == null) continue;
             LogisticsNode node = parent.createNodeFromKey(key);
             BlockPos pos = node.gPos().pos();
+            boolean mountedOnCreate = ModCompat.isCreateLoaded()
+                && CreateContraptionService.isMounted(level, pos);
             if (level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) {
                 FaceConfigComposite.EndpointFingerprint currentFingerprint = currentEndpointFingerprint(pos);
-                if (currentFingerprint == null) {
+                if (currentFingerprint == null && !mountedOnCreate) {
                     removedPositions.add(pos);
                     continue;
                 }
-                FaceConfigComposite.EndpointFingerprint savedFingerprint = cfg.getEndpointFingerprint();
-                if (savedFingerprint == null) {
-                    cfg.bindEndpoint(MUTATION_PERMIT, currentFingerprint);
-                } else if (!savedFingerprint.equals(currentFingerprint)) {
-                    removedPositions.add(pos);
-                    continue;
+                if (currentFingerprint != null) {
+                    FaceConfigComposite.EndpointFingerprint savedFingerprint = cfg.getEndpointFingerprint();
+                    if (savedFingerprint == null) {
+                        cfg.bindEndpoint(MUTATION_PERMIT, currentFingerprint);
+                    } else if (!savedFingerprint.equals(currentFingerprint)) {
+                        removedPositions.add(pos);
+                        continue;
+                    }
                 }
             }
             if (!removedPositions.contains(pos)) {
@@ -265,7 +271,9 @@ class FaceConfigHandler {
                     FaceConfigComposite targetConfig = LinkManager.get(targetLevel)
                         .getFaceConfig(FaceAddress.of(target));
                     var targetState = targetLevel.getBlockState(targetPos);
-                    if (targetState.isAir()) {
+                    if (targetState.isAir()
+                        && !(ModCompat.isCreateLoaded()
+                        && CreateContraptionService.isMounted(targetLevel, targetPos))) {
                         missingBlockTargets.add(target);
                     } else if (targetConfig == null) {
                         missingFaceTargets.add(target);

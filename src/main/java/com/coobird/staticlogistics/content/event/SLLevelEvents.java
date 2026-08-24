@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.content.event;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.integration.sable.SableNodeRelocationService;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.transfer.NodeQueryService;
@@ -27,6 +28,7 @@ public class SLLevelEvents {
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         if (event.isCanceled()) return;
         if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (SableNodeRelocationService.isAssemblyPosition(level, event.getPos())) return;
         try {
             LinkManager mgr = LinkManager.get(level);
             NodeQueryService.invalidateBlock(level, event.getPos());
@@ -56,6 +58,7 @@ public class SLLevelEvents {
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (event.isCanceled()) return;
         if (event.getLevel() instanceof ServerLevel level) {
+            if (SableNodeRelocationService.isAssemblyPosition(level, event.getPos())) return;
             LinkManager manager = LinkManager.get(level);
             manager.onBlockRemoved(event.getPos());
             manager.invalidateCapabilityCache(event.getPos());

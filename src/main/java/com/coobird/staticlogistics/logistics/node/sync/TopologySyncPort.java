@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.logistics.node.sync;
 
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import net.minecraft.core.BlockPos;
@@ -10,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -21,6 +23,11 @@ public interface TopologySyncPort {
     void syncPendingToDimension(List<PendingSyncBuffer.PendingSyncEntry> entries);
 
     void syncBulkToPlayer(ServerPlayer player, List<Map.Entry<FaceAddress, FaceConfigComposite>> configs);
+
+    /**
+     * 动态结构换址后立即发布受影响的红石绑定结构。
+     */
+    void syncRedstoneGroups(Set<GroupKey> groupKeys);
 
     static void install(Function<ServerLevel, TopologySyncPort> factory) {
         Holder.factory = Objects.requireNonNull(factory, "Topology sync factory must not be null");

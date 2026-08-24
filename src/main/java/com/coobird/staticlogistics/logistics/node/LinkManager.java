@@ -5,24 +5,30 @@ import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.content.item.LinkOperationHelper;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.persistence.ContainerRepository;
 import com.coobird.staticlogistics.logistics.node.sync.PendingSyncBuffer;
 import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
 import com.coobird.staticlogistics.logistics.node.sync.TopologySyncPort;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
+import com.coobird.staticlogistics.transfer.NodeQueryService;
 import com.mojang.authlib.GameProfile;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.UnaryOperator;
 
 /**
  * 物流链接管理器 —— 维度级物流配置的核心 facade。
@@ -174,6 +180,9 @@ public class LinkManager {
     }
 
     private record DeferredNetworkKey(LinkManager manager, LogisticsNode node) {
+    }
+
+    private record DeferredRedstoneSyncKey(LinkManager manager, GroupKey groupKey) {
     }
 
     ContainerRepository getContainerRepository() {
@@ -384,6 +393,16 @@ public class LinkManager {
         return faceConfigHandler.getAllConfigKeys();
     }
 
+    /**
+     * 返回具有面配置或容器配置的全部方块位置。
+     */
+    public Set<BlockPos> getAllConfiguredBlockPositions() {
+        Set<BlockPos> positions = new HashSet<>();
+        for (FaceAddress key : getAllConfigKeys()) positions.add(key.pos());
+        for (long key : containerRepository.keySet()) positions.add(BlockPos.of(key));
+        return positions;
+    }
+
     public void syncToPlayer(ServerPlayer player) {
         // 直接从 repository 收集非默认配置，避免遍历所有 key 再逐个 getFaceConfig
         List<Map.Entry<FaceAddress, FaceConfigComposite>> nonDefault = new ArrayList<>();
@@ -403,6 +422,171 @@ public class LinkManager {
         for (BlockPos pos : positions) capabilityCache.invalidateBlock(pos);
         lifecycleService.destroyBlocks(positions);
         saveScheduler.scheduleSave();
+    }
+
+    /**
+     * 在同一维度内搬移一个容器的全部面配置。用于 Sable 在世界与 plot 间转移方块时保留物流身份。
+     */
+    public boolean relocateBlock(BlockPos oldPos, BlockPos newPos) {
+        return relocateBlock(oldPos, newPos, Rotation.NONE);
+    }
+
+    /**
+     * 在同一维度内搬移一个容器的全部面配置，并按照结构装配时的旋转同步面朝向。
+     */
+    public boolean relocateBlock(BlockPos oldPos, BlockPos newPos, Rotation rotation) {
+        Rotation appliedRotation = rotation == null ? Rotation.NONE : rotation;
+        return relocateBlock(oldPos, newPos, appliedRotation::rotate);
+    }
+
+    /**
+     * 搬移一个容器，并使用任意三维结构变换同步其面朝向。
+     */
+    public boolean relocateBlock(BlockPos oldPos, BlockPos newPos,
+                                 UnaryOperator<Direction> faceTransform) {
+        if (oldPos == null || newPos == null) return false;
+        return relocateBlocks(Map.of(oldPos, newPos), faceTransform);
+    }
+
+    /**
+     * 原子迁移整座刚性结构，并正确处理节点坐标互换形成的循环。
+     */
+    public boolean relocateBlocks(Map<BlockPos, BlockPos> positionMoves,
+                                  UnaryOperator<Direction> faceTransform) {
+        if (positionMoves == null || positionMoves.isEmpty()) return false;
+        UnaryOperator<Direction> appliedTransform = faceTransform == null
+            ? UnaryOperator.identity() : faceTransform;
+
+        Map<FaceAddress, FaceAddress> faceMoves = new LinkedHashMap<>();
+        Map<LogisticsNode, LogisticsNode> nodeMoves = new LinkedHashMap<>();
+        Map<BlockPos, ContainerConfig> movingContainers = new LinkedHashMap<>();
+        for (var positionMove : positionMoves.entrySet()) {
+            BlockPos oldPos = positionMove.getKey();
+            BlockPos newPos = positionMove.getValue();
+            if (oldPos == null || newPos == null) continue;
+            for (Direction face : Direction.values()) {
+                FaceAddress oldKey = FaceAddress.of(oldPos, face);
+                if (getFaceConfig(oldKey) == null) continue;
+                FaceAddress newKey = FaceAddress.of(newPos, appliedTransform.apply(face));
+                faceMoves.put(oldKey, newKey);
+                nodeMoves.put(createNodeFromKey(oldKey), createNodeFromKey(newKey));
+            }
+            ContainerConfig container = containerRepository.get(oldPos.asLong());
+            if (container != null) movingContainers.put(oldPos, container);
+        }
+        Set<FaceAddress> movingKeys = faceMoves.keySet();
+        Set<FaceAddress> destinations = new HashSet<>();
+        for (FaceAddress newKey : faceMoves.values()) {
+            if (!destinations.add(newKey)) return false;
+            if (!movingKeys.contains(newKey) && getFaceConfig(newKey) != null) return false;
+        }
+        if (faceMoves.isEmpty() && movingContainers.isEmpty()) return false;
+        Set<Long> movingContainerPositions = new HashSet<>();
+        movingContainers.keySet().forEach(pos -> movingContainerPositions.add(pos.asLong()));
+        Set<Long> containerDestinations = new HashSet<>();
+        for (BlockPos oldPos : movingContainers.keySet()) {
+            BlockPos newPos = positionMoves.get(oldPos);
+            if (newPos == null || !containerDestinations.add(newPos.asLong())) return false;
+            if (!movingContainerPositions.contains(newPos.asLong())
+                && containerRepository.get(newPos.asLong()) != null) return false;
+        }
+        boolean facesChanged = faceMoves.entrySet().stream().anyMatch(move -> !move.getKey().equals(move.getValue()));
+        boolean positionsChanged = positionMoves.entrySet().stream()
+            .anyMatch(move -> move.getKey() != null && !move.getKey().equals(move.getValue()));
+        if (!facesChanged && !positionsChanged) return false;
+
+        // 所有维度中的入站与出站引用必须在移动面之前统一换址。
+        for (ServerLevel serverLevel : level.getServer().getAllLevels()) {
+            LinkManager manager = LinkManager.get(serverLevel);
+            for (FaceAddress key : manager.getAllConfigKeys()) {
+                FaceConfigComposite config = manager.getFaceConfig(key);
+                if (config != null && config.remapLinkedNodes(nodeMoves)) {
+                    manager.markFaceDirty(key);
+                    // 客户端只公开双端互惠的连接；静止端也必须同步其已换址的远端引用。
+                    // 对正在移动的旧端点，后续删除消息会覆盖这里排队的旧坐标同步。
+                    manager.scheduleNetworkSync(manager.createNodeFromKey(key));
+                }
+            }
+        }
+
+        movingContainers.keySet().forEach(pos -> containerRepository.remove(pos.asLong()));
+        for (var movingContainer : movingContainers.entrySet()) {
+            BlockPos oldPos = movingContainer.getKey();
+            BlockPos newPos = positionMoves.get(oldPos);
+            ContainerConfig container = movingContainer.getValue();
+            container.remapLinkedFaces(faceMoves);
+            container.setPos(newPos);
+            containerRepository.put(newPos.asLong(), container);
+            markContainerDirty(oldPos.asLong());
+            markContainerDirty(newPos.asLong());
+        }
+
+        GlobalLogisticsManager global = GlobalLogisticsManager.get(level.getServer());
+        Map<FaceAddress, FaceConfigComposite> movingConfigs = new LinkedHashMap<>();
+        for (FaceAddress oldKey : faceMoves.keySet()) {
+            FaceConfigComposite config = getFaceConfig(oldKey);
+            if (config != null) movingConfigs.put(oldKey, config);
+        }
+        movingConfigs.keySet().forEach(getConfigRepository()::remove);
+        movingConfigs.forEach((oldKey, config) -> {
+            cacheManager.remove(oldKey);
+            LogisticsNode oldNode = createNodeFromKey(oldKey);
+            for (var group : List.copyOf(config.faceConfig.getGroups())) {
+                global.unregisterNode(group.key(), oldNode);
+            }
+        });
+        for (var move : faceMoves.entrySet()) {
+            FaceAddress oldKey = move.getKey();
+            FaceAddress newKey = move.getValue();
+            FaceConfigComposite config = movingConfigs.get(oldKey);
+            if (config == null) continue;
+            LogisticsNode oldNode = createNodeFromKey(oldKey);
+            LogisticsNode newNode = createNodeFromKey(newKey);
+            BlockPos newPos = newKey.pos();
+            var groups = List.copyOf(config.faceConfig.getGroups());
+            var role = config.determineRole();
+
+            getConfigRepository().put(newKey, config);
+            config.setPosition(newPos);
+            config.setOnDirty(changed -> changeHandler.onFaceConfigChanged(
+                newKey, newPos, newKey.face(), changed));
+            refreshLocalCache(newKey, newPos, newKey.face(), config);
+            keyVersions.put(newKey, Math.max(
+                keyVersions.getOrDefault(newKey, 0L), config.getVersion()));
+
+            for (var group : groups) {
+                global.registerNode(group, newNode, role);
+                global.markGroupDirty(group.key());
+            }
+            NodeQueryService.invalidateNode(level.getServer(), oldNode);
+            NodeQueryService.invalidateNode(level.getServer(), newNode);
+            scheduleNetworkRemoval(oldNode, nextVersion(oldKey), config.faceConfig.getOwner());
+            scheduleNetworkSync(newNode);
+            markFaceDirty(oldKey);
+            markFaceDirty(newKey);
+        }
+        PlayerGroupStore.get(level.getServer()).remapConnectionNodes(nodeMoves);
+        Map<GlobalPos, GlobalPos> controllerMoves = new LinkedHashMap<>();
+        for (var positionMove : positionMoves.entrySet()) {
+            BlockPos oldPos = positionMove.getKey();
+            BlockPos newPos = positionMove.getValue();
+            if (oldPos == null || newPos == null) continue;
+            controllerMoves.put(
+                GlobalPos.of(level.dimension(), oldPos),
+                GlobalPos.of(level.dimension(), newPos));
+            invalidateCapabilityCache(oldPos);
+            invalidateCapabilityCache(newPos);
+        }
+        Set<GroupKey> changedControlGroups = RedstoneControlStore.get(level.getServer())
+            .remapNodes(level.getServer(), nodeMoves, controllerMoves);
+        for (GroupKey groupKey : changedControlGroups) {
+            Runnable sync = () -> topologySyncPort.syncRedstoneGroups(Set.of(groupKey));
+            if (!NodeMutationTransaction.defer(level.getServer(),
+                new DeferredRedstoneSyncKey(this, groupKey), sync)) {
+                sync.run();
+            }
+        }
+        return true;
     }
 
     public static LinkManager get(ServerLevel level) {

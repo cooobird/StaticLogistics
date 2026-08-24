@@ -2,6 +2,8 @@ package com.coobird.staticlogistics.client.event;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.NetworkPreviewLayoutStore;
 import com.coobird.staticlogistics.client.gui.component.ToolModeFeedback;
 import com.coobird.staticlogistics.client.gui.screen.BlueprintGroupScreen;
@@ -35,22 +37,70 @@ import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
+    private static int redstoneOverlayQueryCooldown;
+    private static int redstoneSignalQueryCooldown;
+    private static GroupKey lastRedstoneOverlayGroup;
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
             ClientLinkData.INSTANCE.invalidate();
+            ClientRedstoneControlData.INSTANCE.invalidate();
         }
     }
 
     @SubscribeEvent
     public static void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientLinkData.INSTANCE.invalidate();
+        ClientRedstoneControlData.INSTANCE.invalidate();
+        redstoneOverlayQueryCooldown = 0;
+        redstoneSignalQueryCooldown = 0;
+        lastRedstoneOverlayGroup = null;
         NetworkPreviewLayoutStore.INSTANCE.closeSession();
+    }
+
+    /**
+     * 手持配置器查看世界覆盖层时，周期同步当前分组的检测点与信号状态。
+     */
+    @SubscribeEvent
+    public static void onClientTick(ClientTickEvent.Post event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null) return;
+        ItemStack stack = minecraft.player.getMainHandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
+            stack = minecraft.player.getOffhandItem();
+        }
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
+            lastRedstoneOverlayGroup = null;
+            redstoneOverlayQueryCooldown = 0;
+            redstoneSignalQueryCooldown = 0;
+            return;
+        }
+        GroupKey groupKey = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
+        if (groupKey == null) {
+            lastRedstoneOverlayGroup = null;
+            redstoneOverlayQueryCooldown = 0;
+            redstoneSignalQueryCooldown = 0;
+            return;
+        }
+        if (!groupKey.equals(lastRedstoneOverlayGroup)) {
+            lastRedstoneOverlayGroup = groupKey;
+            redstoneOverlayQueryCooldown = 0;
+            redstoneSignalQueryCooldown = 0;
+        }
+        if (--redstoneOverlayQueryCooldown <= 0) {
+            PacketDistributor.sendToServer(new C2SQueryRedstoneGroupPayload(groupKey));
+            redstoneOverlayQueryCooldown = 40;
+        }
+        if (--redstoneSignalQueryCooldown <= 0) {
+            PacketDistributor.sendToServer(new C2SQueryRedstoneSignalsPayload(groupKey));
+            redstoneSignalQueryCooldown = 2;
+        }
     }
 
     @SubscribeEvent

@@ -17,6 +17,8 @@ import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
+import com.coobird.staticlogistics.logistics.redstone.RedstonePointSelectionSession;
 import com.coobird.staticlogistics.network.c2s.*;
 import com.coobird.staticlogistics.network.s2c.*;
 import com.coobird.staticlogistics.transfer.LogisticsTicker;
@@ -72,18 +74,24 @@ public class ServerEvents {
         ConnectionCommandService.release(event.getServer());
         GroupCommandService.release(event.getServer());
         BulkSelectionInteractionGuard.release(event.getServer());
+        RedstonePointSelectionSession.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
     }
 
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         MinecraftServer server = event.getEntity().getServer();
-        if (server != null) BlueprintUndoManager.get(server).clear(event.getEntity().getUUID());
+        if (server != null) {
+            BlueprintUndoManager.get(server).clear(event.getEntity().getUUID());
+            if (event.getEntity() instanceof ServerPlayer player) {
+                RedstonePointSelectionSession.cancel(player);
+            }
+        }
     }
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("14");
+        final PayloadRegistrar registrar = event.registrar("18");
 
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
@@ -92,6 +100,9 @@ public class ServerEvents {
         registrar.playToClient(S2CAccessSnapshotPayload.TYPE, S2CAccessSnapshotPayload.STREAM_CODEC, S2CAccessSnapshotPayload::handle);
         registrar.playToClient(S2CSelectLinkEndpointPayload.TYPE, S2CSelectLinkEndpointPayload.STREAM_CODEC, S2CSelectLinkEndpointPayload::handle);
         registrar.playToClient(S2CClearLinkEndpointPayload.TYPE, S2CClearLinkEndpointPayload.STREAM_CODEC, S2CClearLinkEndpointPayload::handle);
+        registrar.playToClient(S2CRedstoneControlStatePayload.TYPE, S2CRedstoneControlStatePayload.STREAM_CODEC, S2CRedstoneControlStatePayload::handle);
+        registrar.playToClient(S2CRedstoneControlGroupPayload.TYPE, S2CRedstoneControlGroupPayload.STREAM_CODEC, S2CRedstoneControlGroupPayload::handle);
+        registrar.playToClient(S2CRedstoneSignalsPayload.TYPE, S2CRedstoneSignalsPayload.STREAM_CODEC, S2CRedstoneSignalsPayload::handle);
 
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
         registrar.playToServer(C2SConfigureFacesPayload.TYPE, C2SConfigureFacesPayload.STREAM_CODEC, C2SConfigureFacesPayload::handle);
@@ -117,6 +128,12 @@ public class ServerEvents {
         registrar.playToServer(C2SCreateEmptyGroupPayload.TYPE, C2SCreateEmptyGroupPayload.STREAM_CODEC, C2SCreateEmptyGroupPayload::handle);
         registrar.playToServer(C2SRenameConnectionPayload.TYPE, C2SRenameConnectionPayload.STREAM_CODEC, C2SRenameConnectionPayload::handle);
         registrar.playToServer(C2SDeleteConnectionPayload.TYPE, C2SDeleteConnectionPayload.STREAM_CODEC, C2SDeleteConnectionPayload::handle);
+        registrar.playToServer(C2SQueryRedstoneControlPayload.TYPE, C2SQueryRedstoneControlPayload.STREAM_CODEC, C2SQueryRedstoneControlPayload::handle);
+        registrar.playToServer(C2SSetRedstoneControlPayload.TYPE, C2SSetRedstoneControlPayload.STREAM_CODEC, C2SSetRedstoneControlPayload::handle);
+        registrar.playToServer(C2SBeginRedstonePointSelectionPayload.TYPE, C2SBeginRedstonePointSelectionPayload.STREAM_CODEC, C2SBeginRedstonePointSelectionPayload::handle);
+        registrar.playToServer(C2SQueryRedstoneGroupPayload.TYPE, C2SQueryRedstoneGroupPayload.STREAM_CODEC, C2SQueryRedstoneGroupPayload::handle);
+        registrar.playToServer(C2SQueryRedstoneSignalsPayload.TYPE, C2SQueryRedstoneSignalsPayload.STREAM_CODEC, C2SQueryRedstoneSignalsPayload::handle);
+        registrar.playToServer(C2SRemoveRedstoneControlGroupPayload.TYPE, C2SRemoveRedstoneControlGroupPayload.STREAM_CODEC, C2SRemoveRedstoneControlGroupPayload::handle);
     }
 
     @SubscribeEvent
@@ -148,6 +165,9 @@ public class ServerEvents {
                     || LinkManager.get(level).getFaceConfig(FaceAddress.of(node)) == null;
             })
             .collect(Collectors.toSet());
+
+        RedstoneControlStore controls = RedstoneControlStore.get(event.getServer());
+        removedNodes.forEach(controls::removeNode);
 
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
@@ -196,6 +216,25 @@ public class ServerEvents {
                 }
             }
         }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRedstonePointSelectionRightClick(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
+            || !RedstonePointSelectionSession.hasPending(player)) return;
+
+        RedstonePointSelectionSession.BindResult result = RedstonePointSelectionSession.bind(player,
+            net.minecraft.core.GlobalPos.of(event.getLevel().dimension(), event.getPos()));
+        result.groupKeys().forEach(groupKey ->
+            C2SQueryRedstoneGroupPayload.sendGroupToAuthorized(player, groupKey));
+        player.displayClientMessage(Component.translatable(
+            "message.staticlogistics.redstone.point_bound", result.count(),
+            event.getPos().toShortString()).withStyle(ChatFormatting.GREEN), true);
+        event.setUseBlock(TriState.FALSE);
+        event.setUseItem(TriState.FALSE);
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

@@ -1,7 +1,9 @@
 package com.coobird.staticlogistics.network.sync;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.PermissionService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
@@ -10,6 +12,7 @@ import com.coobird.staticlogistics.logistics.node.sync.TopologySyncPort;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.network.s2c.S2CRemoveFaceTopologyPayload;
 import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
+import com.coobird.staticlogistics.network.c2s.C2SQueryRedstoneGroupPayload;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
@@ -20,6 +23,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 服务端轻量拓扑增量与删除墓碑的统一发送入口。
@@ -81,6 +85,19 @@ public class NetworkSyncManager implements TopologySyncPort {
             updates.add(S2CTopologyUpdatePayload.FaceUpdate.from(level, node, config));
         }
         sendTopologyPages(player, updates);
+    }
+
+    @Override
+    public void syncRedstoneGroups(Set<GroupKey> groupKeys) {
+        if (groupKeys == null || groupKeys.isEmpty()) return;
+        PermissionService permissions = PermissionService.getInstance();
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            for (GroupKey groupKey : groupKeys) {
+                if (permissions.canAccess(groupKey.ownerId(), player)) {
+                    C2SQueryRedstoneGroupPayload.sendGroup(player, groupKey);
+                }
+            }
+        }
     }
 
     private static void sendTopologyPages(

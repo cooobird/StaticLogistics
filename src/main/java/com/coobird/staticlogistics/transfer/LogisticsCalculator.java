@@ -1,9 +1,11 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.integration.sable.DynamicNodeSpace;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.world.level.Level;
 
 /**
  * 物流计算工具类 - 集中所有与升级倍率、范围、距离相关的计算
@@ -67,6 +69,47 @@ public final class LogisticsCalculator {
         return assessTransferRange(
             sender, receiver, getMaxTransferBlocks(senderContainer),
             isDimensionEffective(senderContainer));
+    }
+
+    /**
+     * 按真实世界位置评估范围；Sable plot 中的坐标会先经过子世界姿态变换。
+     */
+    public static TransferRangeAssessment assessTransferRange(
+        Level level,
+        GlobalPos sender,
+        GlobalPos receiver,
+        ContainerConfig senderContainer
+    ) {
+        return assessTransferRange(level, sender, receiver,
+            getMaxTransferBlocks(senderContainer), isDimensionEffective(senderContainer));
+    }
+
+    public static TransferRangeAssessment assessTransferRange(
+        Level level,
+        GlobalPos sender,
+        GlobalPos receiver,
+        int maximumBlocks,
+        boolean dimensionEffective
+    ) {
+        if (level == null || sender == null || receiver == null) {
+            throw new IllegalArgumentException("Transfer range level and endpoints are required");
+        }
+        if (maximumBlocks < 0) {
+            throw new IllegalArgumentException("Maximum transfer blocks must not be negative");
+        }
+        boolean crossDimension = !sender.dimension().equals(receiver.dimension());
+        int actualBlocks = crossDimension ? 0 : ceilBlocks(Math.sqrt(
+            DynamicNodeSpace.distanceSquared(level, sender.pos(), receiver.pos())));
+        if (dimensionEffective) {
+            return new TransferRangeAssessment(
+                crossDimension, true, true, actualBlocks, Integer.MAX_VALUE);
+        }
+        if (crossDimension) {
+            return new TransferRangeAssessment(true, false, false, 0, maximumBlocks);
+        }
+        boolean unlimited = maximumBlocks == Integer.MAX_VALUE;
+        return new TransferRangeAssessment(false, unlimited,
+            unlimited || actualBlocks <= maximumBlocks, actualBlocks, maximumBlocks);
     }
 
     /**
