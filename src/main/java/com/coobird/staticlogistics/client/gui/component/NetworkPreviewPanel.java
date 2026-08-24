@@ -2,13 +2,11 @@ package com.coobird.staticlogistics.client.gui.component;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.client.data.ClientConnection;
-import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.client.data.NetworkPreviewLayoutStore;
-import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.data.*;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlBinding;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.transfer.LogisticsCalculator;
 import com.coobird.staticlogistics.transfer.TransferTypeDisplay;
@@ -40,19 +38,28 @@ public final class NetworkPreviewPanel {
     private static final int LAYOUT_PADDING = 1;
     private static final int NODE_GAP = 5;
     private static final int SELECTED_CONNECTION_COLOR = 0xFFFFD45A;
+    private static final int CONTROL_SELECTION_COLOR = 0xFF55D7FF;
+    private static final int CONTROL_FRAME_COLOR = 0xB055D7FF;
+    private static final int CONTROL_FRAME_FILL = 0x182C7180;
+    private static final int CONTROL_FRAME_PADDING = 7;
+    private static final int CONTROL_FRAME_TITLE_HEIGHT = 11;
+    private static final int CONTROL_NODE_HEIGHT = 27;
     private static final double CONNECTION_LINE_WIDTH = 2.0D;
     private static final double SELECTED_CONNECTION_LINE_WIDTH = 4.0D;
     private static final int BOX_SELECTION_COLOR = 0xFF98FB98;
     private static final int BOX_SELECTION_FILL = 0x303A8F4A;
     private static final double BOX_SELECTION_THRESHOLD = 3.0D;
+    private static final int MAX_CONTROL_SELECTION = 256;
     private static final double MIN_ZOOM = 0.35D;
     private static final double MIN_AUTO_FIT_ZOOM = 0.72D;
     private static final double MAX_ZOOM = 1.8D;
 
     private final List<NodeHit> nodeHits = new ArrayList<>();
     private final List<ConnectionHit> connectionHits = new ArrayList<>();
+    private final List<ControlFrameHit> controlFrameHits = new ArrayList<>();
     private final Map<LogisticsNode, Point> currentLocalPositions = new LinkedHashMap<>();
     private final LinkedHashSet<LogisticsNode> selectedNodes = new LinkedHashSet<>();
+    private final LinkedHashSet<ConnectionKey> controlSelection = new LinkedHashSet<>();
     @Nullable
     private GroupKey groupKey;
     @Nullable
@@ -83,6 +90,7 @@ public final class NetworkPreviewPanel {
         this.groupKey = groupKey;
         this.selectedNode = null;
         this.selectedNodes.clear();
+        this.controlSelection.clear();
         this.panX = 0.0D;
         this.panY = 0.0D;
         this.zoom = 1.0D;
@@ -122,6 +130,29 @@ public final class NetworkPreviewPanel {
         return List.copyOf(selectedNodes);
     }
 
+    /**
+     * 返回准备共同绑定到一个红石检测点的连接。
+     */
+    public List<ConnectionKey> getRedstoneControlSelection() {
+        if (!controlSelection.isEmpty()) {
+            controlSelection.removeIf(key -> ClientLinkData.INSTANCE.findConnection(key) == null);
+            return List.copyOf(controlSelection);
+        }
+        if (groupKey != null && selectedNodes.size() > 1) {
+            List<ConnectionKey> enclosed = ClientLinkData.INSTANCE
+                .getConnectionsForGroup(groupKey).stream()
+                .filter(connection -> selectedNodes.contains(connection.first())
+                    && selectedNodes.contains(connection.second()))
+                .map(ClientConnection::key)
+                .limit(MAX_CONTROL_SELECTION)
+                .toList();
+            if (!enclosed.isEmpty()) return enclosed;
+        }
+        ConnectionKey focused = SelectionContext.getFocusedConnectionKey();
+        return focused == null || ClientLinkData.INSTANCE.findConnection(focused) == null
+            ? List.of() : List.of(focused);
+    }
+
     @Nullable
     public ClientConnection getSelectedConnection() {
         ConnectionKey key = SelectionContext.getFocusedConnectionKey();
@@ -153,6 +184,7 @@ public final class NetworkPreviewPanel {
                        int mouseX, int mouseY, double interfaceScale) {
         nodeHits.clear();
         connectionHits.clear();
+        controlFrameHits.clear();
         // 调用方传入的就是 atlas 内部可绘制区，不再重复推算外框缩进。
         GuiScissor.enable(graphics, interfaceScale, x, y, x + width, y + height);
 
@@ -184,6 +216,8 @@ public final class NetworkPreviewPanel {
             0.0D);
         graphics.pose().scale((float) transform.zoom, (float) transform.zoom, 1.0F);
         graphics.pose().translate(-transform.centerX, -transform.centerY, 0.0D);
+        renderRedstoneControlFrames(
+            graphics, font, connections, nodes, positions, transform);
         for (ClientConnection connection : connections) {
             Point first = positions.get(connection.first());
             Point second = positions.get(connection.second());
@@ -202,6 +236,156 @@ public final class NetworkPreviewPanel {
         graphics.pose().popPose();
         renderSelectionBox(graphics);
         graphics.disableScissor();
+    }
+
+    /**
+     * 在拓扑底层按检测点归并连接，用统一范围框表达红石控制集合。
+     * 框色不承担分组身份，只用于把控制层与资源传输层区分开。
+     */
+    private void renderRedstoneControlFrames(
+        GuiGraphics graphics,
+        Font font,
+        List<ClientConnection> connections,
+        Map<LogisticsNode, VisualNode> nodes,
+        Map<LogisticsNode, Point> positions,
+        ViewTransform transform
+    ) {
+        Map<com.coobird.staticlogistics.logistics.redstone.RedstoneControlBinding,
+            List<ClientConnection>> controlGroups = new LinkedHashMap<>();
+        for (ClientConnection connection : connections) {
+            ClientRedstoneControlData.State state =
+                ClientRedstoneControlData.INSTANCE.get(connection.key());
+            if (state == null || state.binding() == null) continue;
+            controlGroups.computeIfAbsent(state.binding(), ignored -> new ArrayList<>())
+                .add(connection);
+        }
+
+        for (List<ClientConnection> controlled : controlGroups.values()) {
+            ClientRedstoneControlData.State controlState = ClientRedstoneControlData.INSTANCE
+                .get(controlled.get(0).key());
+            RedstoneControlBinding binding = controlState.binding();
+            boolean selectedControlGroup = binding != null && groupKey != null
+                && ClientRedstoneControlData.INSTANCE.isControlGroupSelected(
+                groupKey, binding);
+            FrameBounds bounds = renderRedstoneControlFrame(
+                graphics, font, controlled, nodes, positions,
+                Component.translatable("gui.staticlogistics.redstone.control_frame",
+                    controlled.size()),
+                selectedControlGroup ? CONTROL_SELECTION_COLOR : CONTROL_FRAME_COLOR,
+                selectedControlGroup ? 0x30408090 : CONTROL_FRAME_FILL,
+                binding == null ? null : new ControlNodeInfo(
+                    binding, controlState.powered(), controlled.size()));
+            if (bounds != null && binding != null && groupKey != null) {
+                Point topLeft = transform.apply(new Point(bounds.left, bounds.top));
+                controlFrameHits.add(new ControlFrameHit(
+                    groupKey, binding,
+                    controlled.stream().map(ClientConnection::key).toList(),
+                    topLeft.x, topLeft.y,
+                    Math.max(1, (int) Math.round(bounds.width() * transform.zoom)),
+                    Math.max(1, (int) Math.round(bounds.height() * transform.zoom))));
+            }
+        }
+
+        if (!controlSelection.isEmpty()) {
+            List<ClientConnection> pending = connections.stream()
+                .filter(connection -> controlSelection.contains(connection.key()))
+                .toList();
+            renderRedstoneControlFrame(graphics, font, pending, nodes, positions,
+                Component.translatable("gui.staticlogistics.redstone.pending_frame",
+                    pending.size()), CONTROL_SELECTION_COLOR, 0x20408090, null);
+        }
+    }
+
+    private static FrameBounds renderRedstoneControlFrame(
+        GuiGraphics graphics,
+        Font font,
+        List<ClientConnection> connections,
+        Map<LogisticsNode, VisualNode> nodes,
+        Map<LogisticsNode, Point> positions,
+        Component title,
+        int borderColor,
+        int fillColor,
+        @Nullable ControlNodeInfo controlNode
+    ) {
+        if (connections.isEmpty()) return null;
+        int minimumX = Integer.MAX_VALUE;
+        int minimumY = Integer.MAX_VALUE;
+        int maximumX = Integer.MIN_VALUE;
+        int maximumY = Integer.MIN_VALUE;
+        for (ClientConnection connection : connections) {
+            for (LogisticsNode node : List.of(connection.first(), connection.second())) {
+                Point point = positions.get(node);
+                VisualNode visual = nodes.get(node);
+                if (point == null || visual == null) continue;
+                minimumX = Math.min(minimumX, point.x);
+                minimumY = Math.min(minimumY, point.y);
+                maximumX = Math.max(maximumX, point.x + visual.width);
+                maximumY = Math.max(maximumY, point.y + NODE_HEIGHT);
+            }
+        }
+        if (minimumX == Integer.MAX_VALUE) return null;
+
+        int left = minimumX - CONTROL_FRAME_PADDING;
+        int right = maximumX + CONTROL_FRAME_PADDING;
+        int top;
+        int controlLeft = 0;
+        int controlWidth = 0;
+        Component controlTitle = null;
+        Component controlPosition = null;
+        if (controlNode != null) {
+            controlTitle = Component.translatable(
+                "gui.staticlogistics.redstone.control_node",
+                controlNode.connectionCount(),
+                Component.translatable(controlNode.powered()
+                    ? "gui.staticlogistics.redstone.signal_on"
+                    : "gui.staticlogistics.redstone.signal_off"));
+            controlPosition = Component.translatable(
+                "gui.staticlogistics.redstone.control_node_position",
+                controlNode.binding().controller().pos().toShortString());
+            controlWidth = Math.max(104,
+                Math.max(font.width(controlTitle), font.width(controlPosition)) + 8);
+            int controlCenter = (minimumX + maximumX) / 2;
+            controlLeft = controlCenter - controlWidth / 2;
+            left = Math.min(left, controlLeft - CONTROL_FRAME_PADDING);
+            right = Math.max(right, controlLeft + controlWidth + CONTROL_FRAME_PADDING);
+            top = minimumY - CONTROL_NODE_HEIGHT - CONTROL_FRAME_PADDING - 5;
+        } else {
+            top = minimumY - CONTROL_FRAME_PADDING - CONTROL_FRAME_TITLE_HEIGHT;
+        }
+        int bottom = maximumY + CONTROL_FRAME_PADDING;
+        graphics.fill(left, top, right, bottom, fillColor);
+        graphics.renderOutline(left, top, right - left, bottom - top, borderColor);
+        if (controlNode == null) {
+            graphics.drawString(font, title, left + 4, top + 2, borderColor, false);
+        } else {
+            int controlTop = top + CONTROL_FRAME_PADDING;
+            int controlCenter = controlLeft + controlWidth / 2;
+            int stemBottom = minimumY - 1;
+            graphics.fill(controlCenter, controlTop + CONTROL_NODE_HEIGHT,
+                controlCenter + 1, stemBottom, borderColor);
+            graphics.fill(controlLeft, controlTop,
+                controlLeft + controlWidth, controlTop + CONTROL_NODE_HEIGHT,
+                0xE0283438);
+            graphics.renderOutline(controlLeft, controlTop,
+                controlWidth, CONTROL_NODE_HEIGHT, borderColor);
+            graphics.drawString(font, controlTitle,
+                controlLeft + 4, controlTop + 3, borderColor, false);
+            graphics.drawString(font, controlPosition,
+                controlLeft + 4, controlTop + 14, 0xFFB9C7CA, false);
+        }
+        return new FrameBounds(left, top, right, bottom);
+    }
+
+    @Nullable
+    public RedstoneControlFrameSelection getRedstoneControlFrameAt(
+        double mouseX, double mouseY
+    ) {
+        return controlFrameHits.stream()
+            .filter(hit -> hit.contains(mouseX, mouseY))
+            .min(Comparator.comparingInt(hit -> hit.width * hit.height))
+            .map(hit -> new RedstoneControlFrameSelection(
+                hit.groupKey, hit.binding, hit.connections))
+            .orElse(null);
     }
 
     private Map<LogisticsNode, VisualNode> collectNodes(
@@ -257,6 +441,9 @@ public final class NetworkPreviewPanel {
                     (int) Math.round(point.x()), (int) Math.round(point.y())));
             }
         });
+        if (resolveNodeOverlaps(localPositions, nodes, saved)) {
+            NetworkPreviewLayoutStore.INSTANCE.markDirty();
+        }
         if (centerViewOnNextLayout) centerView(localPositions, nodes, width, height);
 
         currentLocalPositions.clear();
@@ -264,6 +451,59 @@ public final class NetworkPreviewPanel {
         Map<LogisticsNode, Point> result = new LinkedHashMap<>(localPositions.size());
         localPositions.forEach((node, point) -> result.put(node, new Point(x + point.x, y + point.y)));
         return result;
+    }
+
+    /**
+     * 历史拖拽坐标在节点尺寸或拓扑改变后可能互相覆盖。按当前视觉顺序保留靠前节点，
+     * 只把后续冲突节点向下推到最近的空位；已保存节点的修正会同步回布局仓库。
+     */
+    private static boolean resolveNodeOverlaps(
+        Map<LogisticsNode, Point> positions,
+        Map<LogisticsNode, VisualNode> nodes,
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> saved
+    ) {
+        List<LogisticsNode> ordered = positions.keySet().stream()
+            .sorted(Comparator
+                .comparingInt((LogisticsNode node) -> saved.containsKey(node) ? 0 : 1)
+                .thenComparingInt(node -> positions.get(node).y)
+                .thenComparingInt(node -> positions.get(node).x)
+                .thenComparing(NetworkPreviewPanel::nodeKey))
+            .toList();
+        List<LogisticsNode> placed = new ArrayList<>();
+        boolean savedLayoutChanged = false;
+        for (LogisticsNode node : ordered) {
+            Point original = positions.get(node);
+            Point candidate = original;
+            boolean moved;
+            do {
+                moved = false;
+                for (LogisticsNode other : placed) {
+                    Point otherPoint = positions.get(other);
+                    if (!overlaps(candidate, nodes.get(node), otherPoint, nodes.get(other))) continue;
+                    candidate = new Point(candidate.x,
+                        otherPoint.y + NODE_HEIGHT + NODE_GAP);
+                    moved = true;
+                }
+            } while (moved);
+            if (!candidate.equals(original)) {
+                positions.put(node, candidate);
+                if (saved.containsKey(node)) {
+                    saved.put(node, new NetworkPreviewLayoutStore.Position(
+                        candidate.x, candidate.y));
+                    savedLayoutChanged = true;
+                }
+            }
+            placed.add(node);
+        }
+        return savedLayoutChanged;
+    }
+
+    private static boolean overlaps(Point first, VisualNode firstNode,
+                                    Point second, VisualNode secondNode) {
+        return first.x < second.x + secondNode.width + NODE_GAP
+            && first.x + firstNode.width + NODE_GAP > second.x
+            && first.y < second.y + NODE_HEIGHT + NODE_GAP
+            && first.y + NODE_HEIGHT + NODE_GAP > second.y;
     }
 
     /**
@@ -276,7 +516,8 @@ public final class NetworkPreviewPanel {
     ) {
         if (layout.legacyNodePositions().isEmpty()) return false;
         Map<GlobalPos, List<LogisticsNode>> nodesByPosition = new LinkedHashMap<>();
-        automatic.keySet().forEach(node -> nodesByPosition.computeIfAbsent(node.gPos(), ignored -> new ArrayList<>()).add(node));
+        automatic.keySet().forEach(node ->
+            nodesByPosition.computeIfAbsent(node.gPos(), ignored -> new ArrayList<>()).add(node));
         layout.legacyNodePositions().forEach((position, savedPosition) -> {
             List<LogisticsNode> matching = new ArrayList<>(nodesByPosition.getOrDefault(position, List.of()));
             matching.sort(Comparator.comparing(NetworkPreviewPanel::nodeKey));
@@ -333,19 +574,56 @@ public final class NetworkPreviewPanel {
         VisualNode secondNode,
         ViewTransform transform
     ) {
-        boolean firstOnLeft = first.x <= second.x;
-        double startX = firstOnLeft ? first.x + firstNode.width : first.x;
-        double startY = first.y + NODE_HEIGHT / 2.0D;
-        double endX = firstOnLeft ? second.x : second.x + secondNode.width;
-        double endY = second.y + NODE_HEIGHT / 2.0D;
+        double firstCenterX = first.x + firstNode.width / 2.0D;
+        double firstCenterY = first.y + NODE_HEIGHT / 2.0D;
+        double secondCenterX = second.x + secondNode.width / 2.0D;
+        double secondCenterY = second.y + NODE_HEIGHT / 2.0D;
+        double centerDeltaX = secondCenterX - firstCenterX;
+        double centerDeltaY = secondCenterY - firstCenterY;
+        boolean horizontalPorts = Math.abs(centerDeltaX) >= Math.abs(centerDeltaY) * 0.8D;
+
+        double startX;
+        double startY;
+        double endX;
+        double endY;
+        double firstControlX;
+        double firstControlY;
+        double secondControlX;
+        double secondControlY;
+        if (horizontalPorts) {
+            double sign = centerDeltaX >= 0.0D ? 1.0D : -1.0D;
+            startX = firstCenterX + sign * firstNode.width / 2.0D;
+            startY = firstCenterY;
+            endX = secondCenterX - sign * secondNode.width / 2.0D;
+            endY = secondCenterY;
+            double tangent = Mth.clamp(Math.abs(endX - startX) * 0.46D, 24.0D, 110.0D);
+            firstControlX = startX + sign * tangent;
+            firstControlY = startY;
+            secondControlX = endX - sign * tangent;
+            secondControlY = endY;
+        } else {
+            double sign = centerDeltaY >= 0.0D ? 1.0D : -1.0D;
+            startX = firstCenterX;
+            startY = firstCenterY + sign * NODE_HEIGHT / 2.0D;
+            endX = secondCenterX;
+            endY = secondCenterY - sign * NODE_HEIGHT / 2.0D;
+            double tangent = Mth.clamp(Math.abs(endY - startY) * 0.42D, 22.0D, 100.0D);
+            firstControlX = startX;
+            firstControlY = startY + sign * tangent;
+            secondControlX = endX;
+            secondControlY = endY - sign * tangent;
+        }
         ConnectionKey selectedKey = SelectionContext.getFocusedConnectionKey();
-        boolean selected = connection.key().equals(selectedKey);
+        boolean controlSelected = controlSelection.contains(connection.key());
+        boolean selected = connection.key().equals(selectedKey) || controlSelected;
+        int selectedColor = controlSelected
+            ? CONTROL_SELECTION_COLOR : SELECTED_CONNECTION_COLOR;
+        ClientRedstoneControlData.State redstoneState =
+            ClientRedstoneControlData.INSTANCE.get(connection.key());
+        boolean redstoneAllowed = redstoneState == null || redstoneState.allowed();
         int segments = Math.max(24, (int) Math.ceil(Math.hypot(
             endX - startX, endY - startY) / 2.0D));
         List<CurvePoint> centerLine = new ArrayList<>(segments + 1);
-        double deltaX = endX - startX;
-        double firstControlX = startX + deltaX * 0.42D;
-        double secondControlX = endX - deltaX * 0.42D;
         for (int i = 0; i <= segments; i++) {
             double t = i / (double) segments;
             double inverse = 1.0D - t;
@@ -354,23 +632,23 @@ public final class NetworkPreviewPanel {
                 + 3.0D * inverse * t * t * secondControlX
                 + t * t * t * endX;
             double py = inverse * inverse * inverse * startY
-                + 3.0D * inverse * inverse * t * startY
-                + 3.0D * inverse * t * t * endY
+                + 3.0D * inverse * inverse * t * firstControlY
+                + 3.0D * inverse * t * t * secondControlY
                 + t * t * t * endY;
             centerLine.add(new CurvePoint(px, py));
         }
 
         DirectionState forward = DirectionState.of(
             connection.first(), connection.firstTopology(), connection.second(),
-            connection.transfersFirstToSecond());
+            connection.transfersFirstToSecond() && redstoneAllowed);
         DirectionState backward = DirectionState.of(
             connection.second(), connection.secondTopology(), connection.first(),
-            connection.transfersSecondToFirst());
+            connection.transfersSecondToFirst() && redstoneAllowed);
         int activeDirections = (forward.active ? 1 : 0) + (backward.active ? 1 : 0);
         if (activeDirections == 0) {
             if (selected) {
                 drawSmoothLine(graphics, centerLine,
-                    SELECTED_CONNECTION_COLOR, SELECTED_CONNECTION_LINE_WIDTH, true);
+                    selectedColor, SELECTED_CONNECTION_LINE_WIDTH, true);
             }
             drawSmoothLine(graphics, centerLine, 0xFF888888, CONNECTION_LINE_WIDTH, true);
             connectionHits.add(new ConnectionHit(connection,
@@ -380,14 +658,16 @@ public final class NetworkPreviewPanel {
 
         List<Point> hitPoints = new ArrayList<>(
             centerLine.size() * activeDirections);
-        double laneOffset = activeDirections == 2 ? 7.0D : 0.0D;
+        double laneOffset = activeDirections == 2 ? 5.5D : 0.0D;
         if (forward.active) {
             renderDirection(graphics, hitPoints, centerLine,
-                forward, true, -laneOffset, selected, transform);
+                forward, true, -laneOffset, horizontalPorts,
+                selected, selectedColor, transform);
         }
         if (backward.active) {
             renderDirection(graphics, hitPoints, centerLine,
-                backward, false, laneOffset, selected, transform);
+                backward, false, laneOffset, horizontalPorts,
+                selected, selectedColor, transform);
         }
         connectionHits.add(new ConnectionHit(connection, List.copyOf(hitPoints)));
     }
@@ -402,14 +682,16 @@ public final class NetworkPreviewPanel {
         List<CurvePoint> centerLine,
         DirectionState direction,
         boolean startToEnd,
-        double offsetY,
+        double offset,
+        boolean horizontalPorts,
         boolean selected,
+        int selectedColor,
         ViewTransform transform
     ) {
-        List<CurvePoint> line = offsetLine(centerLine, offsetY);
+        List<CurvePoint> line = offsetLine(centerLine, offset, horizontalPorts);
         if (selected) {
             drawSmoothLine(graphics, line,
-                SELECTED_CONNECTION_COLOR, SELECTED_CONNECTION_LINE_WIDTH, !direction.allowed);
+                selectedColor, SELECTED_CONNECTION_LINE_WIDTH, !direction.allowed);
         }
         int semanticColor = direction.color();
         drawSmoothLine(graphics, line, semanticColor,
@@ -422,11 +704,14 @@ public final class NetworkPreviewPanel {
     /**
      * 双向连接使用两条完整错开的曲线，避免方向信息挤在同一条线上。
      */
-    private static List<CurvePoint> offsetLine(List<CurvePoint> centerLine, double offsetY) {
-        if (offsetY == 0.0D) return centerLine;
+    private static List<CurvePoint> offsetLine(List<CurvePoint> centerLine, double offset,
+                                               boolean horizontalPorts) {
+        if (offset == 0.0D) return centerLine;
         List<CurvePoint> result = new ArrayList<>(centerLine.size());
         for (CurvePoint point : centerLine) {
-            result.add(new CurvePoint(point.x, point.y + offsetY));
+            result.add(new CurvePoint(
+                point.x + (horizontalPorts ? 0.0D : offset),
+                point.y + (horizontalPorts ? offset : 0.0D)));
         }
         return List.copyOf(result);
     }
@@ -504,13 +789,15 @@ public final class NetworkPreviewPanel {
         if (end - start < 2) return;
         VertexConsumer consumer = graphics.bufferSource()
             .getBuffer(RenderType.debugLineStrip(width));
+        int alpha = color >>> 24;
+        int red = color >> 16 & 0xFF;
+        int green = color >> 8 & 0xFF;
+        int blue = color & 0xFF;
         for (int i = start; i < end; i++) {
             CurvePoint point = points.get(i);
             consumer.vertex(graphics.pose().last().pose(),
                     (float) point.x, (float) point.y, 0.0F)
-                .color((color >> 16) & 0xFF, (color >> 8) & 0xFF,
-                    color & 0xFF, (color >>> 24) & 0xFF)
-                .endVertex();
+                .color(red, green, blue, alpha).endVertex();
         }
         graphics.flush();
     }
@@ -584,6 +871,30 @@ public final class NetworkPreviewPanel {
             tooltip.add(Component.translatable("gui.staticlogistics.connection")
                 .withStyle(ChatFormatting.GOLD));
             tooltip.addAll(state.details);
+            graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
+            return;
+        }
+        ControlFrameHit controlHit = controlFrameHits.stream()
+            .filter(hit -> hit.contains(mouseX, mouseY))
+            .min(Comparator.comparingInt(hit -> hit.width * hit.height))
+            .orElse(null);
+        if (controlHit != null) {
+            ClientRedstoneControlData.State state = ClientRedstoneControlData.INSTANCE
+                .get(controlHit.connections.get(0));
+            List<Component> tooltip = new ArrayList<>();
+            tooltip.add(Component.translatable(
+                "gui.staticlogistics.redstone.control_frame",
+                controlHit.connections.size()).withStyle(ChatFormatting.AQUA));
+            tooltip.add(Component.translatable(
+                state != null && state.powered()
+                    ? "gui.staticlogistics.redstone.tooltip.powered_state"
+                    : "gui.staticlogistics.redstone.tooltip.unpowered_state"));
+            tooltip.add(Component.translatable(
+                    "gui.staticlogistics.redstone.tooltip.preview_group")
+                .withStyle(ChatFormatting.GREEN));
+            tooltip.add(Component.translatable(
+                    "gui.staticlogistics.redstone.tooltip.remove_group")
+                .withStyle(ChatFormatting.RED));
             graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
             return;
         }
@@ -678,7 +989,16 @@ public final class NetworkPreviewPanel {
         }
         for (ConnectionHit hit : connectionHits) {
             if (!hit.contains(mouseX, mouseY)) continue;
-            selectConnection(hit.connection);
+            if (multiSelect && button == 0) {
+                ConnectionKey key = hit.connection.key();
+                if (!controlSelection.remove(key)
+                    && controlSelection.size() < MAX_CONTROL_SELECTION) {
+                    controlSelection.add(key);
+                }
+            } else {
+                controlSelection.clear();
+                selectConnection(hit.connection);
+            }
             draggingNode = null;
             draggingNodes.clear();
             panning = false;
@@ -947,6 +1267,49 @@ public final class NetworkPreviewPanel {
                 }
             }
             return false;
+        }
+    }
+
+    private record FrameBounds(int left, int top, int right, int bottom) {
+        int width() {
+            return right - left;
+        }
+
+        int height() {
+            return bottom - top;
+        }
+    }
+
+    private record ControlNodeInfo(
+        RedstoneControlBinding binding,
+        boolean powered,
+        int connectionCount
+    ) {
+    }
+
+    private record ControlFrameHit(
+        GroupKey groupKey,
+        RedstoneControlBinding binding,
+        List<ConnectionKey> connections,
+        int x, int y, int width, int height
+    ) {
+        boolean contains(double mouseX, double mouseY) {
+            if (mouseX < x || mouseX > x + width
+                || mouseY < y || mouseY > y + height) return false;
+            int edge = 5;
+            return mouseY <= y + CONTROL_NODE_HEIGHT + CONTROL_FRAME_PADDING + 2
+                || mouseX <= x + edge || mouseX >= x + width - edge
+                || mouseY >= y + height - edge;
+        }
+    }
+
+    public record RedstoneControlFrameSelection(
+        GroupKey groupKey,
+        RedstoneControlBinding binding,
+        List<ConnectionKey> connections
+    ) {
+        public RedstoneControlFrameSelection {
+            connections = List.copyOf(connections);
         }
     }
 

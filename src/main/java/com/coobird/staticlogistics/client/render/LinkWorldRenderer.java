@@ -3,10 +3,7 @@ package com.coobird.staticlogistics.client.render;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.client.data.ClientConnection;
-import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.client.data.LinkSelectionScope;
-import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.data.*;
 import com.coobird.staticlogistics.content.item.BlueprintItem;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
@@ -33,9 +30,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * 世界内链接渲染器 —— 持连接配置器/蓝图时，在世界中渲染物流网络的可视化。
@@ -52,6 +47,12 @@ import java.util.Set;
  */
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class LinkWorldRenderer {
+    /**
+     * 保留连接最近出现过的方向和各方向动画时间，暂停后不会跳回起点。
+     */
+    private static final Map<ConnectionKey, FlowAnimationState> FLOW_STATES =
+        new HashMap<>();
+    private static Level flowStateLevel;
     public static final RenderType PIPE_XRAY = RenderType.create(
         "pipe_xray", DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS, 1536, false, false,
         RenderType.CompositeState.builder()
@@ -69,6 +70,10 @@ public class LinkWorldRenderer {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
+        if (flowStateLevel != mc.level) {
+            FLOW_STATES.clear();
+            flowStateLevel = mc.level;
+        }
 
         ItemStack stack = getActiveConfigurator(mc);
         if (stack.isEmpty()) return;
@@ -99,16 +104,40 @@ public class LinkWorldRenderer {
         // 先绘制已有连接，最后覆盖当前存点，确保两种状态不会互相淹没。
         LinkConfiguratorItem.ToolSettings settings = stack.getItem() instanceof LinkConfiguratorItem lci
             ? lci.getSettings(stack) : null;
-        if (groupKey != null)
+        if (groupKey != null) {
             renderGroupLinks(
                 groupKey, connectionKey,
                 dim, mat, b, visibility, pulse,
                 flowTime, particleStatus);
+            renderRedstoneControlPoint(groupKey, dim, mat, b, visibility);
+        }
         if (settings != null && !settings.storedNodes().isEmpty() && settings.storedMode() != null)
             renderStoredNodes(settings, dim, mat, b, visibility, pulse);
 
         ps.popPose();
         buf.endBatch(PIPE_XRAY);
+    }
+
+    /**
+     * 只渲染网络预览中当前选中控制组的检测点，并使用红石色线框。
+     */
+    private static void renderRedstoneControlPoint(
+        GroupKey groupKey,
+        ResourceKey<Level> dimension,
+        Matrix4f matrix,
+        VertexConsumer buffer,
+        WorldOverlayVisibility visibility
+    ) {
+        ClientRedstoneControlData.ControlGroup control =
+            ClientRedstoneControlData.INSTANCE.getSelectedControlGroup(groupKey);
+        if (control == null
+            || !control.binding().controller().dimension().equals(dimension)) return;
+        BlockPos position = control.binding().controller().pos();
+        if (!visibility.isBlockVisible(position)) return;
+        float brightness = control.powered() ? 1.0F : 0.45F;
+        LogisticsRenderHelper.drawFrame(buffer, matrix, position,
+            brightness, 0.12F * brightness, 0.08F * brightness,
+            control.powered() ? 0.62F : 0.34F);
     }
 
     private static void renderStoredNodes(LinkConfiguratorItem.ToolSettings settings,
@@ -124,20 +153,17 @@ public class LinkWorldRenderer {
             BlockPos p = node.gPos().pos();
             if (!visibility.isBlockVisible(p)) continue;
 
-            LogisticsRenderHelper.drawFrame(b, mat, p, 1.0f, 0.95f, 0.2f, 0.75f);
+            LogisticsRenderHelper.drawFrame(b, mat, p, 1.0f, 0.95f, 0.2f, 0.48f);
             double px = p.getX() + 0.5 + node.face().getStepX() * 0.512;
             double py = p.getY() + 0.5 + node.face().getStepY() * 0.512;
             double pz = p.getZ() + 0.5 + node.face().getStepZ() * 0.512;
-            LogisticsRenderHelper.drawFaceQuad(
-                b, mat, px, py, pz, node.face(),
-                0xFFFFFF33, 0.95f, 0.47f + pulse, 0, 1f);
             LogisticsRenderHelper.drawFaceQuad(
                 b, mat,
                 px + node.face().getStepX() * 0.003,
                 py + node.face().getStepY() * 0.003,
                 pz + node.face().getStepZ() * 0.003,
                 node.face(),
-                faceColor, 0.9f, 0.34f + pulse * 0.5f, 0, 1f);
+                faceColor, 0.58f, 0.30f + pulse * 0.35f, 0, 1f);
         }
     }
 
@@ -150,6 +176,10 @@ public class LinkWorldRenderer {
         double flowTime, ParticleStatus particleStatus) {
         Set<BlockPos> renderedFrames = new HashSet<>();
         List<ClientConnection> connections = ClientLinkData.INSTANCE.getConnectionsForGroup(groupKey);
+        Set<ConnectionKey> currentConnections = connections.stream()
+            .map(ClientConnection::key).collect(java.util.stream.Collectors.toSet());
+        FLOW_STATES.keySet().removeIf(key -> key.groupKey().equals(groupKey)
+            && !currentConnections.contains(key));
         boolean wholeGroup = focusedConnection == null;
         if (focusedConnection != null) {
             ClientConnection focused = findConnection(
@@ -262,15 +292,55 @@ public class LinkWorldRenderer {
         BlockPos secondPosition = second.gPos().pos();
         if (!visibility.isConnectionVisible(firstPosition, secondPosition)) return;
 
-        if (connection.transfersFirstToSecond()) {
+        boolean activeFirstToSecond = connection.transfersFirstToSecond();
+        boolean activeSecondToFirst = connection.transfersSecondToFirst();
+        ConnectionKey connectionKey = connection.key();
+        ClientRedstoneControlData.State redstoneState =
+            ClientRedstoneControlData.INSTANCE.get(connectionKey);
+        boolean redstoneAllowed = redstoneState == null || redstoneState.allowed();
+        FlowAnimationState flowState = FLOW_STATES.computeIfAbsent(
+            connectionKey, ignored -> new FlowAnimationState());
+        flowState.update(flowTime, activeFirstToSecond,
+            activeSecondToFirst, redstoneAllowed);
+
+        if (flowState.firstToSecondVisible) {
             drawFlow(first, connection.firstTopology(),
                 second, connection.secondTopology(),
-                matrix, buffer, flowTime, particleStatus);
+                matrix, buffer, flowState.firstToSecondTime, particleStatus);
         }
-        if (connection.transfersSecondToFirst()) {
+        if (flowState.secondToFirstVisible) {
             drawFlow(second, connection.secondTopology(),
                 first, connection.firstTopology(),
-                matrix, buffer, flowTime, particleStatus);
+                matrix, buffer, flowState.secondToFirstTime, particleStatus);
+        }
+    }
+
+    /**
+     * 每个方向独立累计动画时间；输入/输出或红石停运时冻结，恢复后继续。
+     */
+    private static final class FlowAnimationState {
+        private boolean firstToSecondVisible;
+        private boolean secondToFirstVisible;
+        private double firstToSecondTime;
+        private double secondToFirstTime;
+        private double lastFrameTime = Double.NaN;
+
+        private void update(double frameTime, boolean firstActive,
+                            boolean secondActive, boolean redstoneAllowed) {
+            firstToSecondVisible |= firstActive;
+            secondToFirstVisible |= secondActive;
+            if (!firstToSecondVisible && !secondToFirstVisible) {
+                firstToSecondVisible = true;
+            }
+            if (Double.isNaN(lastFrameTime)) {
+                lastFrameTime = frameTime;
+                return;
+            }
+            double elapsed = Math.max(0.0D,
+                Math.min(0.25D, frameTime - lastFrameTime));
+            if (redstoneAllowed && firstActive) firstToSecondTime += elapsed;
+            if (redstoneAllowed && secondActive) secondToFirstTime += elapsed;
+            lastFrameTime = frameTime;
         }
     }
 

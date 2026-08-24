@@ -45,7 +45,8 @@ public class StrategyBasedTargetSelector {
                 FaceConfigComposite targetCfg = LinkManager.get(targetLevel)
                     .getFaceConfig(FaceAddress.of(target));
                 if (targetCfg != null && TransferUtils.isTransferLinkActive(
-                    sourceNode, sourceConfig, target, targetCfg, groupKey)) {
+                    targetLevel.getServer(), sourceNode, sourceConfig,
+                    target, targetCfg, groupKey)) {
                     targets.put(target, targetCfg);
                 }
             });

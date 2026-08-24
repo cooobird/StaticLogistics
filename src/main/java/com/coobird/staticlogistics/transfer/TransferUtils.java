@@ -3,13 +3,16 @@ package com.coobird.staticlogistics.transfer;
 import com.coobird.staticlogistics.api.CapGetter;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import org.slf4j.Logger;
@@ -119,7 +122,8 @@ public class TransferUtils {
                 FaceConfigComposite sourceConfig = LinkManager.get(sourceLevel)
                     .getFaceConfig(FaceAddress.of(sourceNode));
                 if (sourceConfig == null || !isTransferLinkActive(
-                    sourceNode, sourceConfig, targetNode, targetConfig, scope.getKey())) continue;
+                    targetLevel.getServer(), sourceNode, sourceConfig,
+                    targetNode, targetConfig, scope.getKey())) continue;
                 Set<ResourceLocation> selectedTypeIds = Set.copyOf(sourceConfig.getSelectedTypeIds());
                 for (LogisticsResource<?> type : getPresentTypes(
                     sourceLevel, sourceNode.gPos().pos(), sourceNode.face())) {
@@ -137,6 +141,7 @@ public class TransferUtils {
      * 统一判断一条分组内链接当前是否可参与传输。
      */
     public static boolean isTransferLinkActive(
+        MinecraftServer server,
         LogisticsNode sourceNode, FaceConfigComposite sourceConfig,
         LogisticsNode targetNode, FaceConfigComposite targetConfig, GroupKey groupKey
     ) {
@@ -144,7 +149,9 @@ public class TransferUtils {
         if (!sourceConfig.faceConfig.containsGroup(groupKey)
             || !targetConfig.faceConfig.containsGroup(groupKey)) return false;
         return sourceConfig.getLinkedNodes(groupKey).contains(targetNode)
-            && targetConfig.getLinkedNodes(groupKey).contains(sourceNode);
+            && targetConfig.getLinkedNodes(groupKey).contains(sourceNode)
+            && RedstoneControlStore.get(server).isAllowed(server,
+            new ConnectionKey(groupKey, sourceNode, targetNode));
     }
 
     public interface TransferProtocol<C, T> {

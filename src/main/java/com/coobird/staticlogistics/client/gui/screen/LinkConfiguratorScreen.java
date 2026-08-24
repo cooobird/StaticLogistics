@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
 import com.coobird.staticlogistics.client.data.SelectionContext;
 import com.coobird.staticlogistics.client.gui.component.*;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
@@ -23,6 +24,8 @@ import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
@@ -56,10 +59,8 @@ import java.util.Objects;
 public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfiguratorMenu> {
     private static final int RESPONSIVE_MARGIN = 4;
     private static final int OUTER_WIDTH = SLGuiTextures.LinkConfigurator.WIDTH;
-    private static final int OUTER_TOP_OFFSET = TitleBar.Y_OFFSET
-        - SLGuiTextures.Title.CONTENT_INSET;
-    private static final int OUTER_BOTTOM_OFFSET = SLGuiTextures.LinkConfigurator.HEIGHT
-        - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
+    private static final int OUTER_TOP_OFFSET = TitleBar.Y_OFFSET - SLGuiTextures.Title.CONTENT_INSET;
+    private static final int OUTER_BOTTOM_OFFSET = SLGuiTextures.LinkConfigurator.HEIGHT - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
     private static final int OUTER_HEIGHT = OUTER_BOTTOM_OFFSET - OUTER_TOP_OFFSET;
     private static final int TITLE_RIGHT_PADDING = 8;
     private static final int TITLE_Y = 6;
@@ -94,6 +95,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private NodeConfigurationPanel nodeConfigurationPanel;
     private ConfirmationDialog confirmationDialog;
     private boolean previewExpanded;
+    private Button redstoneControlButton;
+    private int redstoneQueryCooldown;
+    private int redstoneGroupQueryCooldown;
     private double interfaceScale = 1.0D;
     private int virtualWidth;
     private int virtualHeight;
@@ -119,24 +123,32 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         // 顶部工具状态来自配置器物品。
         ItemStack stack = toolStack();
         SelectionContext.syncFromItem(stack);
-        modeIdx = ToolMode.fromId(PortItemStackExtension.getDataOrDefault(
-            stack, SLDataComponents.TOOL_MODE.get(), 0)).getId();
+        modeIdx = ToolMode.fromId(
+            PortItemStackExtension.getDataOrDefault(
+                stack, SLDataComponents.TOOL_MODE.get(), 0)).getId();
         String initialGroup = SelectionContext.getSelectedGroupId();
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP.get(), initialGroup);
 
         // 右上分组区和左上网络预览共享同一个选中分组。
         groupPanel = new GroupPanel(font, leftPos, topPos);
         groupPanel.setInitialState(stack);
-        preview.setGroup(PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get()));
+        preview.setGroup(PortItemStackExtension.getData(
+            stack, SLDataComponents.SELECTED_GROUP_KEY.get()));
         if (menu.hasTarget()) {
             preview.selectNode(menu.getTargetNode());
         }
 
         // 左下节点区复用当前 Menu；页签切换不会创建新容器界面。
-        nodeConfigurationPanel = new NodeConfigurationPanel(
-            menu, font, this::openFilter, this::selectSide,
-            SoundUtil::playClickSound, preview::getSelectedNodes);
+        nodeConfigurationPanel = new NodeConfigurationPanel(menu, font, this::openFilter, this::selectSide, SoundUtil::playClickSound, preview::getSelectedNodes);
         nodeConfigurationPanel.init(leftPos, topPos, this::addRenderableWidget);
+        redstoneControlButton = Button.builder(
+                Component.translatable("gui.staticlogistics.redstone.bind"),
+                ignored -> selectRedstoneControlPoint())
+            .bounds(leftPos + SLGuiTextures.LinkConfigurator.CONNECTION_X + 77,
+                topPos + SLGuiTextures.LinkConfigurator.CONNECTION_Y + 2, 62, 13)
+            .build();
+        addRenderableWidget(redstoneControlButton);
+        updateRedstoneControlButton();
     }
 
     @Override
@@ -152,6 +164,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         renderToolbarLabels(graphics);
         ToolModeBar.render(graphics, font, leftPos, topPos, modeIdx);
         TransferTypeGrid.render(graphics, transferTypeView(), leftPos, topPos, mouseX, mouseY);
+
         renderPreviewToggle(graphics, mouseX, mouseY);
         if (!previewExpanded) {
             preview.render(graphics, font, previewLeft(), previewTop(),
@@ -179,11 +192,13 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private void renderInterface(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
         if (previewExpanded) renderExpandedPreview(graphics, mouseX, mouseY);
+        if (previewExpanded && redstoneControlButton != null) {
+            redstoneControlButton.render(graphics, mouseX, mouseY, partialTick);
+        }
         if (confirmationDialog != null && confirmationDialog.isOpen()) {
             confirmationDialog.render(graphics, font, virtualWidth, virtualHeight, mouseX, mouseY);
             return;
         }
-
         /*
          * 玩家背包和快捷栏必须完整走原版容器 Tooltip 流程，才能保留物品名称、
          * 附魔、数据组件以及其他模组追加的 Tooltip。配置槽由节点区域在原版
@@ -212,7 +227,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             mouseY,
             previewLeft(),
             previewTop(),
-            previewWidth(), previewHeight());
+            SLGuiTextures.LinkConfigurator.PREVIEW_WIDTH,
+            SLGuiTextures.LinkConfigurator.PREVIEW_HEIGHT);
         nodeConfigurationPanel.renderTooltips(graphics, mouseX, mouseY);
         renderTopTooltips(graphics, mouseX, mouseY);
         renderPreviewToggleTooltip(graphics, mouseX, mouseY);
@@ -224,9 +240,19 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         nodeConfigurationPanel.tick();
         ItemStack stack = toolStack();
         if (!Objects.equals(
-            PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_CONNECTION_KEY.get()),
+            PortItemStackExtension.getData(
+                stack, SLDataComponents.SELECTED_CONNECTION_KEY.get()),
             SelectionContext.getFocusedConnectionKey())) {
             syncFocusedConnection(false);
+        }
+        updateRedstoneControlButton();
+        if (--redstoneQueryCooldown <= 0) {
+            queryFocusedRedstoneControl();
+            redstoneQueryCooldown = 10;
+        }
+        if (--redstoneGroupQueryCooldown <= 0) {
+            queryVisibleRedstoneControls();
+            redstoneGroupQueryCooldown = 10;
         }
     }
 
@@ -330,22 +356,50 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             return confirmationDialog.mouseClicked(
                 mouseX, mouseY, button, virtualWidth, virtualHeight);
         }
+        if (button == 0) {
+            NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
+                preview.getRedstoneControlFrameAt(mouseX, mouseY);
+            if (controlFrame != null) {
+                ClientRedstoneControlData.INSTANCE.selectControlGroup(
+                    controlFrame.groupKey(), controlFrame.binding());
+                SoundUtil.playClickSound();
+                return true;
+            }
+        } else if (button == 1) {
+            NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
+                preview.getRedstoneControlFrameAt(mouseX, mouseY);
+            if (controlFrame != null) {
+                confirmationDialog = new ConfirmationDialog(
+                    Component.translatable("gui.staticlogistics.redstone.remove_group"),
+                    Component.translatable(
+                        "gui.staticlogistics.redstone.confirm_remove_group",
+                        controlFrame.connections().size()),
+                    () -> removeRedstoneControlGroup(controlFrame));
+                SoundUtil.playClickSound();
+                return true;
+            }
+        }
         if (button == 0 && NodeConfigControls.hitOpBtn(mouseX, mouseY,
             leftPos + PREVIEW_TOGGLE_X, topPos + PREVIEW_TOGGLE_Y)) {
             previewExpanded = !previewExpanded;
             preview.resetView();
+            updateRedstoneControlButton();
             SoundUtil.playClickSound();
+            return true;
+        }
+        if (redstoneControlButton != null
+            && redstoneControlButton.mouseClicked(mouseX, mouseY, button)) {
             return true;
         }
         if (previewExpanded) {
             ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();
-            if (preview.mouseClicked(mouseX, mouseY, button,
-                previewLeft(), previewTop(), previewWidth(), previewHeight())) {
+            if (preview.mouseClicked(mouseX, mouseY, button, previewLeft(), previewTop(),
+                previewWidth(), previewHeight())) {
                 if (!Objects.equals(focusBeforePreviewClick,
                     SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
                 LogisticsNode node = preview.getSelectedNode();
                 if (node != null) openNode(node);
-                else clearNodeTarget();
+                else if (preview.getSelectedConnection() == null) clearNodeTarget();
                 return true;
             }
             return true;
@@ -382,10 +436,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (clickedMode >= 0) {
             modeIdx = clickedMode;
             ItemStack stack = toolStack();
-            PortItemStackExtension.setData(
-                stack, SLDataComponents.TOOL_MODE.get(), modeIdx);
-            SLNetwork.HANDLER.sendToServer(
-                new C2SUpdateToolModePayload(modeIdx));
+            PortItemStackExtension.setData(stack, SLDataComponents.TOOL_MODE.get(), modeIdx);
+            SLNetwork.HANDLER.sendToServer(new C2SUpdateToolModePayload(modeIdx));
             ToolModeFeedback.show(minecraft.player, stack, ToolMode.fromId(modeIdx));
             SoundUtil.playClickSound();
             return true;
@@ -416,7 +468,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
         ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();
         if (preview.mouseClicked(mouseX, mouseY, button,
-            previewLeft(), previewTop(), previewWidth(), previewHeight())) {
+            previewLeft(), previewTop(),
+            previewWidth(), previewHeight())) {
             if (!Objects.equals(
                 focusBeforePreviewClick,
                 SelectionContext.getFocusedConnectionKey())) {
@@ -425,7 +478,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             LogisticsNode node = preview.getSelectedNode();
             if (node != null) {
                 openNode(node);
-            } else {
+            } else if (preview.getSelectedConnection() == null) {
                 clearNodeTarget();
             }
             return true;
@@ -587,8 +640,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         groupPanel.mouseReleased();
         ConnectionKey focusBeforeRelease = SelectionContext.getFocusedConnectionKey();
         if (preview.mouseReleased()) {
-            if (!Objects.equals(focusBeforeRelease,
-                SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
+            if (!Objects.equals(focusBeforeRelease, SelectionContext.getFocusedConnectionKey())) {
+                syncFocusedConnection(false);
+            }
             LogisticsNode selectedNode = preview.getSelectedNode();
             if (selectedNode == null) {
                 clearNodeTarget();
@@ -631,9 +685,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                 else if (groupPanel.isRenameBoxVisible()) handleConfirmRename();
                 return true;
             }
+            if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)) {
+                return true;
+            }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
-        if (nodeConfigurationPanel.keyPressed(keyCode)) return true;
         if (groupPanel.isCreatingGroup()
             && groupPanel.getNewGroupBox().canConsumeInput()) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -645,8 +701,12 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
                 setFocused(null);
                 return true;
             }
+            if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)) {
+                return true;
+            }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
+        if (nodeConfigurationPanel.keyPressed(keyCode)) return true;
         if (Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)
             || keyCode == GLFW.GLFW_KEY_ESCAPE) {
             onClose();
@@ -681,7 +741,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     private GroupRef selectedGroup() {
         ItemStack stack = toolStack();
-        var key = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
+        var key = PortItemStackExtension.getData(
+            stack, SLDataComponents.SELECTED_GROUP_KEY.get());
         return key == null ? null : ClientLinkData.INSTANCE.findGroupRef(key);
     }
 
@@ -714,8 +775,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             TransferTypeGrid.toggleToolType(stack, type);
             List<ResourceLocation> selectedTypeIds =
                 TransferTypeGrid.getToolSelectedTypeIds(stack);
-            int legacyMask = PortItemStackExtension.getDataOrDefault(
-                stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
+            int legacyMask =
+                PortItemStackExtension.getDataOrDefault(
+                    stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
             SLNetwork.HANDLER.sendToServer(
                 new C2SUpdateToolTypesPayload(selectedTypeIds, legacyMask));
             SoundUtil.playClickSound();
@@ -755,15 +817,20 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         SelectionContext.setGroupSelection(groupName, groupKey);
         if (connectionKey != null) SelectionContext.focusConnection(connectionKey);
         PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP.get(), groupName);
-        if (group == null) PortItemStackExtension.removeData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
-        else PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
+        if (group == null) {
+            PortItemStackExtension.removeData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
+        } else {
+            PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
+        }
         if (connectionKey == null) {
             PortItemStackExtension.removeData(stack, SLDataComponents.SELECTED_CONNECTION_KEY.get());
         } else {
-            PortItemStackExtension.setData(stack, SLDataComponents.SELECTED_CONNECTION_KEY.get(), connectionKey);
+            PortItemStackExtension.setData(
+                stack, SLDataComponents.SELECTED_CONNECTION_KEY.get(), connectionKey);
         }
         SLNetwork.HANDLER.sendToServer(
             new C2SUpdateToolGroupPayload(groupName, groupKey));
+        redstoneGroupQueryCooldown = 0;
         if (playSound) SoundUtil.playClickSound();
     }
 
@@ -778,15 +845,110 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             SelectionContext.clearConnectionFocus();
         }
         if (connectionKey == null) {
-            PortItemStackExtension.removeData(
-                stack, SLDataComponents.SELECTED_CONNECTION_KEY.get());
+            PortItemStackExtension.removeData(stack, SLDataComponents.SELECTED_CONNECTION_KEY.get());
         } else {
             PortItemStackExtension.setData(
                 stack, SLDataComponents.SELECTED_CONNECTION_KEY.get(), connectionKey);
         }
         SLNetwork.HANDLER.sendToServer(
             new C2SUpdateToolConnectionPayload(connectionKey));
+        queryFocusedRedstoneControl();
+        updateRedstoneControlButton();
         if (playSound) SoundUtil.playClickSound();
+    }
+
+    private void queryFocusedRedstoneControl() {
+        ConnectionKey connection = SelectionContext.getFocusedConnectionKey();
+        if (connection != null) {
+            SLNetwork.HANDLER.sendToServer(new C2SQueryRedstoneControlPayload(connection));
+        }
+    }
+
+    private void queryVisibleRedstoneControls() {
+        GroupKey groupKey = PortItemStackExtension.getData(
+            toolStack(), SLDataComponents.SELECTED_GROUP_KEY.get());
+        if (groupKey != null) {
+            SLNetwork.HANDLER.sendToServer(new C2SQueryRedstoneGroupPayload(groupKey));
+        }
+    }
+
+    private void selectRedstoneControlPoint() {
+        List<ConnectionKey> connections = preview.getRedstoneControlSelection();
+        if (connections.isEmpty()) return;
+        if (hasShiftDown() && connections.size() == 1) {
+            SLNetwork.HANDLER.sendToServer(
+                new C2SSetRedstoneControlPayload(connections.get(0), false));
+            redstoneQueryCooldown = 2;
+            SoundUtil.playClickSound();
+            return;
+        }
+        SLNetwork.HANDLER.sendToServer(
+            new C2SBeginRedstonePointSelectionPayload(connections));
+        SoundUtil.playClickSound();
+        onClose();
+    }
+
+    private void removeRedstoneControlGroup(
+        NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame
+    ) {
+        if (ClientRedstoneControlData.INSTANCE.isControlGroupSelected(
+            controlFrame.groupKey(), controlFrame.binding())) {
+            ClientRedstoneControlData.INSTANCE.selectControlGroup(null, null);
+        }
+        SLNetwork.HANDLER.sendToServer(new C2SRemoveRedstoneControlGroupPayload(
+            controlFrame.groupKey(), controlFrame.binding()));
+        redstoneGroupQueryCooldown = 2;
+        SoundUtil.playClickSound();
+    }
+
+    private void updateRedstoneControlButton() {
+        if (redstoneControlButton == null) return;
+        List<ConnectionKey> connections = preview.getRedstoneControlSelection();
+        ConnectionKey connection = connections.size() == 1 ? connections.get(0) : null;
+        if (previewExpanded) {
+            redstoneControlButton.setX(leftPos + EXPANDED_PREVIEW_FRAME_X
+                + EXPANDED_PREVIEW_FRAME_WIDTH - 70);
+            redstoneControlButton.setY(topPos + EXPANDED_PREVIEW_FRAME_Y + 3);
+        } else {
+            redstoneControlButton.setX(leftPos
+                + SLGuiTextures.LinkConfigurator.CONNECTION_X + 77);
+            redstoneControlButton.setY(topPos
+                + SLGuiTextures.LinkConfigurator.CONNECTION_Y + 2);
+        }
+        redstoneControlButton.visible = true;
+        redstoneControlButton.active = !connections.isEmpty();
+
+        if (connections.isEmpty()) {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.select_links"));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                "gui.staticlogistics.redstone.tooltip.select_links")));
+            return;
+        }
+
+        if (connections.size() > 1) {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.bind_count", connections.size()));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                "gui.staticlogistics.redstone.tooltip.bind_count", connections.size())));
+            return;
+        }
+
+        ClientRedstoneControlData.State state =
+            ClientRedstoneControlData.INSTANCE.get(connection);
+        if (state != null && state.bound()) {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.rebind"));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                state.powered()
+                    ? "gui.staticlogistics.redstone.tooltip.powered"
+                    : "gui.staticlogistics.redstone.tooltip.unpowered")));
+        } else {
+            redstoneControlButton.setMessage(Component.translatable(
+                "gui.staticlogistics.redstone.bind"));
+            redstoneControlButton.setTooltip(Tooltip.create(Component.translatable(
+                "gui.staticlogistics.redstone.tooltip.bind")));
+        }
     }
 
     private ItemStack toolStack() {

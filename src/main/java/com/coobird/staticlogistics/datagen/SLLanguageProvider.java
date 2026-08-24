@@ -100,6 +100,67 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.output", "Output", "输出");
         add("gui.staticlogistics.groups_and_connections", "Groups and Connections", "分组与连接");
         add("gui.staticlogistics.current_connection", "Current Connection", "当前连接");
+        add("gui.staticlogistics.redstone.bind", "Bind Detector", "绑定检测点");
+        add("gui.staticlogistics.redstone.select_links", "No Links Selected", "未选择连接");
+        add("gui.staticlogistics.redstone.tooltip.select_links",
+            "First click a connection line; or hold the preview multi-select key and select at least two nodes. Then this button binds those connections to a world redstone detector.",
+            "先点击一条连线；或按住网络预览多选键选择至少两个节点。随后此按钮会把这些连接绑定到世界中的红石检测点。");
+        add("gui.staticlogistics.redstone.rebind", "Change Detector", "更换检测点");
+        add("gui.staticlogistics.redstone.bind_count", "Bind %s Links", "绑定 %s 对");
+        add("gui.staticlogistics.redstone.control_frame",
+            "Redstone Control · %s", "红石控制 · %s 对");
+        add("gui.staticlogistics.redstone.control_node",
+            "Detector · %s Links · %s", "红石检测点 · %s 对 · %s");
+        add("gui.staticlogistics.redstone.control_node_position",
+            "Position: %s", "位置：%s");
+        add("gui.staticlogistics.redstone.signal_on", "Powered", "有信号");
+        add("gui.staticlogistics.redstone.signal_off", "Unpowered", "无信号");
+        add("gui.staticlogistics.redstone.pending_frame",
+            "Pending Binding · %s", "待绑定 · %s 对");
+        add("gui.staticlogistics.redstone.remove_group",
+            "Remove Redstone Control", "解除红石控制组");
+        add("gui.staticlogistics.redstone.confirm_remove_group",
+            "Remove redstone control from these %s connections?",
+            "解除这 %s 对连接的红石控制吗？");
+        add("gui.staticlogistics.redstone.tooltip.remove_group",
+            "Right-click the frame or its title to remove this entire control group",
+            "右键范围框边缘或标题可解除整组红石控制");
+        add("gui.staticlogistics.redstone.tooltip.preview_group",
+            "Left-click the frame or its title to preview this detection point in the world",
+            "左键范围框边缘或标题，在世界中预览这一组的检测点");
+        add("gui.staticlogistics.redstone.tooltip.powered_state",
+            "Detection point: powered", "检测点：已有信号");
+        add("gui.staticlogistics.redstone.tooltip.unpowered_state",
+            "Detection point: unpowered", "检测点：无信号");
+        add("gui.staticlogistics.redstone.running", "RS: Running", "红石：运行");
+        add("gui.staticlogistics.redstone.paused", "RS: Paused", "红石：暂停");
+        add("gui.staticlogistics.redstone.tooltip.bind",
+            "Return to the world and right-click a block to use it as this connection's redstone detection point.",
+            "点击后回到世界，右键一个方块，将它设为这条连接的红石检测点。");
+        add("gui.staticlogistics.redstone.tooltip.bind_count",
+            "Bind %s selected connections to one detection point. Hold the preview multi-select key and click connection lines to change the selection.",
+            "把选中的 %s 对连接绑定到同一个检测点；按住网络预览多选键点击连线可增减选择。");
+        add("gui.staticlogistics.redstone.tooltip.rebind",
+            "This connection is controlled elsewhere. Click to move it into this container's control set.",
+            "该连接正由其他检测点控制；点击将它移入当前容器的控制方案。");
+        add("gui.staticlogistics.redstone.tooltip.powered",
+            "Current detector: powered. Click to choose another detector; Shift-click to remove control.",
+            "当前检测点：有信号。点击可重新选择检测点；Shift+点击可解除控制。");
+        add("gui.staticlogistics.redstone.tooltip.unpowered",
+            "Current detector: unpowered. Click to choose another detector; Shift-click to remove control.",
+            "当前检测点：无信号。点击可重新选择检测点；Shift+点击可解除控制。");
+        add("message.staticlogistics.redstone.select_point",
+            "Right-click a block to bind %s connection(s); right-click air to cancel",
+            "右键方块以绑定 %s 对连接；右键空气取消");
+        add("message.staticlogistics.redstone.point_bound",
+            "Bound %s connection(s) to detection point %s",
+            "已将 %s 对连接绑定到检测点 %s");
+        add("message.staticlogistics.redstone.selection_cancelled",
+            "Redstone detection point selection cancelled",
+            "已取消选择红石检测点");
+        add("message.staticlogistics.redstone.selection_failed",
+            "The selected connections changed or cannot be modified",
+            "所选连接已变化或当前无权修改");
         add("gui.staticlogistics.node_configuration", "Node Configuration", "节点配置");
         add("gui.staticlogistics.enabled", "Enabled", "已启用");
         add("gui.staticlogistics.disabled", "Disabled", "已禁用");
@@ -198,6 +259,13 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.filter.full", "Filter is full", "过滤器已满");
         add("gui.staticlogistics.filter.no_tags", "This item has no tags, cannot be added to the filter.", "此物品无标签，无法添加到过滤器");
         add("tooltip.staticlogistics.shift_right_mark", "%s+Right-click: quick mark item to filter", "%s+右键：快速标记物品到过滤器");
+        add("tooltip.staticlogistics.filter.mode", "Mode: %s", "模式：%s");
+        add("tooltip.staticlogistics.filter.nbt_mode", "Component matching: %s", "组件匹配：%s");
+        add("tooltip.staticlogistics.filter.damage", "Ignore durability: %s", "忽略耐久：%s");
+        add("tooltip.staticlogistics.filter.items", "Marked items (%s):", "已标记物品（%s）：");
+        add("tooltip.staticlogistics.filter.fluids", "Marked fluids (%s):", "已标记流体（%s）：");
+        add("tooltip.staticlogistics.filter.tags", "Tag conditions (%s):", "标签条件（%s）：");
+        add("tooltip.staticlogistics.filter.empty", "No entries marked", "未标记过滤项");
         add("gui.staticlogistics.filter.left_click_item", "Left-click: mark %s", "左键：标记 %s");
         add("gui.staticlogistics.filter.right_click_fluid", "Right-click: mark %s", "右键：标记 %s");
 
@@ -323,6 +391,8 @@ public class SLLanguageProvider extends LanguageProvider {
         add("tooltip.staticlogistics.none", "None", "无");
         add("tooltip.staticlogistics.saved_list", "List of stored nodes：", "已存储的节点列表：");
         add("tooltip.staticlogistics.stored_mode", "Mode: %s", "模式：%s");
+        add("tooltip.staticlogistics.stored_summary", "%s blocks / %s connection faces selected", "已选取 %s 个方块 / %s 个连接面");
+        add("tooltip.staticlogistics.stored_more", "... and %s more", "……另有 %s 项未显示");
         add("tooltip.staticlogistics.scroll_hint", "%s+Scroll: switch mode", "%s+滚轮：切换工具模式");
         add("tooltip.staticlogistics.clear_stored_hint", "Press %s to clear stored nodes", "按 %s 清除已存储节点");
         add("tooltip.staticlogistics.auto_clean_info", "Auto-clears stored nodes after each link (configurable)", "每次建立连接后自动清空存储节点（配置文件可关闭）");

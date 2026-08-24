@@ -18,6 +18,9 @@ import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
+import com.coobird.staticlogistics.logistics.redstone.RedstonePointSelectionSession;
+import com.coobird.staticlogistics.network.c2s.C2SQueryRedstoneGroupPayload;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import com.coobird.staticlogistics.transfer.NodeQueryService;
@@ -36,6 +39,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
@@ -77,6 +81,15 @@ public class ServerEvents {
         GlobalLogisticsManager.release(event.getServer());
         NodeQueryService.release(event.getServer());
         BulkSelectionInteractionGuard.release(event.getServer());
+        RedstonePointSelectionSession.release(event.getServer());
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            BlueprintUndoManager.get(player.server).clear(player.getUUID());
+            RedstonePointSelectionSession.cancel(player);
+        }
     }
 
     @SubscribeEvent
@@ -108,6 +121,9 @@ public class ServerEvents {
                     || LinkManager.get(level).getFaceConfig(FaceAddress.of(node)) == null;
             })
             .collect(Collectors.toSet());
+
+        RedstoneControlStore controls = RedstoneControlStore.get(event.getServer());
+        removedNodes.forEach(controls::removeNode);
 
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
@@ -157,6 +173,26 @@ public class ServerEvents {
                 }
             }
         }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRedstonePointSelectionRightClick(
+        PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
+            || !RedstonePointSelectionSession.hasPending(player)) return;
+        RedstonePointSelectionSession.BindResult result =
+            RedstonePointSelectionSession.bind(player,
+                net.minecraft.core.GlobalPos.of(event.getLevel().dimension(), event.getPos()));
+        result.groupKeys().forEach(groupKey ->
+            C2SQueryRedstoneGroupPayload.sendGroupToAuthorized(player, groupKey));
+        player.displayClientMessage(Component.translatable(
+            "message.staticlogistics.redstone.point_bound", result.count(),
+            event.getPos().toShortString()).withStyle(ChatFormatting.GREEN), true);
+        event.setUseBlock(Event.Result.DENY);
+        event.setUseItem(Event.Result.DENY);
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

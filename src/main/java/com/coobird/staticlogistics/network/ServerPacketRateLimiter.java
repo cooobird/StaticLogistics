@@ -20,7 +20,8 @@ public final class ServerPacketRateLimiter {
         STORED_NODE_CLEAR(20),
         BULK_NODE_SELECTION(4),
         GROUP_CREATION(4),
-        BLUEPRINT_UNDO(2);
+        BLUEPRINT_UNDO(2),
+        REDSTONE_SIGNAL_QUERY(10);
 
         private final int maximumPerSecond;
 

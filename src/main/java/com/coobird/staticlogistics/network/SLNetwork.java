@@ -7,9 +7,12 @@ import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortNetworkHandler;
 
 public class SLNetwork {
-    public static final PortNetworkHandler HANDLER = new PortNetworkHandler(StaticLogistics.MODID, "3");
+    public static final PortNetworkHandler HANDLER = new PortNetworkHandler(StaticLogistics.MODID, "4");
 
     public static void init() {
+        HANDLER.registerInGameC2S(C2SBeginRedstonePointSelectionPayload.class,
+            C2SBeginRedstonePointSelectionPayload.ID,
+            C2SBeginRedstonePointSelectionPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SBlueprintUndoPayload.class, C2SBlueprintUndoPayload.ID,
             C2SBlueprintUndoPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SBulkSelectNodesPayload.class, C2SBulkSelectNodesPayload.ID,
@@ -38,12 +41,27 @@ public class SLNetwork {
             C2SOpenLinkEndpointPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SOpenNodeFilterPayload.class, C2SOpenNodeFilterPayload.ID,
             C2SOpenNodeFilterPayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SQueryRedstoneControlPayload.class,
+            C2SQueryRedstoneControlPayload.ID,
+            C2SQueryRedstoneControlPayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SQueryRedstoneGroupPayload.class,
+            C2SQueryRedstoneGroupPayload.ID,
+            C2SQueryRedstoneGroupPayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SQueryRedstoneSignalsPayload.class,
+            C2SQueryRedstoneSignalsPayload.ID,
+            C2SQueryRedstoneSignalsPayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SRemoveRedstoneControlGroupPayload.class,
+            C2SRemoveRedstoneControlGroupPayload.ID,
+            C2SRemoveRedstoneControlGroupPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SRenameConnectionPayload.class, C2SRenameConnectionPayload.ID,
             C2SRenameConnectionPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SReturnToLinkConfiguratorPayload.class, C2SReturnToLinkConfiguratorPayload.ID,
             C2SReturnToLinkConfiguratorPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SSelectLinkEndpointSidePayload.class, C2SSelectLinkEndpointSidePayload.ID,
             C2SSelectLinkEndpointSidePayload.STREAM_CODEC, IPortPacket.C2S::handle);
+        HANDLER.registerInGameC2S(C2SSetRedstoneControlPayload.class,
+            C2SSetRedstoneControlPayload.ID,
+            C2SSetRedstoneControlPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SUpdateBlueprintPreviewPayload.class, C2SUpdateBlueprintPreviewPayload.ID,
             C2SUpdateBlueprintPreviewPayload.STREAM_CODEC, IPortPacket.C2S::handle);
         HANDLER.registerInGameC2S(C2SUpdateFilterOnHandPayload.class, C2SUpdateFilterOnHandPayload.ID,
@@ -68,6 +86,15 @@ public class SLNetwork {
             S2CGroupDirectoryPayload.STREAM_CODEC, IPortPacket.S2C::handle);
         HANDLER.registerInGameS2C(S2CRemoveFaceTopologyPayload.class, S2CRemoveFaceTopologyPayload.ID,
             S2CRemoveFaceTopologyPayload.STREAM_CODEC, IPortPacket.S2C::handle);
+        HANDLER.registerInGameS2C(S2CRedstoneControlGroupPayload.class,
+            S2CRedstoneControlGroupPayload.ID,
+            S2CRedstoneControlGroupPayload.STREAM_CODEC, IPortPacket.S2C::handle);
+        HANDLER.registerInGameS2C(S2CRedstoneControlStatePayload.class,
+            S2CRedstoneControlStatePayload.ID,
+            S2CRedstoneControlStatePayload.STREAM_CODEC, IPortPacket.S2C::handle);
+        HANDLER.registerInGameS2C(S2CRedstoneSignalsPayload.class,
+            S2CRedstoneSignalsPayload.ID,
+            S2CRedstoneSignalsPayload.STREAM_CODEC, IPortPacket.S2C::handle);
         HANDLER.registerInGameS2C(S2CSelectLinkEndpointPayload.class, S2CSelectLinkEndpointPayload.ID,
             S2CSelectLinkEndpointPayload.STREAM_CODEC, IPortPacket.S2C::handle);
         HANDLER.registerInGameS2C(S2CTopologyUpdatePayload.class, S2CTopologyUpdatePayload.ID,

@@ -2,7 +2,10 @@ package com.coobird.staticlogistics.client.event;
 
 import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
+import com.coobird.staticlogistics.client.data.NetworkPreviewLayoutStore;
 import com.coobird.staticlogistics.client.gui.component.ToolModeFeedback;
 import com.coobird.staticlogistics.client.gui.screen.BlueprintGroupScreen;
 import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
@@ -29,6 +32,7 @@ import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.RenderHighlightEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import net.minecraftforge.eventbus.api.Event;
@@ -40,6 +44,9 @@ import org.mesdag.portlib.event.client.PortRegisterMenuScreensEvent;
 
 @Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
+    private static int redstoneOverlayQueryCooldown;
+    private static int redstoneSignalQueryCooldown;
+    private static GroupKey lastRedstoneOverlayGroup;
 
     public static void registerModBus(IEventBus modEventBus) {
         installClientHooks();
@@ -51,12 +58,59 @@ public class ClientEvents {
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
             ClientLinkData.INSTANCE.invalidate();
+            ClientRedstoneControlData.INSTANCE.invalidate();
         }
     }
 
     @SubscribeEvent
     public static void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientLinkData.INSTANCE.invalidate();
+        ClientRedstoneControlData.INSTANCE.invalidate();
+        redstoneOverlayQueryCooldown = 0;
+        redstoneSignalQueryCooldown = 0;
+        lastRedstoneOverlayGroup = null;
+        NetworkPreviewLayoutStore.INSTANCE.closeSession();
+    }
+
+    /**
+     * 手持配置器查看世界覆盖层时，低频同步结构、高频同步红石电平。
+     */
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.level == null) return;
+        ItemStack stack = minecraft.player.getMainHandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
+            stack = minecraft.player.getOffhandItem();
+        }
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
+            lastRedstoneOverlayGroup = null;
+            redstoneOverlayQueryCooldown = 0;
+            redstoneSignalQueryCooldown = 0;
+            return;
+        }
+        GroupKey groupKey = PortItemStackExtension.getData(
+            stack, SLDataComponents.SELECTED_GROUP_KEY.get());
+        if (groupKey == null) {
+            lastRedstoneOverlayGroup = null;
+            redstoneOverlayQueryCooldown = 0;
+            redstoneSignalQueryCooldown = 0;
+            return;
+        }
+        if (!groupKey.equals(lastRedstoneOverlayGroup)) {
+            lastRedstoneOverlayGroup = groupKey;
+            redstoneOverlayQueryCooldown = 0;
+            redstoneSignalQueryCooldown = 0;
+        }
+        if (--redstoneOverlayQueryCooldown <= 0) {
+            SLNetwork.HANDLER.sendToServer(new C2SQueryRedstoneGroupPayload(groupKey));
+            redstoneOverlayQueryCooldown = 40;
+        }
+        if (--redstoneSignalQueryCooldown <= 0) {
+            SLNetwork.HANDLER.sendToServer(new C2SQueryRedstoneSignalsPayload(groupKey));
+            redstoneSignalQueryCooldown = 2;
+        }
     }
 
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
