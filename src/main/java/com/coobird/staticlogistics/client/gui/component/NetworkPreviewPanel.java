@@ -2,11 +2,7 @@ package com.coobird.staticlogistics.client.gui.component;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.client.data.ClientConnection;
-import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
-import com.coobird.staticlogistics.client.data.NetworkPreviewLayoutStore;
-import com.coobird.staticlogistics.client.data.SelectionContext;
+import com.coobird.staticlogistics.client.data.*;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.FaceTopology;
@@ -57,11 +53,14 @@ public final class NetworkPreviewPanel {
     private static final double MIN_ZOOM = 0.35D;
     private static final double MIN_AUTO_FIT_ZOOM = 0.72D;
     private static final double MAX_ZOOM = 1.8D;
+    private static final int SNAP_SEARCH_STEP = 6;
+    private static final int SNAP_SEARCH_RADIUS = 48;
 
     private final List<NodeHit> nodeHits = new ArrayList<>();
     private final List<ConnectionHit> connectionHits = new ArrayList<>();
     private final List<ControlFrameHit> controlFrameHits = new ArrayList<>();
     private final Map<LogisticsNode, Point> currentLocalPositions = new LinkedHashMap<>();
+    private final Map<LogisticsNode, Integer> currentNodeWidths = new LinkedHashMap<>();
     private final LinkedHashSet<LogisticsNode> selectedNodes = new LinkedHashSet<>();
     private final LinkedHashSet<ConnectionKey> controlSelection = new LinkedHashSet<>();
     @Nullable
@@ -104,6 +103,8 @@ public final class NetworkPreviewPanel {
         this.boxSelectionCandidates.clear();
         this.draggingNode = null;
         this.draggingNodes.clear();
+        this.currentLocalPositions.clear();
+        this.currentNodeWidths.clear();
     }
 
     public void removeLayout(GroupKey groupKey) {
@@ -184,6 +185,25 @@ public final class NetworkPreviewPanel {
         SelectionContext.clearConnectionFocus();
     }
 
+    /**
+     * 返回右侧列表需要联动高亮的连接，不改变节点配置或红石控制选择。
+     */
+    public Set<ConnectionKey> getListHighlightedConnections() {
+        if (!controlSelection.isEmpty()) return Set.copyOf(controlSelection);
+        ConnectionKey focused = SelectionContext.getFocusedConnectionKey();
+        if (focused != null) return Set.of(focused);
+        if (groupKey == null || selectedNodes.isEmpty()) return Set.of();
+        boolean singleNode = selectedNodes.size() == 1;
+        return ClientLinkData.INSTANCE.getConnectionsForGroup(groupKey).stream()
+            .filter(connection -> singleNode
+                ? selectedNodes.contains(connection.first())
+                || selectedNodes.contains(connection.second())
+                : selectedNodes.contains(connection.first())
+                && selectedNodes.contains(connection.second()))
+            .map(ClientConnection::key)
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    }
+
     public void render(GuiGraphics graphics, Font font, int x, int y, int width, int height,
                        int mouseX, int mouseY, double interfaceScale) {
         nodeHits.clear();
@@ -231,10 +251,12 @@ public final class NetworkPreviewPanel {
             if (firstNode == null || secondNode == null) continue;
             renderConnection(graphics, connection, first, second, firstNode, secondNode, transform);
         }
+        Set<LogisticsNode> overlappingDraggedNodes = getOverlappingDraggedNodes();
         for (var entry : nodes.entrySet()) {
             Point point = positions.get(entry.getKey());
             if (point != null) {
-                renderNode(graphics, font, entry.getValue(), point, transform);
+                renderNode(graphics, font, entry.getValue(), point, transform,
+                    overlappingDraggedNodes.contains(entry.getKey()));
             }
         }
         graphics.pose().popPose();
@@ -445,37 +467,41 @@ public final class NetworkPreviewPanel {
                     (int) Math.round(point.x()), (int) Math.round(point.y())));
             }
         });
-        if (resolveNodeOverlaps(localPositions, nodes, saved)) {
+        if (placeNewNodesWithoutMovingSaved(localPositions, nodes, saved)) {
             NetworkPreviewLayoutStore.INSTANCE.markDirty();
         }
         if (centerViewOnNextLayout) centerView(localPositions, nodes, width, height);
 
         currentLocalPositions.clear();
         currentLocalPositions.putAll(localPositions);
+        currentNodeWidths.clear();
+        nodes.forEach((node, visual) -> currentNodeWidths.put(node, visual.width));
         Map<LogisticsNode, Point> result = new LinkedHashMap<>(localPositions.size());
         localPositions.forEach((node, point) -> result.put(node, new Point(x + point.x, y + point.y)));
         return result;
     }
 
     /**
-     * 历史拖拽坐标在节点尺寸或拓扑改变后可能互相覆盖。按当前视觉顺序保留靠前节点，
-     * 只把后续冲突节点向下推到最近的空位；已保存节点的修正会同步回布局仓库。
+     * 已存在的节点位置具有最高优先级，永远不因其他节点加入而移动。只有尚未保存位置的
+     * 新节点会从自动布局位置向下寻找最近空位，并在确定后立即固定下来。
      */
-    private static boolean resolveNodeOverlaps(
+    private static boolean placeNewNodesWithoutMovingSaved(
         Map<LogisticsNode, Point> positions,
         Map<LogisticsNode, VisualNode> nodes,
         Map<LogisticsNode, NetworkPreviewLayoutStore.Position> saved
     ) {
         List<LogisticsNode> ordered = positions.keySet().stream()
             .sorted(Comparator
-                .comparingInt((LogisticsNode node) -> saved.containsKey(node) ? 0 : 1)
-                .thenComparingInt(node -> positions.get(node).y)
+                .comparingInt((LogisticsNode node) -> positions.get(node).y)
                 .thenComparingInt(node -> positions.get(node).x)
                 .thenComparing(NetworkPreviewPanel::nodeKey))
             .toList();
-        List<LogisticsNode> placed = new ArrayList<>();
-        boolean savedLayoutChanged = false;
+        List<LogisticsNode> placed = ordered.stream()
+            .filter(saved::containsKey)
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        boolean layoutChanged = false;
         for (LogisticsNode node : ordered) {
+            if (saved.containsKey(node)) continue;
             Point original = positions.get(node);
             Point candidate = original;
             boolean moved;
@@ -491,15 +517,13 @@ public final class NetworkPreviewPanel {
             } while (moved);
             if (!candidate.equals(original)) {
                 positions.put(node, candidate);
-                if (saved.containsKey(node)) {
-                    saved.put(node, new NetworkPreviewLayoutStore.Position(
-                        candidate.x, candidate.y));
-                    savedLayoutChanged = true;
-                }
             }
+            saved.put(node, new NetworkPreviewLayoutStore.Position(
+                candidate.x, candidate.y));
+            layoutChanged = true;
             placed.add(node);
         }
-        return savedLayoutChanged;
+        return layoutChanged;
     }
 
     private static boolean overlaps(Point first, VisualNode firstNode,
@@ -802,15 +826,15 @@ public final class NetworkPreviewPanel {
     }
 
     private void renderNode(GuiGraphics graphics, Font font, VisualNode visualNode, Point point,
-                            ViewTransform transform) {
+                            ViewTransform transform, boolean overlappingWhileDragging) {
         LogisticsNode node = visualNode.representative();
         FaceTopology topology = visualNode.topology();
         boolean primarySelected = node.equals(selectedNode);
         boolean selected = selectedNodes.contains(node);
         boolean boxCandidate = boxSelectionCandidates.contains(node) && !selected;
-        int border = primarySelected ? 0xFF98FB98
+        int border = overlappingWhileDragging ? 0xFFFF5555 : primarySelected ? 0xFF98FB98
             : selected ? 0xFFFFD45A : boxCandidate ? BOX_SELECTION_COLOR : 0xFF767676;
-        int background = primarySelected ? 0xFF315B36
+        int background = overlappingWhileDragging ? 0xFF6A3030 : primarySelected ? 0xFF315B36
             : selected ? 0xFF5A5130 : boxCandidate ? 0xFF3F5942 : 0xFF3A3A3A;
         int nodeWidth = visualNode.width;
         graphics.fill(point.x, point.y, point.x + nodeWidth, point.y + NODE_HEIGHT, border);
@@ -1043,7 +1067,8 @@ public final class NetworkPreviewPanel {
                     .nodePositions();
             double localDeltaX = deltaX / zoom;
             double localDeltaY = deltaY / zoom;
-            boolean moved = false;
+            Map<LogisticsNode, NetworkPreviewLayoutStore.Position> proposed =
+                new LinkedHashMap<>();
             for (LogisticsNode node : draggingNodes) {
                 NetworkPreviewLayoutStore.Position point = layout.get(node);
                 if (point == null) {
@@ -1051,11 +1076,11 @@ public final class NetworkPreviewPanel {
                     if (current == null) continue;
                     point = new NetworkPreviewLayoutStore.Position(current.x, current.y);
                 }
-                layout.put(node, new NetworkPreviewLayoutStore.Position(
+                proposed.put(node, new NetworkPreviewLayoutStore.Position(
                     point.x() + localDeltaX, point.y() + localDeltaY));
-                moved = true;
             }
-            if (!moved) return false;
+            if (proposed.isEmpty()) return false;
+            layout.putAll(proposed);
             NetworkPreviewLayoutStore.INSTANCE.markDirty();
             return true;
         }
@@ -1065,6 +1090,58 @@ public final class NetworkPreviewPanel {
         panX += deltaX;
         panY += deltaY;
         return true;
+    }
+
+    /**
+     * 拖动节点只能移动自身；命中其他节点时拒绝本次位移，不推动对方。
+     */
+    private boolean wouldOverlapStationaryNode(
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> proposed
+    ) {
+        for (var moved : proposed.entrySet()) {
+            int movedWidth = currentNodeWidths.getOrDefault(
+                moved.getKey(), MIN_NODE_WIDTH);
+            Point movedPoint = new Point(
+                (int) Math.round(moved.getValue().x()),
+                (int) Math.round(moved.getValue().y()));
+            for (var stationary : currentLocalPositions.entrySet()) {
+                if (proposed.containsKey(stationary.getKey())) continue;
+                int stationaryWidth = currentNodeWidths.getOrDefault(
+                    stationary.getKey(), MIN_NODE_WIDTH);
+                if (overlaps(movedPoint, movedWidth,
+                    stationary.getValue(), stationaryWidth)) return true;
+            }
+        }
+        return false;
+    }
+
+    private Set<LogisticsNode> getOverlappingDraggedNodes() {
+        if (draggingNodes.isEmpty()) return Set.of();
+        Set<LogisticsNode> result = new HashSet<>();
+        for (LogisticsNode moved : draggingNodes) {
+            Point movedPoint = currentLocalPositions.get(moved);
+            if (movedPoint == null) continue;
+            int movedWidth = currentNodeWidths.getOrDefault(moved, MIN_NODE_WIDTH);
+            for (var stationary : currentLocalPositions.entrySet()) {
+                if (draggingNodes.contains(stationary.getKey())) continue;
+                int stationaryWidth = currentNodeWidths.getOrDefault(
+                    stationary.getKey(), MIN_NODE_WIDTH);
+                if (overlaps(movedPoint, movedWidth,
+                    stationary.getValue(), stationaryWidth)) {
+                    result.add(moved);
+                    break;
+                }
+            }
+        }
+        return Set.copyOf(result);
+    }
+
+    private static boolean overlaps(Point first, int firstWidth,
+                                    Point second, int secondWidth) {
+        return first.x < second.x + secondWidth + NODE_GAP
+            && first.x + firstWidth + NODE_GAP > second.x
+            && first.y < second.y + NODE_HEIGHT + NODE_GAP
+            && first.y + NODE_HEIGHT + NODE_GAP > second.y;
     }
 
     /**
@@ -1088,6 +1165,7 @@ public final class NetworkPreviewPanel {
                 SoundUtil.playClickSound();
             }
         }
+        if (draggingNode != null) snapDraggedNodesToNearestFreePosition();
         panning = false;
         panningDistance = 0.0D;
         boxSelecting = false;
@@ -1095,6 +1173,60 @@ public final class NetworkPreviewPanel {
         draggingNode = null;
         draggingNodes.clear();
         return handled;
+    }
+
+    /**
+     * 松手后只平移本次拖动集合，并按真实距离寻找距离释放点最近的空位。
+     */
+    private void snapDraggedNodesToNearestFreePosition() {
+        if (groupKey == null || draggingNodes.isEmpty()) return;
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> layout =
+            NetworkPreviewLayoutStore.INSTANCE.getOrCreate(groupKey).nodePositions();
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> current =
+            new LinkedHashMap<>();
+        for (LogisticsNode node : draggingNodes) {
+            NetworkPreviewLayoutStore.Position point = layout.get(node);
+            if (point != null) current.put(node, point);
+        }
+        if (current.isEmpty() || !wouldOverlapStationaryNode(current)) return;
+        List<GridOffset> candidates = new ArrayList<>();
+        for (int x = -SNAP_SEARCH_RADIUS; x <= SNAP_SEARCH_RADIUS; x++) {
+            for (int y = -SNAP_SEARCH_RADIUS; y <= SNAP_SEARCH_RADIUS; y++) {
+                if (x != 0 || y != 0) candidates.add(new GridOffset(x, y));
+            }
+        }
+        candidates.sort(Comparator
+            .comparingInt(GridOffset::distanceSquared)
+            .thenComparingInt(offset -> Math.abs(offset.y))
+            .thenComparingInt(offset -> Math.abs(offset.x)));
+        for (GridOffset offset : candidates) {
+            if (trySnapOffset(layout, current, offset.x, offset.y)) return;
+        }
+    }
+
+    private boolean trySnapOffset(
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> layout,
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> current,
+        int gridX,
+        int gridY
+    ) {
+        double offsetX = gridX * SNAP_SEARCH_STEP;
+        double offsetY = gridY * SNAP_SEARCH_STEP;
+        Map<LogisticsNode, NetworkPreviewLayoutStore.Position> proposed =
+            new LinkedHashMap<>();
+        current.forEach((node, point) -> proposed.put(node,
+            new NetworkPreviewLayoutStore.Position(
+                point.x() + offsetX, point.y() + offsetY)));
+        if (wouldOverlapStationaryNode(proposed)) return false;
+        layout.putAll(proposed);
+        NetworkPreviewLayoutStore.INSTANCE.markDirty();
+        return true;
+    }
+
+    private record GridOffset(int x, int y) {
+        private int distanceSquared() {
+            return x * x + y * y;
+        }
     }
 
     public boolean selectionChangedOnLastRelease() {
