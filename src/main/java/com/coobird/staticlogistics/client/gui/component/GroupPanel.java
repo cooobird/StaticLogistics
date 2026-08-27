@@ -153,12 +153,13 @@ public class GroupPanel {
 
     public void setInitialState(ItemStack stack) {
         this.lastClickedGroup = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
+        this.expandedGroups.clear();
         if (this.lastClickedGroup != null) this.expandedGroups.add(this.lastClickedGroup);
         this.lastSeenVersion = -1;
     }
 
     public void render(GuiGraphics g, Font font, ItemStack stack,
-                       @Nullable ClientConnection selectedConnection,
+                       Set<ConnectionKey> highlightedConnections,
                        int leftPos, int topPos, int mx, int my, float partialTick,
                        double interfaceScale) {
         this.hoveredGroup = null;
@@ -170,7 +171,7 @@ public class GroupPanel {
         this.searchBox.render(g, mx, my, partialTick);
 
         renderGroupList(
-            g, font, stack, selectedConnection, sx, topPos, mx, my, interfaceScale);
+            g, font, stack, highlightedConnections, sx, topPos, mx, my, interfaceScale);
 
         if (this.renameBox.isVisible()) {
             this.renameBox.render(g, mx, my, partialTick);
@@ -181,7 +182,7 @@ public class GroupPanel {
     }
 
     private void renderGroupList(GuiGraphics g, Font font, ItemStack stack,
-                                 @Nullable ClientConnection selectedConnection,
+                                 Set<ConnectionKey> highlightedConnections,
                                  int sx, int topPos, int mx, int my,
                                  double interfaceScale) {
         List<GroupConnectionTreeModel.Row> rows = getVisibleRows(stack);
@@ -191,101 +192,118 @@ public class GroupPanel {
         int listX = sx + LIST_OFFSET_X;
         int listY = topPos + LIST_OFFSET_Y;
         int addRowY = getAddRowY(listY);
-        GuiScissor.enable(g, interfaceScale, listX - 2, listY,
-            listX + SELECTION_WIDTH + 2, addRowY);
-
         String currentGroupId = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), "");
         GroupKey currentGroupKey = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get());
         renameBox.setVisible(false);
         boolean editingRowVisible = false;
+        boolean pinnedGroup = !expandedGroups.isEmpty() && !rows.isEmpty();
+        int contentTop = pinnedGroup
+            ? listY + SLGuiTextures.List.ITEM_H : listY;
+        GuiScissor.enable(g, interfaceScale, listX - 2, contentTop,
+            listX + SELECTION_WIDTH + 2, addRowY);
 
-        for (int i = 0; i < rows.size(); i++) {
-            GroupConnectionTreeModel.Row row = rows.get(i);
-            GroupRef group = row.group();
-            String gn = group.displayName();
-            int itemY = listY + i * SLGuiTextures.List.ITEM_H
-                - (int) scrollOffset;
-            if (itemY + SLGuiTextures.List.ITEM_H <= listY
+        for (int i = pinnedGroup ? 1 : 0; i < rows.size(); i++) {
+            int itemY = getRowY(i, listY);
+            if (itemY + SLGuiTextures.List.ITEM_H <= contentTop
                 || itemY >= addRowY) continue;
-
-            boolean isGroupRow = row.connection() == null;
-            boolean isSelectedGroup = isGroupRow && (currentGroupKey != null
-                ? currentGroupKey.equals(group.key()) : Objects.equals(currentGroupId, gn));
-            boolean isSelectedConnection = !isGroupRow
-                && selectedConnection != null
-                && selectedConnection.key().equals(row.connection().key());
-            boolean isSelected = isSelectedGroup || isSelectedConnection;
-            boolean isHovered = mx >= listX && mx <= listX + SELECTION_WIDTH
-                && my >= itemY && my < itemY + SLGuiTextures.List.ITEM_H;
-            if (isHovered) {
-                if (isGroupRow) this.hoveredGroup = group;
-                else this.hoveredConnection = row.connection();
-            }
-
-            if (isSelected) {
-                g.fill(listX, itemY, listX + SELECTION_WIDTH, itemY + SLGuiTextures.List.ITEM_H, isSelectedConnection ? 0x55FFD45A : 0x4498FB98);
-            } else if (isHovered) {
-                g.fill(listX, itemY, listX + SELECTION_WIDTH, itemY + SLGuiTextures.List.ITEM_H, 0x22FFFFFF);
-            }
-
-            boolean editingThisRow = isGroupRow
-                ? editingGroup != null && editingGroup.key().equals(group.key())
-                : editingConnection != null
-                && editingConnection.key().equals(row.connection().key());
-            if (editingThisRow) {
-                editingRowVisible = true;
-                renameBox.setX(listX);
-                renameBox.setY(itemY + 1);
-                renameBox.setVisible(true);
-            } else {
-                int color = isSelectedConnection
-                    ? 0xFFFFD45A
-                    : isSelectedGroup ? 0xFF98FB98 : 0xFFCCCCCC;
-                int textX = listX;
-
-                if (isGroupRow) {
-                    renderChevron(g, textX, itemY,
-                        expandedGroups.contains(group.key()));
-                    textX += 8;
-                } else {
-                    renderConnectionIcon(g, row.connection(), textX, itemY);
-                    textX += 10;
-                }
-
-                // 渲染所有者头像
-                UUID ownerUUID = group.key().ownerId();
-                if (isGroupRow && ownerUUID != null) {
-                    int headSize = 10;
-                    PlayerAvatarRenderer.render(
-                        g, ownerUUID, textX + 2, itemY + 1, headSize);
-                    textX += headSize + 3;
-                    if (mx >= textX - headSize - 3 && mx < textX - 3
-                        && my >= itemY + 1 && my < itemY + 1 + headSize) {
-                        this.hoveredGroup = group;
-                    }
-                }
-                int availableWidth = listX + SELECTION_WIDTH - textX;
-                if (isGroupRow) {
-                    String display = "#" + gn;
-                    g.drawString(font,
-                        font.plainSubstrByWidth(display, availableWidth),
-                        textX, itemY + 2, color, false);
-                } else {
-                    String customName = row.connection().displayName();
-                    Component display = customName.isEmpty()
-                        ? Component.translatable("gui.staticlogistics.connection")
-                        .append(" " + row.connectionIndex())
-                        : Component.literal(customName);
-                    g.drawString(font,
-                        font.plainSubstrByWidth(
-                            display.getString(), availableWidth),
-                        textX, itemY + 2, color, false);
-                }
-            }
+            editingRowVisible |= renderListRow(g, font, rows.get(i), listX,
+                itemY, mx, my, currentGroupId, currentGroupKey,
+                highlightedConnections);
         }
         g.disableScissor();
+        if (pinnedGroup) {
+            editingRowVisible |= renderListRow(g, font, rows.get(0), listX,
+                listY, mx, my, currentGroupId, currentGroupKey,
+                highlightedConnections);
+        }
         renderAddGroupRow(g, font, listX, addRowY, mx, my);
         if (isRenaming() && !editingRowVisible) cancelRename();
+    }
+
+    private boolean renderListRow(
+        GuiGraphics graphics,
+        Font font,
+        GroupConnectionTreeModel.Row row,
+        int listX,
+        int itemY,
+        int mouseX,
+        int mouseY,
+        String currentGroupId,
+        @Nullable GroupKey currentGroupKey,
+        Set<ConnectionKey> highlightedConnections
+    ) {
+        GroupRef group = row.group();
+        boolean groupRow = row.connection() == null;
+        boolean selectedGroup = groupRow && (currentGroupKey != null
+            ? currentGroupKey.equals(group.key())
+            : Objects.equals(currentGroupId, group.displayName()));
+        boolean selectedConnection = !groupRow
+            && highlightedConnections.contains(row.connection().key());
+        boolean hovered = mouseX >= listX
+            && mouseX <= listX + SELECTION_WIDTH
+            && mouseY >= itemY
+            && mouseY < itemY + SLGuiTextures.List.ITEM_H;
+        if (hovered) {
+            if (groupRow) hoveredGroup = group;
+            else hoveredConnection = row.connection();
+        }
+        if (selectedGroup || selectedConnection) {
+            graphics.fill(listX, itemY, listX + SELECTION_WIDTH,
+                itemY + SLGuiTextures.List.ITEM_H,
+                selectedConnection ? 0x55FFD45A : 0x4498FB98);
+        } else if (hovered) {
+            graphics.fill(listX, itemY, listX + SELECTION_WIDTH,
+                itemY + SLGuiTextures.List.ITEM_H, 0x22FFFFFF);
+        }
+
+        boolean editing = groupRow
+            ? editingGroup != null && editingGroup.key().equals(group.key())
+            : editingConnection != null
+                && editingConnection.key().equals(row.connection().key());
+        if (editing) {
+            renameBox.setX(listX);
+            renameBox.setY(itemY + 1);
+            renameBox.setVisible(true);
+            return true;
+        }
+
+        int color = selectedConnection ? 0xFFFFD45A
+            : selectedGroup ? 0xFF98FB98 : 0xFFCCCCCC;
+        int textX = listX;
+        if (groupRow) {
+            renderChevron(graphics, textX, itemY,
+                expandedGroups.contains(group.key()));
+            textX += 8;
+        } else {
+            renderConnectionIcon(graphics, row.connection(), textX, itemY);
+            textX += 10;
+        }
+        UUID ownerUUID = group.key().ownerId();
+        if (groupRow && ownerUUID != null) {
+            int headSize = 10;
+            PlayerAvatarRenderer.render(
+                graphics, ownerUUID, textX + 2, itemY + 1, headSize);
+            textX += headSize + 3;
+            if (mouseX >= textX - headSize - 3 && mouseX < textX - 3
+                && mouseY >= itemY + 1 && mouseY < itemY + 1 + headSize) {
+                hoveredGroup = group;
+            }
+        }
+        int availableWidth = listX + SELECTION_WIDTH - textX;
+        String display;
+        if (groupRow) {
+            display = "#" + group.displayName();
+        } else {
+            String customName = row.connection().displayName();
+            display = customName.isEmpty()
+                ? Component.translatable("gui.staticlogistics.connection")
+                .append(" " + row.connectionIndex()).getString()
+                : customName;
+        }
+        graphics.drawString(font,
+            font.plainSubstrByWidth(display, availableWidth),
+            textX, itemY + 2, color, false);
+        return false;
     }
 
     private void renderAddGroupRow(
@@ -474,8 +492,7 @@ public class GroupPanel {
 
         for (int i = 0; i < rows.size(); i++) {
             GroupConnectionTreeModel.Row row = rows.get(i);
-            int itemY = listY + i * SLGuiTextures.List.ITEM_H
-                - (int) scrollOffset;
+            int itemY = getRowY(i, listY);
             if (my >= itemY
                 && my < itemY + SLGuiTextures.List.ITEM_H) {
                 GroupRef group = row.group();
@@ -501,12 +518,22 @@ public class GroupPanel {
                     return ClickResult.export(group);
                 }
                 if (button == 0 && mx < listX + 8) {
-                    if (!expandedGroups.add(group.key())) {
-                        expandedGroups.remove(group.key());
-                    }
+                    boolean collapse = expandedGroups.contains(group.key());
+                    expandedGroups.clear();
+                    if (!collapse) expandedGroups.add(group.key());
+                    scrollOffset = 0;
                     rebuildRows();
                     clampScroll();
                     return ClickResult.consumed(group);
+                }
+                if (button == 0 && expandedGroups.isEmpty()) {
+                    expandedGroups.add(group.key());
+                    scrollOffset = 0;
+                    rebuildRows();
+                    lastClickedGroup = group.key();
+                    lastClickedConnection = null;
+                    lastClickTime = Util.getMillis();
+                    return ClickResult.select(group);
                 }
                 long now = Util.getMillis();
                 boolean isDoubleClick = Objects.equals(lastClickedGroup, group.key())
@@ -596,19 +623,27 @@ public class GroupPanel {
     }
 
     private int getMaxScroll() {
-        return Math.max(0,
-            (cachedRows.size() + 1) * SLGuiTextures.List.ITEM_H
-                - LIST_HEIGHT);
+        int fixedRows = expandedGroups.isEmpty() ? 1 : 2;
+        int scrollingRows = expandedGroups.isEmpty()
+            ? cachedRows.size() : Math.max(0, cachedRows.size() - 1);
+        return Math.max(0, scrollingRows * SLGuiTextures.List.ITEM_H
+            - (LIST_HEIGHT - fixedRows * SLGuiTextures.List.ITEM_H));
     }
 
     /**
-     * 添加行在内容不足时紧随最后一行；内容溢出时停靠在第四行。
+     * 添加分组行固定在列表底部，不参与连接滚动。
      */
     private int getAddRowY(int listY) {
-        int naturalY = listY + cachedRows.size() * SLGuiTextures.List.ITEM_H
+        return listY + LIST_HEIGHT - SLGuiTextures.List.ITEM_H;
+    }
+
+    /**
+     * 展开分组时固定首行标题，仅让后续连接行参与滚动。
+     */
+    private int getRowY(int rowIndex, int listY) {
+        if (!expandedGroups.isEmpty() && rowIndex == 0) return listY;
+        return listY + rowIndex * SLGuiTextures.List.ITEM_H
             - (int) scrollOffset;
-        int dockedY = listY + LIST_HEIGHT - SLGuiTextures.List.ITEM_H;
-        return Mth.clamp(naturalY, listY, dockedY);
     }
 
     private List<GroupRef> getFilteredGroups(ItemStack stack) {
@@ -619,8 +654,7 @@ public class GroupPanel {
         if (p == null) return Collections.emptyList();
 
         this.cachedGroupList = GroupConnectionTreeModel.filterAndSort(
-            ClientLinkData.INSTANCE.getAccessibleGroupRefs(),
-            this.confirmedSearchTerm);
+            ClientLinkData.INSTANCE.getAccessibleGroupRefs(), "");
 
         this.lastSeenVersion = version;
         rebuildRows();
@@ -633,8 +667,24 @@ public class GroupPanel {
     }
 
     private void rebuildRows() {
-        this.cachedRows = GroupConnectionTreeModel.buildRows(
-            cachedGroupList, expandedGroups);
+        expandedGroups.removeIf(key -> cachedGroupList.stream().noneMatch(
+            group -> group.key().equals(key)));
+        List<GroupRef> displayedGroups = expandedGroups.isEmpty()
+            ? GroupConnectionTreeModel.filterAndSort(
+            cachedGroupList, confirmedSearchTerm)
+            : cachedGroupList.stream()
+            .filter(group -> expandedGroups.contains(group.key()))
+            .toList();
+        List<GroupConnectionTreeModel.Row> rows = GroupConnectionTreeModel.buildRows(
+            displayedGroups, expandedGroups);
+        if (!expandedGroups.isEmpty() && !confirmedSearchTerm.isBlank()) {
+            String query = confirmedSearchTerm.toLowerCase(Locale.ROOT);
+            rows = rows.stream()
+                .filter(row -> row.connection() == null
+                    || connectionMatchesSearch(row.connection(), query))
+                .toList();
+        }
+        this.cachedRows = rows;
         if (editingGroup != null && cachedGroupList.stream().noneMatch(
             group -> group.key().equals(editingGroup.key()))) {
             cancelRename();
@@ -648,6 +698,61 @@ public class GroupPanel {
 
     private void clampScroll() {
         this.scrollOffset = Mth.clamp(this.scrollOffset, 0, getMaxScroll());
+    }
+
+    /**
+     * 展开并滚动到网络预览关联的连接。搜索条件挡住目标分组时自动清空搜索。
+     */
+    public void revealConnections(Collection<ConnectionKey> connections, ItemStack stack) {
+        if (connections == null || connections.isEmpty()) return;
+        LinkedHashSet<ConnectionKey> targets = new LinkedHashSet<>(connections);
+        GroupKey targetGroup = targets.iterator().next().groupKey();
+        getFilteredGroups(stack);
+        if (cachedGroupList.stream().noneMatch(group -> group.key().equals(targetGroup))) {
+            searchBox.setValue("");
+            getFilteredGroups(stack);
+        }
+        if (cachedGroupList.stream().noneMatch(group -> group.key().equals(targetGroup))) return;
+        expandedGroups.clear();
+        expandedGroups.add(targetGroup);
+        rebuildRows();
+        if (cachedRows.stream().noneMatch(row -> row.connection() != null
+            && targets.contains(row.connection().key()))) {
+            searchBox.setValue("");
+            rebuildRows();
+        }
+        for (int index = 0; index < cachedRows.size(); index++) {
+            ClientConnection connection = cachedRows.get(index).connection();
+            if (connection == null || !targets.contains(connection.key())) continue;
+            scrollRowIntoView(index);
+            return;
+        }
+    }
+
+    private void scrollRowIntoView(int rowIndex) {
+        if (!expandedGroups.isEmpty() && rowIndex == 0) return;
+        int scrollingIndex = expandedGroups.isEmpty() ? rowIndex : rowIndex - 1;
+        int rowTop = scrollingIndex * SLGuiTextures.List.ITEM_H;
+        int rowBottom = rowTop + SLGuiTextures.List.ITEM_H;
+        int fixedRows = expandedGroups.isEmpty() ? 1 : 2;
+        int visibleHeight = LIST_HEIGHT
+            - fixedRows * SLGuiTextures.List.ITEM_H;
+        if (rowTop < scrollOffset) {
+            scrollOffset = rowTop;
+        } else if (rowBottom > scrollOffset + visibleHeight) {
+            scrollOffset = rowBottom - visibleHeight;
+        }
+        clampScroll();
+    }
+
+    private static boolean connectionMatchesSearch(
+        ClientConnection connection, String query
+    ) {
+        if (connection.displayName().toLowerCase(Locale.ROOT).contains(query)) return true;
+        return NodeDisplayText.details(connection.first()).getString()
+            .toLowerCase(Locale.ROOT).contains(query)
+            || NodeDisplayText.details(connection.second()).getString()
+            .toLowerCase(Locale.ROOT).contains(query);
     }
 
     private static void renderConnectionIcon(GuiGraphics graphics, ClientConnection connection,

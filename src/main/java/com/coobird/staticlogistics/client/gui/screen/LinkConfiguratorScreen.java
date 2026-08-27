@@ -169,7 +169,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (!previewExpanded) {
             preview.render(graphics, font, previewLeft(), previewTop(),
                 previewWidth(), previewHeight(), mouseX, mouseY, interfaceScale);
-            groupPanel.render(graphics, font, stack, preview.getSelectedConnection(),
+            groupPanel.render(graphics, font, stack, preview.getListHighlightedConnections(),
                 leftPos, topPos, mouseX, mouseY, partialTick, interfaceScale);
             renderCurrentConnection(graphics);
             nodeConfigurationPanel.render(graphics, mouseX, mouseY);
@@ -395,6 +395,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();
             if (preview.mouseClicked(mouseX, mouseY, button, previewLeft(), previewTop(),
                 previewWidth(), previewHeight())) {
+                groupPanel.revealConnections(
+                    preview.getListHighlightedConnections(), toolStack());
                 if (!Objects.equals(focusBeforePreviewClick,
                     SelectionContext.getFocusedConnectionKey())) syncFocusedConnection(false);
                 LogisticsNode node = preview.getSelectedNode();
@@ -470,6 +472,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (preview.mouseClicked(mouseX, mouseY, button,
             previewLeft(), previewTop(),
             previewWidth(), previewHeight())) {
+            groupPanel.revealConnections(
+                preview.getListHighlightedConnections(), toolStack());
             if (!Objects.equals(
                 focusBeforePreviewClick,
                 SelectionContext.getFocusedConnectionKey())) {
