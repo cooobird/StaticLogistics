@@ -96,11 +96,13 @@ public class ContainerConfig {
     }
 
     public boolean isDimensionEffective() {
+        if (SLConfig.isSimpleMode()) return true;
         updateCache();
         return cachedDimEffective;
     }
 
     public int getCachedActualInterval() {
+        if (SLConfig.isSimpleMode()) return 1;
         updateCache();
         return cachedActualInterval;
     }

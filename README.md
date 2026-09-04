@@ -211,6 +211,7 @@ Paste validates permissions, bounds, and required upgrades.
 
 ```toml
 [general]
+gameplay_mode = "ADVANCED"
 default_radius = 16
 default_tick_interval = 20
 auto_clean_stored_nodes = true
@@ -244,6 +245,9 @@ diamond_multiplier = 8
 netherite_multiplier = 16
 nether_star_multiplier = 64
 ```
+
+`gameplay_mode` accepts `SIMPLE` (a 1-tick transfer interval, `999999999` per resource transfer, no distance or
+dimension limits, and hidden upgrade slots) or `ADVANCED` (default; configured values and installed upgrades apply).
 
 `ticker_batch_size` is a candidate polling base, not a node limit. `ticker_time_budget_us` is a soft budget shared by
 all dimensions. `provider_size` only pre-sizes the scheduler index.

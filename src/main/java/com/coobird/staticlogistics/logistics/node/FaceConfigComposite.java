@@ -423,10 +423,9 @@ public class FaceConfigComposite {
      * 委托给 LogisticsCalculator.calcTransferLimit() 统一计算。
      */
     public long getTransferLimit(LogisticsResource<?> type) {
-        if (sharedContainerConfig == null) {
-            return type.getBaseStackSize();
-        }
-        return LogisticsCalculator.calcTransferLimit(type, sharedContainerConfig.getStackMultiplier());
+        long stackMultiplier = sharedContainerConfig == null
+            ? 1L : sharedContainerConfig.getStackMultiplier();
+        return LogisticsCalculator.calcTransferLimit(type, stackMultiplier);
     }
 
     public long getVersion() {

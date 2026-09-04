@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class SLConfig {
 
     public static final AtomicLong configGeneration = new AtomicLong(0);
+    public static final int MAX_TRANSFER_AMOUNT = 999_999_999;
 
     private static ForgeConfigSpec CONFIG_SPEC;
 
@@ -30,6 +31,8 @@ public final class SLConfig {
     public static ForgeConfigSpec.IntValue DEFAULT_RADIUS;
     // 物流节点的默认工作间隔（tick）
     public static ForgeConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
+    // 游戏复杂度：简易模式无需升级，进阶模式沿用升级系统
+    public static ForgeConfigSpec.EnumValue<GameplayMode> GAMEPLAY_MODE;
 
     // 物品每 tick 传输堆叠数
     public static ForgeConfigSpec.IntValue DEFAULT_ITEM_STACK;
@@ -93,6 +96,7 @@ public final class SLConfig {
     // 通用设置缓存值
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
+    private static volatile GameplayMode gameplayMode = GameplayMode.ADVANCED;
     // 核心资源传输量缓存值
     private static volatile int DefaultItemStack = 8;
     private static volatile int DefaultFluidStack = 250;
@@ -136,6 +140,10 @@ public final class SLConfig {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
         builder.push("general");
+        GAMEPLAY_MODE = builder
+            .translation("config.staticlogistics.gameplay_mode")
+            .comment("SIMPLE uses a transfer interval of 1 tick, sets every resource transfer amount to 999999999, and removes distance and dimension limits. ADVANCED uses the configured base values and installed upgrades.")
+            .defineEnum("gameplay_mode", gameplayMode);
         DEFAULT_RADIUS = builder
             .translation("config.staticlogistics.default_radius")
             .defineInRange("default_radius", DefaultRadius, 1, 1024);
@@ -148,37 +156,37 @@ public final class SLConfig {
             .define("auto_clean_stored_nodes", autoCleanStoredNodes);
         DEFAULT_ITEM_STACK = builder
             .translation("config.staticlogistics.item_stack_size")
-            .defineInRange("item_stack_size", DefaultItemStack, 1, Integer.MAX_VALUE);
+            .defineInRange("item_stack_size", DefaultItemStack, 1, MAX_TRANSFER_AMOUNT);
         DEFAULT_FLUID_STACK = builder
             .translation("config.staticlogistics.fluid_stack_size")
-            .defineInRange("fluid_stack_size", DefaultFluidStack, 1, Integer.MAX_VALUE);
+            .defineInRange("fluid_stack_size", DefaultFluidStack, 1, MAX_TRANSFER_AMOUNT);
         DEFAULT_ENERGY_STACK = builder
             .translation("config.staticlogistics.energy_stack_size")
-            .defineInRange("energy_stack_size", DefaultEnergyStack, 1, Integer.MAX_VALUE);
+            .defineInRange("energy_stack_size", DefaultEnergyStack, 1, MAX_TRANSFER_AMOUNT);
         MEK_GAS_STACK = builder
             .translation("config.staticlogistics.mek_gas_stack_size")
-            .defineInRange("mek_gas_stack_size", MekGasStack, 1, Integer.MAX_VALUE);
+            .defineInRange("mek_gas_stack_size", MekGasStack, 1, MAX_TRANSFER_AMOUNT);
         MEK_INFUSION_STACK = builder
             .translation("config.staticlogistics.mek_infusion_stack_size")
-            .defineInRange("mek_infusion_stack_size", MekInfusionStack, 1, Integer.MAX_VALUE);
+            .defineInRange("mek_infusion_stack_size", MekInfusionStack, 1, MAX_TRANSFER_AMOUNT);
         MEK_PIGMENT_STACK = builder
             .translation("config.staticlogistics.mek_pigment_stack_size")
-            .defineInRange("mek_pigment_stack_size", MekPigmentStack, 1, Integer.MAX_VALUE);
+            .defineInRange("mek_pigment_stack_size", MekPigmentStack, 1, MAX_TRANSFER_AMOUNT);
         MEK_SLURRY_STACK = builder
             .translation("config.staticlogistics.mek_slurry_stack_size")
-            .defineInRange("mek_slurry_stack_size", MekSlurryStack, 1, Integer.MAX_VALUE);
+            .defineInRange("mek_slurry_stack_size", MekSlurryStack, 1, MAX_TRANSFER_AMOUNT);
         MEK_HEAT_STACK = builder
             .translation("config.staticlogistics.mek_heat_stack_size")
-            .defineInRange("mek_heat_stack_size", MekHeatStack, 1, Integer.MAX_VALUE);
+            .defineInRange("mek_heat_stack_size", MekHeatStack, 1, MAX_TRANSFER_AMOUNT);
         ARS_SOURCE_STACK = builder
             .translation("config.staticlogistics.ars_source_stack_size")
-            .defineInRange("ars_source_stack_size", ArsSourceStack, 1, Integer.MAX_VALUE);
+            .defineInRange("ars_source_stack_size", ArsSourceStack, 1, MAX_TRANSFER_AMOUNT);
         BOTANIA_MANA_STACK = builder
             .translation("config.staticlogistics.botania_mana_stack_size")
-            .defineInRange("botania_mana_stack_size", BotaniaManaStack, 1, Integer.MAX_VALUE);
+            .defineInRange("botania_mana_stack_size", BotaniaManaStack, 1, MAX_TRANSFER_AMOUNT);
         GTCEU_STACK = builder
             .translation("config.staticlogistics.gtceu_stack_size")
-            .defineInRange("gtceu_stack_size", GTCEUStack, 1, Integer.MAX_VALUE);
+            .defineInRange("gtceu_stack_size", GTCEUStack, 1, MAX_TRANSFER_AMOUNT);
         builder.pop();
 
         builder.push("performance");
@@ -254,6 +262,7 @@ public final class SLConfig {
 
     public static void onLoad() {
         if (CONFIG_SPEC.isLoaded()) {
+            gameplayMode = GAMEPLAY_MODE.get();
             DefaultRadius = DEFAULT_RADIUS.get();
             DefaultTickInterval = DEFAULT_TICK_INTERVAL.get();
             DefaultItemStack = DEFAULT_ITEM_STACK.get();
@@ -297,52 +306,64 @@ public final class SLConfig {
         return DefaultRadius;
     }
 
+    public static GameplayMode getGameplayMode() {
+        return gameplayMode;
+    }
+
+    public static boolean isSimpleMode() {
+        return gameplayMode == GameplayMode.SIMPLE;
+    }
+
     public static int getDefaultTickInterval() {
-        return DefaultTickInterval;
+        return isSimpleMode() ? 1 : DefaultTickInterval;
     }
 
     public static int getItemStack() {
-        return DefaultItemStack;
+        return effectiveTransferAmount(DefaultItemStack);
     }
 
     public static int getFluidStack() {
-        return DefaultFluidStack;
+        return effectiveTransferAmount(DefaultFluidStack);
     }
 
     public static int getEnergyStack() {
-        return DefaultEnergyStack;
+        return effectiveTransferAmount(DefaultEnergyStack);
     }
 
     public static int getMekGasStack() {
-        return MekGasStack;
+        return effectiveTransferAmount(MekGasStack);
     }
 
     public static int getMekInfusionStack() {
-        return MekInfusionStack;
+        return effectiveTransferAmount(MekInfusionStack);
     }
 
     public static int getMekPigmentStack() {
-        return MekPigmentStack;
+        return effectiveTransferAmount(MekPigmentStack);
     }
 
     public static int getMekSlurryStack() {
-        return MekSlurryStack;
+        return effectiveTransferAmount(MekSlurryStack);
     }
 
     public static int getMekHeatStack() {
-        return MekHeatStack;
+        return effectiveTransferAmount(MekHeatStack);
     }
 
     public static int getArsSourceStack() {
-        return ArsSourceStack;
+        return effectiveTransferAmount(ArsSourceStack);
     }
 
     public static int getBotaniaManaStack() {
-        return BotaniaManaStack;
+        return effectiveTransferAmount(BotaniaManaStack);
     }
 
     public static int getGTCEUStack() {
-        return GTCEUStack;
+        return effectiveTransferAmount(GTCEUStack);
+    }
+
+    private static int effectiveTransferAmount(int configuredValue) {
+        return isSimpleMode() ? MAX_TRANSFER_AMOUNT : configuredValue;
     }
 
     public static int getMultiplierForTier(String tier) {
@@ -415,6 +436,7 @@ public final class SLConfig {
     private static CompoundTag buildConfigTag() {
         CompoundTag tag = new CompoundTag();
         // 基础设置
+        tag.putString("gameplayMode", gameplayMode.name());
         tag.putInt("defaultRadius", DefaultRadius);
         tag.putInt("defaultTickInterval", DefaultTickInterval);
         tag.putInt("itemStack", DefaultItemStack);
@@ -454,6 +476,7 @@ public final class SLConfig {
             onLoad();
             return;
         }
+        gameplayMode = parseGameplayMode(tag.getString("gameplayMode"));
         DefaultRadius = tag.getInt("defaultRadius");
         DefaultTickInterval = tag.getInt("defaultTickInterval");
 
@@ -487,5 +510,14 @@ public final class SLConfig {
         perfBatchCleanSize = tag.getInt("batchCleanSize");
         perfContextPoolSize = tag.getInt("contextPoolSize");
         configGeneration.incrementAndGet();
+    }
+
+    private static GameplayMode parseGameplayMode(String value) {
+        if (value == null || value.isBlank()) return GameplayMode.ADVANCED;
+        try {
+            return GameplayMode.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return GameplayMode.ADVANCED;
+        }
     }
 }

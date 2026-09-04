@@ -195,6 +195,7 @@ StaticLogistics 是面向 Forge 1.20.1 的无管线物流模组。它以方块�
 
 ```toml
 [general]
+gameplay_mode = "ADVANCED"
 default_radius = 16
 default_tick_interval = 20
 auto_clean_stored_nodes = true
@@ -228,6 +229,9 @@ diamond_multiplier = 8
 netherite_multiplier = 16
 nether_star_multiplier = 64
 ```
+
+`gameplay_mode` 可设为 `SIMPLE`（传输间隔固定为 1 Tick，各资源单次传输量固定为 `999999999`，无视距离与维度限制，
+并隐藏升级槽位）或 `ADVANCED`（默认，使用配置值和已安装升级）。
 
 `ticker_batch_size` 是候选轮询基数而非节点总数限制；`ticker_time_budget_us` 是全部维度共享的软预算；`provider_size`
 只用于预估索引容量。
