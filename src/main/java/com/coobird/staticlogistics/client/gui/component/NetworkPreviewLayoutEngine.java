@@ -95,6 +95,17 @@ final class NetworkPreviewLayoutEngine {
             for (LogisticsNode node : stronglyConnected.get(index)) componentByNode.put(node, index);
         }
 
+        // SCC 只负责消除有向环；其内部仍按无向距离展开，避免双向链和环挤在同一列。
+        Map<LogisticsNode, Integer> internalLayers = new HashMap<>();
+        int[] componentSpans = new int[stronglyConnected.size()];
+        for (int index = 0; index < stronglyConnected.size(); index++) {
+            Map<LogisticsNode, Integer> localLayers = assignInternalLayers(
+                stronglyConnected.get(index), directed);
+            internalLayers.putAll(localLayers);
+            componentSpans[index] = localLayers.values().stream()
+                .mapToInt(Integer::intValue).max().orElse(0) + 1;
+        }
+
         Map<Integer, Set<Integer>> outgoing = new LinkedHashMap<>();
         int[] indegrees = new int[stronglyConnected.size()];
         for (int index = 0; index < stronglyConnected.size(); index++) {
@@ -121,16 +132,87 @@ final class NetworkPreviewLayoutEngine {
             int source = pending.removeFirst();
             for (int target : outgoing.get(source)) {
                 componentLayers[target] = Math.max(
-                    componentLayers[target], componentLayers[source] + 1);
+                    componentLayers[target],
+                    componentLayers[source] + componentSpans[source]);
                 if (--indegrees[target] == 0) pending.addLast(target);
             }
         }
 
         Map<LogisticsNode, Integer> result = new LinkedHashMap<>();
         for (LogisticsNode node : nodes) {
-            result.put(node, componentLayers[componentByNode.get(node)]);
+            result.put(node, componentLayers[componentByNode.get(node)]
+                + internalLayers.getOrDefault(node, 0));
         }
         return result;
+    }
+
+    /**
+     * 在一个强连通分量内部按无向最短距离生成子层。
+     *
+     * <p>链优先从确定的端点展开，从而保留完整的横向走势；没有端点时通过一次最远点查找
+     * 选择稳定的外围起点，环会自然形成左右数量均衡的分层。所有邻居均按节点键遍历，
+     * 因而相同网络每次都会得到相同结果。
+     */
+    private static Map<LogisticsNode, Integer> assignInternalLayers(
+        Set<LogisticsNode> component,
+        Map<LogisticsNode, Set<LogisticsNode>> directed
+    ) {
+        List<LogisticsNode> orderedNodes = component.stream()
+            .sorted(Comparator.comparing(NetworkPreviewLayoutEngine::nodeKey)).toList();
+        if (orderedNodes.size() == 1) return Map.of(orderedNodes.get(0), 0);
+
+        Map<LogisticsNode, Set<LogisticsNode>> undirected = new LinkedHashMap<>();
+        orderedNodes.forEach(node -> undirected.put(node, new LinkedHashSet<>()));
+        for (LogisticsNode source : orderedNodes) {
+            directed.getOrDefault(source, Set.of()).stream()
+                .filter(component::contains)
+                .filter(target -> !target.equals(source))
+                .sorted(Comparator.comparing(NetworkPreviewLayoutEngine::nodeKey))
+                .forEach(target -> {
+                    undirected.get(source).add(target);
+                    undirected.get(target).add(source);
+                });
+        }
+
+        LogisticsNode root = orderedNodes.stream()
+            .filter(node -> undirected.get(node).size() <= 1)
+            .findFirst()
+            .orElseGet(() -> farthestNode(
+                breadthFirstDistances(orderedNodes.get(0), undirected), orderedNodes));
+        return breadthFirstDistances(root, undirected);
+    }
+
+    private static Map<LogisticsNode, Integer> breadthFirstDistances(
+        LogisticsNode start,
+        Map<LogisticsNode, Set<LogisticsNode>> neighbors
+    ) {
+        Map<LogisticsNode, Integer> distances = new LinkedHashMap<>();
+        ArrayDeque<LogisticsNode> pending = new ArrayDeque<>();
+        distances.put(start, 0);
+        pending.addLast(start);
+        while (!pending.isEmpty()) {
+            LogisticsNode node = pending.removeFirst();
+            int nextDistance = distances.get(node) + 1;
+            neighbors.getOrDefault(node, Set.of()).stream()
+                .sorted(Comparator.comparing(NetworkPreviewLayoutEngine::nodeKey))
+                .filter(neighbor -> !distances.containsKey(neighbor))
+                .forEach(neighbor -> {
+                    distances.put(neighbor, nextDistance);
+                    pending.addLast(neighbor);
+                });
+        }
+        return distances;
+    }
+
+    private static LogisticsNode farthestNode(
+        Map<LogisticsNode, Integer> distances,
+        List<LogisticsNode> orderedNodes
+    ) {
+        int farthestDistance = distances.values().stream()
+            .mapToInt(Integer::intValue).max().orElse(0);
+        return orderedNodes.stream()
+            .filter(node -> distances.getOrDefault(node, -1) == farthestDistance)
+            .findFirst().orElseThrow();
     }
 
     private static List<Set<LogisticsNode>> stronglyConnectedComponents(
@@ -214,20 +296,53 @@ final class NetworkPreviewLayoutEngine {
         Map<LogisticsNode, Set<LogisticsNode>> neighbors,
         Map<LogisticsNode, Integer> depth
     ) {
+        List<Integer> layerKeys = new ArrayList<>(layers.keySet());
+        Map<LogisticsNode, Integer> order = layerOrder(layers);
         for (int pass = 0; pass < 4; pass++) {
-            Map<LogisticsNode, Integer> previousOrder = Map.of();
-            for (Map.Entry<Integer, List<LogisticsNode>> entry : layers.entrySet()) {
-                int layer = entry.getKey();
-                Map<LogisticsNode, Integer> order = previousOrder;
-                entry.getValue().sort(Comparator
-                    .<LogisticsNode>comparingDouble(node -> barycenter(
-                        neighbors.getOrDefault(node, Set.of()).stream()
-                            .filter(neighbor -> depth.getOrDefault(neighbor, layer) < layer)
-                            .toList(), order))
-                    .thenComparing(NetworkPreviewLayoutEngine::nodeKey));
-                previousOrder = indexOrder(entry.getValue());
+            for (int index = 1; index < layerKeys.size(); index++) {
+                int layer = layerKeys.get(index);
+                order = sortLayer(layers.get(layer), layer, true,
+                    neighbors, depth, order, layers);
+            }
+            for (int index = layerKeys.size() - 2; index >= 0; index--) {
+                int layer = layerKeys.get(index);
+                order = sortLayer(layers.get(layer), layer, false,
+                    neighbors, depth, order, layers);
             }
         }
+    }
+
+    /**
+     * 交替执行正向和反向重心扫描。旧实现只做正向扫描，第二轮以后通常不会再改变顺序。
+     */
+    private static Map<LogisticsNode, Integer> sortLayer(
+        List<LogisticsNode> values,
+        int layer,
+        boolean fromPreviousLayers,
+        Map<LogisticsNode, Set<LogisticsNode>> neighbors,
+        Map<LogisticsNode, Integer> depth,
+        Map<LogisticsNode, Integer> order,
+        Map<Integer, List<LogisticsNode>> layers
+    ) {
+        Map<LogisticsNode, Integer> stableOrder = indexOrder(values);
+        values.sort(Comparator
+            .<LogisticsNode>comparingDouble(node -> barycenter(
+                neighbors.getOrDefault(node, Set.of()).stream()
+                    .filter(neighbor -> fromPreviousLayers
+                        ? depth.getOrDefault(neighbor, layer) < layer
+                        : depth.getOrDefault(neighbor, layer) > layer)
+                    .toList(), order))
+            .thenComparingInt(node -> stableOrder.getOrDefault(node, Integer.MAX_VALUE))
+            .thenComparing(NetworkPreviewLayoutEngine::nodeKey));
+        return layerOrder(layers);
+    }
+
+    private static Map<LogisticsNode, Integer> layerOrder(
+        Map<Integer, List<LogisticsNode>> layers
+    ) {
+        Map<LogisticsNode, Integer> result = new HashMap<>();
+        layers.values().forEach(values -> result.putAll(indexOrder(values)));
+        return result;
     }
 
     private static double barycenter(

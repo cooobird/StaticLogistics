@@ -193,6 +193,12 @@ public class SLLanguageProvider extends LanguageProvider {
             "Hold %s and drag empty space to box-select nodes", "按住 %s 拖动空白区域可框选节点");
         add("gui.staticlogistics.network_preview.drag_selected_hint",
             "Drag a selected node to move the selection together", "拖动已选节点可整体移动所选节点");
+        add("gui.staticlogistics.network_preview.landing_preview_hint",
+            "Red indicates overlap; green previews the landing position",
+            "红色表示重叠；绿色表示松手后的落点");
+        add("gui.staticlogistics.network_preview.force_overlap_hint",
+            "Hold Alt while releasing to keep an intentional overlap",
+            "松手时按住 Alt 可保留有意放置的重叠");
         add("gui.staticlogistics.network_preview.clear_selection_hint",
             "Right-click empty space to clear the selection", "右击空白区域可清空当前选择");
         add("gui.staticlogistics.network_preview.zoom_hint",
@@ -291,7 +297,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("msg.staticlogistics.node_template_missing_items",
             "Not enough matching filters or upgrades for every selected node",
             "没有足够的对应过滤器或升级供全部所选节点使用");
-        add("msg.staticlogistics.select_group_to_link", "Create and select a group before linking.", "请先创建并选择一个分组，再建立链接。");
+        add("msg.staticlogistics.select_group_to_link", "Select a group before linking.", "已有分组时，请先选择一个分组再建立链接。");
         add("msg.staticlogistics.no_nodes_stored", "No nodes are stored in the configurator!", "配置器中未存储任何节点！");
         add("msg.staticlogistics.mode_switched", "Mode: %s", "当前模式：%s");
         add("msg.staticlogistics.mode_switched_with_nodes", "Mode: %s (%s nodes stored)", "当前模式：%s（已存储 %s 个节点）");
@@ -475,6 +481,10 @@ public class SLLanguageProvider extends LanguageProvider {
         add("staticlogistics.configuration.upgrades.tooltip", "Configure transfer amounts and upgrade multipliers.", "配置传输量与升级倍率。");
 
         add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
+        add("config.staticlogistics.gameplay_mode", "Gameplay Mode", "玩法模式");
+        add("config.staticlogistics.gameplay_mode.tooltip",
+            "SIMPLE uses a 1-tick transfer interval, sets every resource transfer amount to 999999999, and removes distance and dimension limits; ADVANCED uses configured values and installed upgrades.",
+            "SIMPLE（简易）无需升级，传输间隔固定为 1 Tick，各资源单次传输量固定为 999999999，并无视距离与维度限制；ADVANCED（进阶）使用配置值和已安装升级。");
         add("config.staticlogistics.default_radius.tooltip", "Maximum default link distance before range upgrades are applied.", "应用范围升级前的默认最大连接距离。");
         add("config.staticlogistics.default_tick_interval", "Base Tick Interval (Ticks)", "基础传输间隔(Tick)");
         add("config.staticlogistics.default_tick_interval.tooltip", "Base number of ticks between transfer attempts.", "两次传输尝试之间的基础 Tick 数。");

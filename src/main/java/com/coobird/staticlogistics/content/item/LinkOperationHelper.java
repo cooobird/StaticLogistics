@@ -6,10 +6,12 @@ import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
 import com.coobird.staticlogistics.logistics.group.GroupService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.*;
 import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import com.mojang.authlib.GameProfile;
@@ -33,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 public class LinkOperationHelper {
+    private static final String FIRST_GROUP_NAME = "1";
 
     public static void validateStoredNodes(ItemStack stack, ServerLevel level) {
         List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
@@ -153,14 +156,15 @@ public class LinkOperationHelper {
             return;
         }
 
-        GroupRef group;
+        GroupResolution groupResolution;
         try {
-            group = resolveSelectedGroup(level, player, settings.groupKey());
+            groupResolution = resolveSelectedGroup(level, player, stack, settings.groupKey());
         } catch (IllegalArgumentException | IllegalStateException exception) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.select_group_to_link")
                 .withStyle(ChatFormatting.RED), true);
             return;
         }
+        GroupRef group = groupResolution.group();
         LogisticsNode currentNode = new LogisticsNode(GlobalPos.of(level.dimension(), pos), face);
         int linkedCount = 0;
 
@@ -189,6 +193,8 @@ public class LinkOperationHelper {
             if (SLConfig.shouldAutoCleanStoredNodes()) {
                 clearNodes(stack, player, level);
             }
+        } else if (groupResolution.automaticallyCreated()) {
+            rollbackAutomaticallyCreatedGroup(level, player, stack, group);
         }
     }
 
@@ -296,16 +302,51 @@ public class LinkOperationHelper {
         }
     }
 
-    private static GroupRef resolveSelectedGroup(ServerLevel level, Player player, GroupKey selectedKey) {
-        if (selectedKey == null) throw new IllegalStateException("Selected group is required");
-        GroupRef selected = PlayerGroupStore.get(level.getServer()).findGroup(selectedKey);
-        if (selected != null) {
+    private static GroupResolution resolveSelectedGroup(
+        ServerLevel level, Player player, ItemStack stack, GroupKey selectedKey
+    ) {
+        PlayerGroupStore store = PlayerGroupStore.get(level.getServer());
+        GroupRef selected = store.findGroup(selectedKey);
+        if (selectedKey != null && selected != null) {
             if (!GroupService.canModify(selected.key().ownerId(), player)) {
                 throw new IllegalArgumentException("Selected group is unavailable");
             }
-            return selected;
+            return new GroupResolution(selected, false);
         }
-        throw new IllegalArgumentException("Selected group is unavailable");
+        if (!(player instanceof ServerPlayer serverPlayer)
+            || !store.getGroupRefs(player.getUUID()).isEmpty()) {
+            throw new IllegalStateException("Selected group is required");
+        }
+        GroupRef created = new GroupCommandService(level.getServer())
+            .create(serverPlayer, FIRST_GROUP_NAME);
+        stack.set(SLDataComponents.SELECTED_GROUP.get(), created.displayName());
+        stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), created.key());
+        stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        syncGroupDirectory(serverPlayer, store);
+        return new GroupResolution(created, true);
+    }
+
+    private static void rollbackAutomaticallyCreatedGroup(
+        ServerLevel level, Player player, ItemStack stack, GroupRef group
+    ) {
+        PlayerGroupStore store = PlayerGroupStore.get(level.getServer());
+        if (!store.removeGroup(group.key())) return;
+        if (group.key().equals(stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()))) {
+            stack.set(SLDataComponents.SELECTED_GROUP.get(), "");
+            stack.remove(SLDataComponents.SELECTED_GROUP_KEY.get());
+            stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        }
+        if (player instanceof ServerPlayer serverPlayer) {
+            syncGroupDirectory(serverPlayer, store);
+        }
+    }
+
+    private static void syncGroupDirectory(ServerPlayer player, PlayerGroupStore store) {
+        TeamPacketSync.send(player, player.getUUID(), new S2CGroupDirectoryPayload(
+            player.getUUID(), store.getGroupRefs(player.getUUID())));
+    }
+
+    private record GroupResolution(GroupRef group, boolean automaticallyCreated) {
     }
 
     private static GameProfile resolveOwnerProfile(ServerLevel level, GroupRef group, Player actor) {

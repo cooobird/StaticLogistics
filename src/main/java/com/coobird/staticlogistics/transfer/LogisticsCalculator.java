@@ -40,7 +40,7 @@ public final class LogisticsCalculator {
      * 是否支持跨维度
      */
     public static boolean isDimensionEffective(ContainerConfig container) {
-        return container != null && container.isDimensionEffective();
+        return SLConfig.isSimpleMode() || container != null && container.isDimensionEffective();
     }
 
     /**
@@ -48,6 +48,7 @@ public final class LogisticsCalculator {
      */
     public static int getMaxTransferBlocks(ContainerConfig container) {
         int baseRadius = SLConfig.getDefaultRadius();
+        if (SLConfig.isSimpleMode()) return Integer.MAX_VALUE;
         if (container == null) return baseRadius;
         long rangeMult = getRangeMultiplier(container);
         if (rangeMult >= ContainerConfig.INFINITY_MARKER) {
@@ -181,6 +182,9 @@ public final class LogisticsCalculator {
      * @return 传输限制（long），溢出或 INFINITY_MARKER 时返回 Long.MAX_VALUE
      */
     public static long calcTransferLimit(LogisticsResource<?> type, long stackMult) {
+        if (SLConfig.isSimpleMode()) {
+            return SLConfig.MAX_TRANSFER_AMOUNT;
+        }
         if (stackMult >= ContainerConfig.INFINITY_MARKER) {
             return Long.MAX_VALUE;
         }

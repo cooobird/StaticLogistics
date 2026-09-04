@@ -267,6 +267,7 @@ Current `config/staticlogistics.toml` structure:
 
 ```toml
 [general]
+gameplay_mode = "ADVANCED"
 default_radius = 16
 default_tick_interval = 20
 auto_clean_stored_nodes = true
@@ -297,6 +298,9 @@ netherite_multiplier = 16
 nether_star_multiplier = 64
 ```
 
+- `gameplay_mode` accepts `SIMPLE` (a 1-tick transfer interval, `999999999` per resource transfer, and no distance or
+  dimension limits) or `ADVANCED` (default; configured values and installed upgrades apply). Changes hot-reload without
+  deleting installed upgrades.
 - Resource `*_stack_size` values are base amounts per transfer.
 - `ticker_batch_size` is the candidate polling base per tick, not a total-node limit.
 - `ticker_time_budget_us` is a soft budget shared by all dimensions; unfinished work resumes on later ticks.

@@ -352,29 +352,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             return confirmationDialog.mouseClicked(
                 mouseX, mouseY, button, virtualWidth, virtualHeight);
         }
-        if (button == 0) {
-            NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
-                preview.getRedstoneControlFrameAt(mouseX, mouseY);
-            if (controlFrame != null) {
-                ClientRedstoneControlData.INSTANCE.selectControlGroup(
-                    controlFrame.groupKey(), controlFrame.binding());
-                SoundUtil.playClickSound();
-                return true;
-            }
-        } else if (button == 1) {
-            NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
-                preview.getRedstoneControlFrameAt(mouseX, mouseY);
-            if (controlFrame != null) {
-                confirmationDialog = new ConfirmationDialog(
-                    Component.translatable("gui.staticlogistics.redstone.remove_group"),
-                    Component.translatable(
-                        "gui.staticlogistics.redstone.confirm_remove_group",
-                        controlFrame.connections().size()),
-                    () -> removeRedstoneControlGroup(controlFrame));
-                SoundUtil.playClickSound();
-                return true;
-            }
-        }
+        // 标题栏按钮不属于预览裁剪区，必须先于可能越界的控制框命中处理。
         if (button == 0 && NodeConfigControls.hitOpBtn(mouseX, mouseY,
             leftPos + PREVIEW_TOGGLE_X, topPos + PREVIEW_TOGGLE_Y)) {
             previewExpanded = !previewExpanded;
@@ -386,6 +364,31 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (redstoneControlButton != null
             && redstoneControlButton.mouseClicked(mouseX, mouseY, button)) {
             return true;
+        }
+        if (!preview.hasForegroundHitAt(mouseX, mouseY)) {
+            if (button == 0) {
+                NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
+                    preview.getRedstoneControlFrameAt(mouseX, mouseY);
+                if (controlFrame != null) {
+                    ClientRedstoneControlData.INSTANCE.selectControlGroup(
+                        controlFrame.groupKey(), controlFrame.binding());
+                    SoundUtil.playClickSound();
+                    return true;
+                }
+            } else if (button == 1) {
+                NetworkPreviewPanel.RedstoneControlFrameSelection controlFrame =
+                    preview.getRedstoneControlFrameAt(mouseX, mouseY);
+                if (controlFrame != null) {
+                    confirmationDialog = new ConfirmationDialog(
+                        Component.translatable("gui.staticlogistics.redstone.remove_group"),
+                        Component.translatable(
+                            "gui.staticlogistics.redstone.confirm_remove_group",
+                            controlFrame.connections().size()),
+                        () -> removeRedstoneControlGroup(controlFrame));
+                    SoundUtil.playClickSound();
+                    return true;
+                }
+            }
         }
         if (previewExpanded) {
             ConnectionKey focusBeforePreviewClick = SelectionContext.getFocusedConnectionKey();

@@ -12,8 +12,8 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import org.slf4j.Logger;
 
 import java.util.LinkedHashSet;
-import java.util.Set;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -107,11 +107,13 @@ public class ContainerConfig {
     }
 
     public boolean isDimensionEffective() {
+        if (SLConfig.isSimpleMode()) return true;
         updateCache();
         return cachedDimEffective;
     }
 
     public int getCachedActualInterval() {
+        if (SLConfig.isSimpleMode()) return 1;
         updateCache();
         return cachedActualInterval;
     }

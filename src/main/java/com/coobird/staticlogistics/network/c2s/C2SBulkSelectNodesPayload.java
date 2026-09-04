@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.content.item.BulkSelectionInteractionGuard;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.LinkOperationHelper;
 import com.coobird.staticlogistics.content.item.ToolMode;
+import com.coobird.staticlogistics.integration.sable.DynamicNodeSpace;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.node.FaceAddress;
 import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
@@ -74,8 +75,8 @@ public record C2SBulkSelectNodesPayload(BlockPos origin, Direction face,
                 || !NodeInteractionValidator.isDirectBlockTargetValid(
                 player, payload.origin(), payload.face())) return;
             ItemStack stack = ToolSettingsTarget.findConfigurator(player);
-            if (!(stack.getItem() instanceof LinkConfiguratorItem item)
-                || player.distanceToSqr(Vec3.atCenterOf(payload.origin())) > 100.0D) return;
+            if (!(stack.getItem() instanceof LinkConfiguratorItem item) || DynamicNodeSpace.distanceSquared(player.level(), player.position(),
+                Vec3.atCenterOf(payload.origin())) > 100.0D) return;
             LinkConfiguratorItem.ToolSettings settings = item.getSettings(stack);
             if (settings.mode() != payload.mode()) return;
             BulkSelectionInteractionGuard.mark(player, payload.origin(), payload.face());

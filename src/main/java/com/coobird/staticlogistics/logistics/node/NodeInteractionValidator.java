@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.logistics.node;
 
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
+import com.coobird.staticlogistics.integration.sable.DynamicNodeSpace;
 import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import net.minecraft.core.BlockPos;
@@ -10,6 +11,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -32,7 +34,7 @@ public final class NodeInteractionValidator {
             return false;
         }
         return level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
-            && NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), pos)
+            && DynamicNodeSpace.distanceSquared(level, player.position(), Vec3.atCenterOf(pos)) <= NodeInteractionRules.MAX_REACH_SQUARED
             && level.getBlockEntity(pos) != null
             && TransferUtils.hasLogisticsCapability(level, pos, face);
     }
@@ -52,9 +54,10 @@ public final class NodeInteractionValidator {
         if (player == null || pos == null || face == null
             || !(player.level() instanceof ServerLevel level)
             || !level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
-            || !NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), pos)
             || level.getBlockEntity(pos) == null
             || !player.mayBuild() || !level.mayInteract(player, pos)) return false;
+        if (DynamicNodeSpace.distanceSquared(level, player.position(), Vec3.atCenterOf(pos))
+            > NodeInteractionRules.MAX_REACH_SQUARED) return false;
         HitResult hit = player.pick(Math.sqrt(NodeInteractionRules.MAX_REACH_SQUARED), 0.0F, false);
         return hit instanceof BlockHitResult blockHit
             && blockHit.getType() == HitResult.Type.BLOCK

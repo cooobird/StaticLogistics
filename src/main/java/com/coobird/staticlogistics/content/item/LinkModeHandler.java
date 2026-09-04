@@ -25,11 +25,6 @@ public class LinkModeHandler implements ModeHandler {
 
             if (settings.storedMode() != null && settings.storedMode() != settings.mode()) {
                 LinkOperationHelper.validateStoredNodes(stack, serverLevel);
-                if (settings.groupKey() == null) {
-                    player.displayClientMessage(Component.translatable(
-                        "msg.staticlogistics.select_group_to_link"), true);
-                    return InteractionResult.SUCCESS;
-                }
                 LinkOperationHelper.executeBatchLink(stack, settings, pos, face, serverLevel, player);
                 return InteractionResult.SUCCESS;
             }

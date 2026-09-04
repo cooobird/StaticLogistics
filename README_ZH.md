@@ -234,6 +234,7 @@ tick 软时间预算共同调度，避免单个网络长期占满服务器 tick�
 
 ```toml
 [general]
+gameplay_mode = "ADVANCED"
 default_radius = 16
 default_tick_interval = 20
 auto_clean_stored_nodes = true
@@ -264,6 +265,8 @@ netherite_multiplier = 16
 nether_star_multiplier = 64
 ```
 
+- `gameplay_mode` 可设为 `SIMPLE`（无需升级，传输间隔固定为 1 Tick，各资源单次传输量固定为 `999999999`，并无视距离与维度限制）或
+  `ADVANCED`（默认，使用配置值和升级系统）。切换后会热更新已有网络，且不会删除已安装的升级。
 - `default_*_stack_size` 决定各资源类型的基础单次传输量。
 - `ticker_batch_size` 是每 tick 轮询的候选基数，不是节点总数限制。
 - `ticker_time_budget_us` 是所有维度共享的软时间预算；到达预算后剩余工作顺延到后续 tick。

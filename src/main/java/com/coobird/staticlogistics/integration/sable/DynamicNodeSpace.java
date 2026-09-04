@@ -78,6 +78,13 @@ public final class DynamicNodeSpace {
         return blockCenter(level, first, 1.0F).distanceToSqr(blockCenter(level, second, 1.0F));
     }
 
+    /**
+     * 使用 Sable 的子世界感知规则，计算两个存储空间或世界空间坐标之间的距离。
+     */
+    public static double distanceSquared(Level level, Vec3 first, Vec3 second) {
+        return ADAPTER.distanceSquared(level, first, second);
+    }
+
     public static BlockPos findDynamicStoragePosition(
         Level level, BlockPos worldPosition, Predicate<BlockPos> predicate
     ) {

@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
@@ -84,6 +85,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
     private final DataSlot visibleSideSlot = DataSlot.standalone();
 
     private final ItemStack[] lastUpgradeStacks = new ItemStack[UPGRADE_SLOTS];
+    private long lastConfigGeneration = -1L;
 
     public LinkConfiguratorMenu(int containerId, Inventory playerInventory, FriendlyByteBuf buf) {
         this(containerId, playerInventory, readOpenData(buf));
@@ -388,6 +390,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         if (containerConfig == null) return;
         for (int i = 0; i < UPGRADE_SLOTS; i++)
             lastUpgradeStacks[i] = containerConfig.getUpgrades().getStackInSlot(i).copy();
+        lastConfigGeneration = SLConfig.configGeneration.get();
     }
 
     private boolean hasUpgradeStacksChanged() {
@@ -401,7 +404,8 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     @Override
     public void broadcastChanges() {
-        if (hasUpgradeStacksChanged()) {
+        if (hasUpgradeStacksChanged()
+            || lastConfigGeneration != SLConfig.configGeneration.get()) {
             syncContainerSlots();
             cacheUpgradeStacks();
         }
@@ -684,12 +688,12 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean isActive() {
-            return hasTarget && isOutputSideVisible();
+            return hasTarget && isOutputSideVisible() && !SLConfig.isSimpleMode();
         }
 
         @Override
         public boolean mayPlace(ItemStack stack) {
-            if (!isActive()) return false;
+            if (!isActive() || SLConfig.isSimpleMode()) return false;
             if (!(stack.getItem() instanceof UpgradeItem upg)) return false;
             for (UpgradeType t : allowedTypes) if (upg.getType() == t) return true;
             return false;

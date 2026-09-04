@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
+import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.node.FaceConfigurationEdit;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
@@ -223,12 +224,14 @@ public final class NodeConfigurationPanel {
         renderEnabledState(graphics, menu.isGlobalOutputEnabled());
         renderFilterSlot(graphics, mouseX, mouseY, 1);
 
-        graphics.drawString(font,
-            Component.translatable("gui.staticlogistics.upgrades"), left + UPGRADE_LABEL_X, top + UTILITY_Y + UPGRADE_LABEL_Y_OFFSET, 0xFFAAAAAA, false);
-        for (int index = 2; index < 5; index++) {
-            Slot slot = menu.getSlot(index);
-            NodeConfigControls.drawSlotBg(
-                graphics, left + slot.x, top + slot.y);
+        if (!SLConfig.isSimpleMode()) {
+            graphics.drawString(font,
+                Component.translatable("gui.staticlogistics.upgrades"), left + UPGRADE_LABEL_X, top + UTILITY_Y + UPGRADE_LABEL_Y_OFFSET, 0xFFAAAAAA, false);
+            for (int index = 2; index < 5; index++) {
+                Slot slot = menu.getSlot(index);
+                NodeConfigControls.drawSlotBg(
+                    graphics, left + slot.x, top + slot.y);
+            }
         }
     }
 
