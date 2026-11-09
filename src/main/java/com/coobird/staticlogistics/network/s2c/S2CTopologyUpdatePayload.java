@@ -5,15 +5,14 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
+import com.coobird.staticlogistics.logistics.node.EndpointTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.network.TopologyPagePartitioner;
 import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
-import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
@@ -24,34 +23,38 @@ import org.mesdag.portlib.network.codec.PortStreamCodec;
 import java.util.*;
 import java.util.function.Function;
 
-/**
- * 分页、原子地替换一批面的轻量拓扑及其分组作用域出边。
- */
+/// 分页、原子地替换一批面的轻量拓扑及其分组作用域出边。
 public record S2CTopologyUpdatePayload(
     long sequence,
     int pageIndex,
     int pageCount,
-    List<FaceTopology> faces,
+    List<EndpointTopology> faces,
     List<ScopedTopologyLink> links
 ) implements IPortPacket.S2C {
     private static final int MAX_PAGE_COUNT = 16_384;
     public static final ResourceLocation ID = StaticLogistics.asResource("topology_update");
 
-    /**
-     * 服务端生成更新时使用的冻结输入。
-     */
-    public record FaceUpdate(FaceTopology topology, Map<GroupKey, Set<LogisticsNode>> linksByGroup) {
+    /// 服务端生成更新时使用的冻结输入。
+    public record FaceUpdate(EndpointTopology topology, Map<GroupKey,
+        Set<LogisticsNode>> linksByGroup) {
         public FaceUpdate {
             if (topology == null || linksByGroup == null) {
                 throw new IllegalArgumentException("Topology update fields must not be null");
             }
-            Map<GroupKey, Set<LogisticsNode>> copy = new LinkedHashMap<>();
+            Map<GroupKey, Set<LogisticsNode>> copy =
+                new LinkedHashMap<>();
             linksByGroup.forEach((key, value) -> copy.put(key, Set.copyOf(value)));
             linksByGroup = Map.copyOf(copy);
         }
 
-        public static FaceUpdate from(ServerLevel level, LogisticsNode node, FaceConfigComposite config) {
-            return new FaceUpdate(FaceTopology.from(level, node, config), config.getLinkedNodesByGroup());
+        public static FaceUpdate from(
+            ServerLevel level,
+            LogisticsNode node,
+            EndpointConfig config
+        ) {
+            return new FaceUpdate(
+                EndpointTopology.from(level, node, config),
+                config.getLinkedNodesByGroup());
         }
     }
 
@@ -62,9 +65,7 @@ public record S2CTopologyUpdatePayload(
         validateWeight(faces, links, false);
     }
 
-    /**
-     * 将任意数量的面和链接边拆成有界页面；客户端收齐后一次性提交。
-     */
+    /// 将任意数量的面和链接边拆成有界页面；客户端收齐后一次性提交。
     public static List<S2CTopologyUpdatePayload> pages(
         Collection<FaceUpdate> updates,
         Function<ConnectionKey, String> connectionNameResolver
@@ -73,21 +74,22 @@ public record S2CTopologyUpdatePayload(
         if (connectionNameResolver == null) {
             throw new IllegalArgumentException("Connection name resolver must not be null");
         }
-        Map<LogisticsNode, FaceTopology> facesByNode = new LinkedHashMap<>();
+        Map<LogisticsNode, EndpointTopology> facesByNode = new LinkedHashMap<>();
         Set<ScopedTopologyLink> linkSet = new LinkedHashSet<>();
         for (FaceUpdate update : updates) {
-            FaceTopology previous = facesByNode.putIfAbsent(update.topology().node(), update.topology());
+            EndpointTopology previous = facesByNode.putIfAbsent(update.topology().node(), update.topology());
             if (previous != null) throw new IllegalArgumentException("Duplicate face in topology update");
             update.linksByGroup().forEach((groupKey, targets) -> targets.forEach(target -> {
                 ConnectionKey key = new ConnectionKey(groupKey, update.topology().node(), target);
-                linkSet.add(new ScopedTopologyLink(groupKey, update.topology().node(), target,
+                linkSet.add(new ScopedTopologyLink(
+                    groupKey, update.topology().node(), target,
                     connectionNameResolver.apply(key)));
             }));
         }
 
-        List<FaceTopology> faces = List.copyOf(facesByNode.values());
+        List<EndpointTopology> faces = List.copyOf(facesByNode.values());
         List<ScopedTopologyLink> links = List.copyOf(linkSet);
-        List<List<FaceTopology>> facePages = TopologyPagePartitioner.faces(faces);
+        List<List<EndpointTopology>> facePages = TopologyPagePartitioner.faces(faces);
         List<List<ScopedTopologyLink>> linkPages = TopologyPagePartitioner.links(links);
         int pageCount = Math.max(1, Math.max(facePages.size(), linkPages.size()));
         if (pageCount > MAX_PAGE_COUNT) {
@@ -112,7 +114,7 @@ public record S2CTopologyUpdatePayload(
                 int faceCount = buffer.readVarInt();
                 int linkCount = buffer.readVarInt();
                 validatePage(pageIndex, pageCount, faceCount, linkCount, true);
-                List<FaceTopology> faces = new ArrayList<>(faceCount);
+                List<EndpointTopology> faces = new ArrayList<>(faceCount);
                 for (int i = 0; i < faceCount; i++) faces.add(TopologyStreamCodecs.decodeFace(buffer));
                 List<ScopedTopologyLink> links = new ArrayList<>(linkCount);
                 for (int i = 0; i < linkCount; i++) links.add(TopologyStreamCodecs.decodeLink(buffer));
@@ -162,7 +164,7 @@ public record S2CTopologyUpdatePayload(
         return page < pages.size() ? pages.get(page) : List.of();
     }
 
-    private static void validateWeight(List<FaceTopology> faces,
+    private static void validateWeight(List<EndpointTopology> faces,
                                        List<ScopedTopologyLink> links,
                                        boolean decoding) {
         if (TopologyPagePartitioner.pageWeight(faces, links, List.of())
@@ -178,9 +180,11 @@ public record S2CTopologyUpdatePayload(
     }
 
     @Override
-    public void work(Player player) {
-        Minecraft.getInstance().execute(() ->
-            ClientLinkData.INSTANCE.acceptTopologyUpdatePage(
-                sequence(), pageIndex(), pageCount(), faces(), links()));
+    public void work(Player packetPlayer) {
+        S2CTopologyUpdatePayload payload = this;
+        Player context = packetPlayer;
+        ClientLinkData.INSTANCE.acceptTopologyUpdatePage(
+            payload.sequence(), payload.pageIndex(), payload.pageCount(),
+            payload.faces(), payload.links());
     }
 }

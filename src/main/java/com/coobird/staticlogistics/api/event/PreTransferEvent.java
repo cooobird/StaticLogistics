@@ -4,9 +4,7 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.eventbus.api.Event;
 
-/**
- * 传输开始前发布的独立可取消事件；发布后字段不会被框架清空或复用。
- */
+/// 传输开始前发布的独立可取消事件；发布后字段不会被框架清空或复用。
 public final class PreTransferEvent extends Event {
     private final LogisticsNode sourceNode;
     private final LogisticsNode targetNode;
@@ -38,17 +36,13 @@ public final class PreTransferEvent extends Event {
         return requestedAmount;
     }
 
+    @Override
     public boolean isCanceled() {
         return canceled;
     }
 
+    @Override
     public void setCanceled(boolean canceled) {
         this.canceled = canceled;
     }
-
-    @Override
-    public boolean isCancelable() {
-        return true;
-    }
 }
-

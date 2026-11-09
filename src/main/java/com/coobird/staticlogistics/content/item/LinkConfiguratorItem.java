@@ -1,6 +1,5 @@
 package com.coobird.staticlogistics.content.item;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.SLKeyNames;
@@ -8,21 +7,27 @@ import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.LinkConfiguratorTool;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.group.GroupSelectionInvalidator;
-import com.coobird.staticlogistics.logistics.redstone.RedstonePointSelectionSession;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
@@ -37,16 +42,10 @@ import net.minecraftforge.common.ToolAction;
 import net.minecraftforge.network.NetworkHooks;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.*;
 
 public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
     private static final Map<ToolMode, ModeHandler> HANDLERS = new EnumMap<>(ToolMode.class);
-    private static final UUID BASE_ATTACK_DAMAGE_UUID = UUID.fromString("CB3F55D3-645C-4F38-A497-9C13A33DB5CF");
-    private static final UUID BASE_ATTACK_SPEED_UUID = UUID.fromString("FA233E1C-4180-4865-B01B-BCCE9785ACA3");
 
     static {
         HANDLERS.put(ToolMode.WRENCH, new WrenchModeHandler());
@@ -55,92 +54,65 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         HANDLERS.put(ToolMode.LINK_AS_EXTRACT, new LinkModeHandler());
     }
 
+    private final Map<ItemStack, UUID> toolSessions = Collections.synchronizedMap(new WeakHashMap<>());
+
     public LinkConfiguratorItem() {
         super(new Properties().stacksTo(1));
     }
 
     @Override
-    public Multimap<Attribute, AttributeModifier> getAttributeModifiers(EquipmentSlot slot, ItemStack stack) {
-        if (slot == EquipmentSlot.MAINHAND) {
-            ImmutableMultimap.Builder<Attribute, AttributeModifier> builder = ImmutableMultimap.builder();
-            builder.put(Attributes.ATTACK_DAMAGE, new AttributeModifier(BASE_ATTACK_DAMAGE_UUID, "Weapon modifier", 6.0, AttributeModifier.Operation.ADDITION));
-            builder.put(Attributes.ATTACK_SPEED, new AttributeModifier(BASE_ATTACK_SPEED_UUID, "Weapon modifier", -2.4, AttributeModifier.Operation.ADDITION));
-            return builder.build();
-        }
-        return super.getAttributeModifiers(slot, stack);
-    }
-
-    public record ToolSettings(ToolMode mode, List<ResourceLocation> selectedTypeIds, String group,
-                               @Nullable GroupKey groupKey,
-                               List<LogisticsNode> storedNodes,
-                               @Nullable ToolMode storedMode) {
-        public List<LogisticsResource<?>> getSelectedTypes() {
-            return TransferTypeSelection.selectedTypes(selectedTypeIds, TransferRegistries.getAllActive());
-        }
-
-    }
-
-    public ToolSettings getSettings(ItemStack stack) {
-        try {
-            Integer sModeIdx = PortItemStackExtension.getData(stack, SLDataComponents.STORED_MODE.get());
-            List<LogisticsNode> storedNodes = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.STORED_NODES.get(), List.of());
-            List<ResourceLocation> selectedTypeIds = PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_TYPES.get());
-            int legacyMask = PortItemStackExtension.getDataOrDefault(
-                stack, SLDataComponents.SELECTED_TYPES_MASK.get(), 0);
-            selectedTypeIds = TransferTypeSelection.mergeIdsWithMask(
-                selectedTypeIds == null ? List.of() : selectedTypeIds,
-                legacyMask, TransferRegistries.getAllActive());
-            return new ToolSettings(
-                ToolMode.fromId(PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE.get(), 0)),
-                selectedTypeIds,
-                PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.SELECTED_GROUP.get(), ""),
-                PortItemStackExtension.getData(stack, SLDataComponents.SELECTED_GROUP_KEY.get()),
-                storedNodes,
-                sModeIdx != null ? ToolMode.fromId(sModeIdx) : null
-            );
-        } catch (Exception e) {
-            // 注册表对象在早期加载阶段可能尚未就绪，例如创建创造模式搜索树时。
-            return new ToolSettings(ToolMode.WRENCH, List.of(), "", null, List.of(), null);
+    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slot, boolean selected) {
+        if (!level.isClientSide) {
+            UUID identity = toolSessions.computeIfAbsent(stack, ignored -> UUID.randomUUID());
+            if (!identity.equals(stack.get(SLDataComponents.TOOL_SESSION.get()))) {
+                stack.set(SLDataComponents.TOOL_SESSION.get(), identity);
+                stack.save(new CompoundTag());
+            }
         }
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
+    public Multimap<Attribute, AttributeModifier> getAttributeModifiers(EquipmentSlot slot, ItemStack stack) {
+        if (slot != EquipmentSlot.MAINHAND) return super.getAttributeModifiers(slot, stack);
+        return ImmutableMultimap.of(
+            Attributes.ATTACK_DAMAGE, new AttributeModifier(BASE_ATTACK_DAMAGE_UUID, "Weapon modifier", 6.0, AttributeModifier.Operation.ADDITION),
+            Attributes.ATTACK_SPEED, new AttributeModifier(BASE_ATTACK_SPEED_UUID, "Weapon modifier", -2.4, AttributeModifier.Operation.ADDITION));
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, Level context, List<Component> tooltip, TooltipFlag flag) {
         ToolSettings settings = getSettings(stack);
-        tooltip.add(Component.translatable("tooltip.staticlogistics.scroll_hint",
-            Component.keybind(SLKeyNames.TOOL_MODE_SCROLL)).withStyle(ChatFormatting.GREEN));
+        if (BlueprintModeHandler.isActive(stack)) {
+            BlueprintModeHandler.appendHoverText(stack, context, tooltip, flag);
+            return;
+        }
+        tooltip.add(Component.translatable("tooltip.staticlogistics.configurator_hint").withStyle(ChatFormatting.GREEN));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.mode_scroll",
+            Component.keybind("key.sneak")).withStyle(ChatFormatting.GREEN));
+        tooltip.add(Component.translatable("tooltip.staticlogistics.direct_use_hint").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("tooltip.staticlogistics.bulk_select_hint",
             Component.keybind(SLKeyNames.BULK_NODE_SELECTION)).withStyle(ChatFormatting.AQUA));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.mode", settings.mode().getDisplayName()));
-        String types = settings.getSelectedTypes().stream().map(t -> Component.translatable(t.translationKey()).getString()).collect(Collectors.joining(", "));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.type", types.isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(types)));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.group", settings.group().isEmpty() ? Component.translatable("tooltip.staticlogistics.none") : Component.literal(settings.group())));
-        if (!settings.storedNodes().isEmpty() && settings.storedMode() != null) {
-            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_mode", settings.storedMode().getDisplayName()).withStyle(ChatFormatting.GRAY));
-            tooltip.add(Component.translatable("tooltip.staticlogistics.saved_list"));
-            for (LogisticsNode n : settings.storedNodes()) {
-                String nodeStr = n.gPos().pos().toShortString() + " " + n.face();
-                tooltip.add(Component.literal("  " + nodeStr).withStyle(ChatFormatting.WHITE));
-            }
+        if (!settings.group().isEmpty()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.group", settings.group()).withStyle(ChatFormatting.GRAY));
         }
-        tooltip.add(Component.translatable("tooltip.staticlogistics.auto_clean_info").withStyle(ChatFormatting.AQUA));
-        tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
-            Component.keybind(SLKeyNames.CLEAR_STORED_NODES)).withStyle(ChatFormatting.GRAY));
-        super.appendHoverText(stack, level, tooltip, flag);
+        if (!settings.storedNodes().isEmpty()) {
+            tooltip.add(Component.translatable("tooltip.staticlogistics.stored_faces",
+                settings.storedNodes().size()).withStyle(ChatFormatting.WHITE));
+            tooltip.add(Component.translatable("tooltip.staticlogistics.clear_stored_hint",
+                Component.keybind(SLKeyNames.CLEAR_STORED_NODES)).withStyle(ChatFormatting.GRAY));
+        }
+        super.appendHoverText(stack, context, tooltip, flag);
     }
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
-        if (player instanceof ServerPlayer serverPlayer
-            && RedstonePointSelectionSession.cancel(serverPlayer)) {
-            player.displayClientMessage(Component.translatable(
-                    "message.staticlogistics.redstone.selection_cancelled")
-                .withStyle(ChatFormatting.GRAY), true);
-            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
-        }
+        if (BlueprintModeHandler.isPlacing(stack)) return BlueprintModeHandler.use(level, player, hand);
+
         if (!player.isSecondaryUseActive()) {
-            if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);
+            if (player instanceof ServerPlayer serverPlayer) {
+                openConfigurator(serverPlayer);
+            }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
         } else {
             LinkOperationHelper.clearNodes(stack, player, level);
@@ -148,12 +120,32 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         return InteractionResultHolder.pass(stack);
     }
 
+    /// 扳手模式门控：只在 WRENCH 模式放行 wrench_ 类 ToolAction。
     @Override
     public boolean canPerformAction(ItemStack stack, ToolAction action) {
-        if (getSettings(stack).mode() != ToolMode.WRENCH && action.name().startsWith("wrench_")) {
+        if ((BlueprintModeHandler.isActive(stack) || getSettings(stack).mode() != ToolMode.WRENCH) && action.name().startsWith("wrench_")) {
             return false;
         }
         return super.canPerformAction(stack, action);
+    }
+
+    @Override
+    public InteractionResult onItemUseFirst(ItemStack stack, UseOnContext context) {
+        Player player = context.getPlayer();
+        if (player != null && BlueprintModeHandler.isActive(stack)
+            && !BlueprintModeHandler.isPlacing(stack) && !player.isSecondaryUseActive()) {
+            if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);
+            return InteractionResult.sidedSuccess(context.getLevel().isClientSide);
+        }
+        if (player == null || player.isSecondaryUseActive() || getSettings(stack).mode() != ToolMode.WRENCH)
+            return InteractionResult.PASS;
+        /// 普通右键先执行旋转，不让箱子或机器的交互提前打开界面；蹲下拆卸仍交给原有兼容入口。
+        InteractionResult result = useOn(context);
+        if (result != InteractionResult.PASS) return result;
+        if (!context.getLevel().isClientSide) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.wrench.cannot_rotate"), true);
+        }
+        return InteractionResult.SUCCESS;
     }
 
     @Override
@@ -162,6 +154,12 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         Player player = context.getPlayer();
         ItemStack stack = context.getItemInHand();
         if (player == null) return InteractionResult.PASS;
+        if (BlueprintModeHandler.isActive(stack)) {
+            if (BlueprintModeHandler.isPlacing(stack) || player.isSecondaryUseActive())
+                return BlueprintModeHandler.useOn(context);
+            if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);
+            return InteractionResult.sidedSuccess(level.isClientSide);
+        }
         if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
             LinkOperationHelper.validateStoredNodes(stack, serverLevel);
             GroupSelectionInvalidator.clearInvalidSelection(serverLevel.getServer(), stack);
@@ -169,15 +167,12 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         ToolSettings settings = getSettings(stack);
 
         if (level.isClientSide && LinkConfiguratorClientHooks.isBulkSelectionActive()
-            && settings.mode().isLinkMode()) return InteractionResult.SUCCESS;
+            && settings.mode().isLinkMode()) {
+            return InteractionResult.SUCCESS;
+        }
         if (player instanceof ServerPlayer serverPlayer
             && BulkSelectionInteractionGuard.matches(
             serverPlayer, context.getClickedPos(), context.getClickedFace())) {
-            return InteractionResult.SUCCESS;
-        }
-
-        if (!player.isSecondaryUseActive()) {
-            if (player instanceof ServerPlayer serverPlayer) openConfigurator(serverPlayer);
             return InteractionResult.SUCCESS;
         }
 
@@ -191,6 +186,52 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
         return result;
     }
 
+    public boolean matchesSession(ItemStack stack, UUID identity) {
+        return identity.equals(toolSessions.get(stack));
+    }
+
+    public record ToolSettings(ToolMode mode, List<ResourceLocation> selectedTypeIds, String group,
+                               @Nullable GroupKey groupKey,
+                               List<LogisticsNode> storedNodes,
+                               @Nullable ToolMode storedMode, int channel) {
+        public List<LogisticsResource<?>> getSelectedTypes() {
+            return TransferTypeSelection.selectedTypes(selectedTypeIds, TransferRegistries.getAllActive());
+        }
+
+    }
+
+    public ToolSettings getSettings(ItemStack stack) {
+        Integer sModeIdx = stack.get(SLDataComponents.STORED_MODE.get());
+        List<ResourceLocation> selectedTypeIds = stack.get(SLDataComponents.SELECTED_TYPES.get());
+        selectedTypeIds = selectedTypeIds == null ? List.of() : selectedTypeIds;
+        return new ToolSettings(
+            ToolMode.fromId(stack.getOrDefault(SLDataComponents.TOOL_MODE.get(), 0)),
+            selectedTypeIds,
+            stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), ""),
+            stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()),
+            storedNodes(stack),
+            sModeIdx != null ? ToolMode.fromId(sModeIdx) : null, selectedChannel(stack)
+        );
+    }
+
+    public static int selectedChannel(ItemStack stack) {
+        return Mth.clamp(stack.getOrDefault(SLDataComponents.SELECTED_CHANNEL.get(), 0), 0, LogisticsNode.MAX_CHANNELS - 1);
+    }
+
+    public static int channelForFace(ServerLevel level, BlockPos pos, Direction face, int preferred) {
+        var manager = LinkManager.get(level);
+        if (manager.getEndpointConfig(new EndpointAddress(pos.asLong(), face, preferred)) != null) return preferred;
+        var container = manager.getContainerConfig(pos);
+        if (container == null) return 0;
+        return container.getLinkedFaceKeys().stream().filter(address -> address.face() == face && address.channel() >= 0)
+            .mapToInt(EndpointAddress::channel).min().orElse(0);
+    }
+
+    private static List<LogisticsNode> storedNodes(ItemStack stack) {
+        List<LogisticsNode> nodes = stack.getOrDefault(SLDataComponents.STORED_NODES.get(), List.of());
+        return nodes.isEmpty() ? LinkConfiguratorClientHooks.getStoredNodes(stack) : nodes;
+    }
+
     private static void openConfigurator(ServerPlayer player) {
         int toolSlot = LinkConfiguratorMenu.findToolSlot(player.getInventory());
         if (toolSlot < 0) return;
@@ -198,8 +239,7 @@ public class LinkConfiguratorItem extends Item implements LinkConfiguratorTool {
             player.server, player.getInventory().getItem(toolSlot));
         Component title = Component.translatable("gui.staticlogistics.linker_settings");
         NetworkHooks.openScreen(player, new SimpleMenuProvider(
-                (id, inventory, ignored) -> new LinkConfiguratorMenu(id, inventory, toolSlot),
-                title),
+                (id, inventory, ignored) -> new LinkConfiguratorMenu(id, inventory, toolSlot), title),
             buffer -> LinkConfiguratorMenu.writeEmptyOpenData(buffer, toolSlot));
     }
 }

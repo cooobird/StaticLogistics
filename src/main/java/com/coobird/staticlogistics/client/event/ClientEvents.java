@@ -1,13 +1,11 @@
 package com.coobird.staticlogistics.client.event;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.client.data.ClientRedstoneControlData;
-import com.coobird.staticlogistics.client.data.NetworkPreviewLayoutStore;
-import com.coobird.staticlogistics.client.gui.component.ToolModeFeedback;
-import com.coobird.staticlogistics.client.gui.screen.BlueprintGroupScreen;
+import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel;
+import com.coobird.staticlogistics.client.data.SelectedWorldLinks;
+import com.coobird.staticlogistics.client.data.ToolModeSession;
+import com.coobird.staticlogistics.client.gui.component.ConfiguratorHud;
 import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
 import com.coobird.staticlogistics.client.gui.screen.HandFilterScreen;
 import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
@@ -15,124 +13,105 @@ import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.content.item.*;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.c2s.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.client.event.RenderHighlightEvent;
-import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.LevelEvent;
-import net.minecraftforge.eventbus.api.Event;
+import net.minecraftforge.eventbus.api.Event.Result;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.ModContainer;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import org.mesdag.portlib.client.gui.PortConfigurationScreen;
 import org.mesdag.portlib.event.client.PortRegisterMenuScreensEvent;
+import org.mesdag.portlib.network.PortPacketDistributor;
 
-@Mod.EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+
+@EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
+
 public class ClientEvents {
-    private static int redstoneOverlayQueryCooldown;
-    private static int redstoneSignalQueryCooldown;
-    private static GroupKey lastRedstoneOverlayGroup;
+    public static void registerConfigScreen(ModContainer container) {
+        container.registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
+            () -> new ConfigScreenHandler.ConfigScreenFactory(parent -> new PortConfigurationScreen(container, parent)));
+    }
 
-    public static void registerModBus(IEventBus modEventBus) {
-        installClientHooks();
-        modEventBus.addListener(ClientEvents::registerKeyMappings);
-        modEventBus.addListener(ClientEvents::registerMenuScreens);
+    public static void registerModBus(IEventBus bus) {
+        bus.addListener(ClientEvents::registerKeyMappings);
+        bus.addListener(ClientEvents::registerMenuScreens);
+    }
+
+    @SubscribeEvent
+    public static void onToolHud(RenderGuiEvent.Post event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || minecraft.screen != null || minecraft.options.hideGui) return;
+        ItemStack stack = minecraft.player.getMainHandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) stack = minecraft.player.getOffhandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem item)) return;
+        ConfiguratorHud.render(event.getGuiGraphics(), minecraft.font, item.getSettings(stack), stack);
     }
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel().isClientSide()) {
             ClientLinkData.INSTANCE.invalidate();
-            ClientRedstoneControlData.INSTANCE.invalidate();
         }
     }
 
     @SubscribeEvent
     public static void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        ConnectionDirectoryModel.clearScope();
+        ToolModeSession.clear();
+        SelectedWorldLinks.clear();
+        LinkConfiguratorClientHooks.clearSelections();
         ClientLinkData.INSTANCE.invalidate();
-        ClientRedstoneControlData.INSTANCE.invalidate();
-        redstoneOverlayQueryCooldown = 0;
-        redstoneSignalQueryCooldown = 0;
-        lastRedstoneOverlayGroup = null;
-        NetworkPreviewLayoutStore.INSTANCE.closeSession();
-    }
-
-    /**
-     * 手持配置器查看世界覆盖层时，低频同步结构、高频同步红石电平。
-     */
-    @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.level == null) return;
-        ItemStack stack = minecraft.player.getMainHandItem();
-        if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
-            stack = minecraft.player.getOffhandItem();
-        }
-        if (!(stack.getItem() instanceof LinkConfiguratorItem)) {
-            lastRedstoneOverlayGroup = null;
-            redstoneOverlayQueryCooldown = 0;
-            redstoneSignalQueryCooldown = 0;
-            return;
-        }
-        GroupKey groupKey = PortItemStackExtension.getData(
-            stack, SLDataComponents.SELECTED_GROUP_KEY.get());
-        if (groupKey == null) {
-            lastRedstoneOverlayGroup = null;
-            redstoneOverlayQueryCooldown = 0;
-            redstoneSignalQueryCooldown = 0;
-            return;
-        }
-        if (!groupKey.equals(lastRedstoneOverlayGroup)) {
-            lastRedstoneOverlayGroup = groupKey;
-            redstoneOverlayQueryCooldown = 0;
-            redstoneSignalQueryCooldown = 0;
-        }
-        if (--redstoneOverlayQueryCooldown <= 0) {
-            SLNetwork.HANDLER.sendToServer(new C2SQueryRedstoneGroupPayload(groupKey));
-            redstoneOverlayQueryCooldown = 40;
-        }
-        if (--redstoneSignalQueryCooldown <= 0) {
-            SLNetwork.HANDLER.sendToServer(new C2SQueryRedstoneSignalsPayload(groupKey));
-            redstoneSignalQueryCooldown = 2;
-        }
     }
 
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
+        LinkConfiguratorClientHooks.installBulkSelectionKey(() -> SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION));
+        LinkConfiguratorClientHooks.installRetainedSelectionIds(() -> {
+            var player = Minecraft.getInstance().player;
+            if (player == null) return Set.of();
+            Set<UUID> ids = new HashSet<>();
+            for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+                var id = player.getInventory().getItem(slot).get(SLDataComponents.STORED_SELECTION_ID.get());
+                if (id != null) ids.add(id);
+            }
+            return ids;
+        });
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
-        event.register(SLKeyMappings.TOOL_MODE_SCROLL);
         event.register(SLKeyMappings.BULK_NODE_SELECTION);
-        event.register(SLKeyMappings.NETWORK_PREVIEW_MULTI_SELECT);
         event.register(SLKeyMappings.BLUEPRINT_UNDO);
+        event.register(SLKeyMappings.BLUEPRINT_PASTE);
         event.register(SLKeyMappings.CLEAR_STORED_NODES);
-        event.register(SLKeyMappings.QUICK_FILTER_MARK);
         event.register(SLKeyMappings.PRIORITY_X10);
         event.register(SLKeyMappings.PRIORITY_X5);
+        event.register(SLKeyMappings.QUICK_FILTER_MARK);
         event.register(SLKeyMappings.GROUP_DETAILS_AND_EXPORT);
-    }
-
-    private static void installClientHooks() {
-        LinkConfiguratorClientHooks.installBulkSelectionKey(() ->
-            SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION));
         BlueprintClientHooks.install(
-            stack -> Minecraft.getInstance().setScreen(new BlueprintGroupScreen(stack)),
             (stack, tooltip) -> {
                 tooltip.add(Component.translatable(
                     "tooltip.staticlogistics.blueprint.use",
@@ -159,7 +138,7 @@ public class ClientEvents {
                 int count = 0;
                 for (int index = 0; index < player.getInventory().getContainerSize(); index++) {
                     ItemStack slot = player.getInventory().getItem(index);
-                    if (!slot.isEmpty() && net.minecraftforge.registries.ForgeRegistries.ITEMS
+                    if (!slot.isEmpty() && BuiltInRegistries.ITEM
                         .getKey(slot.getItem()).toString().equals(itemId)) {
                         count += slot.getCount();
                     }
@@ -174,74 +153,110 @@ public class ClientEvents {
         if (!event.getLevel().isClientSide()
             || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem item)
             || !SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION)) return;
-        ToolMode mode = item.getSettings(event.getItemStack()).mode();
+        if (BlueprintModeHandler.isActive(event.getItemStack())) return;
+        ToolMode mode = ToolModeSession.currentMode(event.getItemStack());
         if (!mode.isLinkMode()) return;
-        SLNetwork.HANDLER.sendToServer(new C2SBulkSelectNodesPayload(
-            event.getPos(), event.getFace(), mode));
-        event.setUseBlock(Event.Result.DENY);
-        event.setUseItem(Event.Result.DENY);
+        submitBulkSelection(event.getItemStack(), event.getPos(), event.getFace(), mode);
+        event.setUseBlock(Result.DENY);
+        event.setUseItem(Result.DENY);
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.SUCCESS);
+    }
+
+    private static void submitBulkSelection(ItemStack stack, BlockPos pos, Direction face, ToolMode mode) {
+        Minecraft mc = Minecraft.getInstance();
+        var level = mc.level;
+        int slot = ToolModeSession.heldSlot(stack);
+        var toolId = stack.get(SLDataComponents.TOOL_SESSION.get());
+        if (toolId == null) return;
+        BlockPos target = pos.immutable();
+        ToolModeSession.afterConfirmation(stack, () -> {
+            if (mc.player == null || mc.level != level || mc.screen != null
+                || (slot != mc.player.getInventory().selected && slot != 40)) return;
+            ItemStack current = mc.player.getInventory().getItem(slot);
+            if (!(current.getItem() instanceof LinkConfiguratorItem item)
+                || !toolId.equals(current.get(SLDataComponents.TOOL_SESSION.get()))
+                || item.getSettings(current).mode() != mode) return;
+            PortPacketDistributor.sendToServer(new C2SBulkSelectNodesPayload(target, face, mode, slot, toolId));
+        });
+    }
+
+    /// 模式未确认时禁止按旧模式操作；批量选择保留点击目标，确认后再提交。
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onPendingModeInteraction(InputEvent.InteractionKeyMappingTriggered event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.screen != null) return;
+        ItemStack stack = event.isUseItem() ? mc.player.getItemInHand(event.getHand())
+            : mc.player.getMainHandItem();
+        if (!ToolModeSession.awaiting(stack)) return;
+        event.setCanceled(true);
+        event.setSwingHand(false);
+        ToolMode mode = ToolModeSession.currentMode(stack);
+        if (event.isUseItem() && mode.isLinkMode()
+            && SLKeyMappings.isKeyDown(SLKeyMappings.BULK_NODE_SELECTION)
+            && mc.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK) {
+            submitBulkSelection(stack, hit.getBlockPos(), hit.getDirection(), mode);
+        } else {
+            mc.player.displayClientMessage(Component.translatable("msg.staticlogistics.mode_pending"), true);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.screen != null) return;
+        if (mc.player == null || mc.screen != null || mc.getOverlay() != null || !mc.isWindowActive()) return;
 
         double scrollY = event.getScrollDelta();
         if (scrollY == 0) return;
 
-        ItemStack stack = mc.player.getMainHandItem();
-
-        if (stack.getItem() instanceof LinkConfiguratorItem) {
-            if (!SLKeyMappings.isKeyDown(SLKeyMappings.TOOL_MODE_SCROLL)) return;
+        /// 有效蓝图预览优先使用已有操作键，蹲下滚轮不抢占预览平移。
+        if (scrollBlueprintPreview(mc, scrollY)) {
             event.setCanceled(true);
-            int currentMode = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.TOOL_MODE, 0);
-
-            ToolMode mode = ToolMode.fromId(currentMode);
-            ToolMode newMode = scrollY < 0 ? mode.next() : mode.previous();
-            int nextMode = newMode.getId();
-
-            PortItemStackExtension.setData(stack, SLDataComponents.TOOL_MODE, nextMode);
-            SLNetwork.HANDLER.sendToServer(
-                new C2SUpdateToolModePayload(nextMode));
-            ToolModeFeedback.show(mc.player, stack, newMode);
-            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.get(), 1.2f, 0.4f));
             return;
         }
+        if (!mc.options.keyShift.isDown()) return;
+        ItemStack stack = mc.player.getMainHandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) stack = mc.player.getOffhandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) return;
+        ToolMode current = ToolModeSession.currentMode(stack);
+        int index = current == ToolMode.BLUEPRINT ? (scrollY > 0 ? ToolMode.ORDER.size() - 1 : 0)
+            : Math.floorMod(ToolMode.ORDER.indexOf(current) + (scrollY > 0 ? -1 : 1), ToolMode.ORDER.size());
+        ToolModeSession.select(stack, ToolMode.ORDER.get(index));
+        mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
+        event.setCanceled(true);
+    }
 
-        if (stack.getItem() instanceof BlueprintItem) {
-            String previewStr = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR, "");
-            if (previewStr.isEmpty()) return;
+    private static boolean scrollBlueprintPreview(Minecraft mc, double scrollY) {
+        ItemStack stack = BlueprintModeHandler.held(mc.player);
+        if (!BlueprintModeHandler.isActive(stack)) return false;
+        String previewStr = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
+        if (previewStr.isEmpty() || !mc.player.level().dimension().location().toString().equals(
+            stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_DIMENSION.get(), ""))) return false;
 
-            boolean moveDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
-            boolean rotateDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
-            boolean moveYDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
-            if (!moveDown && !rotateDown && !moveYDown) return;
+        boolean moveDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE);
+        boolean rotateDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
+        boolean moveYDown = SLKeyMappings.isKeyDown(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
+        if (!moveDown && !rotateDown && !moveYDown) return false;
 
-            event.setCanceled(true);
-            BlockPos previewAnchor = posFromString(previewStr);
-            if (previewAnchor == null) return;
-
-            int rotation = PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.BLUEPRINT_PREVIEW_ROTATION, 0);
-
-            if (rotateDown) {
-                rotation = scrollY < 0 ? (rotation + 1) & 3 : (rotation - 1) & 3;
-            } else if (moveYDown) {
-                int step = scrollY < 0 ? 1 : -1;
-                previewAnchor = previewAnchor.above(step);
-            } else {
-                Direction dir = getLookMoveDirection(mc.player);
-                int step = scrollY < 0 ? 1 : -1;
-                previewAnchor = previewAnchor.relative(dir, step);
-            }
-
-            PortItemStackExtension.setData(stack, SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR, previewAnchor.toShortString());
-            PortItemStackExtension.setData(stack, SLDataComponents.BLUEPRINT_PREVIEW_ROTATION, rotation);
-            SLNetwork.HANDLER.sendToServer(new C2SUpdateBlueprintPreviewPayload(previewAnchor, rotation));
-            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.get(), 1.2f, 0.4f));
+        BlockPos previewAnchor = posFromString(previewStr);
+        if (previewAnchor == null) return false;
+        int rotation = stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), 0);
+        if (rotateDown) {
+            rotation = scrollY < 0 ? (rotation + 1) & 3 : (rotation - 1) & 3;
+        } else if (moveYDown) {
+            int step = scrollY < 0 ? 1 : -1;
+            previewAnchor = previewAnchor.above(step);
+        } else {
+            Direction dir = getLookMoveDirection(mc.player);
+            int step = scrollY < 0 ? 1 : -1;
+            previewAnchor = previewAnchor.relative(dir, step);
         }
+
+        stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), previewAnchor.toShortString());
+        stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), rotation);
+        PortPacketDistributor.sendToServer(new C2SUpdateBlueprintPreviewPayload(previewAnchor, rotation));
+        mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.4f));
+        return true;
     }
 
     @SubscribeEvent
@@ -249,21 +264,24 @@ public class ClientEvents {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.screen != null) return;
         if (event.getAction() != 1) return;
+        if (SLKeyMappings.BLUEPRINT_PASTE.consumeClick()) {
+            PortPacketDistributor.sendToServer(new C2SBeginBlueprintPlacementPayload());
+        }
 
         if (SLKeyMappings.CLEAR_STORED_NODES.consumeClick()) {
             ItemStack stack = mc.player.getMainHandItem();
             if (!(stack.getItem() instanceof LinkConfiguratorItem))
                 stack = mc.player.getOffhandItem();
-            if (stack.getItem() instanceof LinkConfiguratorItem) {
-                SLNetwork.HANDLER.sendToServer(new C2SClearStoredNodesPayload());
+            if (stack.getItem() instanceof LinkConfiguratorItem && !BlueprintModeHandler.isActive(stack)) {
+                PortPacketDistributor.sendToServer(new C2SClearStoredNodesPayload());
             }
         }
 
         if (SLKeyMappings.BLUEPRINT_UNDO.consumeClick()) {
-            ItemStack stack = mc.player.getMainHandItem();
-            if (stack.getItem() instanceof BlueprintItem) {
-                SLNetwork.HANDLER.sendToServer(new C2SBlueprintUndoPayload());
-                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.get(), 0.7f, 0.5f));
+            if (mc.player.getMainHandItem().getItem() instanceof LinkConfiguratorItem
+                || mc.player.getOffhandItem().getItem() instanceof LinkConfiguratorItem) {
+                PortPacketDistributor.sendToServer(new C2SBlueprintUndoPayload());
+                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK.value(), 0.7f, 0.5f));
             }
         }
     }
@@ -287,22 +305,5 @@ public class ClientEvents {
         event.register(SLMenuTypes.LINK_CONFIGURATOR_MENU.get(), LinkConfiguratorScreen::new);
         event.register(SLMenuTypes.FILTER_CONFIG.get(), FilterConfiguratorScreen::new);
         event.register(SLMenuTypes.HAND_FILTER.get(), HandFilterScreen::new);
-    }
-
-    /**
-     * 拦截 GregTech 的方块高亮渲染。
-     * 当 LinkConfigurator 不在扳手模式时，取消整个高亮事件，
-     * 防止 GregTech 的 IToolGridHighlight 九宫格显示。
-     */
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onBlockHighlight(RenderHighlightEvent.Block event) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        ItemStack held = mc.player.getMainHandItem();
-        if (held.getItem() instanceof LinkConfiguratorItem item) {
-            if (item.getSettings(held).mode() != ToolMode.WRENCH) {
-                event.setCanceled(true);
-            }
-        }
     }
 }

@@ -1,34 +1,39 @@
 package com.coobird.staticlogistics.content.registry;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.menu.FilterConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.HandFilterMenu;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.common.extensions.IForgeMenuType;
 import net.minecraftforge.registries.DeferredRegister;
-import net.minecraftforge.registries.ForgeRegistries;
-import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
+import net.minecraftforge.registries.RegistryObject;
+import org.mesdag.portlib.wrapper.common.extensions.IPortFriendlyByteBufExtension;
 
-import java.util.function.Supplier;
-
+/// 注册连接配置器及其过滤器子界面使用的菜单类型。
 public class SLMenuTypes {
-    public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, StaticLogistics.MODID);
+    /// 菜单类型延迟注册器
+    public static final DeferredRegister<MenuType<?>> TYPES = DeferredRegister.create(Registries.MENU, StaticLogistics.MODID);
 
-    public static final Supplier<MenuType<LinkConfiguratorMenu>> LINK_CONFIGURATOR_MENU =
+    /// 连接配置器菜单：统一承载网络预览、连接面配置与容器升级槽位。
+    public static final RegistryObject<MenuType<LinkConfiguratorMenu>> LINK_CONFIGURATOR_MENU =
         TYPES.register("link_configurator_menu", () -> IForgeMenuType.create(LinkConfiguratorMenu::new));
-    public static final Supplier<MenuType<FilterConfiguratorMenu>> FILTER_CONFIG =
+
+    /// 过滤器配置菜单：配置物品过滤规则
+    public static final RegistryObject<MenuType<FilterConfiguratorMenu>> FILTER_CONFIG =
         TYPES.register("filter_configurator_menu", () -> IForgeMenuType.create(FilterConfiguratorMenu::fromBuffer));
-    public static final Supplier<MenuType<HandFilterMenu>> HAND_FILTER =
+
+    /// 手持过滤器菜单：直接拿着物品编辑过滤规则
+    public static final RegistryObject<MenuType<HandFilterMenu>> HAND_FILTER =
         TYPES.register("hand_filter", () -> IForgeMenuType.create((id, inv, buf) -> {
             int inventorySlot = buf.readVarInt();
-            ItemStack stack = buf.readItem();
-            PortItemStackExtension.setData(stack, SLDataComponents.FILTER_DATA.get(),
-                FilterData.STREAM_CODEC.decode((PortRegistryFriendlyByteBuf) buf));
+            var buffer = IPortFriendlyByteBufExtension.of(buf).wrap();
+            ItemStack stack = ItemStack.STREAM_CODEC.decode(buffer);
+            stack.set(SLDataComponents.FILTER_DATA.get(), FilterData.STREAM_CODEC.decode(buffer));
             return new HandFilterMenu(id, inv, stack, inventorySlot);
         }));
 }

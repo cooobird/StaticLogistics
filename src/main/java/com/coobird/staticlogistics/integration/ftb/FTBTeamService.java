@@ -14,7 +14,8 @@ import java.util.UUID;
 public class FTBTeamService implements TeamAccessPolicy, TeamMemberProvider {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public boolean checkFTBTeamAlliance(UUID owner, UUID actor) {
+    @Override
+    public boolean canAccess(UUID owner, UUID actor) {
         try {
             var manager = FTBTeamsAPI.api().getManager();
             if (manager == null) return false;
@@ -28,7 +29,8 @@ public class FTBTeamService implements TeamAccessPolicy, TeamMemberProvider {
         }
     }
 
-    public boolean isTeamAdminOf(UUID owner, UUID actor) {
+    @Override
+    public boolean canModify(UUID owner, UUID actor) {
         try {
             var manager = FTBTeamsAPI.api().getManager();
             if (manager == null) return false;
@@ -41,19 +43,6 @@ public class FTBTeamService implements TeamAccessPolicy, TeamMemberProvider {
         }
     }
 
-    @Override
-    public boolean canAccess(UUID ownerId, UUID actorId) {
-        return checkFTBTeamAlliance(ownerId, actorId);
-    }
-
-    @Override
-    public boolean canModify(UUID ownerId, UUID actorId) {
-        return isTeamAdminOf(ownerId, actorId);
-    }
-
-    /**
-     * 返回玩家所在团队的成员目录；集成异常时安全退化为空集合。
-     */
     @Override
     public Set<UUID> membersOf(UUID playerId) {
         try {

@@ -12,51 +12,53 @@ import com.coobird.staticlogistics.network.TeamPacketSync;
 import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
-/**
- * 客户端请求创建新的空分组。
- */
+/// 客户端通知服务端创建了一个新的空分组
 public record C2SCreateEmptyGroupPayload(String groupId) implements IPortPacket.C2S {
     public static final ResourceLocation ID = StaticLogistics.asResource("create_empty_group");
-    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SCreateEmptyGroupPayload> STREAM_CODEC =
-        new PortStreamCodec<>() {
-            @Override
-            public C2SCreateEmptyGroupPayload decode(PortRegistryFriendlyByteBuf buffer) {
-                return new C2SCreateEmptyGroupPayload(BoundedNetworkCodecs.GROUP_NAME.decode(buffer));
-            }
 
-            @Override
-            public void encode(PortRegistryFriendlyByteBuf buffer, C2SCreateEmptyGroupPayload value) {
-                BoundedNetworkCodecs.GROUP_NAME.encode(buffer, value.groupId());
-            }
-        };
+    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SCreateEmptyGroupPayload> STREAM_CODEC = PortStreamCodec.composite(
+        BoundedNetworkCodecs.GROUP_NAME, C2SCreateEmptyGroupPayload::groupId,
+        C2SCreateEmptyGroupPayload::new
+    );
 
     @Override
     public ResourceLocation identifier() {
         return ID;
     }
 
-    @Override
-    public void work(ServerPlayer player) {
-        if (!NodeInteractionValidator.holdsConfigurator(player)
-            || player.getServer() == null) return;
+    public static void handle(final C2SCreateEmptyGroupPayload payload, final Player context) {
+
+        var player = context;
+        if (!(player instanceof ServerPlayer serverPlayer)) return;
+        if (!NodeInteractionValidator.holdsConfigurator(serverPlayer) || player.getServer() == null) return;
         if (!ServerPacketRateLimiter.allow(
-            player, ServerPacketRateLimiter.Action.GROUP_CREATION)) return;
+            serverPlayer, ServerPacketRateLimiter.Action.GROUP_CREATION)) {
+            return;
+        }
         try {
-            String normalized = GroupConstraints.normalizeName(groupId());
+            String groupId = GroupConstraints.normalizeName(payload.groupId());
             PlayerGroupStore store = PlayerGroupStore.get(player.getServer());
-            boolean isNewGroup = store.findGroup(player.getUUID(), normalized) == null;
-            var created = new GroupCommandService(player.getServer()).create(player, normalized);
+            boolean isNewGroup = store.findGroup(player.getUUID(), groupId) == null;
+            var created = new GroupCommandService(player.getServer()).create(serverPlayer, groupId);
             LinkConfiguratorSelection.select(player, created);
             if (isNewGroup) {
-                TeamPacketSync.send(player, player.getUUID(), new S2CGroupDirectoryPayload(
-                    player.getUUID(), store.getGroupRefs(player.getUUID())));
+                var groups = store.getGroupRefs(player.getUUID());
+                TeamPacketSync.send(serverPlayer, player.getUUID(),
+                    new S2CGroupDirectoryPayload(player.getUUID(), groups));
             }
         } catch (IllegalArgumentException | IllegalStateException ignored) {
-            // 无效请求不改变服务端状态。
+            /// 无效请求不改变服务端状态。
         }
+
+    }
+
+    @Override
+    public void work(ServerPlayer packetPlayer) {
+        handle(this, packetPlayer);
     }
 }

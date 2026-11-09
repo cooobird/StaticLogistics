@@ -17,9 +17,7 @@ import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
-/**
- * 扳手模式：旋转 + 拆卸 Mek 塑料方块。其他模组的拆卸由标签和自身逻辑处理。
- */
+/// 扳手模式：旋转 + 拆卸 Mek 塑料方块。其他模组的拆卸由标签和自身逻辑处理。
 public class WrenchModeHandler implements ModeHandler {
 
     @Override
@@ -35,18 +33,19 @@ public class WrenchModeHandler implements ModeHandler {
             return InteractionResult.FAIL;
         }
         if (!level.isClientSide && player.isSecondaryUseActive()) return dismantle(level, player, pos, state);
-        if (!level.isClientSide && !player.isSecondaryUseActive()) return rotateBlock(level, pos, state);
+        if (!level.isClientSide && !player.isSecondaryUseActive()) return rotateBlock(level, player, pos, state);
         return InteractionResult.SUCCESS;
     }
 
-    private InteractionResult rotateBlock(Level level, BlockPos pos, BlockState state) {
+    private InteractionResult rotateBlock(Level level, Player player, BlockPos pos, BlockState state) {
+        if (!player.mayBuild() || !level.mayInteract(player, pos)) return InteractionResult.FAIL;
         BlockState rotated = state.rotate(level, pos, Rotation.CLOCKWISE_90);
         if (rotated != state) {
             level.setBlock(pos, rotated, Block.UPDATE_ALL);
             level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 1.0f);
             return InteractionResult.SUCCESS;
         }
-        if (state.hasProperty(BlockStateProperties.FACING)) {
+        if (state.hasProperty(BlockStateProperties.FACING) && state.getValue(BlockStateProperties.FACING).getAxis().isHorizontal()) {
             level.setBlock(pos, state.setValue(BlockStateProperties.FACING, state.getValue(BlockStateProperties.FACING).getClockWise()), Block.UPDATE_ALL);
             level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 1.0f);
             return InteractionResult.SUCCESS;

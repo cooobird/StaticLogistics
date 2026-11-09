@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.content.item;
 
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -25,17 +25,12 @@ public class LinkModeHandler implements ModeHandler {
 
             if (settings.storedMode() != null && settings.storedMode() != settings.mode()) {
                 LinkOperationHelper.validateStoredNodes(stack, serverLevel);
-                if (settings.groupKey() == null) {
-                    player.displayClientMessage(Component.translatable(
-                        "msg.staticlogistics.select_group_to_link"), true);
-                    return InteractionResult.SUCCESS;
-                }
                 LinkOperationHelper.executeBatchLink(stack, settings, pos, face, serverLevel, player);
                 return InteractionResult.SUCCESS;
             }
 
             LinkManager mgr = LinkManager.get(serverLevel);
-            FaceConfigComposite config = mgr.getFaceConfig(FaceAddress.of(pos, face));
+            EndpointConfig config = mgr.getEndpointConfig(new EndpointAddress(pos.asLong(), face, LinkConfiguratorItem.channelForFace(serverLevel, pos, face, settings.channel())));
             if (config == null || config.canPlayerAccess(player)) {
                 LinkOperationHelper.addNode(stack, GlobalPos.of(level.dimension(), pos), face, settings.mode(), player, level);
             } else {

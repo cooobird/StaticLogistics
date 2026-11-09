@@ -8,7 +8,6 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
-import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import org.mesdag.portlib.network.IPortPacket;
@@ -17,14 +16,11 @@ import org.mesdag.portlib.network.codec.PortStreamCodec;
 
 import java.util.*;
 
-/**
- * 原子替换某位所有者的完整分组目录，其中同时包含空组与活跃组。
- */
+/// 原子替换某位所有者的完整分组目录，其中同时包含空组与活跃组。
 public record S2CGroupDirectoryPayload(UUID ownerId, Set<GroupRef> groups) implements IPortPacket.S2C {
 
     public S2CGroupDirectoryPayload {
-        Objects.requireNonNull(ownerId, "Group directory owner must not be null");
-        groups = Set.copyOf(Objects.requireNonNull(groups, "Group directory must not be null"));
+        groups = Set.copyOf(groups);
     }
 
     public static final ResourceLocation ID = StaticLogistics.asResource("group_directory");
@@ -102,8 +98,11 @@ public record S2CGroupDirectoryPayload(UUID ownerId, Set<GroupRef> groups) imple
     }
 
     @Override
-    public void work(Player player) {
-        Minecraft.getInstance().execute(() ->
-            ClientLinkData.INSTANCE.replaceGroupDirectory(ownerId(), groups()));
+    public void work(Player packetPlayer) {
+        S2CGroupDirectoryPayload packet = this;
+        Player context = packetPlayer;
+
+        ClientLinkData.INSTANCE.replaceGroupDirectory(packet.ownerId(), packet.groups());
+
     }
 }

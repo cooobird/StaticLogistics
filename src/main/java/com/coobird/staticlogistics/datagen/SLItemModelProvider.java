@@ -8,12 +8,12 @@ import net.minecraft.world.item.Item;
 import net.minecraftforge.client.model.generators.ItemModelProvider;
 import net.minecraftforge.common.data.ExistingFileHelper;
 import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.RegistryObject;
 
 import java.util.HashSet;
 import java.util.Set;
 
 public class SLItemModelProvider extends ItemModelProvider {
-    protected final Set<Item> skip = new HashSet<>();
     protected final Set<Item> handheld = new HashSet<>();
 
     public SLItemModelProvider(PackOutput output, ExistingFileHelper existingFileHelper) {
@@ -27,9 +27,7 @@ public class SLItemModelProvider extends ItemModelProvider {
     }
 
     protected void simpleItem(DeferredRegister<Item> register) {
-        for (var item : register.getEntries()) {
-            if (skip.contains(item.get())) continue;
-
+        for (RegistryObject<? extends Item> item : register.getEntries()) {
             String path = item.getId().getPath();
             String parent = handheld.contains(item.get()) ? "item/handheld" : "item/generated";
             withExistingParent(path, parent)

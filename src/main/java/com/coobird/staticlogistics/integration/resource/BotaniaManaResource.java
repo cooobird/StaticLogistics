@@ -3,11 +3,12 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -19,14 +20,12 @@ import vazkii.botania.api.mana.ManaPool;
 import vazkii.botania.api.mana.ManaReceiver;
 import vazkii.botania.common.block.BotaniaBlocks;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * Botania 魔力资源适配器（Forge 1.20.1）。
- * 方块实体直接实现 {@link ManaReceiver}，无需 Forge Capability。
- * 产能花只提供魔力；魔力池与魔力收集器既可提供也可接收魔力；其他接收器仅作为接收端。
- */
+/// Botania 魔力资源适配器（Forge 1.20.1）。
+/// 方块实体直接实现 {@link ManaReceiver}，无需 Forge Capability。
+/// 产能花只提供魔力；魔力池与魔力收集器既可提供也可接收魔力；其他接收器仅作为接收端。
 public class BotaniaManaResource implements LogisticsResource<BotaniaManaResource.ManaHandle> {
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("botania_mana");
 
@@ -41,6 +40,11 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.mana");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.botania_mana";
     }
@@ -51,7 +55,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getBotaniaManaStack;
     }
 
@@ -60,9 +64,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
         return TransactionCapabilities.exactCompensating();
     }
 
-    /**
-     * 魔力句柄，区分产能花与 ManaReceiver。
-     */
+    /// 魔力句柄，区分产能花与 ManaReceiver。
     public static final class ManaHandle {
         private final @Nullable GeneratingFlowerBlockEntity flower;
         private final @Nullable ManaReceiver receiver;
@@ -109,7 +111,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
                 currentMana = flower.getMana();
             }
             int changed = currentMana - before;
-            // 创造型魔力池的读数不会下降，但应保持无限魔力源语义。
+            /// 创造型魔力池的读数不会下降，但应保持无限魔力源语义。
             if (amount < 0 && receiver instanceof ManaPool && before > 0 && changed == 0) {
                 nonDepletingSource = true;
                 return amount;
@@ -169,7 +171,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
 
     @Override
     public boolean rollback(ManaHandle source, Object value, long amount,
-                            @Nullable FaceConfigComposite sourceConfig, boolean pullMode,
+                            @Nullable EndpointConfig sourceConfig, boolean pullMode,
                             @Nullable TransferContext context) {
         if (!(value instanceof Number) || amount <= 0L || amount > Integer.MAX_VALUE) return amount <= 0L;
         int restored = source.changeMana((int) amount);

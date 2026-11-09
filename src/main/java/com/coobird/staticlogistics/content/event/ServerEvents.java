@@ -1,10 +1,10 @@
 package com.coobird.staticlogistics.content.event;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.command.SLCommands;
+import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.content.item.BulkSelectionInteractionGuard;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
@@ -12,85 +12,78 @@ import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintUndoManager;
-import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logistics.group.GroupCommandService;
-import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.group.*;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
-import com.coobird.staticlogistics.logistics.redstone.RedstonePointSelectionSession;
-import com.coobird.staticlogistics.network.c2s.C2SQueryRedstoneGroupPayload;
-import com.coobird.staticlogistics.transfer.CapabilityCache;
-import com.coobird.staticlogistics.transfer.LogisticsTicker;
-import com.coobird.staticlogistics.transfer.NodeQueryService;
-import com.coobird.staticlogistics.transfer.TransferLogManager;
+import com.coobird.staticlogistics.transfer.*;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.Container;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
-import net.minecraftforge.eventbus.api.Event;
+import net.minecraftforge.eventbus.api.Event.Result;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModList;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Mod.EventBusSubscriber(modid = StaticLogistics.MODID)
+@EventBusSubscriber(modid = StaticLogistics.MODID)
 public class ServerEvents {
 
     @SubscribeEvent
     public static void onServerStarting(ServerAboutToStartEvent event) {
+        TransferRegistries.freeze();
+        DistributionStrategyRegistry.freeze();
+        TransferFailureReason.freeze();
         GlobalLogisticsManager.get(event.getServer());
     }
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
         GroupDirectoryReconciler.reconcile(event.getServer());
+        LogisticsOperationStore.get(event.getServer()).directoryDeletionOwners()
+            .forEach(owner -> new ConnectionCommandService(event.getServer())
+                .resumePendingDirectoryDeletion(owner));
+        LogisticsOperationStore.get(event.getServer()).groupDeletions()
+            .forEach(group -> new ConnectionCommandService(event.getServer())
+                .resumePendingGroupDeletion(group));
     }
 
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
-        if (ModList.get().isLoaded("ftbteams")) {
-            FTBEventHandlers.clearPending();
-        }
+        if (ModList.get().isLoaded("ftbteams")) FTBEventHandlers.clearPending();
         BlueprintUndoManager.release(event.getServer());
+        LinkManager.release(event.getServer());
         TransferLogManager.release(event.getServer());
         LogisticsTicker.release(event.getServer());
         ConnectionCommandService.release(event.getServer());
         GroupCommandService.release(event.getServer());
-        GlobalLogisticsManager.release(event.getServer());
-        NodeQueryService.release(event.getServer());
         BulkSelectionInteractionGuard.release(event.getServer());
-        RedstonePointSelectionSession.release(event.getServer());
+        GlobalLogisticsManager.release(event.getServer());
     }
 
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
-            BlueprintUndoManager.get(player.server).clear(player.getUUID());
-            RedstonePointSelectionSession.cancel(player);
+        MinecraftServer server = event.getEntity().getServer();
+        if (server != null) {
+            BlueprintUndoManager.get(server).clear(event.getEntity().getUUID());
         }
     }
+
 
     @SubscribeEvent
     public static void command(RegisterCommandsEvent event) {
@@ -118,12 +111,9 @@ public class ServerEvents {
             .filter(node -> {
                 ServerLevel level = event.getServer().getLevel(node.gPos().dimension());
                 return level == null
-                    || LinkManager.get(level).getFaceConfig(FaceAddress.of(node)) == null;
+                    || LinkManager.get(level).getEndpointConfig(EndpointAddress.of(node)) == null;
             })
             .collect(Collectors.toSet());
-
-        RedstoneControlStore controls = RedstoneControlStore.get(event.getServer());
-        removedNodes.forEach(controls::removeNode);
 
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
@@ -134,7 +124,7 @@ public class ServerEvents {
 
     private static void cleanToolStoredNodes(ItemStack stack, Set<LogisticsNode> removedNodes, ServerPlayer player) {
         if (!(stack.getItem() instanceof LinkConfiguratorItem)) return;
-        List<LogisticsNode> storedNodes = PortItemStackExtension.getData(stack, SLDataComponents.STORED_NODES.get());
+        List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (storedNodes == null || storedNodes.isEmpty()) return;
 
         List<LogisticsNode> updatedNodes = storedNodes.stream()
@@ -143,9 +133,8 @@ public class ServerEvents {
 
         if (updatedNodes.size() == storedNodes.size()) return;
 
-        PortItemStackExtension.setData(stack, SLDataComponents.STORED_NODES.get(), updatedNodes);
-        if (updatedNodes.isEmpty())
-            PortItemStackExtension.removeData(stack, SLDataComponents.STORED_MODE.get());
+        stack.set(SLDataComponents.STORED_NODES.get(), updatedNodes);
+        if (updatedNodes.isEmpty()) stack.remove(SLDataComponents.STORED_MODE.get());
 
         player.displayClientMessage(
             Component.translatable("msg.staticlogistics.tool_nodes_cleaned",
@@ -154,97 +143,40 @@ public class ServerEvents {
         );
     }
 
-    /**
-     * 处理mek及其扩展的扳手模式
-     */
+    /// 处理mek及其扩展的扳手模式
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         ItemStack stack = event.getItemStack();
         if (stack.getItem() instanceof LinkConfiguratorItem item) {
-            if (item.getSettings(stack).mode() != ToolMode.WRENCH) {
+            if (BlueprintModeHandler.isActive(stack) || item.getSettings(stack).mode() != ToolMode.WRENCH) {
+                /// 选点和移除模式优先使用工具，避免普通右键先打开箱子或机器界面。
+                event.setUseBlock(Result.DENY);
                 Block block = event.getLevel().getBlockState(event.getPos()).getBlock();
                 if (ModCompat.isMekanismLoaded() && (
-                    net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(block).getNamespace().startsWith("mekanism") ||
-                        net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(block).getNamespace().endsWith("mekanism") ||
-                        net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(block).getNamespace().startsWith("mek"))) {
+                    BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mekanism") ||
+                        BuiltInRegistries.BLOCK.getKey(block).getNamespace().endsWith("mekanism") ||
+                        BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mek"))) {
                     if (event.isCanceled()) event.setCanceled(false);
-                    event.setUseBlock(Event.Result.DENY);
-                    event.setUseItem(Event.Result.ALLOW);
+                    event.setUseBlock(Result.DENY);
+                    event.setUseItem(Result.DEFAULT);
                 }
             }
         }
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onRedstonePointSelectionRightClick(
-        PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)
-            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
-            || !RedstonePointSelectionSession.hasPending(player)) return;
-        RedstonePointSelectionSession.BindResult result =
-            RedstonePointSelectionSession.bind(player,
-                net.minecraft.core.GlobalPos.of(event.getLevel().dimension(), event.getPos()));
-        result.groupKeys().forEach(groupKey ->
-            C2SQueryRedstoneGroupPayload.sendGroupToAuthorized(player, groupKey));
-        player.displayClientMessage(Component.translatable(
-            "message.staticlogistics.redstone.point_bound", result.count(),
-            event.getPos().toShortString()).withStyle(ChatFormatting.GREEN), true);
-        event.setUseBlock(Event.Result.DENY);
-        event.setUseItem(Event.Result.DENY);
-        event.setCanceled(true);
-        event.setCancellationResult(InteractionResult.SUCCESS);
-    }
+
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBulkSelectionRightClick(PlayerInteractEvent.RightClickBlock event) {
         if (!(event.getEntity() instanceof ServerPlayer player)
             || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
+            || BlueprintModeHandler.isActive(event.getItemStack())
             || !BulkSelectionInteractionGuard.matches(
             player, event.getPos(), event.getFace())) return;
-        event.setUseBlock(Event.Result.DENY);
-        event.setUseItem(Event.Result.DENY);
+        event.setUseBlock(Result.DENY);
+        event.setUseItem(Result.DENY);
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.SUCCESS);
     }
 
-    @SubscribeEvent
-    public static void onGenericBlockPlaced(BlockEvent.EntityPlaceEvent event) {
-        if (event.getLevel().isClientSide()) return;
-        if (!(event.getEntity() instanceof Player player)) return;
-        if (!(event.getLevel() instanceof Level level)) return;
-        CapabilityCache.clearPositionAndNeighbors(level, event.getPos());
-
-        ItemStack stack = player.getMainHandItem();
-        if (!PortItemStackExtension.hasData(stack, SLDataComponents.STORED_BE_NBT.get())) {
-            stack = player.getOffhandItem();
-        }
-        if (!PortItemStackExtension.hasData(stack, SLDataComponents.STORED_BE_NBT.get()))
-            return;
-
-        CompoundTag customData = PortItemStackExtension.getData(stack, SLDataComponents.STORED_BE_NBT.get());
-        if (customData == null) return;
-
-        CompoundTag savedBeTag = customData != null ? customData.copy() : new CompoundTag();
-        BlockPos pos = event.getPos();
-        BlockEntity newBe = level.getBlockEntity(pos);
-
-        if (newBe != null) {
-            newBe.load(savedBeTag);
-            if (newBe instanceof Container c) {
-                for (int i = 0; i < c.getContainerSize(); i++) {
-                    ItemStack item = c.getItem(i);
-                    if (!item.isEmpty()) {
-                        c.setItem(i, item.copy());
-                    }
-                }
-            }
-            newBe.setChanged();
-            level.sendBlockUpdated(pos, level.getBlockState(pos), level.getBlockState(pos), 3);
-            CapabilityCache.clearPositionAndNeighbors(level, pos);
-
-            if (!player.getAbilities().instabuild) {
-                PortItemStackExtension.removeData(stack, SLDataComponents.STORED_BE_NBT.get());
-            }
-        }
-    }
 }

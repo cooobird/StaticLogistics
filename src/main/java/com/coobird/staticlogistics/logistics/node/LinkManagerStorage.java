@@ -1,17 +1,12 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.NodeRole;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
-import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.persistence.ContainerRepository;
-import com.coobird.staticlogistics.logistics.node.persistence.LogisticsDataMigration;
-import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
+import com.coobird.staticlogistics.logistics.node.persistence.EndpointRepository;
+import com.coobird.staticlogistics.logistics.node.persistence.LogisticsDataFormat;
 import com.mojang.logging.LogUtils;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -19,286 +14,238 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 import org.slf4j.Logger;
 
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
-/**
- * 维度内物流配置的持久化入口。
- * 无法解析的独立条目会进入隔离区，后续保存不会静默丢弃原始数据。
- */
+/// 存档持久化 —— 把 LinkManager 的数据序列化/反序列化成 NBT
 public class LinkManagerStorage extends SavedData {
-    private static final Logger LOGGER = LogUtils.getLogger();
     private static final LinkMutationPermit DESERIALIZATION_PERMIT = new LinkMutationPermit();
-    private static final String FACE_CONFIGS = "face_configs";
-    private static final String CONTAINER_CONFIGS = "container_configs";
+    private static final int FULL_SAVE_INTERVAL = 100;
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final String QUARANTINED_FACES = "quarantined_face_configs";
     private static final String QUARANTINED_CONTAINERS = "quarantined_container_configs";
 
-    private final ServerLevel level;
     public final LinkManager linkManager;
+    private RuntimeException loadFailure;
+    private final HolderLookup.Provider registries;
+
+    /// 增量保存：缓存上一次完整保存的 CompoundTag
+    /// 每次保存只更新脏键对应的 NBT，避免全量序列化
+    private CompoundTag cachedTag;
+    private final Set<EndpointAddress> dirtyFaceKeys = new LinkedHashSet<>();
+    private final LongSet dirtyContainerKeys = new LongOpenHashSet();
+    private int incrementalSaveCounter;
+    /// 无法解码的单条记录保留原始 NBT，防止后续自动保存静默删档。
     private final CompoundTag quarantinedFaces = new CompoundTag();
     private final CompoundTag quarantinedContainers = new CompoundTag();
-    private CompoundTag cachedTag;
 
-    public LinkManagerStorage(ServerLevel level, LinkManager linkManager) {
-        this.level = level;
+    LinkManagerStorage(LinkManager linkManager, HolderLookup.Provider registries) {
+        this.registries = registries;
         this.linkManager = linkManager;
         this.cachedTag = new CompoundTag();
     }
 
+    /// 变更登记和保存均在服务器主线程完成；成功输出之前保留脏记录。
+    void markFaceDirty(EndpointAddress key) {
+        dirtyFaceKeys.add(key);
+        setDirty();
+    }
+
+    void markContainerDirty(long key) {
+        dirtyContainerKeys.add(key);
+        setDirty();
+    }
+
+    /// 保存数据：优先增量只写脏键，达到全量保存间隔或缓存为空时全量写
     @Override
     public CompoundTag save(CompoundTag tag) {
-        Set<FaceAddress> dirtyFaces = linkManager.snapshotDirtyFaces();
-        LongSet dirtyContainers = linkManager.snapshotDirtyContainers();
+        HolderLookup.Provider provider = registries;
+        requireLoaded();
+        Set<EndpointAddress> dirtyFaces = Set.copyOf(dirtyFaceKeys);
+        LongSet dirtyContainers = new LongOpenHashSet(dirtyContainerKeys);
 
-        boolean needsFull = cachedTag.isEmpty() || linkManager.needsFullSave();
+        boolean needsFull = cachedTag.isEmpty() || ++incrementalSaveCounter >= FULL_SAVE_INTERVAL;
         if (needsFull) {
+            CompoundTag replacement = createFullSave(provider);
             discardQuarantinedFaceKeys(dirtyFaces, quarantinedFaces);
             discardQuarantinedKeys(dirtyContainers, quarantinedContainers);
-            LOGGER.debug("Performing full logistics save (cachedEmpty={})", cachedTag.isEmpty());
-            doFullSave();
-            linkManager.resetFullSaveCounter();
+            writeQuarantineSections(replacement);
+            cachedTag = replacement;
+            incrementalSaveCounter = 0;
         } else if (!dirtyFaces.isEmpty() || !dirtyContainers.isEmpty()) {
-            CompoundTag previous = cachedTag;
-            cachedTag = cachedTag.copy();
-            try {
-                doIncrementalSave(dirtyFaces, dirtyContainers);
-            } catch (RuntimeException exception) {
-                cachedTag = previous;
-                throw exception;
-            }
+            doIncrementalSave(dirtyFaces, dirtyContainers, provider);
         }
 
+        /// 复制缓存到输出
         for (String key : cachedTag.getAllKeys()) {
-            Tag value = cachedTag.get(key);
-            if (value != null) tag.put(key, value.copy());
+            tag.put(key, cachedTag.get(key).copy());
         }
-        linkManager.ackDirtyFaces(dirtyFaces);
-        linkManager.ackDirtyContainers(dirtyContainers);
+        dirtyFaceKeys.removeAll(dirtyFaces);
+        dirtyContainerKeys.removeAll(dirtyContainers);
         return tag;
     }
 
-    private void doFullSave() {
-        ConfigRepository configRepository = linkManager.getConfigRepository();
+    /// 全量序列化所有非默认的面配置、容器配置和全局管理器数据
+    private CompoundTag createFullSave(HolderLookup.Provider provider) {
+        EndpointRepository endpoints = linkManager.getEndpointRepository();
         ContainerRepository containerRepository = linkManager.getContainerRepository();
-        CompoundTag rebuilt = new CompoundTag();
-        rebuilt.putInt(ConfigKeys.SCHEMA_VERSION, LogisticsDataMigration.CURRENT_STORAGE_SCHEMA_VERSION);
+        CompoundTag replacement = new CompoundTag();
+        replacement.putInt(ConfigKeys.SCHEMA_VERSION, LogisticsDataFormat.CURRENT_STORAGE_SCHEMA_VERSION);
 
-        CompoundTag faceConfigs = new CompoundTag();
-        for (FaceAddress address : configRepository.keySet()) {
-            FaceConfigComposite config = configRepository.get(address);
-            if (config != null && !config.isDefault()) {
-                faceConfigs.put(address.storageKey(), config.serializeNBT(level.registryAccess()));
+        CompoundTag fConfigs = new CompoundTag();
+        for (var entry : endpoints.getAllEntries()) {
+            EndpointConfig v = entry.getValue();
+            if (v != null && !v.isDefault()) {
+                fConfigs.put(entry.getKey().storageKey(), v.serializeNBT(provider));
             }
         }
-        rebuilt.put(FACE_CONFIGS, faceConfigs);
+        replacement.put("face_configs", fConfigs);
 
-        CompoundTag containerConfigs = new CompoundTag();
-        for (long key : containerRepository.keySet()) {
-            ContainerConfig config = containerRepository.get(key);
-            if (config != null && !config.isDefault()) {
-                CompoundTag containerTag = new CompoundTag();
-                containerTag.put("upgrades", config.getUpgrades().serializeNBT());
-                containerConfigs.put(Long.toString(key), containerTag);
-            }
-        }
-        rebuilt.put(CONTAINER_CONFIGS, containerConfigs);
-        if (!quarantinedFaces.isEmpty()) rebuilt.put(QUARANTINED_FACES, quarantinedFaces.copy());
-        if (!quarantinedContainers.isEmpty()) {
-            rebuilt.put(QUARANTINED_CONTAINERS, quarantinedContainers.copy());
-        }
-        cachedTag = rebuilt;
-    }
-
-    private void doIncrementalSave(Set<FaceAddress> dirtyFaces, LongSet dirtyContainers) {
-        ConfigRepository configRepository = linkManager.getConfigRepository();
-        if (!dirtyFaces.isEmpty()) {
-            CompoundTag faceConfigs = cachedTag.getCompound(FACE_CONFIGS).copy();
-            for (FaceAddress address : dirtyFaces) {
-                String key = address.storageKey();
-                FaceConfigComposite config = configRepository.get(address);
-                if (config == null || config.isDefault()) {
-                    faceConfigs.remove(key);
-                } else {
-                    faceConfigs.put(key, config.serializeNBT(level.registryAccess()));
-                }
-                quarantinedFaces.remove(key);
-            }
-            cachedTag.put(FACE_CONFIGS, faceConfigs);
-        }
-
-        if (!dirtyContainers.isEmpty()) {
-            ContainerRepository containerRepository = linkManager.getContainerRepository();
-            CompoundTag containerConfigs = cachedTag.getCompound(CONTAINER_CONFIGS).copy();
-            for (long key : dirtyContainers) {
-                String storageKey = Long.toString(key);
-                ContainerConfig config = containerRepository.get(key);
-                if (config == null || config.isDefault()) {
-                    containerConfigs.remove(storageKey);
-                } else {
-                    CompoundTag containerTag = new CompoundTag();
-                    containerTag.put("upgrades", config.getUpgrades().serializeNBT());
-                    containerConfigs.put(storageKey, containerTag);
-                }
-                quarantinedContainers.remove(storageKey);
-            }
-            cachedTag.put(CONTAINER_CONFIGS, containerConfigs);
-        }
-
-        cachedTag.putInt(ConfigKeys.SCHEMA_VERSION, LogisticsDataMigration.CURRENT_STORAGE_SCHEMA_VERSION);
-        updateQuarantineSections();
-    }
-
-    public static LinkManagerStorage load(
-        CompoundTag source,
-        HolderLookup.Provider provider,
-        ServerLevel level,
-        LinkManager linkManager
-    ) {
-        LinkManagerStorage storage = new LinkManagerStorage(level, linkManager);
-        LogisticsDataMigration.MigrationResult migration = LogisticsDataMigration.migrateStorageWithReport(source);
-        CompoundTag tag = migration.tag();
-
-        copyCompound(tag, QUARANTINED_FACES, storage.quarantinedFaces);
-        copyCompound(tag, QUARANTINED_CONTAINERS, storage.quarantinedContainers);
-        if (!migration.appliedSteps().isEmpty()) {
-            LOGGER.info("Migrated logistics storage schema from {} to {} using {}",
-                migration.sourceVersion(), migration.targetVersion(), migration.appliedSteps());
-            storage.setDirty();
-        }
-
-        if (tag.contains("global_logistics", Tag.TAG_COMPOUND)
-            && PlayerGroupStore.get(level.getServer()).importLegacyStorage(tag.getCompound("global_logistics"))) {
-            LOGGER.info("Imported legacy embedded player group storage");
-            storage.setDirty();
-        }
-
-        ConfigRepository configRepository = linkManager.getConfigRepository();
-        ContainerRepository containerRepository = linkManager.getContainerRepository();
-        ContainerConfigService containerConfigService = linkManager.getContainerConfigService();
-        SyncManager syncManager = linkManager.getSyncManager();
-        LinkChangeHandler changeHandler = linkManager.getChangeHandler();
-
-        CompoundTag faceConfigs = tag.getCompound(FACE_CONFIGS);
-        for (String key : faceConfigs.getAllKeys()) {
-            Tag rawValue = faceConfigs.get(key);
-            try {
-                if (!faceConfigs.contains(key, Tag.TAG_COMPOUND)) {
-                    throw new IllegalStateException("Face config entry must be a compound tag");
-                }
-                FaceAddress address = FaceAddress.parseStorageKey(key);
-                LogisticsNode node = address.toNode(level.dimension());
-                FaceConfigComposite config = new FaceConfigComposite();
-                config.deserializeNBT(DESERIALIZATION_PERMIT, provider,
-                    LogisticsDataMigration.migrateFace(faceConfigs.getCompound(key)));
-                config.setPosition(address.pos());
-
-                ContainerConfig containerConfig = containerConfigService.getOrCreate(address.pos());
-                config.attachContainerConfig(containerConfig);
-                containerConfig.linkFace(address);
-                configRepository.put(address, config);
-                syncManager.syncNode(address.pos(), address.face(), config);
-
-                linkManager.refreshLocalCache(address, address.pos(), address.face(), config);
-            } catch (Exception exception) {
-                quarantine(storage.quarantinedFaces, key, rawValue);
-                storage.setDirty();
-                LOGGER.warn("Quarantined invalid face config entry: {}", key, exception);
-            }
-        }
-
-        CompoundTag containerConfigs = tag.getCompound(CONTAINER_CONFIGS);
-        for (String key : containerConfigs.getAllKeys()) {
-            Tag rawValue = containerConfigs.get(key);
-            long containerKey = Long.MIN_VALUE;
-            try {
-                if (!containerConfigs.contains(key, Tag.TAG_COMPOUND)) {
-                    throw new IllegalStateException("Container config entry must be a compound tag");
-                }
-                containerKey = Long.parseLong(key);
-                BlockPos pos = BlockPos.of(containerKey);
-                ContainerConfig config = containerConfigService.getOrCreate(pos);
-                CompoundTag containerTag = containerConfigs.getCompound(key);
-                if (containerTag.contains("upgrades")) {
-                    if (!containerTag.contains("upgrades", Tag.TAG_COMPOUND)) {
-                        throw new IllegalStateException("Container upgrades must be a compound tag");
-                    }
-                    config.getUpgrades().deserializeNBT(containerTag.getCompound("upgrades"));
-                }
-            } catch (Exception exception) {
-                if (containerKey != Long.MIN_VALUE) {
-                    containerRepository.remove(containerKey);
-                    BlockPos pos = BlockPos.of(containerKey);
-                    ContainerConfig cleanConfig = containerConfigService.getOrCreate(pos);
-                    for (FaceAddress address : configRepository.keySet()) {
-                        if (!address.pos().equals(pos)) continue;
-                        FaceConfigComposite faceConfig = configRepository.get(address);
-                        if (faceConfig != null) {
-                            faceConfig.attachContainerConfig(cleanConfig);
-                            cleanConfig.linkFace(address);
-                        }
-                    }
-                }
-                quarantine(storage.quarantinedContainers, key, rawValue);
-                storage.setDirty();
-                LOGGER.warn("Quarantined invalid container config entry: {}", key, exception);
-            }
-        }
-
-        GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
-        for (FaceAddress address : configRepository.keySet()) {
-            FaceConfigComposite config = configRepository.get(address);
-            if (config == null || config.isDefault()) continue;
-            NodeRole role = config.determineRole();
-            if (role == NodeRole.NONE) continue;
-            LogisticsNode node = address.toNode(level.dimension());
-            for (var group : config.faceConfig.getGroups()) {
-                globalManager.registerNode(group, node, role);
-            }
-        }
-
-        linkManager.initKeyVersions();
-        for (var entry : configRepository.getAllEntries()) {
-            FaceAddress address = entry.getKey();
-            FaceConfigComposite config = entry.getValue();
-            if (config == null) continue;
-            config.setOnDirty(changed -> changeHandler.onFaceConfigChanged(
-                address, address.pos(), address.face(), changed));
-        }
+        CompoundTag cConfigs = new CompoundTag();
         for (var entry : containerRepository.getAllEntries()) {
-            ContainerConfig config = entry.getValue();
-            if (config != null) config.setOnDirty(changeHandler::onContainerConfigChanged);
+            ContainerConfig v = entry.getValue();
+            if (v != null && !v.isDefault()) {
+                CompoundTag nbt = new CompoundTag();
+                nbt.put("upgrades", v.getUpgrades().serializeNBT());
+                cConfigs.put(Long.toString(entry.getKey()), nbt);
+            }
         }
-
-        // 第一次保存强制从内存模型完整重建，避免旧字段和已迁移条目残留。
-        storage.cachedTag = new CompoundTag();
-        return storage;
+        replacement.put("container_configs", cConfigs);
+        return replacement;
     }
 
-    private void updateQuarantineSections() {
-        if (quarantinedFaces.isEmpty()) cachedTag.remove(QUARANTINED_FACES);
-        else cachedTag.put(QUARANTINED_FACES, quarantinedFaces.copy());
-        if (quarantinedContainers.isEmpty()) cachedTag.remove(QUARANTINED_CONTAINERS);
-        else cachedTag.put(QUARANTINED_CONTAINERS, quarantinedContainers.copy());
+    /// 先独立序列化全部脏记录，全部成功后再替换缓存；无需深拷贝未变化的记录。
+    /// 输出仍保留一份独立快照，避免后续保存修改已经交给存档系统的数据。
+    private void doIncrementalSave(Set<EndpointAddress> dirtyFaces,
+                                   LongSet dirtyContainers, HolderLookup.Provider provider) {
+        Map<String, CompoundTag> faces = new LinkedHashMap<>();
+        for (EndpointAddress key : dirtyFaces) {
+            EndpointConfig config = linkManager.getEndpointRepository().get(key);
+            faces.put(key.storageKey(), config == null || config.isDefault() ? null : config.serializeNBT(provider));
+        }
+        Map<String, CompoundTag> containers = new LinkedHashMap<>();
+        for (long key : dirtyContainers) {
+            ContainerConfig config = linkManager.getContainerRepository().get(key);
+            CompoundTag value = null;
+            if (config != null && !config.isDefault()) {
+                value = new CompoundTag();
+                value.put("upgrades", config.getUpgrades().serializeNBT());
+            }
+            containers.put(Long.toString(key), value);
+        }
+        applyRecords(cachedTag.getCompound("face_configs"), faces);
+        applyRecords(cachedTag.getCompound("container_configs"), containers);
+        discardQuarantinedFaceKeys(dirtyFaces, quarantinedFaces);
+        discardQuarantinedKeys(dirtyContainers, quarantinedContainers);
+        writeQuarantineSections(cachedTag);
+    }
+
+    private static void applyRecords(CompoundTag records, Map<String, CompoundTag> replacements) {
+        replacements.forEach((key, value) -> {
+            if (value == null) records.remove(key);
+            else records.put(key, value);
+        });
+    }
+
+    private void writeQuarantineSections(CompoundTag destination) {
+        if (quarantinedFaces.isEmpty()) destination.remove(QUARANTINED_FACES);
+        else destination.put(QUARANTINED_FACES, quarantinedFaces.copy());
+        if (quarantinedContainers.isEmpty()) destination.remove(QUARANTINED_CONTAINERS);
+        else destination.put(QUARANTINED_CONTAINERS, quarantinedContainers.copy());
     }
 
     private static void discardQuarantinedKeys(LongSet dirtyKeys, CompoundTag quarantine) {
         for (long key : dirtyKeys) quarantine.remove(Long.toString(key));
     }
 
-    private static void discardQuarantinedFaceKeys(Set<FaceAddress> dirtyKeys, CompoundTag quarantine) {
-        for (FaceAddress address : dirtyKeys) quarantine.remove(address.storageKey());
+    private static void discardQuarantinedFaceKeys(Set<EndpointAddress> dirtyKeys, CompoundTag quarantine) {
+        for (EndpointAddress key : dirtyKeys) quarantine.remove(key.storageKey());
     }
 
-    private static void copyCompound(CompoundTag source, String key, CompoundTag target) {
-        if (!source.contains(key, Tag.TAG_COMPOUND)) return;
-        CompoundTag values = source.getCompound(key);
-        for (String entryKey : values.getAllKeys()) {
-            Tag value = values.get(entryKey);
-            if (value != null) target.put(entryKey, value.copy());
+    /// 从 NBT 反序列化还原所有配置：面配置、容器配置、全局管理器数据
+    public static LinkManagerStorage load(CompoundTag tag, HolderLookup.Provider provider, ServerLevel level, LinkManager linkManager) {
+        try {
+            return readStorage(tag, provider, level, linkManager);
+        } catch (RuntimeException failure) {
+            linkManager.storage.loadFailure = failure;
+            return linkManager.storage;
         }
     }
 
-    private static void quarantine(CompoundTag target, String key, Tag value) {
-        if (value != null) target.put(key, value.copy());
+    /// 在 SavedData 的异常捕获范围之外拒绝加载，避免旧数据被空存档覆盖。
+    void requireLoaded() {
+        if (loadFailure != null) throw new IllegalStateException(
+            "Cannot load Static Logistics data. This version requires the current storage format; the original data has been preserved.", loadFailure);
+    }
+
+    private static LinkManagerStorage readStorage(CompoundTag tag, HolderLookup.Provider provider, ServerLevel level, LinkManager linkManager) {
+        LogisticsDataFormat.validateStorage(tag);
+        CompoundTag migratedTag = tag;
+        LinkManagerStorage storage = linkManager.storage;
+        /// 保存时从运行时数据重建。
+        storage.cachedTag = new CompoundTag();
+        copyQuarantineSection(migratedTag, QUARANTINED_FACES, storage.quarantinedFaces);
+        copyQuarantineSection(migratedTag, QUARANTINED_CONTAINERS, storage.quarantinedContainers);
+
+        EndpointRepository endpoints = linkManager.getEndpointRepository();
+        ContainerRepository containerRepository = linkManager.getContainerRepository();
+
+        /// 先在独立对象中解码共享容器，成功后再发布；失败记录不进入运行时仓库。
+        if (migratedTag.contains("container_configs")) {
+            CompoundTag cTag = migratedTag.getCompound("container_configs");
+            for (String keyStr : cTag.getAllKeys()) {
+                try {
+                    long key = Long.parseLong(keyStr);
+                    if (!cTag.contains(keyStr, Tag.TAG_COMPOUND)) {
+                        throw new IllegalArgumentException("Container config entry must be a compound tag");
+                    }
+                    ContainerConfig config = new ContainerConfig();
+                    CompoundTag nbt = cTag.getCompound(keyStr);
+                    if (nbt.contains("upgrades")) {
+                        config.getUpgrades().deserializeNBT(nbt.getCompound("upgrades"));
+                    }
+                    containerRepository.put(key, config);
+                } catch (Exception e) {
+                    storage.quarantinedContainers.put(keyStr, cTag.get(keyStr).copy());
+                    storage.setDirty();
+                    LOGGER.warn("Quarantined invalid container config key {}: {}", keyStr, e.getMessage());
+                }
+            }
+        }
+
+        /// 容器加载完成后再绑定端点；缺失或隔离的容器记录由仓库创建默认共享配置。
+        if (migratedTag.contains("face_configs")) {
+            CompoundTag fTag = migratedTag.getCompound("face_configs");
+            for (String keyStr : fTag.getAllKeys()) {
+                try {
+                    if (!fTag.contains(keyStr, Tag.TAG_COMPOUND)) {
+                        throw new IllegalArgumentException("Face config entry must be a compound tag");
+                    }
+                    EndpointAddress key = EndpointAddress.parseStorageKey(keyStr);
+                    EndpointConfig config = new EndpointConfig();
+                    config.deserializeNBT(DESERIALIZATION_PERMIT, provider, fTag.getCompound(keyStr));
+                    endpoints.put(key, config);
+                } catch (Exception e) {
+                    storage.quarantinedFaces.put(keyStr, fTag.get(keyStr).copy());
+                    storage.setDirty();
+                    LOGGER.warn("Quarantined invalid face config key {}: {}", keyStr, e.getMessage());
+                }
+            }
+        }
+
+        linkManager.initializeLoadedState();
+
+        return storage;
+    }
+
+    private static void copyQuarantineSection(CompoundTag source, String key, CompoundTag destination) {
+        if (!source.contains(key, Tag.TAG_COMPOUND)) return;
+        CompoundTag saved = source.getCompound(key);
+        for (String entryKey : saved.getAllKeys()) {
+            Tag entry = saved.get(entryKey);
+            if (entry != null) destination.put(entryKey, entry.copy());
+        }
     }
 }

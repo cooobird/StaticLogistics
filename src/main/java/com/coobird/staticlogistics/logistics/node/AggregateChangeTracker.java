@@ -1,19 +1,14 @@
 package com.coobird.staticlogistics.logistics.node;
 
-import java.util.Objects;
-
-/**
- * 聚合根的嵌套变更批次跟踪器。
- *
- * <p>最外层批次结束时只发布一次；空批次不发布；作用域重复关闭无副作用。
- */
+/// 聚合根的嵌套变更批次跟踪器。
+/// 最外层批次结束时只发布一次；空批次不发布；作用域重复关闭无副作用。
 public final class AggregateChangeTracker {
     private final Runnable publisher;
     private int depth;
     private boolean changed;
 
     public AggregateChangeTracker(Runnable publisher) {
-        this.publisher = Objects.requireNonNull(publisher, "publisher");
+        this.publisher = publisher;
     }
 
     public Scope begin() {
@@ -22,8 +17,11 @@ public final class AggregateChangeTracker {
     }
 
     public void markChanged() {
-        if (depth > 0) changed = true;
-        else publisher.run();
+        if (depth > 0) {
+            changed = true;
+        } else {
+            publisher.run();
+        }
     }
 
     private void end() {
@@ -45,9 +43,10 @@ public final class AggregateChangeTracker {
 
         @Override
         public void close() {
-            if (closed) return;
-            closed = true;
-            tracker.end();
+            if (!closed) {
+                closed = true;
+                tracker.end();
+            }
         }
     }
 }

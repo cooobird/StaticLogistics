@@ -1,130 +1,110 @@
 package com.coobird.staticlogistics.logistics.node;
 
+import com.coobird.staticlogistics.logistics.group.LogisticsOperationStore;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.items.IItemHandler;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
-/**
- * 玩家主动删除物流配置时的升级物移交策略。
- *
- * <p>先尝试放入玩家主物品栏，剩余部分在玩家当前位置掉落；事务未提交时恢复
- * 玩家物品栏、移除已生成实体并把升级放回原槽位。
- */
+/// 删除物流配置时统一把升级物写入持久交付队列；在线时立即尝试放入背包。
 public final class PlayerUpgradeHandoff implements NodeLifecycleService.UpgradeHandoff {
-    private final ServerPlayer player;
+    private final MinecraftServer server;
+    private final UUID playerId;
 
     public PlayerUpgradeHandoff(ServerPlayer player) {
-        if (player == null) throw new IllegalArgumentException("Upgrade recipient is required");
-        this.player = player;
+        this(player == null ? null : player.server, player == null ? null : player.getUUID());
+    }
+
+    public PlayerUpgradeHandoff(MinecraftServer server, UUID playerId) {
+        if (server == null || playerId == null) {
+            throw new IllegalArgumentException("Upgrade delivery server and player are required");
+        }
+        this.server = server;
+        this.playerId = playerId;
     }
 
     @Override
     public NodeLifecycleService.HandoffReceipt begin(
         List<NodeLifecycleService.UpgradeSource> sources
     ) {
-        List<ItemStack> inventorySnapshot = player.getInventory().items.stream()
-            .map(ItemStack::copy).toList();
         List<ExtractedUpgrade> extracted = new ArrayList<>();
-        List<ItemEntity> spawned = new ArrayList<>();
         try {
-            extract(sources, extracted);
-            for (ExtractedUpgrade upgrade : extracted) {
-                ItemStack remainder = upgrade.stack().copy();
-                player.getInventory().add(remainder);
-                if (remainder.isEmpty()) continue;
-                ItemEntity entity = new ItemEntity(
-                    player.serverLevel(), player.getX(), player.getY() + 0.25D, player.getZ(),
-                    remainder.copy());
-                entity.setDefaultPickUpDelay();
-                if (!player.serverLevel().addFreshEntity(entity)) {
-                    throw new IllegalStateException("Upgrade entity insertion was rejected");
+            for (NodeLifecycleService.UpgradeSource source : sources) {
+                IItemHandler inventory = source.inventory();
+                for (int slot = source.firstSlot(); slot < source.slotLimit(); slot++) {
+                    ItemStack stack = inventory.extractItem(slot, Integer.MAX_VALUE, false);
+                    if (!stack.isEmpty()) {
+                        extracted.add(new ExtractedUpgrade(inventory, slot, stack));
+                    }
                 }
-                spawned.add(entity);
             }
-            player.getInventory().setChanged();
-            return new PlayerReceipt(
-                player, inventorySnapshot, extracted, spawned);
-        } catch (RuntimeException exception) {
-            rollback(player, inventorySnapshot, extracted, spawned, exception);
-            throw new IllegalStateException("Failed to hand off upgrades to player", exception);
+            List<ItemStack> delivery = extracted.stream()
+                .map(upgrade -> upgrade.stack().copy()).toList();
+            LogisticsOperationStore store = LogisticsOperationStore.get(server);
+            UUID operationId = store.queueItemDelivery(playerId, delivery);
+            return new Receipt(server, store, playerId, extracted, operationId);
+        } catch (RuntimeException failure) {
+            restore(extracted, failure);
+            throw new IllegalStateException("Failed to prepare upgrade delivery", failure);
         }
     }
 
-    private static void extract(
-        List<NodeLifecycleService.UpgradeSource> sources,
-        List<ExtractedUpgrade> extracted
-    ) {
-        for (NodeLifecycleService.UpgradeSource source : sources) {
-            IItemHandler inventory = source.inventory();
-            for (int slot = source.firstSlot(); slot < source.slotLimit(); slot++) {
-                ItemStack stack = inventory.extractItem(slot, Integer.MAX_VALUE, false);
-                if (!stack.isEmpty()) {
-                    extracted.add(new ExtractedUpgrade(inventory, slot, stack));
-                }
-            }
-        }
-    }
-
-    private static void rollback(
-        ServerPlayer player,
-        List<ItemStack> inventorySnapshot,
-        List<ExtractedUpgrade> extracted,
-        List<ItemEntity> spawned,
-        RuntimeException failure
-    ) {
-        spawned.forEach(ItemEntity::discard);
-        for (int slot = 0; slot < inventorySnapshot.size(); slot++) {
-            player.getInventory().items.set(slot, inventorySnapshot.get(slot).copy());
-        }
-        player.getInventory().setChanged();
+    private static void restore(List<ExtractedUpgrade> extracted,
+                                RuntimeException failure) {
         for (int index = extracted.size() - 1; index >= 0; index--) {
             ExtractedUpgrade upgrade = extracted.get(index);
-            ItemStack remainder = upgrade.inventory()
-                .insertItem(upgrade.slot(), upgrade.stack(), false);
+            ItemStack remainder = upgrade.inventory().insertItem(
+                upgrade.slot(), upgrade.stack(), false);
             if (!remainder.isEmpty()) {
-                failure.addSuppressed(
-                    new IllegalStateException("Failed to restore an extracted upgrade"));
+                failure.addSuppressed(new IllegalStateException(
+                    "Failed to restore an extracted upgrade"));
             }
         }
     }
 
-    private record ExtractedUpgrade(IItemHandler inventory, int slot, ItemStack stack) {
+    private record ExtractedUpgrade(IItemHandler inventory, int slot,
+                                    ItemStack stack) {
     }
 
-    private static final class PlayerReceipt implements NodeLifecycleService.HandoffReceipt {
-        private final ServerPlayer player;
-        private final List<ItemStack> inventorySnapshot;
+    private static final class Receipt implements NodeLifecycleService.HandoffReceipt {
+        private final MinecraftServer server;
+        private final LogisticsOperationStore store;
+        private final UUID playerId;
         private final List<ExtractedUpgrade> extracted;
-        private final List<ItemEntity> spawned;
+        private final UUID operationId;
         private boolean committed;
 
-        private PlayerReceipt(
-            ServerPlayer player,
-            List<ItemStack> inventorySnapshot,
-            List<ExtractedUpgrade> extracted,
-            List<ItemEntity> spawned
-        ) {
-            this.player = player;
-            this.inventorySnapshot = inventorySnapshot;
+        private Receipt(MinecraftServer server, LogisticsOperationStore store,
+                        UUID playerId, List<ExtractedUpgrade> extracted,
+                        UUID operationId) {
+            this.server = server;
+            this.store = store;
+            this.playerId = playerId;
             this.extracted = extracted;
-            this.spawned = spawned;
+            this.operationId = operationId;
         }
 
         @Override
         public void commit() {
+            /// 配置已提交删除，物品此后归交付队列所有，不能再退回已移除的配置对象。
             committed = true;
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+            if (player != null) {
+                store.deliverItemDelivery(player, operationId);
+            }
         }
 
         @Override
         public void close() {
             if (committed) return;
-            IllegalStateException failure =
-                new IllegalStateException("Player upgrade handoff was not committed");
-            rollback(player, inventorySnapshot, extracted, spawned, failure);
+            store.cancelItemDelivery(playerId, operationId);
+            IllegalStateException failure = new IllegalStateException(
+                "Upgrade delivery was not committed");
+            restore(extracted, failure);
             if (failure.getSuppressed().length > 0) throw failure;
         }
     }

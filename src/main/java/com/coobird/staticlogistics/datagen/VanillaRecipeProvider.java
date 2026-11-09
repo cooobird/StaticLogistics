@@ -1,234 +1,124 @@
 package com.coobird.staticlogistics.datagen;
 
+import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.registry.SLItems;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.NonNullList;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.recipes.*;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraftforge.common.Tags;
 
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class VanillaRecipeProvider extends RecipeProvider {
-    public VanillaRecipeProvider(PackOutput output) {
-        super(output);
-    }
 
-    private static Ingredient tagIngredient(TagKey<Item> tag) {
-        return Ingredient.of(tag);
+    public VanillaRecipeProvider(PackOutput packOutput, CompletableFuture<HolderLookup.Provider> provider) {
+        super(packOutput);
     }
 
     @Override
-    protected void buildRecipes(Consumer<FinishedRecipe> writer) {
-        // 连接配置器
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.LINK_CONFIGURATOR.get())
-            .pattern("IRI")
-            .pattern("EDE")
-            .pattern("IRI")
-            .define('I', Items.IRON_INGOT)
-            .define('R', Items.REDSTONE)
-            .define('E', Items.ENDER_PEARL)
-            .define('D', Items.DIAMOND)
-            .unlockedBy("has_diamond", has(Items.DIAMOND))
-            .save(writer);
+    protected void buildRecipes(Consumer<FinishedRecipe> output) {
+        /// 连接配置器
+        shaped(output, "", "", Pattern.of(
+            Map.of(
+                'I', Ingredient.of(Items.IRON_INGOT),
+                'R', Ingredient.of(Items.REDSTONE),
+                'E', Ingredient.of(Items.ENDER_PEARL),
+                'D', Ingredient.of(Items.DIAMOND)
+            ),
+            "IRI",
+            "EDE",
+            "IRI"
+        ), new ItemStack(SLItems.LINK_CONFIGURATOR.get()));
 
-        // 速度升级
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.SPEED_UPGRADE_IRON.get())
-            .pattern(" R ")
-            .pattern("IRI")
-            .pattern(" R ")
-            .define('I', Items.IRON_INGOT)
-            .define('R', Items.REDSTONE)
-            .unlockedBy("has_iron", has(Items.IRON_INGOT))
-            .save(writer);
+        /// 综合升级（红石主题）
+        /// 铁综合 (×2)：3铁锭 + 4红石
+        shaped(output, "iron_", "", Pattern.of(
+            Map.of('I', Ingredient.of(Items.IRON_INGOT), 'R', Ingredient.of(Items.REDSTONE)),
+            " R ",
+            "IRI",
+            " R "
+        ), new ItemStack(SLItems.COMBINED_UPGRADE_IRON.get()));
+        /// 金综合 (×4)：铁综合 + 4金锭 + 2红石块
+        shapeless(output, "", "", new ItemStack(SLItems.COMBINED_UPGRADE_GOLDEN.get()),
+            Ingredient.of(SLItems.COMBINED_UPGRADE_IRON.get()),
+            Ingredient.of(Items.GOLD_INGOT), Ingredient.of(Items.GOLD_INGOT),
+            Ingredient.of(Items.GOLD_INGOT), Ingredient.of(Items.GOLD_INGOT),
+            Ingredient.of(Items.REDSTONE_BLOCK), Ingredient.of(Items.REDSTONE_BLOCK));
+        /// 钻石综合 (×8)：金综合 + 4钻石 + 2红石块
+        shapeless(output, "", "", new ItemStack(SLItems.COMBINED_UPGRADE_DIAMOND.get()),
+            Ingredient.of(SLItems.COMBINED_UPGRADE_GOLDEN.get()),
+            Ingredient.of(Items.DIAMOND), Ingredient.of(Items.DIAMOND),
+            Ingredient.of(Items.DIAMOND), Ingredient.of(Items.DIAMOND),
+            Ingredient.of(Items.REDSTONE_BLOCK), Ingredient.of(Items.REDSTONE_BLOCK));
+        /// 下界合金综合 (×16)：钻石综合 + 4下界合金锭 + 2红石块
+        shapeless(output, "", "", new ItemStack(SLItems.COMBINED_UPGRADE_NETHERITE.get()),
+            Ingredient.of(SLItems.COMBINED_UPGRADE_DIAMOND.get()),
+            Ingredient.of(Items.NETHERITE_INGOT), Ingredient.of(Items.NETHERITE_INGOT),
+            Ingredient.of(Items.NETHERITE_INGOT), Ingredient.of(Items.NETHERITE_INGOT),
+            Ingredient.of(Items.REDSTONE_BLOCK), Ingredient.of(Items.REDSTONE_BLOCK));
+        /// 下界之星综合 (×64)：下界合金综合 + 星 + 4下界合金锭
+        shaped(output, "nether_star_", "", Pattern.of(
+            Map.of(
+                'N', Ingredient.of(Items.NETHERITE_INGOT),
+                'S', Ingredient.of(Items.NETHER_STAR),
+                'U', Ingredient.of(SLItems.COMBINED_UPGRADE_NETHERITE.get())
+            ),
+            "NSN",
+            "NUN",
+            "NNN"
+        ), new ItemStack(SLItems.COMBINED_UPGRADE_NETHER_STAR.get()));
 
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.SPEED_UPGRADE_GOLD.get())
-            .requires(SLItems.SPEED_UPGRADE_IRON.get())
-            .requires(Items.GOLD_INGOT, 4)
-            .requires(Items.REDSTONE_BLOCK, 2)
-            .unlockedBy("has_gold", has(Items.GOLD_INGOT))
-            .save(writer);
+        /// 过滤器
+        /// 基础过滤：4铁锭 + 2纸 + 书 + 2红石
+        shaped(output, "", "", Pattern.of(
+            Map.of(
+                'I', Ingredient.of(Items.IRON_INGOT),
+                'P', Ingredient.of(Items.PAPER),
+                'B', Ingredient.of(Items.BOOK),
+                'R', Ingredient.of(Items.REDSTONE)
+            ),
+            "PIP",
+            "RBR",
+            "PIP"
+        ), new ItemStack(SLItems.COMBINED_FILTER_UPGRADE.get()));
 
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.SPEED_UPGRADE_DIAMOND.get())
-            .requires(SLItems.SPEED_UPGRADE_GOLD.get())
-            .requires(Items.DIAMOND, 4)
-            .requires(Items.REDSTONE_BLOCK, 2)
-            .unlockedBy("has_diamond", has(Items.DIAMOND))
-            .save(writer);
+        /// 将已配置的过滤器恢复为干净状态。
+        shapelessSingle(output, new ItemStack(SLItems.COMBINED_FILTER_UPGRADE.get()));
+    }
 
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.SPEED_UPGRADE_NETHERITE.get())
-            .requires(SLItems.SPEED_UPGRADE_DIAMOND.get())
-            .requires(Items.NETHERITE_INGOT, 4)
-            .requires(Items.REDSTONE_BLOCK, 2)
-            .unlockedBy("has_netherite", has(Items.NETHERITE_INGOT))
-            .save(writer);
+    protected void shaped(Consumer<FinishedRecipe> output, String prefix, String suffix, Pattern pattern, ItemStack result) {
+        ResourceLocation id = StaticLogistics.asResource("shaped/" + prefix + getItemName(result.getItem()) + suffix);
+        ShapedRecipeBuilder builder = ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, result.getItem(), result.getCount());
+        pattern.keys().forEach(builder::define);
+        for (String row : pattern.rows()) builder.pattern(row);
+        builder.unlockedBy("has_iron", has(Items.IRON_INGOT)).save(output, id);
+    }
 
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.SPEED_UPGRADE_NETHER_STAR.get())
-            .pattern("NSN")
-            .pattern("NUN")
-            .pattern("NNN")
-            .define('N', Items.NETHERITE_INGOT)
-            .define('S', Items.NETHER_STAR)
-            .define('U', SLItems.SPEED_UPGRADE_NETHERITE.get())
-            .unlockedBy("has_nether_star", has(Items.NETHER_STAR))
-            .save(writer);
+    protected void shapeless(Consumer<FinishedRecipe> output, String prefix, String suffix, ItemStack result, Ingredient... ingredients) {
+        ResourceLocation id = StaticLogistics.asResource("shapeless/" + prefix + getItemName(result.getItem()) + suffix);
+        NonNullList<Ingredient> zingredients = NonNullList.of(Ingredient.EMPTY, ingredients);
+        ShapelessRecipeBuilder builder = ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, result.getItem(), result.getCount());
+        zingredients.forEach(builder::requires);
+        builder.unlockedBy("has_iron", has(Items.IRON_INGOT)).save(output, id);
+    }
 
-        // 范围升级
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.RANGE_UPGRADE_IRON.get())
-            .pattern(" E ")
-            .pattern("IEI")
-            .pattern(" E ")
-            .define('I', Items.IRON_INGOT)
-            .define('E', Items.ENDER_PEARL)
-            .unlockedBy("has_ender_pearl", has(Items.ENDER_PEARL))
-            .save(writer);
+    /// 单物品无序配方：用于清理已配置的过滤器
+    protected void shapelessSingle(Consumer<FinishedRecipe> output, ItemStack result) {
+        ResourceLocation id = StaticLogistics.asResource("shapeless/clear_" + getItemName(result.getItem()));
+        NonNullList<Ingredient> list = NonNullList.of(Ingredient.EMPTY, Ingredient.of(result.getItem()));
+        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, result.getItem()).requires(result.getItem())
+            .unlockedBy("has_filter", has(result.getItem())).save(output, id);
+    }
 
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.RANGE_UPGRADE_GOLD.get())
-            .requires(SLItems.RANGE_UPGRADE_IRON.get())
-            .requires(Items.GOLD_INGOT, 4)
-            .requires(Items.ENDER_EYE, 2)
-            .unlockedBy("has_gold", has(Items.GOLD_INGOT))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.RANGE_UPGRADE_DIAMOND.get())
-            .requires(SLItems.RANGE_UPGRADE_GOLD.get())
-            .requires(Items.DIAMOND, 4)
-            .requires(Items.ENDER_EYE, 2)
-            .unlockedBy("has_diamond", has(Items.DIAMOND))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.RANGE_UPGRADE_NETHERITE.get())
-            .requires(SLItems.RANGE_UPGRADE_DIAMOND.get())
-            .requires(Items.NETHERITE_INGOT, 4)
-            .requires(Items.ENDER_EYE, 2)
-            .unlockedBy("has_netherite", has(Items.NETHERITE_INGOT))
-            .save(writer);
-
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.RANGE_UPGRADE_NETHER_STAR.get())
-            .pattern("NSN")
-            .pattern("NUN")
-            .pattern("NNN")
-            .define('N', Items.NETHERITE_INGOT)
-            .define('S', Items.NETHER_STAR)
-            .define('U', SLItems.RANGE_UPGRADE_NETHERITE.get())
-            .unlockedBy("has_nether_star", has(Items.NETHER_STAR))
-            .save(writer);
-
-        // 堆叠升级
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.STACK_UPGRADE_IRON.get())
-            .pattern(" I ")
-            .pattern("ICI")
-            .pattern(" I ")
-            .define('I', Items.IRON_INGOT)
-            .define('C', tagIngredient(Tags.Items.CHESTS))
-            .unlockedBy("has_iron", has(Items.IRON_INGOT))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.STACK_UPGRADE_GOLD.get())
-            .requires(SLItems.STACK_UPGRADE_IRON.get())
-            .requires(Items.GOLD_INGOT, 4)
-            .requires(tagIngredient(Tags.Items.CHESTS), 2)
-            .unlockedBy("has_gold", has(Items.GOLD_INGOT))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.STACK_UPGRADE_DIAMOND.get())
-            .requires(SLItems.STACK_UPGRADE_GOLD.get())
-            .requires(Items.DIAMOND, 4)
-            .requires(Items.SHULKER_SHELL, 2)
-            .unlockedBy("has_diamond", has(Items.DIAMOND))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.STACK_UPGRADE_NETHERITE.get())
-            .requires(SLItems.STACK_UPGRADE_DIAMOND.get())
-            .requires(Items.NETHERITE_INGOT, 4)
-            .requires(Items.SHULKER_SHELL, 2)
-            .unlockedBy("has_netherite", has(Items.NETHERITE_INGOT))
-            .save(writer);
-
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.STACK_UPGRADE_NETHER_STAR.get())
-            .pattern("NSN")
-            .pattern("NUN")
-            .pattern("NNN")
-            .define('N', Items.NETHERITE_INGOT)
-            .define('S', Items.NETHER_STAR)
-            .define('U', SLItems.STACK_UPGRADE_NETHERITE.get())
-            .unlockedBy("has_nether_star", has(Items.NETHER_STAR))
-            .save(writer);
-
-        // 维度升级
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.DIMENSION_UPGRADE.get())
-            .pattern("NEN")
-            .pattern("ESE")
-            .pattern("NEN")
-            .define('N', Items.NETHERITE_INGOT)
-            .define('E', Items.ENDER_EYE)
-            .define('S', Items.NETHER_STAR)
-            .unlockedBy("has_nether_star", has(Items.NETHER_STAR))
-            .save(writer);
-
-        // 过滤器
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.BASIC_FILTER_UPGRADE.get())
-            .pattern("PIP")
-            .pattern("RBR")
-            .pattern("PIP")
-            .define('I', Items.IRON_INGOT)
-            .define('P', Items.PAPER)
-            .define('B', Items.BOOK)
-            .define('R', Items.REDSTONE)
-            .unlockedBy("has_iron", has(Items.IRON_INGOT))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.TAG_FILTER_UPGRADE.get())
-            .requires(SLItems.BASIC_FILTER_UPGRADE.get())
-            .requires(Items.PAPER, 2)
-            .requires(Items.BOOK)
-            .unlockedBy("has_basic_filter", has(SLItems.BASIC_FILTER_UPGRADE.get()))
-            .save(writer);
-
-        ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.NBT_FILTER_UPGRADE.get())
-            .requires(SLItems.BASIC_FILTER_UPGRADE.get())
-            .requires(Items.DIAMOND)
-            .requires(Items.BOOK)
-            .requires(Items.REDSTONE)
-            .unlockedBy("has_basic_filter", has(SLItems.BASIC_FILTER_UPGRADE.get()))
-            .save(writer);
-
-        // 蓝图
-        ShapedRecipeBuilder.shaped(RecipeCategory.TOOLS, SLItems.BLUEPRINT.get())
-            .pattern("PPP")
-            .pattern("ILI")
-            .define('P', Items.PAPER)
-            .define('I', Items.IRON_INGOT)
-            .define('L', Items.LAPIS_LAZULI)
-            .unlockedBy("has_paper", has(Items.PAPER))
-            .save(writer);
-
-        // 过滤器清理
-        if (SLItems.BASIC_FILTER_UPGRADE.getId() != null) {
-            ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.BASIC_FILTER_UPGRADE.get())
-                .requires(SLItems.BASIC_FILTER_UPGRADE.get())
-                .unlockedBy("has_basic_filter", has(SLItems.BASIC_FILTER_UPGRADE.get()))
-                .save(writer, ResourceLocation.fromNamespaceAndPath(SLItems.BASIC_FILTER_UPGRADE.getId().getNamespace(),
-                    "clear_" + SLItems.BASIC_FILTER_UPGRADE.getId().getPath()));
-        }
-
-        if (SLItems.TAG_FILTER_UPGRADE.getId() != null) {
-            ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.TAG_FILTER_UPGRADE.get())
-                .requires(SLItems.TAG_FILTER_UPGRADE.get())
-                .unlockedBy("has_tag_filter", has(SLItems.TAG_FILTER_UPGRADE.get()))
-                .save(writer, ResourceLocation.fromNamespaceAndPath(SLItems.TAG_FILTER_UPGRADE.getId().getNamespace(),
-                    "clear_" + SLItems.TAG_FILTER_UPGRADE.getId().getPath()));
-        }
-
-        if (SLItems.NBT_FILTER_UPGRADE.getId() != null) {
-            ShapelessRecipeBuilder.shapeless(RecipeCategory.TOOLS, SLItems.NBT_FILTER_UPGRADE.get())
-                .requires(SLItems.NBT_FILTER_UPGRADE.get())
-                .unlockedBy("has_nbt_filter", has(SLItems.NBT_FILTER_UPGRADE.get()))
-                .save(writer, ResourceLocation.fromNamespaceAndPath(SLItems.NBT_FILTER_UPGRADE.getId().getNamespace(),
-                    "clear_" + SLItems.NBT_FILTER_UPGRADE.getId().getPath()));
+    private record Pattern(Map<Character, Ingredient> keys, String[] rows) {
+        static Pattern of(Map<Character, Ingredient> keys, String... rows) {
+            return new Pattern(keys, rows);
         }
     }
 }

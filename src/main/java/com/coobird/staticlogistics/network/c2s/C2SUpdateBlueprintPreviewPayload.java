@@ -1,53 +1,63 @@
 package com.coobird.staticlogistics.network.c2s;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
+import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.mesdag.portlib.network.IPortPacket;
 import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
+import org.mesdag.portlib.network.codec.PortByteBufCodecs;
 import org.mesdag.portlib.network.codec.PortStreamCodec;
 
+/// 客户端滚轮调整预览位置/旋转 → 服务端同步 BLUEPRINT_PREVIEW_ANCHOR / BLUEPRINT_PREVIEW_ROTATION。
 public record C2SUpdateBlueprintPreviewPayload(BlockPos previewAnchor,
                                                int rotation) implements IPortPacket.C2S {
-    public static final ResourceLocation ID = StaticLogistics.asResource("update_blueprint_preview");
-    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SUpdateBlueprintPreviewPayload> STREAM_CODEC = new PortStreamCodec<>() {
-        @Override
-        public C2SUpdateBlueprintPreviewPayload decode(PortRegistryFriendlyByteBuf buffer) {
-            FriendlyByteBuf fbuf = buffer;
-            return new C2SUpdateBlueprintPreviewPayload(fbuf.readBlockPos(), fbuf.readVarInt());
-        }
 
-        @Override
-        public void encode(PortRegistryFriendlyByteBuf buffer, C2SUpdateBlueprintPreviewPayload value) {
-            FriendlyByteBuf fbuf = buffer;
-            fbuf.writeBlockPos(value.previewAnchor());
-            fbuf.writeVarInt(value.rotation());
-        }
-    };
+    public static final ResourceLocation ID = StaticLogistics.asResource("update_blueprint_preview");
+
+    public static final PortStreamCodec<PortRegistryFriendlyByteBuf, C2SUpdateBlueprintPreviewPayload> STREAM_CODEC =
+        PortStreamCodec.composite(
+            BoundedNetworkCodecs.BLOCK_POS, C2SUpdateBlueprintPreviewPayload::previewAnchor,
+            PortByteBufCodecs.VAR_INT, C2SUpdateBlueprintPreviewPayload::rotation,
+            C2SUpdateBlueprintPreviewPayload::new
+        );
 
     @Override
     public ResourceLocation identifier() {
         return ID;
     }
 
-    @Override
-    public void work(ServerPlayer player) {
-        if (!ServerPacketRateLimiter.allow(
-            player, ServerPacketRateLimiter.Action.BLUEPRINT_PREVIEW)) return;
+    public static void handle(final C2SUpdateBlueprintPreviewPayload payload, final Player context) {
+
+        var player = context;
+        if (!(player instanceof ServerPlayer serverPlayer)
+            || !ServerPacketRateLimiter.allow(serverPlayer,
+            ServerPacketRateLimiter.Action.BLUEPRINT_PREVIEW)) return;
         ItemStack stack = player.getItemInHand(InteractionHand.MAIN_HAND);
-        if (!(stack.getItem() instanceof BlueprintItem)) {
+        if (!(BlueprintModeHandler.isPlacing(stack))) {
             stack = player.getItemInHand(InteractionHand.OFF_HAND);
-            if (!(stack.getItem() instanceof BlueprintItem)) return;
+            if (!(BlueprintModeHandler.isPlacing(stack))) return;
         }
-        PortItemStackExtension.setData(stack, SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), previewAnchor.toShortString());
-        PortItemStackExtension.setData(stack, SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), rotation & 3);
+
+        if (stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY).isEmpty()
+            || stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "").isEmpty()
+            || !player.level().dimension().location().toString().equals(stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_DIMENSION.get(), "")))
+            return;
+        stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), payload.previewAnchor().toShortString());
+        stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), payload.rotation() & 3);
+
+    }
+
+    @Override
+    public void work(ServerPlayer packetPlayer) {
+        handle(this, packetPlayer);
     }
 }

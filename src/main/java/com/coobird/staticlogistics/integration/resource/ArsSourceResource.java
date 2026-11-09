@@ -9,6 +9,7 @@ import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -16,13 +17,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * Ars Nouveau 魔源资源适配器（Forge 1.20.1）。
- * 直接检查方块实体是否实现 {@link ISourceTile}。
- */
+/// Ars Nouveau 魔源资源适配器（Forge 1.20.1）。
+/// 直接检查方块实体是否实现 {@link ISourceTile}。
 public class ArsSourceResource implements LogisticsResource<ISourceTile> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("ars_source");
@@ -38,6 +37,11 @@ public class ArsSourceResource implements LogisticsResource<ISourceTile> {
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.source");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.ars_source";
     }
@@ -48,7 +52,7 @@ public class ArsSourceResource implements LogisticsResource<ISourceTile> {
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getArsSourceStack;
     }
 

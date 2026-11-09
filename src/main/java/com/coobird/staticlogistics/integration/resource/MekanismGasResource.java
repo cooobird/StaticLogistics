@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.ExtractionResult;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
@@ -11,9 +11,11 @@ import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
 import mekanism.api.chemical.gas.GasStack;
 import mekanism.api.chemical.gas.IGasHandler;
+import mekanism.common.capabilities.Capabilities;
 import mekanism.common.registries.MekanismBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -21,12 +23,10 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 通过 {@link mekanism.common.capabilities.Capabilities#GAS_HANDLER} 访问 Mekanism 气体。
- */
+/// 通过 {@link Capabilities#GAS_HANDLER} 访问 Mekanism 气体。
 public class MekanismGasResource implements LogisticsResource<IGasHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_gas");
@@ -42,6 +42,11 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.fluid");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.mek_gas";
     }
@@ -52,7 +57,7 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getMekGasStack;
     }
 
@@ -66,7 +71,7 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
         return CapabilityCache.get(
-            level, pos, face, mekanism.common.capabilities.Capabilities.GAS_HANDLER);
+            level, pos, face, Capabilities.GAS_HANDLER);
     }
 
     @Override
@@ -104,7 +109,7 @@ public class MekanismGasResource implements LogisticsResource<IGasHandler> {
     }
 
     @Override
-    public boolean canInsertToTarget(IGasHandler handle, Object value, FaceConfigComposite targetCfg) {
+    public boolean canInsertToTarget(IGasHandler handle, Object value, EndpointConfig targetCfg) {
         if (!(value instanceof GasStack stack) || stack.isEmpty()) return false;
         GasStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
         return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();

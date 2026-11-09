@@ -17,49 +17,46 @@ public class GhostIngredientHandler implements IGhostIngredientHandler<BaseFilte
     @Override
     public <I> List<Target<I>> getTargetsTyped(BaseFilterScreen screen, ITypedIngredient<I> typedIngredient, boolean doStart) {
         List<Target<I>> targets = new ArrayList<>();
-        Rect2i area = screen.getFilterGridArea();
-        if (area == null) return targets;
-
         Optional<ItemStack> itemStack = typedIngredient.getItemStack();
         if (itemStack.isPresent() && !itemStack.get().isEmpty()) {
-            targets.add(createItemTarget(screen, area));
+            for (int slot = 0; slot < 36; slot++) targets.add(createItemTarget(screen, slot));
             return targets;
         }
 
         Optional<FluidStack> fluidStack = typedIngredient.getIngredient(ForgeTypes.FLUID_STACK);
         if (fluidStack.isPresent() && !fluidStack.get().isEmpty()) {
-            targets.add(createFluidTarget(screen, area));
+            for (int slot = 0; slot < 36; slot++) targets.add(createFluidTarget(screen, slot));
         }
         return targets;
     }
 
-    private <I> Target<I> createItemTarget(BaseFilterScreen screen, Rect2i area) {
+    private <I> Target<I> createItemTarget(BaseFilterScreen screen, int slot) {
         return new Target<>() {
             @Override
             public Rect2i getArea() {
-                return area;
+                return screen.getFilterSlotArea(slot);
             }
 
             @Override
             public void accept(I ingredient) {
-                if (ingredient instanceof ItemStack stack) {
-                    screen.acceptGhostIngredient(stack);
+                if (ingredient instanceof ItemStack) {
+                    screen.acceptGhostIngredient(slot, (ItemStack) ingredient);
                 }
             }
         };
     }
 
-    private <I> Target<I> createFluidTarget(BaseFilterScreen screen, Rect2i area) {
+    private <I> Target<I> createFluidTarget(BaseFilterScreen screen, int slot) {
         return new Target<>() {
             @Override
             public Rect2i getArea() {
-                return area;
+                return screen.getFilterSlotArea(slot);
             }
 
             @Override
             public void accept(I ingredient) {
-                if (ingredient instanceof FluidStack fluid) {
-                    screen.acceptGhostIngredient(fluid);
+                if (ingredient instanceof FluidStack) {
+                    screen.acceptGhostIngredient(slot, (FluidStack) ingredient);
                 }
             }
         };

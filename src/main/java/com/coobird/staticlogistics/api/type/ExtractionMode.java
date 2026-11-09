@@ -8,12 +8,12 @@ import org.mesdag.portlib.network.codec.PortStreamCodec;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 提取模式——控制从源容器取物品时按什么顺序选槽位
- */
+/// 提取模式——控制从源容器取物品时按什么顺序选槽位
 public enum ExtractionMode implements StringRepresentable {
-    SEQUENTIAL("sequential"),       // 顺序提取：从第一个可用槽位开始
-    SLOT_ROUND_ROBIN("slot_round_robin"); // 槽位轮询：每个槽位轮流提取
+    SEQUENTIAL("sequential"),
+    /// 顺序提取：从第一个可用槽位开始
+    SLOT_ROUND_ROBIN("slot_round_robin");
+    /// 槽位轮询：每个槽位轮流提取
 
     private static final Map<String, ExtractionMode> NAME_CACHE = new HashMap<>();
 
@@ -48,8 +48,5 @@ public enum ExtractionMode implements StringRepresentable {
     }
 
     public static final PortStreamCodec<PortRegistryFriendlyByteBuf, ExtractionMode> STREAM_CODEC =
-        PortStreamCodec.ofMember(
-            (mode, buf) -> buf.writeVarInt(mode.ordinal()),
-            buf -> ExtractionMode.values()[buf.readVarInt()]
-        );
+        PortStreamCodec.ofMember((value, buffer) -> buffer.writeEnum(value), buffer -> buffer.readEnum(ExtractionMode.class));
 }

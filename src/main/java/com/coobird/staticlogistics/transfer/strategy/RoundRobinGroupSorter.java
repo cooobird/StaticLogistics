@@ -10,9 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 轮询排序：从上次位置开始旋转目标列表，确保目标均匀分配。
- */
+/// 轮询排序：从上次位置开始旋转目标列表，确保目标均匀分配。
 public enum RoundRobinGroupSorter implements GroupSorter {
     INSTANCE;
 
@@ -24,10 +22,9 @@ public enum RoundRobinGroupSorter implements GroupSorter {
         int n = group.size();
         if (n <= 1) return new ArrayList<>(group);
 
-        // 使用固定的 ResourceLocation key 避免 null type
-        int[] cursor = cursorProvider.getCursor(sourceNode, RR_KEY);
-        int index = cursor[0] % n;
-        cursor[0] = (index + 1) % n;
+        /// 使用固定键隔离目标轮询游标，并由提供者统一提交下一位置。
+        int index = Math.floorMod(cursorProvider.getAndUpdateCursor(sourceNode, RR_KEY,
+            current -> (Math.floorMod(current, n) + 1) % n), n);
 
         List<LogisticsNode> result = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
@@ -36,4 +33,3 @@ public enum RoundRobinGroupSorter implements GroupSorter {
         return result;
     }
 }
-

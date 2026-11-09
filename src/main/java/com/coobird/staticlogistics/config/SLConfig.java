@@ -2,7 +2,6 @@ package com.coobird.staticlogistics.config;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.event.PlayerEvents;
-import com.coobird.staticlogistics.network.SLNetwork;
 import com.coobird.staticlogistics.network.s2c.S2CConfigSyncPayload;
 import com.coobird.staticlogistics.transfer.LogisticsTicker;
 import net.minecraft.nbt.CompoundTag;
@@ -15,126 +14,126 @@ import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.server.ServerLifecycleHooks;
+import org.mesdag.portlib.network.PortPacketDistributor;
 
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
-@Mod.EventBusSubscriber(modid = StaticLogistics.MODID)
+@Mod.EventBusSubscriber(modid = StaticLogistics.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class SLConfig {
 
     public static final AtomicLong configGeneration = new AtomicLong(0);
-    public static final int MAX_TRANSFER_AMOUNT = 999_999_999;
+    public static final long MAX_TRANSFER_AMOUNT = Long.MAX_VALUE;
 
     private static ForgeConfigSpec CONFIG_SPEC;
 
-    // 通用设置
-    // 物流节点的默认搜索半径（格）
+    /// 通用设置
+    /// 物流节点的默认搜索半径（格）
     public static ForgeConfigSpec.IntValue DEFAULT_RADIUS;
-    // 物流节点的默认工作间隔（tick）
+    /// 物流节点的默认工作间隔（tick）
     public static ForgeConfigSpec.IntValue DEFAULT_TICK_INTERVAL;
-    // 游戏复杂度：简易模式无需升级，进阶模式沿用升级系统
+    /// 游戏复杂度：简易模式无需升级，进阶模式沿用升级系统
     public static ForgeConfigSpec.EnumValue<GameplayMode> GAMEPLAY_MODE;
 
-    // 物品每 tick 传输堆叠数
-    public static ForgeConfigSpec.IntValue DEFAULT_ITEM_STACK;
-    // 流体每 tick 传输量（mB）
-    public static ForgeConfigSpec.IntValue DEFAULT_FLUID_STACK;
-    // 能量每 tick 传输量（FE）
-    public static ForgeConfigSpec.IntValue DEFAULT_ENERGY_STACK;
+    /// 物品每 tick 传输堆叠数
+    public static ForgeConfigSpec.LongValue DEFAULT_ITEM_STACK;
+    /// 流体每 tick 传输量（mB）
+    public static ForgeConfigSpec.LongValue DEFAULT_FLUID_STACK;
+    /// 能量每 tick 传输量（FE）
+    public static ForgeConfigSpec.LongValue DEFAULT_ENERGY_STACK;
 
-    // Mekanism 气体每 tick 传输量
-    public static ForgeConfigSpec.IntValue MEK_GAS_STACK;
-    // Mekanism 灌注类型每 tick 传输量
-    public static ForgeConfigSpec.IntValue MEK_INFUSION_STACK;
-    // Mekanism 颜料每 tick 传输量
-    public static ForgeConfigSpec.IntValue MEK_PIGMENT_STACK;
-    // Mekanism 浆液每 tick 传输量
-    public static ForgeConfigSpec.IntValue MEK_SLURRY_STACK;
-    // Mekanism 热量每 tick 传输量
-    public static ForgeConfigSpec.IntValue MEK_HEAT_STACK;
-    // Ars Nouveau 魔源每 tick 传输量
-    public static ForgeConfigSpec.IntValue ARS_SOURCE_STACK;
-    // Botania 魔力每 tick 传输量
-    public static ForgeConfigSpec.IntValue BOTANIA_MANA_STACK;
-    // GregTech 能量每 tick 传输量（EU）
-    public static ForgeConfigSpec.IntValue GTCEU_STACK;
+    /// Mekanism 气体每 tick 传输量
+    public static ForgeConfigSpec.LongValue MEK_GAS_STACK;
+    /// Mekanism 灌注类型每 tick 传输量
+    public static ForgeConfigSpec.LongValue MEK_INFUSION_STACK;
+    /// Mekanism 颜料每 tick 传输量
+    public static ForgeConfigSpec.LongValue MEK_PIGMENT_STACK;
+    /// Mekanism 浆液每 tick 传输量
+    public static ForgeConfigSpec.LongValue MEK_SLURRY_STACK;
+    /// Mekanism 热量每 tick 传输量
+    public static ForgeConfigSpec.LongValue MEK_HEAT_STACK;
+    /// Ars Nouveau 魔源每 tick 传输量
+    public static ForgeConfigSpec.LongValue ARS_SOURCE_STACK;
+    /// Botania 魔力每 tick 传输量
+    public static ForgeConfigSpec.LongValue BOTANIA_MANA_STACK;
+    /// GregTech 能量每 tick 传输量（EU）
+    public static ForgeConfigSpec.LongValue GTCEU_STACK;
 
-    // 铁升级的倍率
+    /// 铁升级的倍率
     public static ForgeConfigSpec.IntValue IRON_MULTIPLIER;
-    // 金升级的倍率
+    /// 金升级的倍率
     public static ForgeConfigSpec.IntValue GOLD_MULTIPLIER;
-    // 钻石升级的倍率
+    /// 钻石升级的倍率
     public static ForgeConfigSpec.IntValue DIAMOND_MULTIPLIER;
-    // 下界合金升级的倍率
+    /// 下界合金升级的倍率
     public static ForgeConfigSpec.IntValue NETHERITE_MULTIPLIER;
-    // 下界之星升级的倍率
+    /// 下界之星升级的倍率
     public static ForgeConfigSpec.IntValue NETHER_STAR_MULTIPLIER;
 
-    // 是否在物流节点被拆除时自动清理玩家物品中存储的节点引用
+    /// 是否在物流节点被拆除时自动清理玩家物品中存储的节点引用
     public static ForgeConfigSpec.BooleanValue AUTO_CLEAN_STORED_NODES;
 
-    // 供应方缓存最大条目数
+    /// 供应方缓存最大条目数
     public static ForgeConfigSpec.IntValue CACHE_PROVIDER_SIZE;
 
-    // 批量同步数据包每包最大条目数
+    /// 批量同步数据包每包最大条目数
     public static ForgeConfigSpec.IntValue NETWORK_MAX_BULK_ENTRIES;
 
-    // 全服务器每 Tick 共享的节点/类型候选基数
+    /// 全服务器每 Tick 共享的节点/类型候选基数
     public static ForgeConfigSpec.IntValue PERF_TICKER_BATCH_SIZE;
-    // 全服务器物流调度每 Tick 共享的软时间预算（微秒）
+    /// 全服务器物流调度每 Tick 共享的软时间预算（微秒）
     public static ForgeConfigSpec.IntValue PERF_TICKER_TIME_BUDGET_US;
-    // 冷却清理间隔（tick）
+    /// 冷却清理间隔（tick）
     public static ForgeConfigSpec.IntValue PERF_CLEAN_INTERVAL;
-    // 传输失败后的默认冷却时间（tick）
+    /// 传输失败后的默认冷却时间（tick）
     public static ForgeConfigSpec.IntValue PERF_DEFAULT_COOLDOWN;
-    // 触发批量清理的冷却条目阈值
+    /// 触发批量清理的冷却条目阈值
     public static ForgeConfigSpec.IntValue PERF_BATCH_CLEAN_THRESHOLD;
-    // 每次批量清理的条目数
+    /// 每次批量清理的条目数
     public static ForgeConfigSpec.IntValue PERF_BATCH_CLEAN_SIZE;
-    // 传输上下文对象池大小
-    public static ForgeConfigSpec.IntValue PERF_CONTEXT_POOL_SIZE;
+    /// 传输上下文对象池大小
 
-    // 通用设置缓存值
+    /// 通用设置缓存值
     private static volatile int DefaultRadius = 16;
     private static volatile int DefaultTickInterval = 20;
     private static volatile GameplayMode gameplayMode = GameplayMode.ADVANCED;
-    // 核心资源传输量缓存值
-    private static volatile int DefaultItemStack = 8;
-    private static volatile int DefaultFluidStack = 250;
-    private static volatile int DefaultEnergyStack = 1024;
+    /// 核心资源传输量缓存值
+    private static volatile long DefaultItemStack = 64;
+    private static volatile long DefaultFluidStack = 250;
+    private static volatile long DefaultEnergyStack = 1024;
 
-    // 联动模组资源传输量缓存值
-    private static volatile int MekGasStack = 250;
-    private static volatile int MekInfusionStack = 250;
-    private static volatile int MekPigmentStack = 250;
-    private static volatile int MekSlurryStack = 250;
-    private static volatile int MekHeatStack = 1000;
-    private static volatile int ArsSourceStack = 100;
-    private static volatile int BotaniaManaStack = 1000;
-    private static volatile int GTCEUStack = 1024;
+    /// 联动模组资源传输量缓存值
+    private static volatile long MekGasStack = 250;
+    private static volatile long MekInfusionStack = 250;
+    private static volatile long MekPigmentStack = 250;
+    private static volatile long MekSlurryStack = 250;
+    private static volatile long MekHeatStack = 1000;
+    private static volatile long ArsSourceStack = 100;
+    private static volatile long BotaniaManaStack = 1000;
+    private static volatile long GTCEUStack = 1024;
 
-    // 升级倍率缓存值
+    /// 升级倍率缓存值
     private static volatile int ironMultCache = 2;
     private static volatile int goldMultCache = 4;
     private static volatile int diamondMultCache = 8;
     private static volatile int netheriteMultCache = 16;
     private static volatile int netherStarMultCache = 64;
 
-    // 杂项缓存值
+    /// 杂项缓存值
     private static volatile boolean autoCleanStoredNodes = true;
 
-    // 缓存设置缓存值
+    /// 缓存设置缓存值
     private static volatile int cacheProviderSize = 1000;
-    // 网络设置缓存值
+    /// 网络设置缓存值
     private static volatile int networkMaxBulkEntries = 100;
 
-    // 性能设置缓存值
+    /// 性能设置缓存值
     private static volatile int perfTickerBatchSize = 50;
     private static volatile int perfTickerTimeBudgetUs = 1_500;
     private static volatile int perfCleanInterval = 200;
     private static volatile int perfDefaultCooldown = 10;
     private static volatile int perfBatchCleanThreshold = 500;
     private static volatile int perfBatchCleanSize = 200;
-    private static volatile int perfContextPoolSize = 100;
 
     public static void register(FMLJavaModLoadingContext context) {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -222,10 +221,6 @@ public final class SLConfig {
             .translation("config.staticlogistics.performance.batch_clean_size")
             .comment("Number of entries to clean per batch.")
             .defineInRange("batch_clean_size", 200, 50, 1000);
-        PERF_CONTEXT_POOL_SIZE = builder
-            .translation("config.staticlogistics.performance.context_pool_size")
-            .comment("Transfer context object pool size.")
-            .defineInRange("context_pool_size", 100, 20, 500);
         builder.pop();
 
         builder.push("upgrades");
@@ -255,8 +250,11 @@ public final class SLConfig {
         if (event.getConfig().getSpec() == CONFIG_SPEC) {
             onLoad();
             configGeneration.incrementAndGet();
-            syncConfigToPlayers();
-            refreshRuntimeState();
+            MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+            if (server != null) server.execute(() -> {
+                syncConfigToPlayers();
+                refreshRuntimeState();
+            });
         }
     }
 
@@ -299,7 +297,6 @@ public final class SLConfig {
         perfDefaultCooldown = PERF_DEFAULT_COOLDOWN.get();
         perfBatchCleanThreshold = PERF_BATCH_CLEAN_THRESHOLD.get();
         perfBatchCleanSize = PERF_BATCH_CLEAN_SIZE.get();
-        perfContextPoolSize = PERF_CONTEXT_POOL_SIZE.get();
     }
 
     public static int getDefaultRadius() {
@@ -318,51 +315,51 @@ public final class SLConfig {
         return isSimpleMode() ? 1 : DefaultTickInterval;
     }
 
-    public static int getItemStack() {
+    public static long getItemStack() {
         return effectiveTransferAmount(DefaultItemStack);
     }
 
-    public static int getFluidStack() {
+    public static long getFluidStack() {
         return effectiveTransferAmount(DefaultFluidStack);
     }
 
-    public static int getEnergyStack() {
+    public static long getEnergyStack() {
         return effectiveTransferAmount(DefaultEnergyStack);
     }
 
-    public static int getMekGasStack() {
+    public static long getMekGasStack() {
         return effectiveTransferAmount(MekGasStack);
     }
 
-    public static int getMekInfusionStack() {
+    public static long getMekInfusionStack() {
         return effectiveTransferAmount(MekInfusionStack);
     }
 
-    public static int getMekPigmentStack() {
+    public static long getMekPigmentStack() {
         return effectiveTransferAmount(MekPigmentStack);
     }
 
-    public static int getMekSlurryStack() {
+    public static long getMekSlurryStack() {
         return effectiveTransferAmount(MekSlurryStack);
     }
 
-    public static int getMekHeatStack() {
+    public static long getMekHeatStack() {
         return effectiveTransferAmount(MekHeatStack);
     }
 
-    public static int getArsSourceStack() {
+    public static long getArsSourceStack() {
         return effectiveTransferAmount(ArsSourceStack);
     }
 
-    public static int getBotaniaManaStack() {
+    public static long getBotaniaManaStack() {
         return effectiveTransferAmount(BotaniaManaStack);
     }
 
-    public static int getGTCEUStack() {
+    public static long getGTCEUStack() {
         return effectiveTransferAmount(GTCEUStack);
     }
 
-    private static int effectiveTransferAmount(int configuredValue) {
+    private static long effectiveTransferAmount(long configuredValue) {
         return isSimpleMode() ? MAX_TRANSFER_AMOUNT : configuredValue;
     }
 
@@ -413,15 +410,15 @@ public final class SLConfig {
         return perfBatchCleanSize;
     }
 
-    public static int getPerfContextPoolSize() {
-        return perfContextPoolSize;
-    }
-
     private static void syncConfigToPlayers() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null) return;
         S2CConfigSyncPayload payload = new S2CConfigSyncPayload(buildConfigTag());
-        SLNetwork.HANDLER.sendToAllPlayers(payload);
+        PortPacketDistributor.sendToAllPlayers(payload);
+    }
+
+    public static void syncToPlayer(ServerPlayer player) {
+        PortPacketDistributor.sendToPlayer(player, new S2CConfigSyncPayload(buildConfigTag()));
     }
 
     private static void refreshRuntimeState() {
@@ -435,30 +432,30 @@ public final class SLConfig {
 
     private static CompoundTag buildConfigTag() {
         CompoundTag tag = new CompoundTag();
-        // 基础设置
+        /// 基础设置
         tag.putString("gameplayMode", gameplayMode.name());
         tag.putInt("defaultRadius", DefaultRadius);
         tag.putInt("defaultTickInterval", DefaultTickInterval);
-        tag.putInt("itemStack", DefaultItemStack);
-        tag.putInt("fluidStack", DefaultFluidStack);
-        tag.putInt("energyStack", DefaultEnergyStack);
-        tag.putInt("mekGasStack", MekGasStack);
-        tag.putInt("mekInfusionStack", MekInfusionStack);
-        tag.putInt("mekPigmentStack", MekPigmentStack);
-        tag.putInt("mekSlurryStack", MekSlurryStack);
-        tag.putInt("mekHeatStack", MekHeatStack);
-        tag.putInt("arsSourceStack", ArsSourceStack);
-        tag.putInt("botaniaManaStack", BotaniaManaStack);
-        tag.putInt("gtceuStack", GTCEUStack);
+        tag.putLong("itemStack", DefaultItemStack);
+        tag.putLong("fluidStack", DefaultFluidStack);
+        tag.putLong("energyStack", DefaultEnergyStack);
+        tag.putLong("mekGasStack", MekGasStack);
+        tag.putLong("mekInfusionStack", MekInfusionStack);
+        tag.putLong("mekPigmentStack", MekPigmentStack);
+        tag.putLong("mekSlurryStack", MekSlurryStack);
+        tag.putLong("mekHeatStack", MekHeatStack);
+        tag.putLong("arsSourceStack", ArsSourceStack);
+        tag.putLong("botaniaManaStack", BotaniaManaStack);
+        tag.putLong("gtceuStack", GTCEUStack);
 
         tag.putBoolean("autoCleanStoredNodes", autoCleanStoredNodes);
-        // 升级设置
+        /// 升级设置
         tag.putInt("ironMult", ironMultCache);
         tag.putInt("goldMult", goldMultCache);
         tag.putInt("diamondMult", diamondMultCache);
         tag.putInt("netheriteMult", netheriteMultCache);
         tag.putInt("netherStarMult", netherStarMultCache);
-        // 性能设置
+        /// 性能设置
         tag.putInt("cacheProviderSize", cacheProviderSize);
         tag.putInt("networkMaxBulkEntries", networkMaxBulkEntries);
         tag.putInt("tickerBatchSize", perfTickerBatchSize);
@@ -467,7 +464,6 @@ public final class SLConfig {
         tag.putInt("defaultCooldown", perfDefaultCooldown);
         tag.putInt("batchCleanThreshold", perfBatchCleanThreshold);
         tag.putInt("batchCleanSize", perfBatchCleanSize);
-        tag.putInt("contextPoolSize", perfContextPoolSize);
         return tag;
     }
 
@@ -480,17 +476,17 @@ public final class SLConfig {
         DefaultRadius = tag.getInt("defaultRadius");
         DefaultTickInterval = tag.getInt("defaultTickInterval");
 
-        DefaultItemStack = tag.getInt("itemStack");
-        DefaultFluidStack = tag.getInt("fluidStack");
-        DefaultEnergyStack = tag.getInt("energyStack");
-        MekGasStack = tag.getInt("mekGasStack");
-        MekInfusionStack = tag.getInt("mekInfusionStack");
-        MekPigmentStack = tag.getInt("mekPigmentStack");
-        MekSlurryStack = tag.getInt("mekSlurryStack");
-        MekHeatStack = tag.getInt("mekHeatStack");
-        ArsSourceStack = tag.getInt("arsSourceStack");
-        BotaniaManaStack = tag.getInt("botaniaManaStack");
-        GTCEUStack = tag.getInt("gtceuStack");
+        DefaultItemStack = tag.getLong("itemStack");
+        DefaultFluidStack = tag.getLong("fluidStack");
+        DefaultEnergyStack = tag.getLong("energyStack");
+        MekGasStack = tag.getLong("mekGasStack");
+        MekInfusionStack = tag.getLong("mekInfusionStack");
+        MekPigmentStack = tag.getLong("mekPigmentStack");
+        MekSlurryStack = tag.getLong("mekSlurryStack");
+        MekHeatStack = tag.getLong("mekHeatStack");
+        ArsSourceStack = tag.getLong("arsSourceStack");
+        BotaniaManaStack = tag.getLong("botaniaManaStack");
+        GTCEUStack = tag.getLong("gtceuStack");
 
         autoCleanStoredNodes = tag.getBoolean("autoCleanStoredNodes");
 
@@ -508,14 +504,13 @@ public final class SLConfig {
         perfDefaultCooldown = tag.getInt("defaultCooldown");
         perfBatchCleanThreshold = tag.getInt("batchCleanThreshold");
         perfBatchCleanSize = tag.getInt("batchCleanSize");
-        perfContextPoolSize = tag.getInt("contextPoolSize");
         configGeneration.incrementAndGet();
     }
 
     private static GameplayMode parseGameplayMode(String value) {
         if (value == null || value.isBlank()) return GameplayMode.ADVANCED;
         try {
-            return GameplayMode.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+            return GameplayMode.valueOf(value.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ignored) {
             return GameplayMode.ADVANCED;
         }

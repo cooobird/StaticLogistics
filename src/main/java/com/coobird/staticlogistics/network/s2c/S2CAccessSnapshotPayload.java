@@ -3,14 +3,13 @@ package com.coobird.staticlogistics.network.s2c;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.EndpointTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.network.TopologyPagePartitioner;
 import com.coobird.staticlogistics.network.TopologyStreamCodecs;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
-import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import org.mesdag.portlib.network.IPortPacket;
@@ -20,16 +19,13 @@ import org.mesdag.portlib.network.codec.PortStreamCodec;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 分页传输当前玩家有权读取的轻量拓扑和分组目录。
- *
- * <p>链接边独立分页，避免单个高连接数节点形成无法分片的超大嵌套结构。
- */
+/// 分页传输当前玩家有权读取的轻量拓扑和分组目录。
+/// 链接边独立分页，避免单个高连接数节点形成无法分片的超大嵌套结构。
 public record S2CAccessSnapshotPayload(
     long sequence,
     int pageIndex,
     int pageCount,
-    List<FaceTopology> faces,
+    List<EndpointTopology> faces,
     List<ScopedTopologyLink> links,
     List<GroupRef> groups
 ) implements IPortPacket.S2C {
@@ -44,19 +40,16 @@ public record S2CAccessSnapshotPayload(
         validateWeight(faces, links, groups, false);
     }
 
-    /**
-     * 将权限快照按条目数和编码复杂度拆成有界页面。
-     */
+    /// 将权限快照按条目数和编码复杂度拆成有界页面。
     public static List<S2CAccessSnapshotPayload> pages(
-        List<FaceTopology> faces,
+        List<EndpointTopology> faces,
         List<ScopedTopologyLink> links,
         List<GroupRef> groups
     ) {
-        List<List<FaceTopology>> facePages = TopologyPagePartitioner.faces(faces);
+        List<List<EndpointTopology>> facePages = TopologyPagePartitioner.faces(faces);
         List<List<ScopedTopologyLink>> linkPages = TopologyPagePartitioner.links(links);
         List<List<GroupRef>> groupPages = TopologyPagePartitioner.groups(groups);
-        int pageCount = Math.max(1,
-            Math.max(facePages.size(), Math.max(linkPages.size(), groupPages.size())));
+        int pageCount = Math.max(1, Math.max(facePages.size(), Math.max(linkPages.size(), groupPages.size())));
         if (pageCount > MAX_PAGE_COUNT) {
             throw new IllegalArgumentException("Access snapshot exceeds maximum page count");
         }
@@ -85,7 +78,7 @@ public record S2CAccessSnapshotPayload(
                 int groupCount = buffer.readVarInt();
                 validatePage(pageIndex, pageCount, faceCount, linkCount, groupCount, true);
 
-                List<FaceTopology> faces = new ArrayList<>(faceCount);
+                List<EndpointTopology> faces = new ArrayList<>(faceCount);
                 for (int i = 0; i < faceCount; i++) faces.add(TopologyStreamCodecs.decodeFace(buffer));
                 List<ScopedTopologyLink> links = new ArrayList<>(linkCount);
                 for (int i = 0; i < linkCount; i++) links.add(TopologyStreamCodecs.decodeLink(buffer));
@@ -138,7 +131,7 @@ public record S2CAccessSnapshotPayload(
         throw new EncoderException(message);
     }
 
-    private static void validateWeight(List<FaceTopology> faces,
+    private static void validateWeight(List<EndpointTopology> faces,
                                        List<ScopedTopologyLink> links,
                                        List<GroupRef> groups,
                                        boolean decoding) {
@@ -155,9 +148,11 @@ public record S2CAccessSnapshotPayload(
     }
 
     @Override
-    public void work(Player player) {
-        Minecraft.getInstance().execute(() ->
-            ClientLinkData.INSTANCE.acceptAuthoritativeSnapshotPage(
-                sequence(), pageIndex(), pageCount(), faces(), links(), groups()));
+    public void work(Player packetPlayer) {
+        S2CAccessSnapshotPayload payload = this;
+        Player context = packetPlayer;
+        ClientLinkData.INSTANCE.acceptAuthoritativeSnapshotPage(
+            payload.sequence(), payload.pageIndex(), payload.pageCount(),
+            payload.faces(), payload.links(), payload.groups());
     }
 }

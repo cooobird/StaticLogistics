@@ -8,29 +8,23 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.*;
 
-/**
- * 传输类型选择集合。
- *
- * <p>新格式使用资源类型 ID 持久化，不再受旧 int 掩码的 32 位上限影响。
- * 旧掩码仍用于读取老数据和给旧 UI 同步槽提供兼容值。
- */
+/// 传输类型选择集合。
+/// 新格式使用资源类型 ID 持久化，不再受旧 int 掩码的 32 位上限影响。
+/// 旧掩码仍用于读取老数据和给旧 UI 同步槽提供兼容值。
 public final class TransferTypeSelection {
-    /**
-     * 单个面允许选择的最大资源类型数量。
-     */
+    /// 单个面允许选择的最大资源类型数量。
     public static final int MAX_SELECTED_TYPES = 64;
 
     private TransferTypeSelection() {
     }
 
     public static List<ResourceLocation> sanitize(Collection<ResourceLocation> ids) {
-        Objects.requireNonNull(ids, "Transfer type ids must not be null");
         if (ids.size() > MAX_SELECTED_TYPES) {
             throw new IllegalArgumentException("Too many selected transfer types: " + ids.size());
         }
         LinkedHashSet<ResourceLocation> unique = new LinkedHashSet<>();
         for (ResourceLocation id : ids) {
-            unique.add(Objects.requireNonNull(id, "Transfer type id must not be null"));
+            unique.add(id);
             if (unique.size() > MAX_SELECTED_TYPES) {
                 throw new IllegalArgumentException("Too many selected transfer types: " + unique.size());
             }
@@ -38,67 +32,11 @@ public final class TransferTypeSelection {
         return List.copyOf(unique);
     }
 
-    public static List<ResourceLocation> fromMask(int mask, Collection<LogisticsResource<?>> activeTypes) {
-        List<ResourceLocation> ids = new ArrayList<>();
-        for (LogisticsResource<?> type : activeTypes) {
-            if (TransferTypeMask.isSelected(mask, type)) {
-                ids.add(type.typeId());
-            }
-        }
-        return ids;
-    }
-
-    /**
-     * 合并稳定 ID 与旧位；联动恢复注册后可重新得到对应稳定 ID。
-     */
-    public static List<ResourceLocation> mergeIdsWithMask(
-        Collection<ResourceLocation> ids, int mask,
-        Collection<LogisticsResource<?>> activeTypes
-    ) {
-        LinkedHashSet<ResourceLocation> merged = new LinkedHashSet<>(sanitize(ids));
-        merged.addAll(fromMask(mask, activeTypes));
-        return sanitize(merged);
-    }
-
-    public static int toMask(Collection<ResourceLocation> ids, Collection<LogisticsResource<?>> activeTypes) {
-        Set<ResourceLocation> selected = new LinkedHashSet<>(ids);
-        int mask = 0;
-        for (LogisticsResource<?> type : activeTypes) {
-            if (TransferTypeMask.hasLegacyBit(type) && selected.contains(type.typeId())) {
-                mask |= TransferTypeMask.flag(type);
-            }
-        }
-        return mask;
-    }
-
-    /**
-     * 返回当前已注册类型占用的全部旧 int 位。
-     */
-    public static int activeLegacyMask(Collection<LogisticsResource<?>> activeTypes) {
-        int mask = 0;
-        for (LogisticsResource<?> type : activeTypes) {
-            if (TransferTypeMask.hasLegacyBit(type)) mask |= TransferTypeMask.flag(type);
-        }
-        return mask;
-    }
-
-    public static boolean isSelected(Collection<ResourceLocation> ids, LogisticsResource<?> type) {
-        return ids.contains(type.typeId());
-    }
-
     public static List<LogisticsResource<?>> selectedTypes(Collection<ResourceLocation> ids, Collection<LogisticsResource<?>> activeTypes) {
         Set<ResourceLocation> selected = new LinkedHashSet<>(ids);
         return activeTypes.stream()
             .filter(type -> selected.contains(type.typeId()))
             .toList();
-    }
-
-    public static List<ResourceLocation> toggle(Collection<ResourceLocation> ids, LogisticsResource<?> type) {
-        LinkedHashSet<ResourceLocation> selected = new LinkedHashSet<>(ids);
-        if (!selected.remove(type.typeId())) {
-            selected.add(type.typeId());
-        }
-        return List.copyOf(selected);
     }
 
     public static void writeIds(CompoundTag tag, String key, Collection<ResourceLocation> ids) {

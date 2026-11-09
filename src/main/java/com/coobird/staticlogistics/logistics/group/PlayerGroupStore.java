@@ -6,46 +6,124 @@ import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.DataResult;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
-/**
- * 独立的玩家分组持久化存储。
- * 继承 SavedData，修改后直接 setDirty()，由 Minecraft 自动保存。
- * 主线程单线程访问，无需 ConcurrentHashMap。
- */
+/// 独立的玩家分组持久化存储。
+/// 继承 SavedData，修改后直接 setDirty()，由 Minecraft 自动保存。
+/// 主线程单线程访问，无需 ConcurrentHashMap。
 public class PlayerGroupStore extends SavedData {
-    private static final String DATA_NAME = "static_logistics_player_groups";
+    private static final String DATA_NAME = "static_logistics_player_groups_v2";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
     private static final int MAX_STORED_OWNERS = 100_000;
     private static final int MAX_STORED_CONNECTION_NAMES = 1_000_000;
     private final Map<UUID, LinkedHashMap<UUID, String>> playerGroups = new HashMap<>();
     private final Map<ConnectionKey, String> connectionNames = new HashMap<>();
-    private boolean loadedFromDedicatedStorage;
+    private final Map<UUID, Map<UUID, Integer>> playerGrants = new HashMap<>();
+    private final Set<UUID> disabledTeamAccess = new HashSet<>();
+
+    public boolean teamAccessEnabled(UUID owner) {
+        return !disabledTeamAccess.contains(owner);
+    }
+
+    public void setTeamAccessEnabled(UUID owner, boolean enabled) {
+        Objects.requireNonNull(owner);
+        if (enabled) disabledTeamAccess.remove(owner);
+        else disabledTeamAccess.add(owner);
+        setDirty();
+    }
+
+    /// 0：无授权；1：仅查看；2：可管理。所有者只能修改自己的授权表。
+    public int grant(UUID owner, UUID actor) {
+        return playerGrants.getOrDefault(owner, Map.of()).getOrDefault(actor, 0);
+    }
+
+    public Map<UUID, Integer> grantsByOwner(UUID owner) {
+        return Map.copyOf(playerGrants.getOrDefault(owner, Map.of()));
+    }
+
+    public void setGrant(UUID owner, UUID actor, int permission) {
+        Objects.requireNonNull(owner);
+        Objects.requireNonNull(actor);
+        if (owner.equals(actor) || permission < 0 || permission > 2)
+            throw new IllegalArgumentException("Invalid player grant");
+        if (permission == 0) {
+            var grants = playerGrants.get(owner);
+            if (grants != null) {
+                grants.remove(actor);
+                if (grants.isEmpty()) playerGrants.remove(owner);
+            }
+        } else {
+            var grants = playerGrants.computeIfAbsent(owner, ignored -> new HashMap<>());
+            if (!grants.containsKey(actor) && grants.size() >= 1024)
+                throw new IllegalStateException("Player grant limit exceeded");
+            grants.put(actor, permission);
+        }
+        setDirty();
+    }
+
+    public Set<UUID> ownersGrantedTo(UUID actor) {
+        Set<UUID> owners = new HashSet<>();
+        playerGrants.forEach((owner, grants) -> {
+            if (grants.getOrDefault(actor, 0) > 0) owners.add(owner);
+        });
+        return Set.copyOf(owners);
+    }
+
+    private RuntimeException loadFailure;
+    private CompoundTag hierarchies = new CompoundTag();
+
+    public CompoundTag getHierarchy(UUID player) {
+        return hierarchies.getCompound(player.toString()).copy();
+    }
+
+    public void setHierarchy(UUID player, CompoundTag hierarchy) {
+        if (player == null || hierarchy == null) {
+            throw new IllegalArgumentException("Hierarchy owner and data are required");
+        }
+        if (!hierarchies.contains(player.toString())
+            && hierarchies.size() >= MAX_STORED_OWNERS) {
+            throw new IllegalStateException("Hierarchy owner limit exceeded");
+        }
+        hierarchies.put(player.toString(), GroupHierarchy.sanitize(hierarchy));
+        setDirty();
+    }
 
     PlayerGroupStore() {
     }
 
     public static PlayerGroupStore get(MinecraftServer server) {
-        return server.overworld().getDataStorage().computeIfAbsent(
+        PlayerGroupStore result = server.overworld().getDataStorage().computeIfAbsent(
             tag -> {
                 PlayerGroupStore store = new PlayerGroupStore();
-                store.load(tag);
+                try {
+                    store.load(tag, server.registryAccess());
+                } catch (RuntimeException failure) {
+                    store.loadFailure = failure;
+                }
                 return store;
             },
             PlayerGroupStore::new,
             DATA_NAME
         );
+        result.requireLoaded();
+        return result;
+    }
+
+    private void requireLoaded() {
+        if (loadFailure != null) throw new IllegalStateException(
+            "Cannot load Static Logistics group data; the original data has been preserved.", loadFailure);
     }
 
     public void addGroup(UUID playerId, String groupId) {
@@ -64,18 +142,22 @@ public class PlayerGroupStore extends SavedData {
         GroupKey key = GroupKey.create(playerId);
         playerGroups.computeIfAbsent(playerId, ignored -> new LinkedHashMap<>())
             .put(key.internalId(), displayName);
+        CompoundTag hierarchy = getHierarchy(playerId);
+        String folder = hierarchy.getString("selectedFolder");
+        if (!folder.isEmpty() && GroupHierarchy.edit(
+            hierarchy, "assign", GroupHierarchy.groupId(key), folder, "")) {
+            setHierarchy(playerId, hierarchy);
+        }
         setDirty();
         return new GroupRef(key, displayName);
     }
 
-    /**
-     * 解析已有分组；不存在时创建新的随机稳定身份。
-     */
+    /// 解析已有分组；不存在时创建新的随机稳定身份。
     public GroupRef resolveOrCreateGroup(UUID playerId, String displayName) {
         return createGroup(playerId, displayName);
     }
 
-    @org.jetbrains.annotations.Nullable
+    @Nullable
     public GroupRef findGroup(UUID playerId, String displayName) {
         LinkedHashMap<UUID, String> groups = playerGroups.get(playerId);
         if (groups == null) return null;
@@ -87,7 +169,7 @@ public class PlayerGroupStore extends SavedData {
         return null;
     }
 
-    @org.jetbrains.annotations.Nullable
+    @Nullable
     public GroupRef findGroup(GroupKey key) {
         if (key == null || key.isLegacyUnowned()) return null;
         Map<UUID, String> groups = playerGroups.get(key.ownerId());
@@ -97,11 +179,20 @@ public class PlayerGroupStore extends SavedData {
     }
 
     public boolean removeGroup(GroupKey key) {
+        return removeGroup(key, Set.of());
+    }
+
+    public boolean removeGroup(GroupKey key, Collection<ConnectionKey> connections) {
         if (key == null || key.isLegacyUnowned()) return false;
         LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
         if (groups == null || groups.remove(key.internalId()) == null) return false;
         if (groups.isEmpty()) playerGroups.remove(key.ownerId());
         connectionNames.keySet().removeIf(connection -> connection.groupKey().equals(key));
+        Set<String> assignmentIds = new LinkedHashSet<>();
+        assignmentIds.add(GroupHierarchy.groupId(key));
+        connections.stream().filter(connection -> connection.groupKey().equals(key))
+            .map(GroupHierarchy::connectionId).forEach(assignmentIds::add);
+        removeHierarchyAssignments(assignmentIds);
         setDirty();
         return true;
     }
@@ -111,9 +202,7 @@ public class PlayerGroupStore extends SavedData {
         return connectionNames.getOrDefault(key, "");
     }
 
-    /**
-     * 设置连接显示名；空名称会删除自定义值并恢复默认连接序号。
-     */
+    /// 设置连接显示名；空名称会删除自定义值并恢复默认连接序号。
     public boolean setConnectionName(ConnectionKey key, String displayName) {
         if (key == null || findGroup(key.groupKey()) == null) return false;
         String normalized;
@@ -135,48 +224,171 @@ public class PlayerGroupStore extends SavedData {
         return true;
     }
 
-    public void removeConnectionName(ConnectionKey key) {
-        if (key != null && connectionNames.remove(key) != null) setDirty();
+    public void removeConnectionMetadata(Collection<ConnectionKey> connections) {
+        if (connections == null || connections.isEmpty()) return;
+        boolean changed = connectionNames.keySet().removeAll(connections);
+        Set<String> assignmentIds = new LinkedHashSet<>();
+        connections.stream().map(GroupHierarchy::connectionId).forEach(assignmentIds::add);
+        for (String owner : hierarchies.getAllKeys()) {
+            changed |= GroupHierarchy.removeAssignments(
+                hierarchies.getCompound(owner), assignmentIds);
+        }
+        if (changed) setDirty();
     }
 
-    /**
-     * 同一所有者分组合并时迁移连接名称。
-     *
-     * <p>目标分组已有同一连接名称时保留目标值；返回值记录完整补偿信息，供外层节点事务回滚。
-     */
-    public ConnectionNameMerge mergeConnectionNames(GroupKey source, GroupKey target) {
-        if (source == null || target == null
-            || !source.ownerId().equals(target.ownerId())
-            || findGroup(source) == null || findGroup(target) == null) {
-            throw new IllegalArgumentException("Connection name merge groups are invalid");
+    /// 启动收敛时只保留仍对应现有分组或连接的目录归属。
+    public int reconcileConnectionMetadata(Collection<ConnectionKey> connections) {
+        Set<ConnectionKey> existingConnections = connections == null
+            ? Set.of() : Set.copyOf(connections);
+        int removed = connectionNames.size();
+        connectionNames.keySet().retainAll(existingConnections);
+        removed -= connectionNames.size();
+        Set<String> valid = new LinkedHashSet<>();
+        playerGroups.forEach((owner, groups) -> groups.keySet().forEach(internalId ->
+            valid.add(GroupHierarchy.groupId(new GroupKey(owner, internalId)))));
+        existingConnections.stream().map(GroupHierarchy::connectionId).forEach(valid::add);
+        for (String owner : hierarchies.getAllKeys()) {
+            CompoundTag hierarchy = hierarchies.getCompound(owner);
+            CompoundTag links = hierarchy.getCompound("links");
+            for (String id : links.getAllKeys().toArray(String[]::new)) {
+                if (valid.contains(id)) continue;
+                links.remove(id);
+                removed++;
+            }
+            hierarchy.put("links", links);
         }
-        Map<ConnectionKey, String> sourceNames = new LinkedHashMap<>();
+        if (removed > 0) setDirty();
+        return removed;
+    }
+
+    /// 连接身份变化时，显示名和所有玩家的目录归属必须同时迁移。
+    public void remapConnectionMetadata(Map<ConnectionKey, ConnectionKey> connections,
+                                        Map<GroupKey, GroupKey> groups) {
+        if ((connections == null || connections.isEmpty()) && (groups == null || groups.isEmpty())) return;
+        Map<GroupKey, GroupKey> groupMoves = groups == null ? Map.of() : groups;
+        Map<ConnectionKey, ConnectionKey> connectionMoves = expandConnectionMoves(
+            connections == null ? Map.of() : connections, groupMoves);
+
+        Map<ConnectionKey, String> remappedNames = new LinkedHashMap<>();
         connectionNames.forEach((key, name) -> {
-            if (key.groupKey().equals(source)) sourceNames.put(key, name);
+            if (!connectionMoves.containsKey(key)) remappedNames.put(key, name);
         });
-        Set<ConnectionKey> insertedTargets = new LinkedHashSet<>();
-        sourceNames.forEach((sourceKey, name) -> {
-            connectionNames.remove(sourceKey);
-            ConnectionKey targetKey = new ConnectionKey(
-                target, sourceKey.first(), sourceKey.second());
-            if (!connectionNames.containsKey(targetKey)) {
-                connectionNames.put(targetKey, name);
-                insertedTargets.add(targetKey);
+        connectionNames.forEach((key, name) -> {
+            if (connectionMoves.containsKey(key)) {
+                remappedNames.putIfAbsent(connectionMoves.get(key), name);
             }
         });
-        if (!sourceNames.isEmpty()) setDirty();
-        return new ConnectionNameMerge(
-            Map.copyOf(sourceNames), Set.copyOf(insertedTargets));
+
+        Map<String, String> assignmentMoves = new LinkedHashMap<>();
+        connectionMoves.forEach((before, after) -> assignmentMoves.put(
+            GroupHierarchy.connectionId(before), GroupHierarchy.connectionId(after)));
+        groupMoves.forEach((before, after) -> assignmentMoves.put(
+            GroupHierarchy.groupId(before), GroupHierarchy.groupId(after)));
+        CompoundTag remappedHierarchies = hierarchies.copy();
+        for (String owner : remappedHierarchies.getAllKeys()) {
+            GroupHierarchy.remapAssignments(
+                remappedHierarchies.getCompound(owner), assignmentMoves);
+        }
+        connectionNames.clear();
+        connectionNames.putAll(remappedNames);
+        hierarchies = remappedHierarchies;
+        setDirty();
     }
 
-    /**
-     * 恢复一次尚未提交的连接名称合并。
-     */
-    public void rollbackConnectionNameMerge(ConnectionNameMerge merge) {
-        if (merge == null) throw new IllegalArgumentException("Connection name merge is required");
-        merge.insertedTargets().forEach(connectionNames::remove);
-        connectionNames.putAll(merge.sourceNames());
-        if (!merge.sourceNames().isEmpty()) setDirty();
+    public ConnectionMetadataSnapshot captureConnectionMetadata(
+        Map<ConnectionKey, ConnectionKey> connections,
+        Map<GroupKey, GroupKey> groups
+    ) {
+        Map<ConnectionKey, ConnectionKey> connectionMoves = expandConnectionMoves(connections, groups);
+        Set<ConnectionKey> keys = new LinkedHashSet<>();
+        connectionMoves.forEach((before, after) -> {
+            keys.add(before);
+            keys.add(after);
+        });
+        Map<ConnectionKey, String> names = new LinkedHashMap<>();
+        keys.forEach(key -> {
+            if (connectionNames.containsKey(key)) names.put(key, connectionNames.get(key));
+        });
+        Set<String> assignmentIds = new LinkedHashSet<>();
+        connectionMoves.forEach((before, after) -> {
+            assignmentIds.add(GroupHierarchy.connectionId(before));
+            assignmentIds.add(GroupHierarchy.connectionId(after));
+        });
+        groups.forEach((before, after) -> {
+            assignmentIds.add(GroupHierarchy.groupId(before));
+            assignmentIds.add(GroupHierarchy.groupId(after));
+        });
+        CompoundTag assignments = new CompoundTag();
+        for (String owner : hierarchies.getAllKeys()) {
+            CompoundTag links = hierarchies.getCompound(owner).getCompound("links");
+            CompoundTag captured = new CompoundTag();
+            for (String id : assignmentIds) {
+                if (links.contains(id, Tag.TAG_STRING)) captured.putString(id, links.getString(id));
+            }
+            if (!captured.isEmpty()) assignments.put(owner, captured);
+        }
+        return new ConnectionMetadataSnapshot(keys, names, assignmentIds, assignments);
+    }
+
+    private Map<ConnectionKey, ConnectionKey> expandConnectionMoves(
+        Map<ConnectionKey, ConnectionKey> connections,
+        Map<GroupKey, GroupKey> groups
+    ) {
+        Map<ConnectionKey, ConnectionKey> expanded = new LinkedHashMap<>(connections);
+        connectionNames.keySet().forEach(key -> {
+            GroupKey target = groups.get(key.groupKey());
+            if (target != null) expanded.putIfAbsent(key, new ConnectionKey(
+                target, key.first(), key.second()));
+        });
+        return expanded;
+    }
+
+    public void restoreConnectionMetadata(ConnectionMetadataSnapshot snapshot) {
+        snapshot.keys().forEach(connectionNames::remove);
+        connectionNames.putAll(snapshot.names());
+        for (String owner : hierarchies.getAllKeys()) {
+            GroupHierarchy.removeAssignments(
+                hierarchies.getCompound(owner), snapshot.assignmentIds());
+        }
+        for (String owner : snapshot.assignments().getAllKeys()) {
+            CompoundTag hierarchy = hierarchies.getCompound(owner);
+            CompoundTag links = hierarchy.getCompound("links");
+            CompoundTag captured = snapshot.assignments().getCompound(owner);
+            for (String id : captured.getAllKeys()) links.putString(id, captured.getString(id));
+            hierarchy.put("links", links);
+        }
+        setDirty();
+    }
+
+    public GroupDirectorySnapshot captureGroups(Collection<GroupKey> keys) {
+        Set<GroupKey> capturedKeys = keys == null ? Set.of() : Set.copyOf(keys);
+        Map<GroupKey, String> existing = new LinkedHashMap<>();
+        for (GroupKey key : capturedKeys) {
+            GroupRef group = findGroup(key);
+            if (group != null) existing.put(key, group.displayName());
+        }
+        return new GroupDirectorySnapshot(capturedKeys, existing);
+    }
+
+    public void restoreGroups(GroupDirectorySnapshot snapshot) {
+        if (snapshot == null) throw new IllegalArgumentException("Group snapshot is required");
+        for (GroupKey key : snapshot.keys()) {
+            LinkedHashMap<UUID, String> groups = playerGroups.get(key.ownerId());
+            if (groups == null) continue;
+            groups.remove(key.internalId());
+            if (groups.isEmpty()) playerGroups.remove(key.ownerId());
+        }
+        snapshot.existing().forEach((key, name) -> playerGroups
+            .computeIfAbsent(key.ownerId(), ignored -> new LinkedHashMap<>())
+            .put(key.internalId(), name));
+        setDirty();
+    }
+
+    private void removeHierarchyAssignments(Collection<String> assignmentIds) {
+        if (assignmentIds.isEmpty()) return;
+        for (String owner : hierarchies.getAllKeys()) {
+            GroupHierarchy.removeAssignments(hierarchies.getCompound(owner), assignmentIds);
+        }
     }
 
     public boolean renameGroup(GroupKey key, String newDisplayName) {
@@ -189,9 +401,7 @@ public class PlayerGroupStore extends SavedData {
         return true;
     }
 
-    /**
-     * 仅校验重命名，不修改分组目录。
-     */
+    /// 仅校验重命名，不修改分组目录。
     public boolean canRenameGroup(GroupKey key, String newDisplayName) {
         if (key == null || key.isLegacyUnowned()) return false;
         try {
@@ -221,9 +431,7 @@ public class PlayerGroupStore extends SavedData {
         return Collections.unmodifiableSet(refs);
     }
 
-    /**
-     * 校验旧版无所有者分组能否原样归入玩家，校验阶段不修改存档。
-     */
+    /// 校验旧版无所有者分组能否原样归入玩家，校验阶段不修改存档。
     public void validateClaimedGroups(UUID owner, Collection<GroupRef> claimedGroups) {
         if (owner == null || claimedGroups == null) {
             throw new IllegalArgumentException("Claimed group owner and groups are required");
@@ -255,9 +463,7 @@ public class PlayerGroupStore extends SavedData {
         }
     }
 
-    /**
-     * 在全部节点完成认领后提交分组目录。
-     */
+    /// 在全部节点完成认领后提交分组目录。
     public void registerClaimedGroups(UUID owner, Collection<GroupRef> claimedGroups) {
         validateClaimedGroups(owner, claimedGroups);
         if (claimedGroups.isEmpty()) return;
@@ -270,51 +476,8 @@ public class PlayerGroupStore extends SavedData {
         if (changed) setDirty();
     }
 
-    /**
-     * 从 1.0.4 之前嵌在链接存档中的分组数据执行一次性迁移。
-     * 已存在独立分组存档时绝不导入，避免复活其中残留的历史快照。
-     */
-    public boolean importLegacyStorage(CompoundTag legacyTag) {
-        if (loadedFromDedicatedStorage) return false;
-        boolean changed = false;
 
-        CompoundTag groupsTag = legacyTag.getCompound("player_groups");
-        for (String ownerKey : groupsTag.getAllKeys()) {
-            if (playerGroups.size() >= MAX_STORED_OWNERS) break;
-            UUID owner;
-            try {
-                owner = UUID.fromString(ownerKey);
-            } catch (IllegalArgumentException exception) {
-                LOGGER.warn("Skipping invalid legacy player group owner: {}", ownerKey);
-                continue;
-            }
-            CompoundTag legacyGroups = groupsTag.getCompound(ownerKey);
-            LinkedHashMap<UUID, String> groups = playerGroups.computeIfAbsent(
-                owner, ignored -> new LinkedHashMap<>());
-            for (String entryKey : legacyGroups.getAllKeys()) {
-                if (groups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) break;
-                String displayName;
-                try {
-                    displayName = GroupConstraints.normalizeName(legacyGroups.getString(entryKey));
-                } catch (IllegalArgumentException exception) {
-                    LOGGER.warn("Skipping invalid legacy player group name for owner {}", ownerKey);
-                    continue;
-                }
-                GroupKey migrated = GroupKey.migrated(owner, displayName);
-                if (groups.putIfAbsent(migrated.internalId(), displayName) == null) changed = true;
-            }
-        }
-
-        if (changed) {
-            loadedFromDedicatedStorage = true;
-            setDirty();
-        }
-        return changed;
-    }
-
-    /**
-     * 将一组稳定分组身份迁移到新所有者；冲突时不修改任何状态。
-     */
+    /// 将一组稳定分组身份迁移到新所有者；冲突时不修改任何状态。
     public void transferGroups(UUID previousOwner, UUID newOwner, Collection<GroupRef> groupsToTransfer) {
         validateGroupTransfer(previousOwner, newOwner, groupsToTransfer);
         if (previousOwner.equals(newOwner) || groupsToTransfer.isEmpty()) return;
@@ -326,30 +489,31 @@ public class PlayerGroupStore extends SavedData {
             if (sourceGroups != null) sourceGroups.remove(group.key().internalId());
             destination.put(group.key().internalId(), group.displayName());
         }
-        Set<UUID> transferredIds = groupsToTransfer.stream()
-            .map(group -> group.key().internalId())
-            .collect(Collectors.toSet());
-        Map<ConnectionKey, String> transferredNames = new HashMap<>();
-        connectionNames.entrySet().removeIf(entry -> {
-            ConnectionKey key = entry.getKey();
-            if (!previousOwner.equals(key.groupKey().ownerId())
-                || !transferredIds.contains(key.groupKey().internalId())) return false;
-            transferredNames.put(new ConnectionKey(
-                key.groupKey().withOwner(newOwner), key.first(), key.second()), entry.getValue());
-            return true;
-        });
-        transferredNames.forEach(connectionNames::putIfAbsent);
         if (sourceGroups != null && sourceGroups.isEmpty()) playerGroups.remove(previousOwner);
         setDirty();
     }
 
-    public record ConnectionNameMerge(
-        Map<ConnectionKey, String> sourceNames,
-        Set<ConnectionKey> insertedTargets
+    public record ConnectionMetadataSnapshot(
+        Set<ConnectionKey> keys,
+        Map<ConnectionKey, String> names,
+        Set<String> assignmentIds,
+        CompoundTag assignments
     ) {
-        public ConnectionNameMerge {
-            sourceNames = Map.copyOf(sourceNames);
-            insertedTargets = Set.copyOf(insertedTargets);
+        public ConnectionMetadataSnapshot {
+            keys = Set.copyOf(keys);
+            names = Collections.unmodifiableMap(new LinkedHashMap<>(names));
+            assignmentIds = Set.copyOf(assignmentIds);
+            assignments = assignments.copy();
+        }
+    }
+
+    public record GroupDirectorySnapshot(
+        Set<GroupKey> keys,
+        Map<GroupKey, String> existing
+    ) {
+        public GroupDirectorySnapshot {
+            keys = Set.copyOf(keys);
+            existing = Collections.unmodifiableMap(new LinkedHashMap<>(existing));
         }
     }
 
@@ -387,10 +551,21 @@ public class PlayerGroupStore extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        // 保存分组计数器
+        requireLoaded();
         tag.putInt("schema_version", SCHEMA_VERSION);
+        tag.put("hierarchies", hierarchies.copy());
+        CompoundTag grantsTag = new CompoundTag();
+        playerGrants.forEach((owner, grants) -> {
+            CompoundTag entries = new CompoundTag();
+            grants.forEach((actor, permission) -> entries.putInt(actor.toString(), permission));
+            grantsTag.put(owner.toString(), entries);
+        });
+        tag.put("player_grants", grantsTag);
+        CompoundTag disabledTeams = new CompoundTag();
+        disabledTeamAccess.forEach(owner -> disabledTeams.putBoolean(owner.toString(), true));
+        tag.put("disabled_team_access", disabledTeams);
 
-        // 保存玩家分组
+        /// 保存玩家分组
         CompoundTag groupsTag = new CompoundTag();
         playerGroups.forEach((uuid, groups) -> {
             if (!groups.isEmpty()) {
@@ -417,9 +592,53 @@ public class PlayerGroupStore extends SavedData {
         return tag;
     }
 
-    void load(CompoundTag tag) {
-        loadedFromDedicatedStorage = true;
-        CompoundTag migrated = migrateStoredData(tag);
+    void load(CompoundTag tag, HolderLookup.Provider provider) {
+        if (!tag.contains("schema_version", Tag.TAG_INT) || tag.getInt("schema_version") != SCHEMA_VERSION) {
+            throw new IllegalStateException("Unsupported player group schema version: " + tag.getInt("schema_version"));
+        }
+        CompoundTag storedHierarchies = tag.getCompound("hierarchies");
+        CompoundTag disabledTeams = tag.getCompound("disabled_team_access");
+        for (String key : disabledTeams.getAllKeys()) {
+            try {
+                if (disabledTeams.getBoolean(key)) disabledTeamAccess.add(UUID.fromString(key));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        CompoundTag grantsTag = tag.getCompound("player_grants");
+        for (String ownerKey : grantsTag.getAllKeys()) {
+            try {
+                UUID owner = UUID.fromString(ownerKey);
+                CompoundTag entries = grantsTag.getCompound(ownerKey);
+                Map<UUID, Integer> grants = new HashMap<>();
+                for (String actorKey : entries.getAllKeys()) {
+                    if (grants.size() >= 1024) break;
+                    try {
+                        UUID actor = UUID.fromString(actorKey);
+                        int permission = entries.getInt(actorKey);
+                        if (!owner.equals(actor) && permission >= 1 && permission <= 2)
+                            grants.put(actor, permission);
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+                if (!grants.isEmpty()) playerGrants.put(owner, grants);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        hierarchies = new CompoundTag();
+        int hierarchyOwners = 0;
+        for (String owner : storedHierarchies.getAllKeys()) {
+            if (hierarchyOwners >= MAX_STORED_OWNERS) break;
+            try {
+                UUID.fromString(owner);
+            } catch (IllegalArgumentException exception) {
+                LOGGER.warn("Skipping invalid hierarchy owner: {}", owner);
+                continue;
+            }
+            if (!storedHierarchies.contains(owner, Tag.TAG_COMPOUND)) continue;
+            hierarchies.put(owner, GroupHierarchy.sanitize(storedHierarchies.getCompound(owner)));
+            hierarchyOwners++;
+        }
+        CompoundTag migrated = tag;
         if (migrated.contains("player_groups")) {
             CompoundTag groupsTag = migrated.getCompound("player_groups");
             for (String uuidStr : groupsTag.getAllKeys()) {
@@ -473,59 +692,4 @@ public class PlayerGroupStore extends SavedData {
         }
     }
 
-    /**
-     * 将旧显示名键目录显式迁移为第二版稳定 UUID 键目录。
-     */
-    private static CompoundTag migrateStoredData(CompoundTag source) {
-        CompoundTag migrated = source.copy();
-        if (migrated.contains("schema_version")
-            && !migrated.contains("schema_version", Tag.TAG_INT)) {
-            throw new IllegalStateException("Player group schema version must be an int");
-        }
-        int version = migrated.contains("schema_version")
-            ? migrated.getInt("schema_version") : 1;
-        if (version < 1 || version > SCHEMA_VERSION) {
-            throw new IllegalStateException("Unsupported player group schema version: " + version);
-        }
-        while (version < SCHEMA_VERSION) {
-            switch (version) {
-                case 1 -> {
-                    CompoundTag oldGroups = migrated.getCompound("player_groups");
-                    CompoundTag newGroups = new CompoundTag();
-                    for (String ownerText : oldGroups.getAllKeys()) {
-                        CompoundTag oldOwnerGroups = oldGroups.getCompound(ownerText);
-                        CompoundTag newOwnerGroups = new CompoundTag();
-                        UUID owner;
-                        try {
-                            owner = UUID.fromString(ownerText);
-                        } catch (IllegalArgumentException exception) {
-                            newGroups.put(ownerText, oldOwnerGroups.copy());
-                            continue;
-                        }
-                        for (String oldKey : oldOwnerGroups.getAllKeys()) {
-                            if (newOwnerGroups.size() >= GroupConstraints.MAX_GROUPS_PER_OWNER) break;
-                            String displayName;
-                            try {
-                                displayName = GroupConstraints.normalizeName(
-                                    oldOwnerGroups.getString(oldKey));
-                            } catch (IllegalArgumentException exception) {
-                                LOGGER.warn("Skipping invalid migrated player group name for owner {}", ownerText);
-                                continue;
-                            }
-                            GroupKey key = GroupKey.migrated(owner, displayName);
-                            newOwnerGroups.putString(key.internalId().toString(), displayName);
-                        }
-                        if (!newOwnerGroups.isEmpty()) newGroups.put(ownerText, newOwnerGroups);
-                    }
-                    migrated.put("player_groups", newGroups);
-                    migrated.putInt("schema_version", 2);
-                    version = 2;
-                }
-                default -> throw new IllegalStateException(
-                    "Missing player group migration from version: " + version);
-            }
-        }
-
-        return migrated;
-    }
 }

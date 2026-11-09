@@ -2,16 +2,14 @@ package com.coobird.staticlogistics.logistics.blueprint;
 
 import net.minecraft.server.MinecraftServer;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * 蓝图撤销管理器 —— 存储每个玩家最近一次粘贴的撤销数据。
- */
+/// 蓝图撤销管理器 —— 存储每个玩家最近一次粘贴的撤销数据。
 public class BlueprintUndoManager {
-    private static final Map<MinecraftServer, BlueprintUndoManager> INSTANCES = new ConcurrentHashMap<>();
-    private final Map<UUID, BlueprintUndoData> undoData = new ConcurrentHashMap<>();
+    private static final Map<MinecraftServer, BlueprintUndoManager> INSTANCES = new HashMap<>();
+    private final Map<UUID, BlueprintUndoData> undoData = new HashMap<>();
 
     public static BlueprintUndoManager get(MinecraftServer server) {
         return INSTANCES.computeIfAbsent(server, ignored -> new BlueprintUndoManager());
@@ -34,10 +32,6 @@ public class BlueprintUndoManager {
         return undoData.get(playerUuid);
     }
 
-    public boolean hasUndoData(UUID playerUuid) {
-        return undoData.containsKey(playerUuid);
-    }
-
     public void clear(UUID playerUuid) {
         undoData.remove(playerUuid);
     }
@@ -46,4 +40,3 @@ public class BlueprintUndoManager {
         undoData.clear();
     }
 }
-

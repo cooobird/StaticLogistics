@@ -4,33 +4,39 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.filter.FilterEvaluator;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.util.SaturatedMath;
 import com.coobird.staticlogistics.transfer.strategy.ItemExtractionStrategy;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.Objects;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 物品资源适配器 —— 带提取策略、过滤器检查、存量维持。
- *
- * <p>每次节点激活只扫描一次物理槽位，并由提取会话保存候选位置与遍历进度。
- */
+/// 物品资源适配器 —— 带提取策略、过滤器检查、存量维持。
+/// 每次节点激活只扫描一次物理槽位，并由提取会话保存候选位置与遍历进度。
 public class ItemResource implements LogisticsResource<IItemHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("item");
+
+    @Override
+    public TransactionCapabilities transactionCapabilities() {
+        return TransactionCapabilities.exactCompensating();
+    }
 
     private record ExtractionPlan(Object sessionIdentity, int slotIndex) {
     }
@@ -46,6 +52,11 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.items");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.item";
     }
@@ -56,25 +67,23 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getItemStack;
     }
 
     @Override
-    public TransactionCapabilities transactionCapabilities() {
-        return TransactionCapabilities.exactCompensating();
-    }
-
-    @Override
     public @Nullable IItemHandler resolve(ServerLevel level, BlockPos pos, Direction face) {
-        BlockEntity be = level.getBlockEntity(pos);
-        if (be == null) return null;
         return CapabilityCache.get(level, pos, face, ForgeCapabilities.ITEM_HANDLER);
     }
 
     @Override
+    public Capability<IItemHandler> blockCapability() {
+        return ForgeCapabilities.ITEM_HANDLER;
+    }
+
+    @Override
     public ResourceExtractionSession openExtractionSession(
-        IItemHandler handle, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+        IItemHandler handle, @Nullable EndpointConfig sourceCfg, boolean isPullMode,
         @Nullable TransferContext context
     ) {
         return new ItemExtractionSession(handle, sourceCfg, isPullMode, context);
@@ -82,7 +91,7 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
 
     @Override
     public long insertTyped(IItemHandler handle, Object value, boolean simulate,
-                            @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+                            @Nullable EndpointConfig sourceCfg, boolean isPullMode,
                             @Nullable TransferContext context) {
         if (!(value instanceof ItemStack stack) || stack.isEmpty()) return 0;
         if (!simulate) return insertIntoHandler(handle, stack, false);
@@ -116,16 +125,20 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public boolean canInsertToTarget(IItemHandler handle, Object value, FaceConfigComposite targetCfg) {
+    public boolean canInsertToTarget(IItemHandler handle, Object value, EndpointConfig targetCfg) {
         if (!(value instanceof ItemStack stack) || stack.isEmpty()) return false;
+        /// 输入过滤器检查
         if (!FilterEvaluator.isItemInputAllowed(stack, targetCfg)) return false;
-        int keepStock = targetCfg.linkConfig.getKeepStock();
+        /// 存量维持检查
+        long keepStock = targetCfg.linkConfig.getKeepStock();
         if (keepStock > 0) {
-            int alreadyHas = 0;
+            long alreadyHas = 0L;
             for (int i = 0; i < handle.getSlots(); i++) {
                 ItemStack targetStack = handle.getStackInSlot(i);
                 if (ItemStack.isSameItemSameTags(stack, targetStack)) {
                     alreadyHas += targetStack.getCount();
+                    /// 已达到存量上限时，无需继续扫描剩余槽位。
+                    if (alreadyHas >= keepStock) return false;
                 }
             }
             return alreadyHas < keepStock;
@@ -134,18 +147,30 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
     }
 
     @Override
-    public long maxInsertToTarget(IItemHandler handle, Object value, FaceConfigComposite targetCfg) {
+    public long maxInsertToTarget(IItemHandler handle, Object value, EndpointConfig targetCfg) {
         if (!(value instanceof ItemStack stack) || stack.isEmpty()) return 0L;
-        int keepStock = targetCfg.linkConfig.getKeepStock();
+        long keepStock = targetCfg.linkConfig.getKeepStock();
         if (keepStock <= 0) return Long.MAX_VALUE;
         long alreadyHas = 0L;
         for (int i = 0; i < handle.getSlots(); i++) {
             ItemStack targetStack = handle.getStackInSlot(i);
             if (ItemStack.isSameItemSameTags(stack, targetStack)) {
                 alreadyHas += targetStack.getCount();
+                if (alreadyHas >= keepStock) return 0L;
             }
         }
         return Math.max(0L, (long) keepStock - alreadyHas);
+    }
+
+    @Override
+    public long evaluateInsertToTarget(IItemHandler handle, Object value, EndpointConfig targetCfg) {
+        /// 第三方子类可能覆写旧准入方法，不能绕过其额外规则。
+        if (getClass() != ItemResource.class)
+            return LogisticsResource.super.evaluateInsertToTarget(handle, value, targetCfg);
+        if (!(value instanceof ItemStack stack) || stack.isEmpty() || !FilterEvaluator.isItemInputAllowed(stack, targetCfg))
+            return 0L;
+        /// 同一阶段只扫描一次存量，真实提取之后仍按协议重新检查。
+        return maxInsertToTarget(handle, value, targetCfg);
     }
 
     @Override
@@ -155,17 +180,14 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
 
     @Override
     public Object withAmount(Object value, long amount) {
-        if (!(value instanceof ItemStack stack)) return null;
-        int count = SaturatedMath.toNonNegativeInt(amount);
-        return stack.copyWithCount(count);
+        return value instanceof ItemStack stack
+            ? stack.copyWithCount(SaturatedMath.toNonNegativeInt(amount)) : null;
     }
 
-    /**
-     * 单次激活以流式游标遍历物理槽位，每个槽位本轮最多检查一次。
-     */
+    /// 单次激活以流式游标遍历物理槽位，每个槽位本轮最多检查一次。
     private static final class ItemExtractionSession implements ResourceExtractionSession {
         private final IItemHandler handle;
-        private final @Nullable FaceConfigComposite sourceCfg;
+        private final @Nullable EndpointConfig sourceCfg;
         private final boolean pullMode;
         private final @Nullable TransferContext context;
         private final int slotCount;
@@ -173,8 +195,9 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
         private final Object sessionIdentity = new Object();
         private int scannedSlots;
         private int pendingSlot = -1;
+        private CandidateKey checkpoint;
 
-        private ItemExtractionSession(IItemHandler handle, @Nullable FaceConfigComposite sourceCfg,
+        private ItemExtractionSession(IItemHandler handle, @Nullable EndpointConfig sourceCfg,
                                       boolean pullMode, @Nullable TransferContext context) {
             this.handle = handle;
             this.sourceCfg = sourceCfg;
@@ -216,7 +239,8 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
                 }
                 advanceCursor(slot);
             }
-            return ExtractionResult.of(ItemStack.EMPTY);
+            return scannedSlots < slotCount
+                ? ExtractionResult.yielded(ItemStack.EMPTY) : ExtractionResult.of(ItemStack.EMPTY);
         }
 
         @Override
@@ -246,6 +270,19 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
             }
         }
 
+        private record CandidateKey(int slot, Item item, CompoundTag components) {
+        }
+
+        @Override
+        public Object candidateKey(ExtractionResult<?> simulated) {
+            if (!(simulated.value() instanceof ItemStack stack) || pendingSlot < 0) return null;
+            if (checkpoint == null || checkpoint.slot() != pendingSlot || checkpoint.item() != stack.getItem()
+                || !Objects.equals(checkpoint.components(), stack.getTag())) {
+                checkpoint = new CandidateKey(pendingSlot, stack.getItem(), stack.copy().getTag());
+            }
+            return checkpoint;
+        }
+
         @Override
         public boolean advanceRejected(ExtractionResult<?> simulated) {
             if (!(simulated.context() instanceof ExtractionPlan plan)
@@ -260,8 +297,8 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
         @Override
         public void onCompleted() {
             if (sourceCfg == null || context == null) return;
-            // 只有真正遍历完全部物理槽位才结束一轮顺序扫描。若只是本次传输额度耗尽，
-            // 必须保留下一个槽位游标，避免高产容器持续补充前部槽位时饿死后部槽位。
+            /// 只有真正遍历完全部物理槽位才结束一轮顺序扫描。若只是本次传输额度耗尽，
+            /// 必须保留下一个槽位游标，避免高产容器持续补充前部槽位时饿死后部槽位。
             if (scannedSlots >= slotCount) {
                 ItemExtractionStrategy.forMode(sourceCfg.linkConfig.getExtractionMode()).finishActivation(context);
             }
@@ -288,12 +325,11 @@ public class ItemResource implements LogisticsResource<IItemHandler> {
 
         private static int readSlotCount(IItemHandler handle) {
             try {
-                return Math.max(0, handle.getSlots());
+                return handle.getSlots();
             } catch (Exception e) {
                 LOGGER.error("Item slot count query failed", e);
                 return 0;
             }
         }
     }
-
 }

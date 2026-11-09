@@ -141,10 +141,15 @@ repositories {
             includeGroup 'com.gregtechceu.gtceu'
         }
     }
+    maven {
+        name "magicTeam MavenReleases"
+        url "https://maven.confluence.ink/releases"
+    }
 }
 
 dependencies {
-    modImplementation(jarJar("blank:MesdagPortLib-${portlib_version}:universal"))
+    modImplementation("org.mesdag:PortLib:${portlib_version}")
+    interfaceInjectionData("org.mesdag:PortLib:${portlib_version}")
 
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.3"))
     implementation(jarJar("io.github.llamalad7:mixinextras-forge:0.5.3"))

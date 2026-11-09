@@ -3,7 +3,7 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.ExtractionResult;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
@@ -11,9 +11,11 @@ import com.mojang.logging.LogUtils;
 import mekanism.api.Action;
 import mekanism.api.chemical.pigment.IPigmentHandler;
 import mekanism.api.chemical.pigment.PigmentStack;
+import mekanism.common.capabilities.Capabilities;
 import mekanism.common.registries.MekanismBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -21,12 +23,10 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 通过 {@link mekanism.common.capabilities.Capabilities#PIGMENT_HANDLER} 访问 Mekanism 颜料。
- */
+/// 通过 {@link Capabilities#PIGMENT_HANDLER} 访问 Mekanism 颜料。
 public class MekanismPigmentResource implements LogisticsResource<IPigmentHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_pigment");
@@ -42,6 +42,11 @@ public class MekanismPigmentResource implements LogisticsResource<IPigmentHandle
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.fluid");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.mek_pigment";
     }
@@ -52,7 +57,7 @@ public class MekanismPigmentResource implements LogisticsResource<IPigmentHandle
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getMekPigmentStack;
     }
 
@@ -66,7 +71,7 @@ public class MekanismPigmentResource implements LogisticsResource<IPigmentHandle
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
         return CapabilityCache.get(
-            level, pos, face, mekanism.common.capabilities.Capabilities.PIGMENT_HANDLER);
+            level, pos, face, Capabilities.PIGMENT_HANDLER);
     }
 
     @Override
@@ -104,7 +109,7 @@ public class MekanismPigmentResource implements LogisticsResource<IPigmentHandle
     }
 
     @Override
-    public boolean canInsertToTarget(IPigmentHandler handle, Object value, FaceConfigComposite targetCfg) {
+    public boolean canInsertToTarget(IPigmentHandler handle, Object value, EndpointConfig targetCfg) {
         if (!(value instanceof PigmentStack stack) || stack.isEmpty()) return false;
         PigmentStack simulated = handle.insertChemical(stack.copy(), Action.SIMULATE);
         return simulated.isEmpty() || simulated.getAmount() < stack.getAmount();
@@ -112,14 +117,14 @@ public class MekanismPigmentResource implements LogisticsResource<IPigmentHandle
 
     @Override
     public long amountOf(Object value) {
-        return value instanceof mekanism.api.chemical.pigment.PigmentStack stack
+        return value instanceof PigmentStack stack
             ? stack.getAmount() : -1L;
     }
 
     @Override
     public Object withAmount(Object value, long amount) {
-        if (!(value instanceof mekanism.api.chemical.pigment.PigmentStack stack)) return null;
-        mekanism.api.chemical.pigment.PigmentStack copy = stack.copy();
+        if (!(value instanceof PigmentStack stack)) return null;
+        PigmentStack copy = stack.copy();
         copy.setAmount(Math.max(0L, amount));
         return copy;
     }

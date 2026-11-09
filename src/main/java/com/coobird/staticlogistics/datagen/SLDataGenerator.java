@@ -7,11 +7,11 @@ import net.minecraft.data.PackOutput;
 import net.minecraftforge.common.data.ExistingFileHelper;
 import net.minecraftforge.data.event.GatherDataEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
 
 import java.util.concurrent.CompletableFuture;
 
-@Mod.EventBusSubscriber(modid = StaticLogistics.MODID, bus = Mod.EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = StaticLogistics.MODID, bus = EventBusSubscriber.Bus.MOD)
 public class SLDataGenerator {
     @SubscribeEvent
     public static void onGatherData(GatherDataEvent event) {
@@ -26,7 +26,7 @@ public class SLDataGenerator {
         generator.addProvider(client, new SLItemModelProvider(output, helper));
 
         boolean server = event.includeServer();
-        generator.addProvider(server, new VanillaRecipeProvider(output));
+        generator.addProvider(server, new VanillaRecipeProvider(output, lookup));
         generator.addProvider(server, new SLItemTagsProvider(output, lookup, helper));
     }
 }

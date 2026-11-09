@@ -22,7 +22,7 @@
 注册入口：
 
 ```java
-StaticLogisticsApi.resourceAdapters().register(adapter, stableBitOffset);
+StaticLogisticsApi.resourceAdapters().register(adapter);
 ```
 
 应在模组公共初始化阶段、服务器第一次加载物流数据前完成注册。
@@ -41,17 +41,18 @@ import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.api.transfer.TransferRequest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 public final class MyResourceAdapter implements ResourceAdapter<MyHandle, MyValue> {
     private static final ResourceLocation TYPE_ID =
-        ResourceLocation.fromNamespaceAndPath("mymod", "my_resource");
+        new ResourceLocation("mymod", "my_resource");
 
     @Override
     public ResourceLocation typeId() {
@@ -74,12 +75,17 @@ public final class MyResourceAdapter implements ResourceAdapter<MyHandle, MyValu
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("unit.mymod.my_resource");
+    }
+
+    @Override
     public Supplier<ItemStack> iconSupplier() {
         return () -> new ItemStack(MyItems.RESOURCE_ICON.get());
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return MyConfig::transferAmount;
     }
 
@@ -201,35 +207,11 @@ TransactionCapabilities.exactCompensating()
 
 真实提交阶段抛出异常时，管线无法证明底层是否已经修改状态，因此会把本次传输标记为“提交状态未知”并立即终止。适配器可以在模拟阶段安全返回失败，但不得吞掉真实提交异常。
 
-## 稳定资源 ID 与位序
+## 资源 ID 与运行时位号
 
-资源类型的 `ResourceLocation` 是持久化身份，发布后不能随意修改。
+资源类型的 `ResourceLocation` 是持久化和网络传输的身份。注册中心自动分配空闲位，最多支持 64 种资源；位号随运行时注册顺序变化，不应保存或发送。
 
-Forge 1.20.1 已占用的位序：
-
-| bitOffset | ID                             |
-|----------:|--------------------------------|
-|         0 | `staticlogistics:item`         |
-|         1 | `staticlogistics:fluid`        |
-|         2 | `staticlogistics:energy`       |
-|         3 | `staticlogistics:mek_gas`      |
-|         4 | `staticlogistics:mek_infusion` |
-|         5 | `staticlogistics:mek_pigment`  |
-|         6 | `staticlogistics:mek_slurry`   |
-|         7 | `staticlogistics:mek_heat`     |
-|         8 | `staticlogistics:ars_source`   |
-|         9 | `staticlogistics:botania_mana` |
-|        10 | `staticlogistics:gtceu_energy` |
-
-第三方适配器应从 11 开始分配，并与 StaticLogistics 维护者协调以避免冲突。位序 0–31 还会投影到旧版 `int`
-mask，修改已发布位序会破坏旧物品和旧存档选择。
-
-注册中心会拒绝：
-
-- 重复的资源 ID；
-- 重复的位序；
-- 负数或大于 31 的位序；
-- 缺少精确模拟、精确缩量或回滚能力的适配器。
+注册中心会拒绝重复的资源 ID，以及不满足精确模拟、精确缩量和回滚契约的适配器。
 
 ## 过滤、权限与路由
 
@@ -289,10 +271,9 @@ public static void afterTransfer(PostTransferEvent event) {
 ## 发布前检查
 
 - 使用唯一且稳定的资源 ID；
-- 分配未占用且固定的 bitOffset；
 - 提供资源类型翻译键和图标；
 - 验证空句柄、空资源、目标已满和源端变化；
 - 验证部分插入及回滚；
 - 验证方块替换和能力失效；
-- 验证旧存档 mask 不会映射到错误类型；
+- 验证不同注册顺序和重启后资源 ID 保持不变；
 - 验证专用服务器环境不加载客户端类。

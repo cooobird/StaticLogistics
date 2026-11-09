@@ -9,9 +9,7 @@ import net.minecraftforge.items.IItemHandler;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 掉落处理器 —— 方块实体被破坏时，将升级卡和过滤器物品掉落为实体。
- */
+/// 掉落处理器 —— 方块实体被破坏时，将升级卡和过滤器物品掉落为实体。
 public class DropHandler {
     private final ServerLevel level;
 
@@ -19,9 +17,7 @@ public class DropHandler {
         this.level = level;
     }
 
-    /**
-     * 同一物理方块的全部升级物作为一个批次移交，任一实体生成失败即整体恢复。
-     */
+    /// 同一物理方块的全部升级物作为一个批次移交，任一实体生成失败即整体恢复。
     public NodeLifecycleService.HandoffReceipt beginHandoff(
         List<NodeLifecycleService.UpgradeSource> sources
     ) {

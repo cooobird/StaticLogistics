@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 
@@ -9,12 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 传输日志门面，统一管理服务器会话内的最近日志、累计统计和速率。
- *
- * <p>所有入口都在服务器主线程调用。最近日志保留真实时间戳供命令显示，
- * 限频、速率及 Jade 新鲜度统一使用服务器游戏刻，不受系统时钟调整影响。
- */
+/// 管理服务器会话内的传输日志、累计统计和实时速率。
 public class TransferLogManager {
     private static final Map<MinecraftServer, TransferLogManager> INSTANCES = new HashMap<>();
     private static final long FAILURE_LOG_INTERVAL_TICKS = 20L;
@@ -29,9 +25,58 @@ public class TransferLogManager {
         if (removed != null) removed.reset();
     }
 
+    /// 生命周期结束后释放节点明细；全局累计统计与最近日志仍保留。
+    public static void forgetNode(MinecraftServer server, LogisticsNode node) {
+        TransferLogManager manager = INSTANCES.get(server);
+        if (manager == null) return;
+        manager.stats.removeNode(node);
+        manager.failureLogTicks.keySet().removeIf(key -> key.source().equals(node) || key.target().equals(node));
+    }
+
     private final MinecraftServer server;
     private final TransferRecentLog recentLog = new TransferRecentLog();
     private final TransferStats stats = new TransferStats();
+
+    private record ObservedEndpoint(LogisticsNode node, GlobalPos peer) {
+    }
+
+    private final Map<LogisticsNode, LiveTransferRates> liveRates = new HashMap<>();
+    private final Map<ObservedEndpoint, Integer> observedEndpoints = new HashMap<>();
+    // 只为正在查看的连接保存最近一次没有候选资源的观察，不计为失败。
+    private final Map<ObservedEndpoint, Long> noCandidateNanos = new HashMap<>();
+
+    public LiveTransferRates observe(LogisticsNode node, GlobalPos peer) {
+        LiveTransferRates rates = liveRates.computeIfAbsent(node, ignored -> new LiveTransferRates());
+        rates.observers++;
+        observedEndpoints.merge(new ObservedEndpoint(node, peer), 1, Integer::sum);
+        return rates;
+    }
+
+    public void stopObserving(LogisticsNode node, GlobalPos peer) {
+        ObservedEndpoint key = new ObservedEndpoint(node, peer);
+        observedEndpoints.computeIfPresent(key, (ignored, count) -> count > 1 ? count - 1 : null);
+        if (!observedEndpoints.containsKey(key)) noCandidateNanos.remove(key);
+        LiveTransferRates rates = liveRates.get(node);
+        if (rates != null && --rates.observers == 0) {
+            liveRates.remove(node);
+            noCandidateNanos.keySet().removeIf(endpoint -> endpoint.node().equals(node));
+        }
+    }
+
+    public void observeNoCandidate(LogisticsNode source, LogisticsNode target) {
+        if (liveRates.isEmpty()) return;
+        long now = System.nanoTime();
+        var sent = new ObservedEndpoint(source, target.gPos());
+        var received = new ObservedEndpoint(target, source.gPos());
+        if (observedEndpoints.containsKey(sent)) noCandidateNanos.put(sent, now);
+        if (observedEndpoints.containsKey(received)) noCandidateNanos.put(received, now);
+    }
+
+    public boolean recentlyObservedNoCandidate(LogisticsNode node, GlobalPos peer) {
+        Long observed = noCandidateNanos.get(new ObservedEndpoint(node, peer));
+        return observed != null && System.nanoTime() - observed < 5_000_000_000L;
+    }
+
     private final TransferRateCalculator rateCalculator = new TransferRateCalculator();
     private final Map<FailureLogKey, Long> failureLogTicks = new LinkedHashMap<>(16, 0.75F, true);
     private long lastTransferTick = -1;
@@ -49,6 +94,24 @@ public class TransferLogManager {
                             LogisticsResource<?> type, long amount, boolean success,
                             TransferFailureReason reason) {
         long gameTick = currentTick();
+        if (!noCandidateNanos.isEmpty()) {
+            noCandidateNanos.remove(new ObservedEndpoint(source, target.gPos()));
+            noCandidateNanos.remove(new ObservedEndpoint(target, source.gPos()));
+        }
+        /// 即使补偿未完整成功，已确认存入的数量也属于实际成交量。
+        if (amount > 0 && !liveRates.isEmpty()) {
+            long now = System.nanoTime();
+            LiveTransferRates sent = liveRates.get(source);
+            LiveTransferRates received = liveRates.get(target);
+            if (sent != null) {
+                sent.record(type.typeId(), amount, true, now);
+                sent.recordPeer(target, type.typeId(), amount, true, now);
+            }
+            if (received != null) {
+                received.record(type.typeId(), amount, false, now);
+                received.recordPeer(source, type.typeId(), amount, false, now);
+            }
+        }
         if (!success) stats.incrementFailed();
         if (!success && reason != null
             && shouldSuppressFailure(source, target, type, reason, gameTick)) return;
@@ -57,16 +120,18 @@ public class TransferLogManager {
             System.currentTimeMillis(),
             source.gPos().dimension().location().toString(),
             source.gPos().pos().getX(), source.gPos().pos().getY(), source.gPos().pos().getZ(),
-            source.face().getName(),
+            source.face().getName(), source.channel(),
             target.gPos().dimension().location().toString(),
             target.gPos().pos().getX(), target.gPos().pos().getY(), target.gPos().pos().getZ(),
-            target.face().getName(),
+            target.face().getName(), target.channel(),
             type.typeId().toString(), type.color(),
             amount, success, reason != null ? reason.id().toString() : null
         );
         recentLog.add(entry);
 
-        if (!success) return;
+        if (!success) {
+            return;
+        }
         stats.incrementTotal(amount);
         stats.recordType(type.typeId().toString(), amount);
         stats.recordSource(source, amount, gameTick);
@@ -75,9 +140,7 @@ public class TransferLogManager {
         lastTransferTick = gameTick;
     }
 
-    /**
-     * 对同一链路、类型和原因的连续失败按游戏刻限频。
-     */
+    /// 对同一链路、类型和原因的连续失败按游戏刻限频。
     private boolean shouldSuppressFailure(LogisticsNode source, LogisticsNode target,
                                           LogisticsResource<?> type, TransferFailureReason reason,
                                           long gameTick) {
@@ -101,6 +164,27 @@ public class TransferLogManager {
 
     public List<TransferEntry> getRecent(int count) {
         return recentLog.getRecent(count);
+    }
+
+    // 返回此连接面的最近记录；维度、朝向和通道都必须一致。
+    public TransferEntry latestFor(LogisticsNode node, GlobalPos peer) {
+        List<TransferEntry> entries = recentLog.getRecent(200);
+        var pos = node.gPos().pos();
+        String dimension = node.gPos().dimension().location().toString();
+        String face = node.face().getName();
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            TransferEntry e = entries.get(i);
+            boolean source = dimension.equals(e.sourceDim()) && pos.getX() == e.sx() && pos.getY() == e.sy()
+                && pos.getZ() == e.sz() && face.equals(e.sourceFace()) && node.channel() == e.sourceChannel();
+            boolean target = dimension.equals(e.targetDim()) && pos.getX() == e.tx() && pos.getY() == e.ty()
+                && pos.getZ() == e.tz() && face.equals(e.targetFace()) && node.channel() == e.targetChannel();
+            var other = peer.pos();
+            String otherDimension = peer.dimension().location().toString();
+            boolean sourcePeer = otherDimension.equals(e.targetDim()) && other.getX() == e.tx() && other.getY() == e.ty() && other.getZ() == e.tz();
+            boolean targetPeer = otherDimension.equals(e.sourceDim()) && other.getX() == e.sx() && other.getY() == e.sy() && other.getZ() == e.sz();
+            if (source && sourcePeer || target && targetPeer) return e;
+        }
+        return null;
     }
 
     public int getLogSize() {
@@ -127,8 +211,8 @@ public class TransferLogManager {
         return stats.getPerNodeStats(node, currentTick());
     }
 
-    public List<Map.Entry<LogisticsNode, NodeStats>> getTopNodes(int count, boolean bySent) {
-        return stats.getTopNodes(count, bySent);
+    public List<Map.Entry<LogisticsNode, NodeStats>> getTopNodes(int n, boolean bySent) {
+        return stats.getTopNodes(n, bySent);
     }
 
     public double getTransfersPerMinute() {
@@ -139,15 +223,10 @@ public class TransferLogManager {
         return rateCalculator.getAmountPerMinute(currentTick());
     }
 
-    /**
-     * 返回上次成功传输距今的毫秒数；无记录时返回 -1。
-     */
-    public long getTimeSinceLastTransfer() {
-        if (lastTransferTick < 0) return -1;
-        return Math.max(0, currentTick() - lastTransferTick) * 50L;
-    }
-
     public void reset() {
+        liveRates.clear();
+        observedEndpoints.clear();
+        noCandidateNanos.clear();
         recentLog.clear();
         stats.clear();
         rateCalculator.clear();

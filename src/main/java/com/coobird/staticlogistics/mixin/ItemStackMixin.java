@@ -11,10 +11,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * 拦截 ItemStack.is(TagKey<Item>)，在非扳手模式下让配置器"伪装"成不是扳手/剪线钳。
- * GregTech 的 ToolHelper.getToolTypes() 和 shouldRenderGrid() 都依赖此方法。
- */
+/// 拦截 ItemStack.is(TagKey<Item>)，在非扳手模式下让配置器"伪装"成不是扳手/剪线钳。
+/// GregTech 的 ToolHelper.getToolTypes() 和 shouldRenderGrid() 都依赖此方法。
 @Mixin(ItemStack.class)
 public class ItemStackMixin {
 

@@ -1,8 +1,8 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -16,18 +16,15 @@ import net.minecraft.world.level.Level;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * 统一生成节点的无副作用只读快照，并按完整节点依赖局部失效缓存。
- *
- * <p>本服务只在服务器主线程使用。一个输入面的展示结果依赖其链接输出面，
- * 因此缓存同时维护反向依赖索引；任一配置或能力变化只清理该面及依赖它的快照。
- */
+/// 统一生成节点的无副作用只读快照，并按完整节点依赖局部失效缓存。
+/// 本服务只在服务器主线程使用。一个输入面的展示结果依赖其链接输出面，
+/// 因此缓存同时维护反向依赖索引；任一配置或能力变化只清理该面及依赖它的快照。
 public final class NodeQueryService {
     private static final Map<MinecraftServer, CacheState> CACHES = new HashMap<>();
 
-    private record QueryKey(ResourceKey<Level> dimension, FaceAddress address) {
+    private record QueryKey(ResourceKey<Level> dimension, EndpointAddress address) {
         static QueryKey of(LogisticsNode node) {
-            return new QueryKey(node.gPos().dimension(), FaceAddress.of(node));
+            return new QueryKey(node.gPos().dimension(), EndpointAddress.of(node));
         }
     }
 
@@ -77,6 +74,21 @@ public final class NodeQueryService {
                 }
             }
         }
+
+        void release(ResourceKey<Level> dimension) {
+            Set<QueryKey> roots = new HashSet<>();
+            snapshots.keySet().stream()
+                .filter(key -> key.dimension().equals(dimension))
+                .forEach(roots::add);
+            dependents.keySet().stream()
+                .filter(key -> key.dimension().equals(dimension))
+                .forEach(roots::add);
+            roots.forEach(this::invalidate);
+        }
+
+        boolean isEmpty() {
+            return snapshots.isEmpty() && dependents.isEmpty();
+        }
     }
 
     private NodeQueryService() {
@@ -88,7 +100,10 @@ public final class NodeQueryService {
     }
 
     public static void invalidateFace(ServerLevel level, BlockPos pos, Direction face) {
-        invalidateNode(level.getServer(), new LogisticsNode(GlobalPos.of(level.dimension(), pos), face));
+        var container = LinkManager.get(level).getContainerConfig(pos);
+        if (container != null) for (EndpointAddress key : container.getLinkedFaceKeys()) {
+            if (key.face() == face) invalidateNode(level.getServer(), key.toNode(level.dimension()));
+        }
     }
 
     public static void invalidateBlock(ServerLevel level, BlockPos pos) {
@@ -99,15 +114,28 @@ public final class NodeQueryService {
         CACHES.remove(server);
     }
 
+    public static void release(ServerLevel level) {
+        CacheState state = CACHES.get(level.getServer());
+        if (state == null) return;
+        state.release(level.dimension());
+        if (state.isEmpty()) CACHES.remove(level.getServer(), state);
+    }
+
     public static Optional<NodeQuerySnapshot> query(ServerLevel level, BlockPos pos, Direction face) {
+        return query(level, new LogisticsNode(GlobalPos.of(level.dimension(), pos), face));
+    }
+
+    public static Optional<NodeQuerySnapshot> query(ServerLevel level, LogisticsNode node) {
+        if (node.isConnectionFace()) return Optional.empty();
+        BlockPos pos = node.gPos().pos();
+        Direction face = node.face();
         LinkManager manager = LinkManager.get(level);
-        FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, face));
+        EndpointConfig config = manager.getEndpointConfig(EndpointAddress.of(node));
         if (config == null || config.isDefault()) {
-            invalidateFace(level, pos, face);
+            invalidateNode(level.getServer(), node);
             return Optional.empty();
         }
 
-        LogisticsNode node = new LogisticsNode(GlobalPos.of(level.dimension(), pos), face);
         CacheState state = CACHES.computeIfAbsent(level.getServer(), ignored -> new CacheState());
         QueryKey queryKey = QueryKey.of(node);
         CachedSnapshot cached = state.snapshots.get(queryKey);
@@ -137,7 +165,7 @@ public final class NodeQueryService {
 
     private static NodeQuerySnapshot createRoutingSnapshot(
         ServerLevel level, BlockPos pos, Direction face,
-        LogisticsNode node, FaceConfigComposite config
+        LogisticsNode node, EndpointConfig config
     ) {
         List<ResourceLocation> presentTypes = ids(TransferUtils.getPresentTypes(level, pos, face));
         Set<ResourceLocation> presentSet = Set.copyOf(presentTypes);

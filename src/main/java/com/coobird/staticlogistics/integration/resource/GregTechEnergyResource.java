@@ -13,6 +13,7 @@ import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -21,22 +22,20 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * GregTech EU 能量资源适配器 (Forge 1.20.1)。
- *
- * <p>通过 {@code GTCapabilityHelper.getEnergyContainer()} 获取 {@link IEnergyContainer}。
- * GregTech 的 EU 系统使用 long 值，电压/安培概念。
- *
- * <p>设计决策：
- * <ul>
- *   <li>baseStackSizeSupplier 返回配置的基础 EU/t，由升级倍率放大</li>
- *   <li>实际传输量取 min(升级后限制, 设备能力)</li>
- *   <li>电压/电流完全由接入端设备决定，不额外控制</li>
- * </ul>
- */
+/// GregTech EU 能量资源适配器 (Forge 1.20.1)。
+///
+/// <p>通过 {@code GTCapabilityHelper.getEnergyContainer()} 获取 {@link IEnergyContainer}。
+/// GregTech 的 EU 系统使用 long 值，电压/安培概念。
+///
+/// <p>设计决策：
+/// <ul>
+///   <li>baseStackSizeSupplier 返回配置的基础 EU/t，由升级倍率放大</li>
+///   <li>实际传输量取 min(升级后限制, 设备能力)</li>
+///   <li>电压/电流完全由接入端设备决定，不额外控制</li>
+/// </ul>
 public class GregTechEnergyResource implements LogisticsResource<IEnergyContainer> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("gtceu_energy");
@@ -49,6 +48,11 @@ public class GregTechEnergyResource implements LogisticsResource<IEnergyContaine
     @Override
     public int color() {
         return 0xFFFF6600;
+    }
+
+    @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.eu");
     }
 
     @Override
@@ -71,7 +75,7 @@ public class GregTechEnergyResource implements LogisticsResource<IEnergyContaine
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getGTCEUStack;
     }
 

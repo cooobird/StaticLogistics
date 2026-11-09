@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.logistics.group;
 
+import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.content.event.PlayerEvents;
+import com.coobird.staticlogistics.logistics.node.*;
 import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -13,9 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-/**
- * 跨维度所有权迁移的唯一事务入口。
- */
+/// 跨维度所有权迁移的唯一事务入口。
 public final class OwnershipTransferService {
     private static final OwnershipMutationPermit MUTATION_PERMIT = new OwnershipMutationPermit();
 
@@ -27,15 +26,15 @@ public final class OwnershipTransferService {
         this.globalManager = globalManager;
     }
 
-    public int transfer(CommandSourceStack source, UUID previousOwner,
-                        ServerPlayer newOwner, @Nullable String selectedGroupName) {
+    public TransferResult transfer(CommandSourceStack source, UUID previousOwner,
+                                   ServerPlayer newOwner, @Nullable String selectedGroupName) {
         if (source == null || !source.hasPermission(2) || previousOwner == null || newOwner == null) {
-            return 0;
+            return TransferResult.failed();
         }
         PlayerGroupStore store = PlayerGroupStore.get(server);
         GroupRef selectedGroup = selectedGroupName == null
             ? null : store.findGroup(previousOwner, selectedGroupName);
-        if (selectedGroupName != null && selectedGroup == null) return 0;
+        if (selectedGroupName != null && selectedGroup == null) return TransferResult.failed();
 
         List<Target> targets = new ArrayList<>();
         Set<GroupRef> groups = new LinkedHashSet<>();
@@ -44,56 +43,91 @@ public final class OwnershipTransferService {
 
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager manager = LinkManager.get(level);
-            for (var address : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(address);
+            for (EndpointAddress key : manager.getAllConfigKeys()) {
+                EndpointConfig config = manager.getEndpointConfig(key);
                 if (config == null || !previousOwner.equals(config.faceConfig.getOwner())) continue;
                 if (selectedGroup != null
                     && !config.faceConfig.getGroupKeys().contains(selectedGroup.key())) continue;
                 if (selectedGroup != null && config.faceConfig.getGroupKeys().size() != 1) {
                     source.sendFailure(Component.literal(
                         "Cannot transfer one group from a face that belongs to multiple groups"));
-                    return 0;
+                    return TransferResult.failed();
                 }
                 config.validateOwnershipTransfer(previousOwner);
                 groups.addAll(config.faceConfig.getGroups());
-                targets.add(new Target(config, level));
+                targets.add(new Target(manager, key, config));
             }
         }
+        if (groups.isEmpty()) return TransferResult.failed();
 
-        Map<Target, CompoundTag> snapshots = new LinkedHashMap<>();
         try {
-            store.validateGroupTransfer(previousOwner, newOwner.getUUID(), groups);
+            Map<ConnectionKey, ConnectionKey> connectionMoves = new LinkedHashMap<>();
+            Map<GroupKey, GroupKey> groupMoves = new LinkedHashMap<>();
+            groups.forEach(group -> groupMoves.put(
+                group.key(), group.key().withOwner(newOwner.getUUID())));
             for (Target target : targets) {
-                snapshots.put(target,
-                    target.config().serializeNBT(target.level().registryAccess()).copy());
-            }
-            for (Target target : targets) {
-                target.config().transferOwnership(MUTATION_PERMIT, newOwner.getUUID(),
-                    newOwner.getGameProfile().getName(), newOwner.getGameProfile());
-            }
-            store.transferGroups(previousOwner, newOwner.getUUID(), groups);
-            groups.forEach(group -> globalManager.retireGroupIdentity(group.key()));
-            return targets.size();
-        } catch (RuntimeException exception) {
-            RuntimeException rollbackFailure = null;
-            for (Map.Entry<Target, CompoundTag> snapshot : snapshots.entrySet()) {
-                try {
-                    snapshot.getKey().config().restoreOwnershipSnapshot(
-                        MUTATION_PERMIT, snapshot.getKey().level().registryAccess(), snapshot.getValue());
-                } catch (RuntimeException restoreException) {
-                    if (rollbackFailure == null) {
-                        rollbackFailure = new IllegalStateException("Ownership rollback failed");
+                for (GroupRef group : target.config().faceConfig.getGroups()) {
+                    if (!groupMoves.containsKey(group.key())) continue;
+                    for (LogisticsNode linked : target.config().getLinkedNodes(group.key())) {
+                        if (target.node().gPos().equals(linked.gPos())) continue;
+                        ConnectionKey before = new ConnectionKey(group.key(), target.node(), linked);
+                        connectionMoves.put(before, new ConnectionKey(
+                            groupMoves.get(group.key()), before.first(), before.second()));
                     }
-                    rollbackFailure.addSuppressed(restoreException);
                 }
             }
+            Set<GroupKey> affectedGroupKeys = new LinkedHashSet<>(groupMoves.keySet());
+            affectedGroupKeys.addAll(groupMoves.values());
+            PlayerGroupStore.GroupDirectorySnapshot groupSnapshot =
+                store.captureGroups(affectedGroupKeys);
+            PlayerGroupStore.ConnectionMetadataSnapshot metadataSnapshot =
+                store.captureConnectionMetadata(connectionMoves, groupMoves);
+            try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
+                transaction.onRollback(() -> {
+                    store.restoreGroups(groupSnapshot);
+                    store.restoreConnectionMetadata(metadataSnapshot);
+                });
+                for (Target target : targets) transaction.capture(target.node());
+                for (Target target : targets) {
+                    target.config().transferOwnership(MUTATION_PERMIT, newOwner.getUUID(),
+                        newOwner.getGameProfile().getName(), newOwner.getGameProfile());
+                }
+                store.transferGroups(previousOwner, newOwner.getUUID(), groups);
+                store.remapConnectionMetadata(connectionMoves, groupMoves);
+                transaction.commit();
+            }
+            groups.forEach(group -> globalManager.retireGroupIdentity(group.key()));
+            refreshAffectedClients(previousOwner, newOwner.getUUID());
+            return new TransferResult(true, groups.size(), targets.size());
+        } catch (RuntimeException exception) {
             String message = "Ownership transfer failed: " + exception.getMessage();
-            if (rollbackFailure != null) message += " (rollback incomplete)";
             source.sendFailure(Component.literal(message));
-            return 0;
+            return TransferResult.failed();
         }
     }
 
-    private record Target(FaceConfigComposite config, ServerLevel level) {
+    /// 所有权改变会同时改变旧、新权限域；两侧客户端都必须重新取得完整的权威投影。
+    private void refreshAffectedClients(UUID previousOwner, UUID newOwner) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (PermissionService.getInstance().canAccess(previousOwner, player) || PermissionService.getInstance().canAccess(newOwner, player)) {
+                PlayerEvents.requestClientStateRefresh(player);
+            }
+        }
+    }
+
+    private record Target(LinkManager manager, EndpointAddress key, EndpointConfig config) {
+        private LogisticsNode node() {
+            return manager.createNodeFromKey(key);
+        }
+    }
+
+    public record TransferResult(boolean success, int groups, int nodes) {
+        private static TransferResult failed() {
+            return new TransferResult(false, 0, 0);
+        }
+
+        public int commandResult() {
+            return success ? Math.max(1, nodes) : 0;
+        }
     }
 }

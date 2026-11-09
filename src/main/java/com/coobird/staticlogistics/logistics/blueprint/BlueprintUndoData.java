@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.logistics.blueprint;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -14,20 +14,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 记录一次蓝图粘贴前后的状态，用于安全撤销。
- */
+/// 记录一次蓝图粘贴前后的状态，用于安全撤销。
 public record BlueprintUndoData(
     ResourceKey<Level> dimension,
+    BlockPos anchor,
     List<FaceSnapshot> faces,
     List<ContainerSnapshot> containers,
     List<LinkSnapshot> links,
     List<GroupSnapshot> groups,
-    Map<FaceAddress, Long> postVersions,
+    Map<EndpointAddress, Long> postVersions,
     Map<Long, CompoundTag> postContainerUpgrades
 ) {
     public BlueprintUndoData {
-        if (dimension == null || faces == null || containers == null || links == null
+        if (dimension == null || anchor == null || faces == null || containers == null || links == null
             || groups == null || postVersions == null || postContainerUpgrades == null) {
             throw new IllegalArgumentException("Blueprint undo fields must not be null");
         }
@@ -56,21 +55,18 @@ public record BlueprintUndoData(
         }
     }
 
-    /**
-     * 单个面的粘贴前快照。
-     */
+    /// 单个面的粘贴前快照。
     public record FaceSnapshot(
         BlockPos pos,
         Direction face,
+        int channel,
         boolean existed,
         @Nullable CompoundTag nbt,
         @Nullable Set<LogisticsNode> linkedNodes
     ) {
     }
 
-    /**
-     * 容器配置的粘贴前快照。
-     */
+    /// 容器配置的粘贴前快照。
     public record ContainerSnapshot(
         BlockPos pos,
         boolean existed,
@@ -78,9 +74,7 @@ public record BlueprintUndoData(
     ) {
     }
 
-    /**
-     * 粘贴过程新增的链接。
-     */
+    /// 粘贴过程新增的链接。
     public record LinkSnapshot(
         LogisticsNode src,
         LogisticsNode dst,
@@ -88,14 +82,12 @@ public record BlueprintUndoData(
     ) {
     }
 
-    /**
-     * 粘贴过程新增的稳定分组关系。
-     */
+    /// 粘贴过程新增的稳定分组关系。
     public record GroupSnapshot(
         BlockPos pos,
         Direction face,
+        int channel,
         GroupKey groupKey
     ) {
     }
 }
-

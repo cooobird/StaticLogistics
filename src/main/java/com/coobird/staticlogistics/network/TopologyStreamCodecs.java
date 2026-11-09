@@ -5,7 +5,7 @@ import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.EndpointTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
@@ -14,32 +14,29 @@ import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 import java.util.LinkedHashSet;
 import java.util.UUID;
 
-/**
- * 轻量拓扑网络模型的共享编解码入口。
- */
+/// 轻量拓扑网络模型的共享编解码入口。
 public final class TopologyStreamCodecs {
     private static final int MAX_OWNER_NAME_LENGTH = 64;
 
     private TopologyStreamCodecs() {
     }
 
-    public static FaceTopology decodeFace(PortRegistryFriendlyByteBuf buffer) {
+    public static EndpointTopology decodeFace(PortRegistryFriendlyByteBuf buffer) {
         LogisticsNode node = LogisticsNode.STREAM_CODEC.decode(buffer);
         int groupCount = buffer.readVarInt();
         if (groupCount < 0 || groupCount > GroupConstraints.MAX_GROUPS_PER_OWNER) {
             throw new DecoderException("Invalid topology face group count: " + groupCount);
         }
         LinkedHashSet<GroupRef> groups = new LinkedHashSet<>();
-        for (int index = 0; index < groupCount; index++) {
+        for (int i = 0; i < groupCount; i++) {
             if (!groups.add(decodeGroup(buffer))) {
                 throw new DecoderException("Duplicate group in topology face");
             }
         }
+
         int roleId = buffer.readUnsignedByte();
         NodeRole[] roles = NodeRole.values();
-        if (roleId >= roles.length) {
-            throw new DecoderException("Invalid topology node role: " + roleId);
-        }
+        if (roleId >= roles.length) throw new DecoderException("Invalid topology node role: " + roleId);
         int maxTransferBlocks = buffer.readVarInt();
         boolean dimensionEffective = buffer.readBoolean();
         long speedMultiplier = buffer.readVarLong();
@@ -49,20 +46,22 @@ public final class TopologyStreamCodecs {
         boolean outputFilterPresent = buffer.readBoolean();
         var outputTypeIds = BoundedNetworkCodecs.TRANSFER_TYPE_IDS.decode(buffer);
         var acceptedTypeIds = BoundedNetworkCodecs.TRANSFER_TYPE_IDS.decode(buffer);
+        var presentTypeIds = BoundedNetworkCodecs.TRANSFER_TYPE_IDS.decode(buffer);
         UUID ownerId = buffer.readBoolean() ? buffer.readUUID() : null;
         String ownerName = buffer.readUtf(MAX_OWNER_NAME_LENGTH);
         long version = buffer.readLong();
         try {
-            return new FaceTopology(node, groups, roles[roleId], maxTransferBlocks,
-                dimensionEffective, speedMultiplier, rangeMultiplier, stackMultiplier,
-                inputFilterPresent, outputFilterPresent, outputTypeIds, acceptedTypeIds,
-                ownerId, ownerName, version);
+            return new EndpointTopology(node, groups, roles[roleId], maxTransferBlocks, dimensionEffective,
+                speedMultiplier, rangeMultiplier, stackMultiplier,
+                inputFilterPresent, outputFilterPresent,
+                outputTypeIds, acceptedTypeIds, presentTypeIds,
+                ownerId, ownerName, version, buffer.readUtf(GroupConstraints.MAX_CONNECTION_NAME_LENGTH));
         } catch (IllegalArgumentException exception) {
             throw new DecoderException("Invalid topology face", exception);
         }
     }
 
-    public static void encodeFace(PortRegistryFriendlyByteBuf buffer, FaceTopology face) {
+    public static void encodeFace(PortRegistryFriendlyByteBuf buffer, EndpointTopology face) {
         if (face.groups().size() > GroupConstraints.MAX_GROUPS_PER_OWNER) {
             throw new EncoderException("Topology face group count exceeds maximum");
         }
@@ -79,10 +78,12 @@ public final class TopologyStreamCodecs {
         buffer.writeBoolean(face.outputFilterPresent());
         BoundedNetworkCodecs.TRANSFER_TYPE_IDS.encode(buffer, face.outputTypeIds());
         BoundedNetworkCodecs.TRANSFER_TYPE_IDS.encode(buffer, face.acceptedTypeIds());
+        BoundedNetworkCodecs.TRANSFER_TYPE_IDS.encode(buffer, face.presentTypeIds());
         buffer.writeBoolean(face.ownerId() != null);
         if (face.ownerId() != null) buffer.writeUUID(face.ownerId());
         buffer.writeUtf(face.ownerName(), MAX_OWNER_NAME_LENGTH);
         buffer.writeLong(face.version());
+        buffer.writeUtf(face.channelName(), GroupConstraints.MAX_CONNECTION_NAME_LENGTH);
     }
 
     public static ScopedTopologyLink decodeLink(PortRegistryFriendlyByteBuf buffer) {
@@ -102,8 +103,7 @@ public final class TopologyStreamCodecs {
     }
 
     public static GroupRef decodeGroup(PortRegistryFriendlyByteBuf buffer) {
-        return new GroupRef(GroupKey.STREAM_CODEC.decode(buffer),
-            buffer.readUtf(GroupConstraints.MAX_NAME_LENGTH));
+        return new GroupRef(GroupKey.STREAM_CODEC.decode(buffer), buffer.readUtf(GroupConstraints.MAX_NAME_LENGTH));
     }
 
     public static void encodeGroup(PortRegistryFriendlyByteBuf buffer, GroupRef group) {

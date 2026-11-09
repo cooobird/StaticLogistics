@@ -5,7 +5,14 @@ import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
-import com.coobird.staticlogistics.logistics.node.*;
+import com.coobird.staticlogistics.logistics.node.ChannelRedstoneMode;
+import com.coobird.staticlogistics.logistics.node.ContainerConfig;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
+import com.coobird.staticlogistics.logistics.node.LinkManager;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionRules;
+import com.coobird.staticlogistics.logistics.node.NodeInteractionValidator;
+import com.coobird.staticlogistics.logistics.node.NodeMutationTransaction;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
 import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
@@ -25,25 +32,35 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import org.slf4j.Logger;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * 蓝图粘贴与撤销的统一事务协调器。
- */
+/// 蓝图粘贴与撤销的统一事务协调器。
 public final class BlueprintPasteService {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private BlueprintPasteService() {
     }
 
-    public static void paste(ServerLevel level, Player player, BlueprintData data,
+    public static boolean paste(ServerLevel level, Player player, BlueprintData data,
                              BlockPos newAnchor, int rotation) {
-        if (data.isEmpty()) return;
-        if (!BlueprintDataValidator.isValid(data)) {
+        if (data.isEmpty()) return false;
+        if (!BlueprintDataValidator.isValid(data, level.registryAccess())) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission")
                 .withStyle(ChatFormatting.RED), true);
-            return;
+            return false;
+        }
+
+        if (!NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), newAnchor)) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.target_too_far", newAnchor.toShortString())
+                .withStyle(ChatFormatting.RED), true);
+            return false;
         }
 
         GlobalLogisticsManager globalMgr = GlobalLogisticsManager.get(level.getServer());
@@ -54,21 +71,25 @@ public final class BlueprintPasteService {
         for (BlueprintData.BlockEntry entry : data.blocks()) {
             BlockPos absPos = BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation);
             if (!level.getChunkSource().hasChunk(absPos.getX() >> 4, absPos.getZ() >> 4)
-                || level.getBlockEntity(absPos) == null
-                || !NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), absPos)
-                || !NodeInteractionValidator.canMutateRemote(player, level, absPos)
-                || !canModifyPosition(mgr, absPos, player)) {
+                || level.getBlockState(absPos).isAir()) {
                 player.displayClientMessage(
                     Component.translatable("msg.staticlogistics.blueprint.missing_block", absPos.toShortString())
                         .withStyle(ChatFormatting.RED), true);
-                return;
+                return false;
             }
-            for (Direction face : entry.faces().keySet()) {
-                Direction rotatedFace = BlueprintGeometry.rotateDirection(face, rotation);
+            if (!NodeInteractionValidator.canMutateRemote(player, level, absPos)
+                || !canModifyPosition(mgr, absPos, player)) {
+                player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission")
+                    .withStyle(ChatFormatting.RED), true);
+                return false;
+            }
+            for (var port : entry.faces().keySet()) {
+                Direction rotatedFace = BlueprintGeometry.rotateDirection(port.face(), rotation);
+                int channel = port.channel();
                 if (!TransferUtils.hasLogisticsCapability(level, absPos, rotatedFace)) {
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.no_capability")
                         .withStyle(ChatFormatting.RED), true);
-                    return;
+                    return false;
                 }
             }
         }
@@ -82,7 +103,7 @@ public final class BlueprintPasteService {
                 player.displayClientMessage(
                     Component.translatable("msg.staticlogistics.blueprint.paste_failed")
                         .withStyle(ChatFormatting.RED), true);
-                return;
+                return false;
             }
             Map<String, Integer> calculatedNeeded =
                 BlueprintUpgradeInventory.requiredDelta(desired, existing);
@@ -96,27 +117,29 @@ public final class BlueprintPasteService {
                     player.displayClientMessage(
                         Component.translatable("msg.staticlogistics.blueprint.missing_upgrades", skipped)
                             .withStyle(ChatFormatting.YELLOW), true);
-                    return;
+                    return false;
                 }
             }
         }
 
         for (BlueprintData.BlockEntry entry : data.blocks()) {
             BlockPos absPos = BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation);
-            for (Direction face : entry.faces().keySet()) {
-                Direction rotatedFace = BlueprintGeometry.rotateDirection(face, rotation);
-                FaceConfigComposite existing = mgr.getFaceConfig(FaceAddress.of(absPos, rotatedFace));
+            for (var port : entry.faces().keySet()) {
+                Direction rotatedFace = BlueprintGeometry.rotateDirection(port.face(), rotation);
+                int channel = port.channel();
+                EndpointConfig existing = mgr.getEndpointConfig(new EndpointAddress(absPos.asLong(), rotatedFace, channel));
                 if (existing != null && existing.faceConfig.getOwner() != null
                     && !existing.faceConfig.getOwner().equals(player.getUUID())) {
                     player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission")
                         .withStyle(ChatFormatting.RED), true);
-                    return;
+                    return false;
                 }
             }
         }
-        boolean targetGroupExisted = globalMgr.findGroup(player.getUUID(), data.groupId()) != null;
+        boolean targetGroupExisted = PlayerGroupStore.get(level.getServer())
+            .findGroup(player.getUUID(), data.groupId()) != null;
 
-        // 撤销快照：记录粘贴前的完整状态
+        /// 撤销快照：记录粘贴前的完整状态
         List<BlueprintUndoData.FaceSnapshot> faceSnapshots = new ArrayList<>();
         List<BlueprintUndoData.ContainerSnapshot> containerSnapshots = new ArrayList<>();
         List<BlueprintUndoData.LinkSnapshot> linkSnapshots = new ArrayList<>();
@@ -125,11 +148,8 @@ public final class BlueprintPasteService {
         Set<BlockPos> pastedPositions = data.blocks().stream()
             .map(entry -> BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation))
             .collect(Collectors.toSet());
-        Map<BlockPos, BlueprintData.BlockEntry> entriesByRelativePos = data.blocks().stream()
-            .collect(Collectors.toMap(
-                BlueprintData.BlockEntry::relativePos, entry -> entry, (first, ignored) -> first));
 
-        // 在打开事务前完整冻结回滚基线，后续任何写入都必须已有对应快照。
+        /// 在打开事务前完整冻结回滚基线，后续任何写入都必须已有对应快照。
         for (BlueprintData.BlockEntry entry : data.blocks()) {
             BlockPos absPos = BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation);
             ContainerConfig existingCc = mgr.getContainerConfig(absPos);
@@ -138,18 +158,19 @@ public final class BlueprintPasteService {
                 existingCc != null ? existingCc.getUpgrades().serializeNBT() : null
             ));
             for (var faceEntry : entry.faces().entrySet()) {
-                Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey(), rotation);
-                FaceAddress faceKey = FaceAddress.of(absPos, rotatedFace);
-                FaceConfigComposite existingCfg = mgr.getFaceConfig(faceKey);
+                Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey().face(), rotation);
+                int channel = faceEntry.getKey().channel();
+                EndpointAddress faceKey = new EndpointAddress(absPos.asLong(), rotatedFace, channel);
+                EndpointConfig existingCfg = mgr.getEndpointConfig(faceKey);
                 if (existingCfg != null) {
                     faceSnapshots.add(new BlueprintUndoData.FaceSnapshot(
-                        absPos, rotatedFace, true,
+                        absPos, rotatedFace, channel, true,
                         existingCfg.serializeNBT(level.registryAccess()),
                         new HashSet<>(existingCfg.getLinkedNodes())
                     ));
                 } else {
                     faceSnapshots.add(new BlueprintUndoData.FaceSnapshot(
-                        absPos, rotatedFace, false, null, null
+                        absPos, rotatedFace, channel, false, null, null
                     ));
                 }
             }
@@ -158,11 +179,12 @@ public final class BlueprintPasteService {
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(level.getServer())) {
             GroupRef targetGroup;
             try {
-                targetGroup = globalMgr.resolveOrCreateGroup(player.getUUID(), data.groupId());
+                targetGroup = PlayerGroupStore.get(level.getServer())
+                    .resolveOrCreateGroup(player.getUUID(), data.groupId());
             } catch (IllegalArgumentException | IllegalStateException exception) {
                 player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission")
                     .withStyle(ChatFormatting.RED), true);
-                return;
+                return false;
             }
             if (!targetGroupExisted) {
                 transaction.onRollback(() -> {
@@ -189,7 +211,7 @@ public final class BlueprintPasteService {
             }
             for (BlueprintUndoData.FaceSnapshot snapshot : faceSnapshots) {
                 transaction.captureState(new LogisticsNode(
-                    GlobalPos.of(level.dimension(), snapshot.pos()), snapshot.face()));
+                    GlobalPos.of(level.dimension(), snapshot.pos()), snapshot.face(), snapshot.channel()));
             }
 
             for (BlueprintData.BlockEntry entry : data.blocks()) {
@@ -203,10 +225,11 @@ public final class BlueprintPasteService {
                 }
 
                 for (var faceEntry : entry.faces().entrySet()) {
-                    Direction originalFace = faceEntry.getKey();
+                    Direction originalFace = faceEntry.getKey().face();
                     Direction rotatedFace = BlueprintGeometry.rotateDirection(originalFace, rotation);
+                    int channel = faceEntry.getKey().channel();
                     BlueprintData.FaceEntry fe = faceEntry.getValue();
-                    FaceConfigComposite cfg = mgr.getOrCreateFaceConfig(absPos, rotatedFace);
+                    EndpointConfig cfg = mgr.getOrCreateChannel(new LogisticsNode(GlobalPos.of(level.dimension(), absPos), rotatedFace, channel));
 
                     try (var ignored = cfg.beginBulkEdit()) {
                         CompoundTag ft = fe.faceConfig();
@@ -224,18 +247,14 @@ public final class BlueprintPasteService {
                                 LOGGER.warn("Failed to parse extraction mode", e);
                             }
                         }
-                        cfg.setPriority(ft.getInt(ConfigKeys.PRIORITY));
+                        cfg.setPriority(ft.getLong(ConfigKeys.PRIORITY));
+                        cfg.setKeepStock(ft.getLong(ConfigKeys.KEEP_STOCK));
+                        cfg.setRedstoneMode(ChannelRedstoneMode.valueOf(ft.getString("redstone")));
+                        cfg.setChannelName(ft.getString("channel_name"));
+                        cfg.setChannelEnabled(ft.getBoolean("channel_enabled"));
                         cfg.setGlobalInputEnabled(ft.getBoolean(ConfigKeys.GLOBAL_INPUT));
                         cfg.setGlobalOutputEnabled(ft.getBoolean(ConfigKeys.GLOBAL_OUTPUT));
-                        if (ft.contains(ConfigKeys.SELECTED_TYPES)) {
-                            cfg.setSelectedTypeIds(TransferTypeSelection.readIds(ft, ConfigKeys.SELECTED_TYPES));
-                            if (ft.contains(ConfigKeys.SELECTED_TYPES_MASK)) {
-                                cfg.loadUnresolvedLegacySelectedTypesMask(
-                                    ft.getInt(ConfigKeys.SELECTED_TYPES_MASK));
-                            }
-                        } else {
-                            cfg.loadLegacySelectedTypesMask(ft.getInt(ConfigKeys.SELECTED_TYPES_MASK));
-                        }
+                        cfg.setSelectedTypeIds(TransferTypeSelection.readIds(ft, ConfigKeys.SELECTED_TYPES));
 
                         if (!fe.filterUpgrades().isEmpty()) {
                             cfg.filterConfig.getUpgrades().deserializeNBT(fe.filterUpgrades());
@@ -243,7 +262,7 @@ public final class BlueprintPasteService {
 
                         if (cfg.faceConfig.getOwner() == null) {
                             LogisticsNode node = new LogisticsNode(
-                                GlobalPos.of(level.dimension(), absPos), rotatedFace);
+                                GlobalPos.of(level.dimension(), absPos), rotatedFace, channel);
                             mgr.claimOwner(node, player.getGameProfile());
                         }
                     }
@@ -254,16 +273,17 @@ public final class BlueprintPasteService {
 
             for (BlueprintData.BlockEntry entry : data.blocks()) {
                 BlockPos absPos = BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation);
-                for (Direction face : entry.faces().keySet()) {
-                    Direction rotatedFace = BlueprintGeometry.rotateDirection(face, rotation);
-                    FaceConfigComposite cfg = mgr.getFaceConfig(FaceAddress.of(absPos, rotatedFace));
+                for (var port : entry.faces().keySet()) {
+                    Direction rotatedFace = BlueprintGeometry.rotateDirection(port.face(), rotation);
+                    int channel = port.channel();
+                    EndpointConfig cfg = mgr.getEndpointConfig(new EndpointAddress(absPos.asLong(), rotatedFace, channel));
                     if (cfg != null) {
-                        // 记录新增的分组（用于撤销）
+                        /// 记录新增的分组（用于撤销）
                         if (!cfg.faceConfig.getGroupKeys().contains(targetGroup.key())) {
-                            groupSnapshots.add(new BlueprintUndoData.GroupSnapshot(absPos, rotatedFace, targetGroup.key()));
+                            groupSnapshots.add(new BlueprintUndoData.GroupSnapshot(absPos, rotatedFace, channel, targetGroup.key()));
                         }
                         LogisticsNode node = new LogisticsNode(
-                            GlobalPos.of(level.dimension(), absPos), rotatedFace);
+                            GlobalPos.of(level.dimension(), absPos), rotatedFace, channel);
                         mgr.addNodeToGroup(node, targetGroup);
                     }
                 }
@@ -272,28 +292,27 @@ public final class BlueprintPasteService {
             for (BlueprintData.BlockEntry entry : data.blocks()) {
                 BlockPos absPos = BlueprintGeometry.rotateToAbsolute(entry.relativePos(), newAnchor, rotation);
                 for (var faceEntry : entry.faces().entrySet()) {
-                    Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey(), rotation);
-                    FaceConfigComposite srcCfg = mgr.getFaceConfig(FaceAddress.of(absPos, rotatedFace));
+                    Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey().face(), rotation);
+                    int channel = faceEntry.getKey().channel();
+                    EndpointConfig srcCfg = mgr.getEndpointConfig(new EndpointAddress(absPos.asLong(), rotatedFace, channel));
                     if (srcCfg == null) continue;
 
-                    List<BlueprintData.LinkEntry> exactLinks = BlueprintGeometry.resolveLinks(
-                        entry, faceEntry.getValue(), entriesByRelativePos);
-                    for (BlueprintData.LinkEntry exactLink : exactLinks) {
+                    for (BlueprintData.LinkEntry exactLink : faceEntry.getValue().linkedTo()) {
                         BlockPos absLinkPos = BlueprintGeometry.rotateToAbsolute(
                             exactLink.relativePos(), newAnchor, rotation);
                         if (!pastedPositions.contains(absLinkPos)) continue;
                         Direction dstFace = BlueprintGeometry.rotateDirection(exactLink.face(), rotation);
-                        FaceAddress dstKey = FaceAddress.of(absLinkPos, dstFace);
-                        FaceConfigComposite dstCfg = mgr.getFaceConfig(dstKey);
+                        EndpointAddress dstKey = new EndpointAddress(absLinkPos.asLong(), dstFace, exactLink.channel());
+                        EndpointConfig dstCfg = mgr.getEndpointConfig(dstKey);
                         if (dstCfg != null && !dstCfg.isDefault()
                             && dstCfg.canPlayerModify(player)
                             && dstCfg.faceConfig.getGroupKeys().contains(targetGroup.key())
                             && TransferUtils.hasLogisticsCapability(level, absLinkPos, dstFace)) {
                             LogisticsNode srcNode = new LogisticsNode(
-                                GlobalPos.of(level.dimension(), absPos), rotatedFace);
+                                GlobalPos.of(level.dimension(), absPos), rotatedFace, channel);
                             LogisticsNode dstNode = new LogisticsNode(
-                                GlobalPos.of(level.dimension(), absLinkPos), dstFace);
-                            // 记录新增的链接（用于撤销）
+                                GlobalPos.of(level.dimension(), absLinkPos), dstFace, exactLink.channel());
+                            /// 记录新增的链接（用于撤销）
                             if (!srcCfg.getLinkedNodes(targetGroup.key()).contains(dstNode)) {
                                 linkSnapshots.add(new BlueprintUndoData.LinkSnapshot(
                                     srcNode, dstNode, targetGroup.key()));
@@ -309,14 +328,14 @@ public final class BlueprintPasteService {
                 throw new IllegalStateException("Blueprint upgrade inventory changed during paste");
             }
 
-            // 在提交前按实际将要记录的键校验撤销快照大小，避免提交后才发现快照无法保存。
-            Set<FaceAddress> projectedPostVersionKeys = new LinkedHashSet<>();
+            /// 在提交前按实际将要记录的键校验撤销快照大小，避免提交后才发现快照无法保存。
+            Set<EndpointAddress> projectedPostVersionKeys = new LinkedHashSet<>();
             for (BlueprintUndoData.FaceSnapshot snapshot : faceSnapshots) {
-                projectedPostVersionKeys.add(FaceAddress.of(snapshot.pos(), snapshot.face()));
+                projectedPostVersionKeys.add(new EndpointAddress(snapshot.pos().asLong(), snapshot.face(), snapshot.channel()));
             }
             for (BlueprintUndoData.LinkSnapshot snapshot : linkSnapshots) {
-                projectedPostVersionKeys.add(FaceAddress.of(snapshot.src()));
-                projectedPostVersionKeys.add(FaceAddress.of(snapshot.dst()));
+                projectedPostVersionKeys.add(EndpointAddress.of(snapshot.src()));
+                projectedPostVersionKeys.add(EndpointAddress.of(snapshot.dst()));
             }
             BlueprintUndoData.validateWorkItemCount(
                 faceSnapshots.size(), containerSnapshots.size(), linkSnapshots.size(), groupSnapshots.size(),
@@ -326,21 +345,21 @@ public final class BlueprintPasteService {
             LOGGER.error("Blueprint paste transaction failed", exception);
             player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.paste_failed")
                 .withStyle(ChatFormatting.RED), true);
-            return;
+            return false;
         }
 
-        // 提交阶段已经完成版本递增与合并回调，此时记录的版本可立即用于撤销校验。
-        Map<FaceAddress, Long> postVersions = new LinkedHashMap<>();
+        /// 提交阶段已经完成版本递增与合并回调，此时记录的版本可立即用于撤销校验。
+        Map<EndpointAddress, Long> postVersions = new LinkedHashMap<>();
         for (BlueprintUndoData.FaceSnapshot snapshot : faceSnapshots) {
-            FaceAddress key = FaceAddress.of(snapshot.pos(), snapshot.face());
-            FaceConfigComposite current = mgr.getFaceConfig(key);
+            EndpointAddress key = new EndpointAddress(snapshot.pos().asLong(), snapshot.face(), snapshot.channel());
+            EndpointConfig current = mgr.getEndpointConfig(key);
             if (current != null) postVersions.put(key, current.getVersion());
         }
         for (BlueprintUndoData.LinkSnapshot snapshot : linkSnapshots) {
-            FaceAddress sourceKey = FaceAddress.of(snapshot.src());
-            FaceAddress targetKey = FaceAddress.of(snapshot.dst());
-            FaceConfigComposite source = mgr.getFaceConfig(sourceKey);
-            FaceConfigComposite target = mgr.getFaceConfig(targetKey);
+            EndpointAddress sourceKey = EndpointAddress.of(snapshot.src());
+            EndpointAddress targetKey = EndpointAddress.of(snapshot.dst());
+            EndpointConfig source = mgr.getEndpointConfig(sourceKey);
+            EndpointConfig target = mgr.getEndpointConfig(targetKey);
             if (source != null) postVersions.put(sourceKey, source.getVersion());
             if (target != null) postVersions.put(targetKey, target.getVersion());
         }
@@ -348,21 +367,19 @@ public final class BlueprintPasteService {
         for (BlueprintUndoData.ContainerSnapshot snapshot : containerSnapshots) {
             ContainerConfig current = mgr.getContainerConfig(snapshot.pos());
             if (current != null) {
-                postContainerUpgrades.put(snapshot.pos().asLong(),
-                    current.getUpgrades().serializeNBT());
+                postContainerUpgrades.put(snapshot.pos().asLong(), current.getUpgrades().serializeNBT());
             }
         }
         BlueprintUndoManager.get(level.getServer()).store(player.getUUID(),
-            new BlueprintUndoData(level.dimension(), faceSnapshots, containerSnapshots, linkSnapshots,
+            new BlueprintUndoData(level.dimension(), newAnchor, faceSnapshots, containerSnapshots, linkSnapshots,
                 groupSnapshots, Map.copyOf(postVersions), Map.copyOf(postContainerUpgrades)));
 
         player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.pasted", count, newAnchor.toShortString()).withStyle(ChatFormatting.GREEN), true);
         level.playSound(null, newAnchor, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.0f);
+        return true;
     }
 
-    /**
-     * 只统计后续确实会被非空蓝图 NBT 替换的升级槽。
-     */
+    /// 只统计后续确实会被非空蓝图 NBT 替换的升级槽。
     private static Map<String, Integer> tallyOverwrittenUpgrades(
         LinkManager manager, BlueprintData data, BlockPos anchor, int rotation
     ) {
@@ -377,8 +394,8 @@ public final class BlueprintPasteService {
             }
             for (var faceEntry : entry.faces().entrySet()) {
                 if (faceEntry.getValue().filterUpgrades().isEmpty()) continue;
-                Direction face = BlueprintGeometry.rotateDirection(faceEntry.getKey(), rotation);
-                FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, face));
+                Direction face = BlueprintGeometry.rotateDirection(faceEntry.getKey().face(), rotation);
+                EndpointConfig config = manager.getEndpointConfig(new EndpointAddress(pos.asLong(), face, faceEntry.getKey().channel()));
                 if (config != null) {
                     BlueprintUpgradeInventory.tallyInventory(
                         result, config.filterConfig.getUpgrades());
@@ -388,9 +405,7 @@ public final class BlueprintPasteService {
         return Map.copyOf(result);
     }
 
-    /**
-     * 撤销最近一次蓝图粘贴
-     */
+    /// 撤销最近一次蓝图粘贴
     public static void undoPaste(ServerLevel level, Player player) {
         BlueprintUndoData undo = BlueprintUndoManager.get(level.getServer()).peek(player.getUUID());
         if (undo == null) {
@@ -406,24 +421,12 @@ public final class BlueprintPasteService {
             return;
         }
         if (!(player instanceof ServerPlayer serverPlayer)) return;
-        BlueprintUndoManager undoManager = BlueprintUndoManager.get(level.getServer());
-
-        // 版本或升级快照不一致表示粘贴结果已被后续修改，撤销永远不再可安全执行。
-        boolean stateUnchanged = undo.postVersions().entrySet().stream().allMatch(entry -> {
-            FaceConfigComposite current = mgr.getFaceConfig(entry.getKey());
-            return current != null && current.getVersion() == entry.getValue();
-        })
-            && undo.postContainerUpgrades().entrySet().stream().allMatch(entry -> {
-            ContainerConfig current = mgr.getContainerConfig(BlockPos.of(entry.getKey()));
-            return current != null
-                && current.getUpgrades().serializeNBT().equals(entry.getValue());
-        });
-        if (!stateUnchanged) {
-            undoManager.clear(player.getUUID());
-            player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.undo_failed")
+        if (!NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), undo.anchor())) {
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.target_too_far", undo.anchor().toShortString())
                 .withStyle(ChatFormatting.RED), true);
             return;
         }
+        BlueprintUndoManager undoManager = BlueprintUndoManager.get(level.getServer());
 
         boolean authorized = undo.faces().stream().allMatch(snapshot ->
             isUndoFaceValid(level, mgr, serverPlayer, snapshot.pos(), snapshot.face()))
@@ -441,6 +444,22 @@ public final class BlueprintPasteService {
                 .withStyle(ChatFormatting.RED), true);
             return;
         }
+        // 先确认目标已加载且可操作，再判断版本；未加载不应导致撤销记录被清除。
+        boolean stateUnchanged = undo.postVersions().entrySet().stream().allMatch(entry -> {
+            EndpointConfig current = mgr.getEndpointConfig(entry.getKey());
+            return current != null && current.getVersion() == entry.getValue();
+        })
+            && undo.postContainerUpgrades().entrySet().stream().allMatch(entry -> {
+            ContainerConfig current = mgr.getContainerConfig(BlockPos.of(entry.getKey()));
+            return current != null
+                && current.getUpgrades().serializeNBT().equals(entry.getValue());
+        });
+        if (!stateUnchanged) {
+            undoManager.clear(player.getUUID());
+            player.displayClientMessage(Component.translatable("msg.staticlogistics.blueprint.undo_failed")
+                .withStyle(ChatFormatting.RED), true);
+            return;
+        }
         int restored = 0;
 
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(level.getServer())) {
@@ -454,37 +473,37 @@ public final class BlueprintPasteService {
             }
             for (BlueprintUndoData.FaceSnapshot snapshot : undo.faces()) {
                 transaction.captureState(new LogisticsNode(
-                    GlobalPos.of(level.dimension(), snapshot.pos()), snapshot.face()));
+                    GlobalPos.of(level.dimension(), snapshot.pos()), snapshot.face(), snapshot.channel()));
             }
 
-            // 移除粘贴新增的链接
+            /// 移除粘贴新增的链接
             for (BlueprintUndoData.LinkSnapshot link : undo.links()) {
                 mgr.removeLink(link.groupKey(), link.src(), link.dst());
             }
 
-            // 移除粘贴新增的分组
+            /// 移除粘贴新增的分组
             for (BlueprintUndoData.GroupSnapshot gs : undo.groups()) {
-                LogisticsNode node = new LogisticsNode(GlobalPos.of(level.dimension(), gs.pos()), gs.face());
+                LogisticsNode node = new LogisticsNode(GlobalPos.of(level.dimension(), gs.pos()), gs.face(), gs.channel());
                 mgr.removeNodeFromGroup(gs.groupKey(), node);
             }
 
-            // 恢复面配置
+            /// 恢复面配置
             for (BlueprintUndoData.FaceSnapshot fs : undo.faces()) {
                 if (fs.existed()) {
-                    // 恢复原有配置
-                    FaceConfigComposite cfg = mgr.getOrCreateFaceConfig(fs.pos(), fs.face());
+                    /// 恢复原有配置
+                    EndpointConfig cfg = mgr.getOrCreateChannel(new LogisticsNode(GlobalPos.of(level.dimension(), fs.pos()), fs.face(), fs.channel()));
                     LogisticsNode node = new LogisticsNode(
-                        GlobalPos.of(level.dimension(), fs.pos()), fs.face());
+                        GlobalPos.of(level.dimension(), fs.pos()), fs.face(), fs.channel());
                     mgr.restoreFaceSnapshot(node, fs.nbt());
                 } else {
-                    // 粘贴前不存在 → 删除
+                    /// 粘贴前不存在 → 删除
                     mgr.restoreFaceAbsence(new LogisticsNode(
-                        GlobalPos.of(level.dimension(), fs.pos()), fs.face()));
+                        GlobalPos.of(level.dimension(), fs.pos()), fs.face(), fs.channel()));
                 }
                 restored++;
             }
 
-            // 恢复容器配置
+            /// 恢复容器配置
             for (BlueprintUndoData.ContainerSnapshot cs : undo.containers()) {
                 if (cs.existed()) {
                     ContainerConfig cc = mgr.getOrCreateContainerConfig(cs.pos());
@@ -509,8 +528,9 @@ public final class BlueprintPasteService {
     }
 
     private static boolean canModifyPosition(LinkManager manager, BlockPos pos, Player player) {
-        for (Direction face : Direction.values()) {
-            FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(pos, face));
+        ContainerConfig container = manager.getContainerConfig(pos);
+        for (EndpointAddress address : container == null ? Set.<EndpointAddress>of() : container.getLinkedFaceKeys()) {
+            EndpointConfig config = manager.getEndpointConfig(address);
             if (config != null && !config.canPlayerModify(player)) {
                 return false;
             }
@@ -527,8 +547,7 @@ public final class BlueprintPasteService {
     private static boolean isUndoContainerValid(ServerLevel level, LinkManager manager, ServerPlayer player,
                                                 BlockPos pos) {
         return level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
-            && level.getBlockEntity(pos) != null
-            && NodeInteractionRules.isWithinReach(player.getX(), player.getY(), player.getZ(), pos)
+            && !level.getBlockState(pos).isAir()
             && NodeInteractionValidator.canMutateRemote(player, level, pos)
             && canModifyPosition(manager, pos, player);
     }

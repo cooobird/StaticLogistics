@@ -8,7 +8,11 @@ import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
+import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.*;
+import com.coobird.staticlogistics.network.s2c.S2CConfiguratorReadyPayload;
+import com.coobird.staticlogistics.network.s2c.S2CTransferRatesPayload;
 import com.coobird.staticlogistics.transfer.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -30,14 +34,116 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.ItemStackHandler;
 import net.minecraftforge.items.SlotItemHandler;
+import org.mesdag.portlib.network.PortPacketDistributor;
+import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class LinkConfiguratorMenu extends AbstractContainerMenu {
-    private static final int FILTER_SLOTS = 2;
+    private LogisticsNode observedNode;
+    private GlobalPos observedPeer;
+    private LiveTransferRates observedRates;
+    private long nextRateSyncTick;
+    private List<LogisticsNode> observedPeers = List.of();
+    private boolean observedPeersTruncated;
+    private Map<LogisticsNode, Map<ResourceLocation, LiveTransferRates.Rate>> clientPeerRates = Map.of();
+    private boolean clientPeersTruncated;
+    private boolean clientPeerRatesReady;
+    private Set<LogisticsNode> clientUnavailablePeers = Set.of();
+    private Map<ResourceLocation, LiveTransferRates.Rate> clientRates = Map.of();
+    private String clientDiagnostic = "";
+
+    public void acceptPeerRates(Map<LogisticsNode, Map<ResourceLocation, LiveTransferRates.Rate>> rates, boolean truncated, Set<LogisticsNode> unavailable) {
+        clientPeerRates = Map.copyOf(rates);
+        clientPeersTruncated = truncated;
+        clientPeerRatesReady = true;
+        clientUnavailablePeers = Set.copyOf(unavailable);
+    }
+
+    public Map<LogisticsNode, Map<ResourceLocation, LiveTransferRates.Rate>> getPeerRates() {
+        return clientPeerRates;
+    }
+
+    public boolean arePeerRatesTruncated() {
+        return clientPeersTruncated;
+    }
+
+    public boolean arePeerRatesReady() {
+        return clientPeerRatesReady;
+    }
+
+    public void clearPeerRates() {
+        clientPeerRates = Map.of();
+        clientPeerRatesReady = false;
+        clientPeersTruncated = false;
+        clientUnavailablePeers = Set.of();
+    }
+
+    public Set<LogisticsNode> getUnavailablePeers() {
+        return clientUnavailablePeers;
+    }
+
+    public void acceptTransferDiagnostic(String diagnostic) {
+        clientDiagnostic = diagnostic;
+    }
+
+    public String getTransferDiagnostic() {
+        return clientDiagnostic;
+    }
+
+    public void observeTransferRates(ConnectionKey connection, boolean enabled) {
+        if (!(player instanceof ServerPlayer serverPlayer)) return;
+        if (!enabled) {
+            stopObservingRates();
+            return;
+        }
+        if (observedRates != null || !hasTarget || resolveValidatedNode(serverPlayer) == null
+            || !connection.groupKey().equals(groupKey) || !connection.contains(getTargetNode().gPos())
+            || !GlobalLogisticsManager.get(serverPlayer.server).getConnections(groupKey).contains(connection)) return;
+        observedNode = getTargetNode();
+        observedPeer = connection.first().equals(observedNode.gPos()) ? connection.second() : connection.first();
+        observedRates = TransferLogManager.get(serverPlayer.server).observe(observedNode, observedPeer);
+        refreshObservedPeers(serverPlayer);
+        nextRateSyncTick = 0;
+    }
+
+    private void stopObservingRates() {
+        if (observedRates != null) observedPeers.forEach(observedRates::releasePeer);
+        if (observedNode != null && player instanceof ServerPlayer serverPlayer)
+            TransferLogManager.get(serverPlayer.server).stopObserving(observedNode, observedPeer);
+        observedNode = null;
+        observedPeer = null;
+        observedRates = null;
+        observedPeers = List.of();
+        clientPeerRates = Map.of();
+        clientPeersTruncated = false;
+        clientPeerRatesReady = false;
+        clientUnavailablePeers = Set.of();
+        clientRates = Map.of();
+        clientDiagnostic = "";
+    }
+
+    public void acceptTransferRates(Map<ResourceLocation, LiveTransferRates.Rate> rates) {
+        clientRates = Map.copyOf(rates);
+    }
+
+    public LiveTransferRates.Rate getTransferRate(ResourceLocation type) {
+        return clientRates.getOrDefault(type, LiveTransferRates.Rate.ZERO);
+    }
+
+    @Override
+    public void removed(Player player) {
+        stopObservingRates();
+        super.removed(player);
+    }
+
+    private boolean clientBatchSelection;
+
+    public void setClientBatchSelection(boolean batch) {
+        clientBatchSelection = batch;
+    }
+
+    private static final int FILTER_SLOTS = 1;
     private static final int UPGRADE_SLOTS = ContainerConfig.UPGRADE_SLOT_COUNT;
     private static final int TOTAL_CONFIG_SLOTS = FILTER_SLOTS + UPGRADE_SLOTS;
     private static final int INV_SLOT_START = TOTAL_CONFIG_SLOTS;
@@ -47,17 +153,12 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     public static final int INPUT_FILTER_X = MenuLayout.NODE_FILTER_X;
     public static final int INPUT_FILTER_Y = MenuLayout.NODE_SLOT_Y;
-    public static final int OUTPUT_FILTER_X = MenuLayout.NODE_FILTER_X;
-    public static final int OUTPUT_FILTER_Y = MenuLayout.NODE_SLOT_Y;
-    public static final int SPEED_UPGRADE_X = MenuLayout.NODE_SPEED_UPGRADE_X;
-    public static final int SPEED_UPGRADE_Y = MenuLayout.NODE_SLOT_Y;
-    public static final int RANGE_UPGRADE_X = MenuLayout.NODE_RANGE_UPGRADE_X;
-    public static final int RANGE_UPGRADE_Y = MenuLayout.NODE_SLOT_Y;
-    public static final int STACK_UPGRADE_X = MenuLayout.NODE_STACK_UPGRADE_X;
-    public static final int STACK_UPGRADE_Y = MenuLayout.NODE_SLOT_Y;
+    public static final int UPGRADE_X = MenuLayout.NODE_UPGRADE_X;
+    public static final int UPGRADE_Y = MenuLayout.NODE_SLOT_Y;
 
     private BlockPos pos;
     private Direction face;
+    private int channel;
     private ResourceKey<Level> targetDimension;
     private GroupKey groupKey;
     private boolean hasTarget;
@@ -65,17 +166,36 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
     private final Player player;
     private final SwitchingItemHandler filterHandler = new SwitchingItemHandler(FILTER_SLOTS);
     private final SwitchingItemHandler containerHandler = new SwitchingItemHandler(UPGRADE_SLOTS);
-    private FaceConfigComposite faceConfig;
+    private EndpointConfig faceConfig;
     private ContainerConfig containerConfig;
     private List<ResourceLocation> selectedTypeIds = List.of();
 
+    private final DataSlot redstoneSlot = DataSlot.standalone();
+    private final DataSlot editableTargetSlot = DataSlot.standalone();
+
+    public boolean canEditTarget() {
+        if (!hasTarget) return false;
+        if (player instanceof ServerPlayer serverPlayer)
+            return resolveValidatedNode(serverPlayer) != null;
+        return editableTargetSlot.get() != 0;
+    }
+
+    private final DataSlot enabledSlot = DataSlot.standalone();
+
+    public boolean isChannelEnabled() {
+        return enabledSlot.get() != 0;
+    }
+
+    public ChannelRedstoneMode getRedstoneMode() {
+        return ChannelRedstoneMode.values()[Math.floorMod(redstoneSlot.get(), ChannelRedstoneMode.values().length)];
+    }
     private final DataSlot globalInputSlot = DataSlot.standalone();
     private final DataSlot globalOutputSlot = DataSlot.standalone();
     private final DataSlot strategySlot = DataSlot.standalone();
     private final DataSlot extractionModeSlot = DataSlot.standalone();
-    private final DataSlot prioritySlot = DataSlot.standalone();
-    private final DataSlot keepStockSlot = DataSlot.standalone();
-    public final DataSlot selectedTypesMaskSlot = DataSlot.standalone();
+    private final LongMenuValue prioritySlot = new LongMenuValue();
+    private final LongMenuValue keepStockSlot = new LongMenuValue();
+
 
     private final DataSlot speedMultSlot = DataSlot.standalone();
     private final DataSlot rangeMultSlot = DataSlot.standalone();
@@ -92,18 +212,17 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     public LinkConfiguratorMenu(int containerId, Inventory playerInventory, LogisticsNode node, GroupKey groupKey, boolean inputSide) {
         this(containerId, playerInventory, node.gPos().pos(), node.face(),
-            node.gPos().dimension(), groupKey, inputSide, List.of(),
+            node.gPos().dimension(), groupKey, inputSide, node.channel(), List.of(),
             findToolSlot(playerInventory));
     }
 
     public LinkConfiguratorMenu(int containerId, Inventory playerInventory, int toolSlot) {
-        this(containerId, playerInventory, null, null, null, null,
-            true, List.of(), toolSlot);
+        this(containerId, playerInventory, null, null, null, null, true, 0, List.of(), toolSlot);
     }
 
     private LinkConfiguratorMenu(int containerId, Inventory playerInventory, OpenData data) {
         this(containerId, playerInventory, data.pos(), data.face(), data.dimension(),
-            data.groupKey(), data.inputSide(), data.initialTypeIds(), data.toolSlot());
+            data.groupKey(), data.inputSide(), data.channel(), data.initialTypeIds(), data.toolSlot());
     }
 
     private LinkConfiguratorMenu(
@@ -114,12 +233,14 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         ResourceKey<Level> targetDimension,
         GroupKey groupKey,
         boolean inputSide,
+        int channel,
         List<ResourceLocation> initialTypeIds,
         int toolSlot
     ) {
         super(SLMenuTypes.LINK_CONFIGURATOR_MENU.get(), containerId);
         this.pos = pos;
         this.face = face;
+        this.channel = channel;
         this.targetDimension = targetDimension;
         this.groupKey = groupKey;
         this.hasTarget = pos != null && face != null
@@ -127,14 +248,18 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         this.toolSlot = toolSlot;
         this.player = playerInventory.player;
         this.selectedTypeIds = initialTypeIds;
+        if (hasTarget && channel >= 0) getToolStack().set(SLDataComponents.SELECTED_CHANNEL.get(), channel);
 
         this.addDataSlot(globalInputSlot);
+        this.addDataSlot(editableTargetSlot);
+        this.addDataSlot(redstoneSlot);
+        this.addDataSlot(enabledSlot);
         this.addDataSlot(globalOutputSlot);
         this.addDataSlot(strategySlot);
         this.addDataSlot(extractionModeSlot);
-        this.addDataSlot(prioritySlot);
-        this.addDataSlot(keepStockSlot);
-        this.addDataSlot(selectedTypesMaskSlot);
+        prioritySlot.register(this::addDataSlot);
+        keepStockSlot.register(this::addDataSlot);
+
 
         addDataSlot(speedMultSlot);
         addDataSlot(rangeMultSlot);
@@ -150,7 +275,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         if (serverLevel != null && pos != null && face != null) {
             LinkManager mgr = LinkManager.get(serverLevel);
             if (mgr != null) {
-                this.faceConfig = mgr.getFaceConfig(FaceAddress.of(pos, face));
+                this.faceConfig = mgr.getEndpointConfig(new EndpointAddress(pos.asLong(), face, channel));
                 this.containerConfig = mgr.getOrCreateContainerConfig(pos);
                 filterHandler.bind(faceConfig == null
                     ? new ItemStackHandler(FILTER_SLOTS)
@@ -162,16 +287,9 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
             }
         }
 
-        this.addSlot(new FilterSlot(filterHandler, 0, INPUT_FILTER_X, INPUT_FILTER_Y, true,
-            UpgradeType.BASIC_FILTER, UpgradeType.TAG_FILTER, UpgradeType.NBT_FILTER));
-        this.addSlot(new FilterSlot(filterHandler, 1, OUTPUT_FILTER_X, OUTPUT_FILTER_Y, false,
-            UpgradeType.BASIC_FILTER, UpgradeType.TAG_FILTER, UpgradeType.NBT_FILTER));
-        this.addSlot(new UpgradeSlot(containerHandler, ContainerConfig.SPEED_SLOT,
-            SPEED_UPGRADE_X, SPEED_UPGRADE_Y, UpgradeType.SPEED));
-        this.addSlot(new UpgradeSlot(containerHandler, ContainerConfig.RANGE_OR_DIMENSION_SLOT,
-            RANGE_UPGRADE_X, RANGE_UPGRADE_Y, UpgradeType.RANGE, UpgradeType.DIMENSION));
-        this.addSlot(new UpgradeSlot(containerHandler, ContainerConfig.STACK_SLOT,
-            STACK_UPGRADE_X, STACK_UPGRADE_Y, UpgradeType.STACK));
+        this.addSlot(new FilterSlot(filterHandler, 0, INPUT_FILTER_X, INPUT_FILTER_Y, UpgradeType.FILTER));
+        this.addSlot(new UpgradeSlot(containerHandler, ContainerConfig.UPGRADE_SLOT,
+            UPGRADE_X, UPGRADE_Y, UpgradeType.COMBINED));
 
         addPlayerInventory(playerInventory);
     }
@@ -189,16 +307,17 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
     private static OpenData readOpenData(FriendlyByteBuf buf) {
         int toolSlot = buf.readVarInt();
         if (!buf.readBoolean()) {
-            return new OpenData(null, null, null, null, true, List.of(), toolSlot);
+            return new OpenData(null, null, null, null, true, 0, List.of(), toolSlot);
         }
         BlockPos pos = buf.readBlockPos();
         Direction face = buf.readEnum(Direction.class);
+        int channel = buf.readVarInt();
         List<ResourceLocation> typeIds = readInitialTypeIds(buf);
         ResourceKey<Level> dimension = ResourceKey.create(
             Registries.DIMENSION, buf.readResourceLocation());
-        GroupKey groupKey = new GroupKey(buf.readUUID(), buf.readUUID());
+        GroupKey groupKey = GroupKey.STREAM_CODEC.decode((PortRegistryFriendlyByteBuf) buf);
         boolean inputSide = buf.readBoolean();
-        return new OpenData(pos, face, dimension, groupKey, inputSide, typeIds, toolSlot);
+        return new OpenData(pos, face, dimension, groupKey, inputSide, channel, typeIds, toolSlot);
     }
 
     public static void writeEmptyOpenData(FriendlyByteBuf buf, int toolSlot) {
@@ -211,18 +330,19 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         LogisticsNode node,
         GroupKey groupKey,
         boolean inputSide,
-        FaceConfigComposite config,
+        EndpointConfig config,
         int toolSlot
     ) {
         buf.writeVarInt(toolSlot);
         buf.writeBoolean(true);
         buf.writeBlockPos(node.gPos().pos());
         buf.writeEnum(node.face());
+        buf.writeVarInt(node.channel());
         writeInitialTypeIds(buf, config);
         writeRemoteContext(buf, node, groupKey, inputSide);
     }
 
-    private static void writeInitialTypeIds(FriendlyByteBuf buf, FaceConfigComposite config) {
+    private static void writeInitialTypeIds(FriendlyByteBuf buf, EndpointConfig config) {
         List<ResourceLocation> ids = config == null || !config.isGlobalOutputEnabled()
             ? List.of() : config.getSelectedTypeIds();
         buf.writeVarInt(ids.size());
@@ -234,8 +354,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
     private static void writeRemoteContext(
         FriendlyByteBuf buf, LogisticsNode node, GroupKey groupKey, boolean inputSide) {
         buf.writeResourceLocation(node.gPos().dimension().location());
-        buf.writeUUID(groupKey.ownerId());
-        buf.writeUUID(groupKey.internalId());
+        GroupKey.STREAM_CODEC.encode((PortRegistryFriendlyByteBuf) buf, groupKey);
         buf.writeBoolean(inputSide);
     }
 
@@ -259,11 +378,11 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         return idx >= 0 && idx < vals.length ? vals[idx] : ExtractionMode.SEQUENTIAL;
     }
 
-    public int getPriority() {
+    public long getPriority() {
         return prioritySlot.get();
     }
 
-    public int getKeepStock() {
+    public long getKeepStock() {
         return keepStockSlot.get();
     }
 
@@ -286,7 +405,6 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
     public boolean isDimensionEffective() {
         return dimensionSlot.get() == 1;
     }
-
 
     public void setGlobalInputEnabled(boolean enabled) {
         if (faceConfig != null && faceConfig.isGlobalInputEnabled() != enabled) {
@@ -316,39 +434,28 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         }
     }
 
-    public void setPriority(int v) {
-        if (faceConfig != null && faceConfig.linkConfig.getPriority() != v) {
-            faceConfig.setPriority(v);
-            syncFaceSlots();
-        }
-    }
-
-    public void setKeepStock(int v) {
+    public void setKeepStock(long v) {
         if (faceConfig != null && faceConfig.linkConfig.getKeepStock() != v) {
             faceConfig.setKeepStock(v);
             syncFaceSlots();
         }
     }
 
-    public void setSelectedTypeIds(List<ResourceLocation> ids) {
-        if (faceConfig != null && !faceConfig.isGlobalOutputEnabled()) return;
-        List<ResourceLocation> sanitized = TransferTypeSelection.sanitize(ids);
-        selectedTypeIds = sanitized;
-        selectedTypesMaskSlot.set(TransferTypeSelection.toMask(sanitized, TransferRegistries.getAllActive()));
-        if (faceConfig != null) {
-            faceConfig.setSelectedTypeIds(sanitized);
-            broadcastChanges();
-        }
+    public void acceptSelectedTypeIds(List<ResourceLocation> ids) {
+        selectedTypeIds = List.copyOf(ids);
+
     }
 
-    // 数据同步。
+    /// 数据同步。
 
     public void syncFaceSlots() {
         if (faceConfig == null) return;
+        redstoneSlot.set(faceConfig.linkConfig.getRedstoneMode().ordinal());
+        enabledSlot.set(faceConfig.linkConfig.isEnabled() ? 1 : 0);
         ServerLevel level = player.getServer() == null
             ? null : player.getServer().getLevel(targetDimension);
         if (level != null && pos != null && face != null) {
-            NodeQuerySnapshot snapshot = NodeQueryService.query(level, pos, face).orElse(null);
+            NodeQuerySnapshot snapshot = NodeQueryService.query(level, getTargetNode()).orElse(null);
             if (snapshot != null) {
                 globalInputSlot.set(snapshot.inputEnabled() ? 1 : 0);
                 globalOutputSlot.set(snapshot.outputEnabled() ? 1 : 0);
@@ -358,8 +465,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
                 prioritySlot.set(snapshot.priority());
                 keepStockSlot.set(snapshot.keepStock());
                 selectedTypeIds = snapshot.selectedTypeIds();
-                selectedTypesMaskSlot.set(TransferTypeSelection.toMask(
-                    selectedTypeIds, TransferRegistries.getAllActive()));
+
                 return;
             }
         }
@@ -374,8 +480,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         prioritySlot.set(faceConfig.linkConfig.getPriority());
         keepStockSlot.set(faceConfig.linkConfig.getKeepStock());
         selectedTypeIds = faceConfig.getSelectedTypeIds();
-        selectedTypesMaskSlot.set(TransferTypeSelection.toMask(
-            selectedTypeIds, TransferRegistries.getAllActive()));
+
     }
 
     public void syncContainerSlots() {
@@ -404,6 +509,20 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     @Override
     public void broadcastChanges() {
+        if (player instanceof ServerPlayer) editableTargetSlot.set(canEditTarget() ? 1 : 0);
+        if (observedRates != null && player instanceof ServerPlayer serverPlayer) {
+            long tick = serverPlayer.server.overworld().getGameTime();
+            if (tick >= nextRateSyncTick) {
+                nextRateSyncTick = tick + 5;
+                if (!hasTarget || !observedNode.equals(getTargetNode()) || resolveValidatedNode(serverPlayer) == null)
+                    stopObservingRates();
+                else {
+                    refreshObservedPeers(serverPlayer);
+                    PortPacketDistributor.sendToPlayer(serverPlayer,
+                        new S2CTransferRatesPayload(containerId, observedNode, observedRates.snapshot(), transferDiagnostic(serverPlayer), observedPeersTruncated, peerRateSnapshot(serverPlayer), unavailableRatePeers(serverPlayer)));
+                }
+            }
+        }
         if (hasUpgradeStacksChanged()
             || lastConfigGeneration != SLConfig.configGeneration.get()) {
             syncContainerSlots();
@@ -412,7 +531,94 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         super.broadcastChanges();
     }
 
-    // 槽位管理。
+    private void refreshObservedPeers(ServerPlayer player) {
+        var peers = GlobalLogisticsManager.get(player.server).getLinkedNodes(groupKey, observedNode)
+            .stream().sorted(ConnectionKey.NODE_ORDER).toList();
+        observedPeersTruncated = peers.size() > 256;
+        var next = List.copyOf(peers.subList(0, Math.min(256, peers.size())));
+        var previousSet = new HashSet<>(observedPeers);
+        var nextSet = new HashSet<>(next);
+        observedPeers.stream().filter(peer -> !nextSet.contains(peer)).forEach(observedRates::releasePeer);
+        next.stream().filter(peer -> !previousSet.contains(peer)).forEach(observedRates::includePeer);
+        observedPeers = next;
+    }
+
+    private Set<LogisticsNode> unavailableRatePeers(ServerPlayer player) {
+        Set<LogisticsNode> result = new HashSet<>();
+        for (LogisticsNode peer : observedPeers) {
+            var level = player.server.getLevel(peer.gPos().dimension());
+            var pos = peer.gPos().pos();
+            if (level == null || !level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4))
+                result.add(peer);
+            else {
+                var config = LinkManager.get(level).getEndpointConfig(EndpointAddress.of(peer));
+                if (config == null || !config.canPlayerAccess(player)) result.add(peer);
+            }
+        }
+        return result;
+    }
+
+    private Map<LogisticsNode, Map<ResourceLocation, LiveTransferRates.Rate>> peerRateSnapshot(ServerPlayer player) {
+        var available = observedRates.peerSnapshots();
+        var unavailable = unavailableRatePeers(player);
+        Map<LogisticsNode, Map<ResourceLocation, LiveTransferRates.Rate>> result = new LinkedHashMap<>();
+        for (LogisticsNode peer : observedPeers)
+            result.put(peer, unavailable.contains(peer) ? Map.of() : available.getOrDefault(peer, Map.of()));
+        return result;
+    }
+
+    private String transferDiagnostic(ServerPlayer player) {
+        var validated = resolveValidatedNode(player);
+        if (validated == null) return "state:unknown";
+        var config = validated.config();
+        if (!config.linkConfig.isEnabled()) return "state:disabled";
+        if (config.isGlobalOutputEnabled() && config.getSelectedTypeIds().isEmpty()) return "state:no_types";
+        var peerLevel = player.server.getLevel(observedPeer.dimension());
+        if (peerLevel == null || !peerLevel.getChunkSource().hasChunk(observedPeer.pos().getX() >> 4, observedPeer.pos().getZ() >> 4))
+            return "state:unloaded";
+        var container = config.getContainerConfig();
+        if (container != null
+            && !container.allowsRedstone(validated.level(), config.linkConfig.getRedstoneMode()))
+            return "state:redstone";
+        if (config.isGlobalOutputEnabled() && container != null) {
+            boolean sameDimension = observedNode.gPos().dimension().equals(observedPeer.dimension());
+            if (!sameDimension && !LogisticsCalculator.isDimensionEffective(container)) return "state:dimension";
+            if (sameDimension && !LogisticsCalculator.isDimensionEffective(container)
+                && LogisticsCalculator.getMaxTransferBlocks(container) != Integer.MAX_VALUE
+                && !LogisticsCalculator.assessTransferRange(validated.level(), observedNode.gPos(), observedPeer, container).allowed())
+                return "state:range";
+        }
+        // 只在另一端唯一时给出针对该端的结论；多面连接不能拿某一个面的状态代表全部。
+        var peers = GlobalLogisticsManager.get(player.server).getLinkedNodes(groupKey, observedNode)
+            .stream().filter(node -> node.gPos().equals(observedPeer)).toList();
+        if (peers.size() == 1) {
+            var peer = peers.get(0);
+            var peerConfig = LinkManager.get(peerLevel).getEndpointConfig(EndpointAddress.of(peer));
+            if (peerConfig != null) {
+                if (!peerConfig.linkConfig.isEnabled()) return "state:peer_disabled";
+                if (peerConfig.isGlobalOutputEnabled() && peerConfig.getSelectedTypeIds().isEmpty())
+                    return "state:peer_no_types";
+                var peerContainer = peerConfig.getContainerConfig();
+                if (peerContainer != null && !peerContainer.allowsRedstone(peerLevel, peerConfig.linkConfig.getRedstoneMode()))
+                    return "state:peer_redstone";
+                if (peerConfig.isGlobalOutputEnabled() && peerContainer != null) {
+                    boolean sameDimension = peer.gPos().dimension().equals(observedNode.gPos().dimension());
+                    if (!sameDimension && !LogisticsCalculator.isDimensionEffective(peerContainer))
+                        return "state:peer_dimension";
+                    if (sameDimension && !LogisticsCalculator.isDimensionEffective(peerContainer)
+                        && LogisticsCalculator.getMaxTransferBlocks(peerContainer) != Integer.MAX_VALUE
+                        && !LogisticsCalculator.assessTransferRange(peerLevel, peer.gPos(), observedNode.gPos(), peerContainer).allowed())
+                        return "state:peer_range";
+                }
+            }
+        }
+        if (TransferLogManager.get(player.server).recentlyObservedNoCandidate(observedNode, observedPeer))
+            return "state:no_candidate";
+        TransferEntry entry = TransferLogManager.get(player.server).latestFor(observedNode, observedPeer);
+        return entry == null ? "" : entry.success() ? "success" : entry.failureReason() == null ? "failure" : entry.failureReason();
+    }
+
+    /// 槽位管理。
 
     private void addPlayerInventory(Inventory inv) {
         int x = MenuLayout.LINK_INVENTORY_X + MenuLayout.INVENTORY_SLOT_X;
@@ -428,7 +634,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
         Slot slot = this.slots.get(index);
-        if (slot == null || !slot.hasItem()) return ItemStack.EMPTY;
+        if (slot == null || !slot.isActive() || !slot.mayPickup(player) || !slot.hasItem()) return ItemStack.EMPTY;
         ItemStack stack = slot.getItem().copy();
         ItemStack result = stack.copy();
 
@@ -463,7 +669,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
             return player.level().isClientSide;
         }
         return new NodeMutationService()
-            .resolveRemote(serverPlayer, getTargetNode(), groupKey) != null;
+            .resolveRemoteView(serverPlayer, getTargetNode(), groupKey) != null;
     }
 
     public BlockPos getPos() {
@@ -472,6 +678,32 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     public boolean hasTarget() {
         return hasTarget;
+    }
+
+    public void acknowledgeConfiguration() {
+        acknowledgeConfiguration(0L);
+    }
+
+    public void acknowledgeEdit(long requestId, boolean accepted) {
+        if (!(player instanceof ServerPlayer serverPlayer)) return;
+        syncFaceSlots();
+        syncContainerSlots();
+        broadcastChanges();
+        PortPacketDistributor.sendToPlayer(serverPlayer,
+            new S2CConfiguratorReadyPayload(containerId, requestId, accepted, selectedTypeIds));
+    }
+
+    public void acknowledgeConfiguration(long requestId) {
+        acknowledgeConfiguration(requestId, true);
+    }
+
+    public void acknowledgeConfiguration(long requestId, boolean accepted) {
+        if (!(player instanceof ServerPlayer serverPlayer)) return;
+        syncFaceSlots();
+        syncContainerSlots();
+        broadcastFullState();
+        PortPacketDistributor.sendToPlayer(serverPlayer,
+            new S2CConfiguratorReadyPayload(containerId, requestId, accepted, selectedTypeIds));
     }
 
     public ItemStack getToolStack() {
@@ -493,7 +725,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         if (!hasTarget) {
             throw new IllegalStateException("No node is selected");
         }
-        return new LogisticsNode(GlobalPos.of(targetDimension, pos), face);
+        return new LogisticsNode(GlobalPos.of(targetDimension, pos), face, channel);
     }
 
     public GroupKey getRemoteGroupKey() {
@@ -508,18 +740,14 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         return !isInputSideVisible();
     }
 
-    /**
-     * 判断槽位是否属于过滤器或容器升级配置区。
-     */
+    /// 判断槽位是否属于过滤器或容器升级配置区。
     public boolean isConfigurationSlot(Slot slot) {
         int index = slots.indexOf(slot);
         return index >= 0 && index < TOTAL_CONFIG_SLOTS;
     }
 
-    /**
-     * 客户端立即切换当前节点的显示身份，服务端随后发送权威槽位和数据槽内容。
-     * 该操作不会创建新的 Menu，因此不会重置鼠标位置或预览画布状态。
-     */
+    /// 客户端立即切换当前节点的显示身份，服务端随后发送权威槽位和数据槽内容。
+    /// 该操作不会创建新的 Menu，因此不会重置鼠标位置或预览画布状态。
     public void selectTarget(
         LogisticsNode node,
         GroupKey groupKey,
@@ -533,35 +761,32 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         containerHandler.clear();
         clearSyncedConfiguration();
         this.selectedTypeIds = TransferTypeSelection.sanitize(selectedTypeIds);
-        selectedTypesMaskSlot.set(TransferTypeSelection.toMask(
-            this.selectedTypeIds, TransferRegistries.getAllActive()));
+
     }
 
-    /**
-     * 服务端在权限验证完成后，把现有 Menu 重新绑定到目标节点。
-     */
+    /// 服务端在权限验证完成后，把现有 Menu 重新绑定到目标节点。
     public void selectTarget(
         NodeMutationService.ValidatedNode node,
         GroupKey groupKey,
         boolean inputSide
     ) {
-        LogisticsNode target = new LogisticsNode(
-            GlobalPos.of(node.level().dimension(), node.pos()),
-            node.face());
+        LogisticsNode target = node.node();
         bindTargetIdentity(target, groupKey, inputSide);
         faceConfig = node.config();
-        containerConfig = node.manager().getOrCreateContainerConfig(node.pos());
+        containerConfig = node.manager().getContainerConfig(node.pos());
+        if (containerConfig == null && canEditTarget())
+            containerConfig = node.manager().getOrCreateContainerConfig(node.pos());
         filterHandler.bind(faceConfig.filterConfig.getUpgrades());
-        containerHandler.bind(containerConfig.getUpgrades());
+        if (containerConfig != null) containerHandler.bind(containerConfig.getUpgrades());
+        else containerHandler.clear();
         syncFaceSlots();
         syncContainerSlots();
         cacheUpgradeStacks();
     }
 
-    /**
-     * 解除当前节点绑定，但保留连接配置器本身及玩家物品栏槽位。
-     */
+    /// 解除当前节点绑定，但保留连接配置器本身及玩家物品栏槽位。
     public void clearTarget() {
+        stopObservingRates();
         pos = null;
         face = null;
         targetDimension = null;
@@ -580,24 +805,27 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         GroupKey groupKey,
         boolean inputSide
     ) {
-        Objects.requireNonNull(node, "Node must not be null");
-        this.groupKey = Objects.requireNonNull(groupKey,
-            "Group key must not be null");
+        if (!hasTarget || !node.equals(getTargetNode())) stopObservingRates();
+        this.groupKey = groupKey;
         pos = node.gPos().pos();
         face = node.face();
+        channel = node.channel();
+        if (channel >= 0) getToolStack().set(SLDataComponents.SELECTED_CHANNEL.get(), channel);
         targetDimension = node.gPos().dimension();
         hasTarget = true;
         visibleSideSlot.set(inputSide ? 1 : 0);
     }
 
     private void clearSyncedConfiguration() {
+        redstoneSlot.set(0);
+        enabledSlot.set(0);
         globalInputSlot.set(0);
         globalOutputSlot.set(0);
         strategySlot.set(0);
         extractionModeSlot.set(0);
         prioritySlot.set(0);
         keepStockSlot.set(0);
-        selectedTypesMaskSlot.set(0);
+
         speedMultSlot.set(0);
         rangeMultSlot.set(0);
         stackMultSlot.set(0);
@@ -606,28 +834,36 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         Arrays.fill(lastUpgradeStacks, ItemStack.EMPTY);
     }
 
-    /**
-     * 在当前菜单内切换所查看的连接面方向，不重新创建容器界面。
-     */
+    /// 在当前菜单内切换所查看的连接面方向，不重新创建容器界面。
     public void selectVisibleSide(boolean inputSide) {
         visibleSideSlot.set(inputSide ? 1 : 0);
     }
 
-    /**
-     * 服务端菜单只接受当前窗口所展示一侧的修改，防止隐藏控件被构造数据包绕过。
-     */
-    public boolean allowsEdit(FaceConfigurationEdit edit) {
-        if (!hasTarget) return false;
-        if (isInputSideVisible()) {
-            return edit instanceof FaceConfigurationEdit.BooleanEdit inputToggle
-                && inputToggle.field() == FaceConfigurationEdit.BooleanField.GLOBAL_INPUT
-                || edit instanceof FaceConfigurationEdit.NumberEdit;
+    /// 双向通道同时展示两侧配置；单向通道保留各自紧凑布局。
+    public boolean showsInputSettings() {
+        return isInputSideVisible() || isGlobalInputEnabled() && isGlobalOutputEnabled();
+    }
+
+    public boolean showsOutputSettings() {
+        return isOutputSideVisible() || isGlobalInputEnabled() && isGlobalOutputEnabled();
+    }
+
+    public boolean allowsEdit(ChannelConfigurationEdit edit) {
+        if (!hasTarget || channel < 0) return false;
+        if (edit instanceof ChannelConfigurationEdit.FilterEdit) return true;
+        if (edit instanceof ChannelConfigurationEdit.NumberEdit) return showsInputSettings();
+        if (edit instanceof ChannelConfigurationEdit.RedstoneEdit || edit instanceof ChannelConfigurationEdit.EnabledEdit || edit instanceof ChannelConfigurationEdit.RoleEdit)
+            return true;
+        if (!showsOutputSettings()) {
+            return edit instanceof ChannelConfigurationEdit.BooleanEdit inputToggle
+                && inputToggle.field() == ChannelConfigurationEdit.BooleanField.GLOBAL_INPUT;
         }
-        return edit instanceof FaceConfigurationEdit.BooleanEdit outputToggle
-            && outputToggle.field() == FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT
-            || edit instanceof FaceConfigurationEdit.StrategyEdit
-            || edit instanceof FaceConfigurationEdit.ExtractionEdit
-            || edit instanceof FaceConfigurationEdit.SelectedTypesEdit;
+        return edit instanceof ChannelConfigurationEdit.BooleanEdit outputToggle
+            && outputToggle.field() == ChannelConfigurationEdit.BooleanField.GLOBAL_OUTPUT
+            || edit instanceof ChannelConfigurationEdit.StrategyEdit
+            || edit instanceof ChannelConfigurationEdit.ExtractionEdit
+            || edit instanceof ChannelConfigurationEdit.SelectedTypesEdit
+            || edit instanceof ChannelConfigurationEdit.TypePatchEdit;
     }
 
     public NodeMutationService.ValidatedNode
@@ -636,7 +872,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
             .resolveRemote(serverPlayer, getTargetNode(), groupKey);
     }
 
-    public FaceConfigComposite getFaceConfig() {
+    public EndpointConfig getEndpointConfig() {
         return faceConfig;
     }
 
@@ -646,22 +882,20 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     private class FilterSlot extends SlotItemHandler {
         private final UpgradeType[] allowedTypes;
-        private final boolean isInput;
 
-        FilterSlot(IItemHandler handler, int index, int x, int y, boolean isInput, UpgradeType... allowed) {
+        FilterSlot(IItemHandler handler, int index, int x, int y, UpgradeType... allowed) {
             super(handler, index, x, y);
             this.allowedTypes = allowed;
-            this.isInput = isInput;
         }
 
         @Override
         public boolean isActive() {
-            return hasTarget && isInputSideVisible() == isInput;
+            return !clientBatchSelection && hasTarget && channel >= 0;
         }
 
         @Override
         public boolean mayPlace(ItemStack stack) {
-            if (!isActive()) return false;
+            if (!isActive() || !canEditTarget()) return false;
             if (!(stack.getItem() instanceof UpgradeItem upg)) return false;
             for (UpgradeType t : allowedTypes) if (upg.getType() == t) return true;
             return false;
@@ -669,7 +903,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean mayPickup(Player player) {
-            return isActive();
+            return isActive() && canEditTarget();
         }
 
         @Override
@@ -688,12 +922,13 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean isActive() {
-            return hasTarget && isOutputSideVisible() && !SLConfig.isSimpleMode();
+            return !SLConfig.isSimpleMode() && !clientBatchSelection && hasTarget
+                && (channel < 0 || showsOutputSettings());
         }
 
         @Override
         public boolean mayPlace(ItemStack stack) {
-            if (!isActive() || SLConfig.isSimpleMode()) return false;
+            if (!isActive() || !canEditTarget()) return false;
             if (!(stack.getItem() instanceof UpgradeItem upg)) return false;
             for (UpgradeType t : allowedTypes) if (upg.getType() == t) return true;
             return false;
@@ -701,7 +936,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean mayPickup(Player player) {
-            return isActive();
+            return isActive() && canEditTarget();
         }
 
         @Override
@@ -710,9 +945,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         }
     }
 
-    /**
-     * 槽位对象保持不变，仅切换实际数据源，避免选择节点时重建容器菜单。
-     */
+    /// 槽位对象保持不变，仅切换实际数据源，避免选择节点时重建容器菜单。
     private static final class SwitchingItemHandler
         implements IItemHandlerModifiable {
         private final int slotCount;
@@ -777,6 +1010,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
         ResourceKey<Level> dimension,
         GroupKey groupKey,
         boolean inputSide,
+        int channel,
         List<ResourceLocation> initialTypeIds,
         int toolSlot
     ) {

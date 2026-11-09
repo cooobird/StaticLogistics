@@ -1,18 +1,22 @@
 package com.coobird.staticlogistics.content.item;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.GroupCommandService;
+import com.coobird.staticlogistics.logistics.group.PermissionService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.logistics.node.*;
+import com.coobird.staticlogistics.logistics.selection.NodeSelectionPolicy;
 import com.coobird.staticlogistics.network.TeamPacketSync;
+import com.coobird.staticlogistics.network.s2c.S2CGroupDirectoryPayload;
 import com.coobird.staticlogistics.network.s2c.S2CTopologyUpdatePayload;
 import com.coobird.staticlogistics.transfer.TransferUtils;
 import com.mojang.authlib.GameProfile;
+import com.mojang.logging.LogUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -27,31 +31,39 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.List;
+import java.util.*;
 
-@SuppressWarnings("try")
 public class LinkOperationHelper {
+    private static final String FIRST_GROUP_NAME = "1";
 
     public static void validateStoredNodes(ItemStack stack, ServerLevel level) {
-        List<LogisticsNode> storedNodes = PortItemStackExtension.getData(stack, SLDataComponents.STORED_NODES.get());
+        List<LogisticsNode> storedNodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (storedNodes == null || storedNodes.isEmpty()) return;
         List<LogisticsNode> validNodes = storedNodes.stream().filter(node -> {
             ServerLevel nodeLevel = level.getServer().getLevel(node.gPos().dimension());
-            return nodeLevel != null && TransferUtils.hasLogisticsCapability(nodeLevel, node.gPos().pos(), node.face());
+            if (nodeLevel == null) return false;
+            BlockPos pos = node.gPos().pos();
+            if (!nodeLevel.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) {
+                /// 未加载不等于节点失效；保留存点，且不为校验强制加载区块。
+                return true;
+            }
+            return TransferUtils.hasLogisticsCapability(nodeLevel, pos, node.face());
         }).toList();
         if (validNodes.size() != storedNodes.size()) {
-            PortItemStackExtension.setData(stack, SLDataComponents.STORED_NODES.get(), validNodes);
-            if (validNodes.isEmpty())
-                PortItemStackExtension.removeData(stack, SLDataComponents.STORED_MODE.get());
+            stack.set(SLDataComponents.STORED_NODES.get(), validNodes);
+            if (validNodes.isEmpty()) stack.remove(SLDataComponents.STORED_MODE.get());
+            String owner = stack.get(SLDataComponents.STORED_NODES_OWNER.get());
+            if (owner != null) {
+                try {
+                    var player = level.getServer().getPlayerList().getPlayer(UUID.fromString(owner));
+                    if (player != null) StoredSelectionSync.publish(player, stack);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
         }
     }
 
-    /**
-     * 方块被移除时，清理所有在线玩家配置器中的无效存点
-     */
+    /// 方块被移除时，清理所有在线玩家配置器中的无效存点
     public static void cleanStoredNodesForPos(ServerLevel level, BlockPos pos) {
         for (ServerPlayer sp : level.getServer().getPlayerList().getPlayers()) {
             for (int i = 0; i < sp.getInventory().getContainerSize(); i++) {
@@ -67,125 +79,183 @@ public class LinkOperationHelper {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.no_capability").withStyle(ChatFormatting.RED), true);
             return;
         }
-        List<LogisticsNode> nodes = new ArrayList<>(PortItemStackExtension.getDataOrDefault(stack, SLDataComponents.STORED_NODES.get(), List.of()));
-        LogisticsNode newNode = new LogisticsNode(gpos, face);
+        List<LogisticsNode> nodes = new ArrayList<>(stack.getOrDefault(SLDataComponents.STORED_NODES.get(), List.of()));
+        int channel = level instanceof ServerLevel serverLevel ? LinkConfiguratorItem.channelForFace(serverLevel, gpos.pos(), face, LinkConfiguratorItem.selectedChannel(stack)) : 0;
+        LogisticsNode newNode = new LogisticsNode(gpos, face, channel);
         if (nodes.contains(newNode)) {
             nodes.remove(newNode);
             player.displayClientMessage(Component.translatable("msg.staticlogistics.node_removed", nodes.size()).withStyle(ChatFormatting.RED), true);
             if (nodes.isEmpty()) {
-                PortItemStackExtension.removeData(stack, SLDataComponents.STORED_MODE.get());
+                stack.remove(SLDataComponents.STORED_MODE.get());
             }
         } else {
-            if (nodes.size() >= SLDataComponents.MAX_STORED_NODES) {
+            if (nodes.size() >= NodeSelectionPolicy.MAX_NODES) {
                 player.displayClientMessage(Component.translatable(
-                        "msg.staticlogistics.stored_nodes_full", SLDataComponents.MAX_STORED_NODES)
-                    .withStyle(ChatFormatting.RED), true);
+                    "msg.staticlogistics.selection_limit", NodeSelectionPolicy.MAX_NODES), true);
                 return;
             }
-            // 第一个节点存入时记录所属玩家
+            /// 第一个节点存入时记录所属玩家
             if (nodes.isEmpty()) {
-                PortItemStackExtension.setData(stack, SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
+                stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
             }
             nodes.add(newNode);
-            PortItemStackExtension.setData(stack, SLDataComponents.STORED_MODE.get(), mode.getId());
+            stack.set(SLDataComponents.STORED_MODE.get(), mode.getId());
             player.displayClientMessage(Component.translatable("msg.staticlogistics.node_added", nodes.size()).withStyle(ChatFormatting.GREEN), true);
         }
-        PortItemStackExtension.setData(stack, SLDataComponents.STORED_NODES.get(), nodes);
-        // 同步到客户端以触发渲染
-        if (player instanceof ServerPlayer serverPlayer) {
-            serverPlayer.inventoryMenu.broadcastChanges();
-        }
+        stack.set(SLDataComponents.STORED_NODES.get(), List.copyOf(nodes));
+        if (player instanceof ServerPlayer sp) StoredSelectionSync.publish(sp, stack);
         level.playSound(null, gpos.pos(), SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.8f, 1.5f);
     }
 
+    /// 批量选点只执行并集操作，避免重复使用组合键时意外取消整片区域。
+    public static int addNodes(ItemStack stack, Collection<LogisticsNode> candidates, ToolMode mode, Player player, Level level) {
+        if (!mode.isLinkMode() || candidates == null || candidates.isEmpty()) return 0;
+        LinkedHashSet<LogisticsNode> nodes = new LinkedHashSet<>(
+            stack.getOrDefault(SLDataComponents.STORED_NODES.get(), List.of()));
+        int before = nodes.size();
+        for (LogisticsNode node : candidates) {
+            if (nodes.size() >= NodeSelectionPolicy.MAX_NODES) break;
+            nodes.add(node);
+        }
+        if (nodes.size() == before) return 0;
+        if (before == 0) stack.set(SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
+        stack.set(SLDataComponents.STORED_MODE.get(), mode.getId());
+        stack.set(SLDataComponents.STORED_NODES.get(), List.copyOf(nodes));
+        if (player instanceof ServerPlayer sp) StoredSelectionSync.publish(sp, stack);
+        level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.value(),
+            SoundSource.PLAYERS, 0.8F, 1.5F);
+        return nodes.size() - before;
+    }
+
     public static void clearNodes(ItemStack stack, Player player, Level level) {
-        List<LogisticsNode> nodes = PortItemStackExtension.getData(stack, SLDataComponents.STORED_NODES.get());
+        List<LogisticsNode> nodes = stack.get(SLDataComponents.STORED_NODES.get());
         if (nodes == null || nodes.isEmpty()) {
             return;
         }
-        PortItemStackExtension.removeData(stack, SLDataComponents.STORED_NODES.get());
-        PortItemStackExtension.removeData(stack, SLDataComponents.STORED_MODE.get());
-        PortItemStackExtension.removeData(stack, SLDataComponents.STORED_NODES_OWNER.get());
-        // 同步到客户端以触发渲染
-        if (player instanceof ServerPlayer serverPlayer) {
-            serverPlayer.inventoryMenu.broadcastChanges();
-        }
+        stack.remove(SLDataComponents.STORED_NODES.get());
+        stack.remove(SLDataComponents.STORED_SELECTION_ID.get());
+        stack.remove(SLDataComponents.STORED_MODE.get());
+        stack.remove(SLDataComponents.STORED_NODES_OWNER.get());
         player.displayClientMessage(Component.translatable("msg.staticlogistics.selection_cleared").withStyle(ChatFormatting.YELLOW), true);
         level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.5f, 0.5f);
     }
 
     public static void executeBatchLink(ItemStack stack, LinkConfiguratorItem.ToolSettings settings,
                                         BlockPos pos, Direction face, ServerLevel level, Player player) {
-        // 校验存点人是否当前玩家，防止别人捡到工具冒用
-        String storedOwner = PortItemStackExtension.getData(stack, SLDataComponents.STORED_NODES_OWNER.get());
+        /// 校验存点人是否当前玩家，防止别人捡到工具冒用
+        String storedOwner = stack.get(SLDataComponents.STORED_NODES_OWNER.get());
         if (storedOwner != null && !storedOwner.isEmpty() && !storedOwner.equals(player.getStringUUID())) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.no_permission").withStyle(ChatFormatting.RED), true);
             return;
         }
 
-        // 检查当前点击节点是否有物流能力
+        /// 检查当前点击节点是否有物流能力
         if (!TransferUtils.hasLogisticsCapability(level, pos, face)) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.no_capability").withStyle(ChatFormatting.RED), true);
             return;
         }
+        if (!(player instanceof ServerPlayer serverPlayer)
+            || !NodeInteractionValidator.isDirectInteractionTargetValid(
+            serverPlayer, pos, face)) {
+            return;
+        }
 
         List<LogisticsNode> targets = settings.storedNodes().stream()
-            .filter(n -> !n.isAt(level.dimension(), pos, face)).toList();
+            .filter(n -> !(n.isAt(level.dimension(), pos, face) && n.channel() == LinkConfiguratorItem.channelForFace(level, pos, face, settings.channel()))).toList();
         if (targets.isEmpty()) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.self_link_error").withStyle(ChatFormatting.RED), true);
             return;
         }
 
-        LogisticsNode currentNode = new LogisticsNode(GlobalPos.of(level.dimension(), pos), face);
-        GroupRef group;
+        LogisticsNode currentNode = new LogisticsNode(GlobalPos.of(level.dimension(), pos), face, LinkConfiguratorItem.channelForFace(level, pos, face, settings.channel()));
+        GroupResolution groupResolution;
         try {
-            group = resolveSelectedGroup(level, player, settings.groupKey());
+            groupResolution = resolveSelectedGroup(level, player, stack, settings.groupKey());
         } catch (IllegalArgumentException | IllegalStateException exception) {
             player.displayClientMessage(Component.translatable("msg.staticlogistics.select_group_to_link")
                 .withStyle(ChatFormatting.RED), true);
             return;
         }
-        int linkedCount = 0;
-
-        for (LogisticsNode srcNode : targets) {
-            ServerLevel srcLevel = level.getServer().getLevel(srcNode.gPos().dimension());
-            if (srcLevel == null) continue;
-
-            LinkManager srcMgr = LinkManager.get(srcLevel);
-            FaceConfigComposite srcCfg = srcMgr.getFaceConfig(FaceAddress.of(srcNode));
-            if (srcCfg != null && !srcCfg.canPlayerModify(player)) continue;
-
-            // 距离和跨维度升级属于传输能力，不作为创建拓扑的前置条件。
-            if (performSingleLink(level, currentNode, srcNode, group, settings, player)) {
-                linkedCount++;
+        GroupRef group = groupResolution.group();
+        Set<LogisticsNode> linked = new LinkedHashSet<>();
+        Set<LogisticsNode> changed = new LinkedHashSet<>();
+        for (LogisticsNode source : targets) {
+            try {
+                if (performSingleLink(level, currentNode, source, group,
+                    settings, serverPlayer, false, false)) {
+                    linked.add(source);
+                    changed.add(source);
+                    changed.add(currentNode);
+                }
+            } catch (RuntimeException exception) {
+                LogUtils.getLogger().error("Link creation failed for {}", source, exception);
             }
         }
 
-        if (linkedCount > 0) {
-            LinkConfiguratorSelection.select(player, group);
-            player.displayClientMessage(Component.translatable(
-                    "msg.staticlogistics.batch_linked_to_group", linkedCount, group.displayName())
-                .withStyle(ChatFormatting.AQUA), true);
-            level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.0f);
-            // 根据配置决定是否自动清空存点
+        List<S2CTopologyUpdatePayload.FaceUpdate> updates = new ArrayList<>();
+        for (LogisticsNode node : changed) {
+            ServerLevel nodeLevel = level.getServer().getLevel(node.gPos().dimension());
+            if (nodeLevel == null) continue;
+            var config = LinkManager.get(nodeLevel).getEndpointConfig(EndpointAddress.of(node));
+            if (config != null) {
+                updates.add(S2CTopologyUpdatePayload.FaceUpdate.from(
+                    nodeLevel, node, config));
+            }
+        }
+        if (!updates.isEmpty()) {
+            TeamPacketSync.sendTopology(
+                serverPlayer, group.key().ownerId(), updates);
+        }
+
+        if (!linked.isEmpty()) {
+            stack.set(SLDataComponents.SELECTED_GROUP.get(), group.displayName());
+            stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), group.key());
+            stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
             if (SLConfig.shouldAutoCleanStoredNodes()) {
-                clearNodes(stack, player, level);
+                List<LogisticsNode> remaining = stack.getOrDefault(
+                        SLDataComponents.STORED_NODES.get(), List.<LogisticsNode>of())
+                    .stream().filter(node -> !linked.contains(node)).toList();
+                stack.set(SLDataComponents.STORED_NODES.get(), remaining);
+                if (remaining.isEmpty()) {
+                    stack.remove(SLDataComponents.STORED_MODE.get());
+                    stack.remove(SLDataComponents.STORED_NODES_OWNER.get());
+                }
+                StoredSelectionSync.publish(serverPlayer, stack);
             }
+            level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0F, 1.0F);
+        } else if (groupResolution.automaticallyCreated()) {
+            rollbackAutomaticallyCreatedGroup(
+                level, serverPlayer, stack, group);
         }
+        serverPlayer.displayClientMessage(Component.translatable(
+            "msg.staticlogistics.bulk_link_result",
+            linked.size(), targets.size() - linked.size(), group.displayName()), true);
     }
 
     public static boolean performSingleLink(ServerLevel level, LogisticsNode current, LogisticsNode stored, GroupRef group,
                                             LinkConfiguratorItem.ToolSettings settings, Player player) {
+        return performSingleLink(
+            level, current, stored, group, settings, player, true, true);
+    }
+
+    private static boolean performSingleLink(ServerLevel level, LogisticsNode current, LogisticsNode stored, GroupRef group,
+                                             LinkConfiguratorItem.ToolSettings settings, Player player,
+                                             boolean sync, boolean requireDirectTarget) {
+        /// 允许不选类型就链接（mask=0）→ 节点不会传输，方便后续插入过滤
         if (!(player instanceof ServerPlayer serverPlayer)
-            || current.equals(stored)
             || group == null
             || !NodeInteractionValidator.holdsConfigurator(serverPlayer)
-            || !NodeInteractionValidator.isDirectInteractionTargetValid(
-            serverPlayer, current.gPos().pos(), current.face())) return false;
+            || !isCurrentTargetValid(
+            level, serverPlayer, current, requireDirectTarget)
+            || !PermissionService.getInstance().canModify(group.key().ownerId(), player)) {
+            return false;
+        }
 
         LinkManager currentMgr = LinkManager.get(level);
-        FaceConfigComposite currentCfg = currentMgr.getFaceConfig(FaceAddress.of(current));
+        EndpointConfig currentCfg = currentMgr.getEndpointConfig(EndpointAddress.of(current));
         if (currentCfg != null && !currentCfg.canPlayerModify(player)) return false;
+        if (currentCfg != null && currentCfg.faceConfig.getOwner() != null
+            && !currentCfg.faceConfig.getOwner().equals(group.key().ownerId())) return false;
 
         ServerLevel storedLevel = level.getServer().getLevel(stored.gPos().dimension());
         if (storedLevel == null) return false;
@@ -197,36 +267,37 @@ public class LinkOperationHelper {
             || !TransferUtils.hasLogisticsCapability(storedLevel, storedPos, stored.face()))) return false;
 
         LinkManager storedMgr = LinkManager.get(storedLevel);
-        FaceConfigComposite storedCfg = storedMgr.getFaceConfig(FaceAddress.of(stored));
+        EndpointConfig storedCfg = storedMgr.getEndpointConfig(EndpointAddress.of(stored));
         if (storedCfg != null && !storedCfg.canPlayerModify(player)) return false;
-
-        if (!GroupService.canModify(group.key().ownerId(), player)) return false;
-        if (currentCfg != null && currentCfg.faceConfig.getOwner() != null
-            && !currentCfg.faceConfig.getOwner().equals(group.key().ownerId())) return false;
         if (storedCfg != null && storedCfg.faceConfig.getOwner() != null
             && !storedCfg.faceConfig.getOwner().equals(group.key().ownerId())) return false;
 
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(level.getServer())) {
             transaction.captureState(current);
             transaction.captureState(stored);
+
             if (currentCfg == null) {
-                currentCfg = currentMgr.getOrCreateFaceConfig(current.gPos().pos(), current.face());
+                currentCfg = currentMgr.getOrCreateChannel(current);
             }
             if (storedCfg == null) {
-                storedCfg = storedMgr.getOrCreateFaceConfig(stored.gPos().pos(), stored.face());
+                storedCfg = storedMgr.getOrCreateChannel(stored);
             }
             boolean currentIsNew = currentCfg.faceConfig.getGroupKeys().isEmpty();
+            boolean currentHadGroup = currentCfg.faceConfig.getGroupKeys().contains(group.key());
             boolean storedIsNew = storedCfg.faceConfig.getGroupKeys().isEmpty();
-            try (FaceConfigComposite.BulkEdit currentEdit = currentCfg.beginBulkEdit();
-                 FaceConfigComposite.BulkEdit storedEdit = storedCfg.beginBulkEdit()) {
+            boolean storedHadGroup = storedCfg.faceConfig.getGroupKeys().contains(group.key());
+
+            try (EndpointConfig.BulkEdit currentEdit = currentCfg.beginBulkEdit();
+                 EndpointConfig.BulkEdit storedEdit = storedCfg.beginBulkEdit()) {
                 if (currentCfg.faceConfig.getOwner() == null) {
                     currentMgr.claimOwner(current, resolveOwnerProfile(level, group, player));
                 }
+                currentMgr.addNodeToGroup(current, group);
                 if (storedCfg.faceConfig.getOwner() == null) {
                     storedMgr.claimOwner(stored, resolveOwnerProfile(level, group, player));
                 }
-                currentMgr.addNodeToGroup(current, group);
                 storedMgr.addNodeToGroup(stored, group);
+
                 currentMgr.addLink(group.key(), current, stored);
 
                 if (settings.storedMode() == ToolMode.LINK_AS_INSERT) {
@@ -239,59 +310,103 @@ public class LinkOperationHelper {
                     if (storedIsNew) enableOutput(storedCfg, settings.selectedTypeIds());
                     if (currentIsNew) currentCfg.setGlobalInputEnabled(true);
                 }
+
+                if (!storedHadGroup) {
+                    GlobalLogisticsManager.get(level.getServer())
+                        .registerNode(group, stored, storedCfg.determineRole());
+                }
+                if (!currentHadGroup) {
+                    GlobalLogisticsManager.get(level.getServer())
+                        .registerNode(group, current, currentCfg.determineRole());
+                }
             }
             transaction.commit();
         }
 
-        TeamPacketSync.sendTopology(serverPlayer, group.key().ownerId(), List.of(
+        if (sync) TeamPacketSync.sendTopology(serverPlayer, group.key().ownerId(), List.of(
             S2CTopologyUpdatePayload.FaceUpdate.from(level, current, currentCfg),
-            S2CTopologyUpdatePayload.FaceUpdate.from(storedLevel, stored, storedCfg)));
+            S2CTopologyUpdatePayload.FaceUpdate.from(
+                storedLevel, stored, storedCfg)));
 
         return true;
     }
 
-    private static GroupRef resolveSelectedGroup(ServerLevel level, Player player,
-                                                 GroupKey selectedKey) {
-        if (selectedKey == null) throw new IllegalStateException("Selected group is required");
-        GroupRef selected = PlayerGroupStore.get(level.getServer()).findGroup(selectedKey);
-        if (selected != null) {
-            if (!GroupService.canModify(selected.key().ownerId(), player)) {
+    /// 玩家发起批量操作时已经完成一次精确视线验证。跨 tick 继续执行时只复核
+    /// 服务端方块、能力和保护权限，不能再要求玩家持续对准原连接面，否则时间
+    /// 预算切批后会随机截断剩余链接。
+    private static boolean isCurrentTargetValid(
+        ServerLevel level,
+        ServerPlayer player,
+        LogisticsNode current,
+        boolean requireDirectTarget
+    ) {
+        BlockPos pos = current.gPos().pos();
+        if (requireDirectTarget) {
+            return NodeInteractionValidator.isDirectInteractionTargetValid(
+                player, pos, current.face());
+        }
+        return player.serverLevel() == level
+            && level.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)
+            && level.getBlockEntity(pos) != null
+            && NodeInteractionValidator.canMutateRemote(player, level, pos)
+            && TransferUtils.hasLogisticsCapability(level, pos, current.face());
+    }
+
+    /// 只有面真正获得输出角色时，才使用配置器中的类型初始化输出选择。
+    private static void enableOutput(EndpointConfig config,
+                                     List<ResourceLocation> selectedTypeIds) {
+        boolean wasOutputEnabled = config.isGlobalOutputEnabled();
+        config.setGlobalOutputEnabled(true);
+        if (!wasOutputEnabled) {
+            config.setSelectedTypeIds(selectedTypeIds);
+        }
+    }
+
+    private static GroupResolution resolveSelectedGroup(
+        ServerLevel level, Player player, ItemStack stack, GroupKey selectedKey
+    ) {
+        PlayerGroupStore store = PlayerGroupStore.get(level.getServer());
+        GroupRef selected = store.findGroup(selectedKey);
+        if (selectedKey != null && selected != null) {
+            if (!PermissionService.getInstance().canModify(selected.key().ownerId(), player)) {
                 throw new IllegalArgumentException("Selected group is unavailable");
             }
-            return selected;
+            return new GroupResolution(selected, false);
         }
-        throw new IllegalArgumentException("Selected group is unavailable");
+        if (!(player instanceof ServerPlayer serverPlayer)
+            || !store.getGroupRefs(player.getUUID()).isEmpty()) {
+            throw new IllegalStateException("Selected group is required");
+        }
+        GroupRef created = new GroupCommandService(level.getServer())
+            .create(serverPlayer, FIRST_GROUP_NAME);
+        stack.set(SLDataComponents.SELECTED_GROUP.get(), created.displayName());
+        stack.set(SLDataComponents.SELECTED_GROUP_KEY.get(), created.key());
+        stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
+        syncGroupDirectory(serverPlayer, store);
+        return new GroupResolution(created, true);
     }
 
-    public static int addNodes(ItemStack stack, Collection<LogisticsNode> candidates,
-                               ToolMode mode, Player player, Level level) {
-        if (!mode.isLinkMode() || candidates == null || candidates.isEmpty()) return 0;
-        LinkedHashSet<LogisticsNode> nodes = new LinkedHashSet<>(PortItemStackExtension.getDataOrDefault(
-            stack, SLDataComponents.STORED_NODES.get(), List.of()));
-        int before = nodes.size();
-        for (LogisticsNode node : candidates) {
-            if (nodes.size() >= SLDataComponents.MAX_STORED_NODES) break;
-            nodes.add(node);
+    private static void rollbackAutomaticallyCreatedGroup(
+        ServerLevel level, Player player, ItemStack stack, GroupRef group
+    ) {
+        PlayerGroupStore store = PlayerGroupStore.get(level.getServer());
+        if (!store.removeGroup(group.key())) return;
+        if (group.key().equals(stack.get(SLDataComponents.SELECTED_GROUP_KEY.get()))) {
+            stack.set(SLDataComponents.SELECTED_GROUP.get(), "");
+            stack.remove(SLDataComponents.SELECTED_GROUP_KEY.get());
+            stack.remove(SLDataComponents.SELECTED_CONNECTION_KEY.get());
         }
-        if (nodes.size() == before) return 0;
-        if (before == 0) PortItemStackExtension.setData(
-            stack, SLDataComponents.STORED_NODES_OWNER.get(), player.getStringUUID());
-        PortItemStackExtension.setData(stack, SLDataComponents.STORED_MODE.get(), mode.getId());
-        PortItemStackExtension.setData(stack, SLDataComponents.STORED_NODES.get(), List.copyOf(nodes));
-        if (player instanceof ServerPlayer serverPlayer) serverPlayer.inventoryMenu.broadcastChanges();
-        level.playSound(null, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.value(),
-            SoundSource.PLAYERS, 0.8F, 1.5F);
-        return nodes.size() - before;
+        if (player instanceof ServerPlayer serverPlayer) {
+            syncGroupDirectory(serverPlayer, store);
+        }
     }
 
-    /**
-     * 只有面首次获得输出角色时，才使用配置器中的类型初始化输出选择。
-     */
-    private static void enableOutput(FaceConfigComposite config,
-                                     List<ResourceLocation> selectedTypeIds) {
-        boolean wasEnabled = config.isGlobalOutputEnabled();
-        config.setGlobalOutputEnabled(true);
-        if (!wasEnabled) config.setSelectedTypeIds(selectedTypeIds);
+    private static void syncGroupDirectory(ServerPlayer player, PlayerGroupStore store) {
+        TeamPacketSync.send(player, player.getUUID(), new S2CGroupDirectoryPayload(
+            player.getUUID(), store.getGroupRefs(player.getUUID())));
+    }
+
+    private record GroupResolution(GroupRef group, boolean automaticallyCreated) {
     }
 
     private static GameProfile resolveOwnerProfile(ServerLevel level, GroupRef group, Player actor) {

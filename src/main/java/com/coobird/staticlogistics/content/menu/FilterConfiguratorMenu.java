@@ -1,13 +1,12 @@
 package com.coobird.staticlogistics.content.menu;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.UpgradeItem;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.filter.FilterData;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.node.NodeMutationService;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
@@ -30,6 +29,7 @@ import org.mesdag.portlib.network.PortRegistryFriendlyByteBuf;
 public class FilterConfiguratorMenu extends AbstractFilterMenu {
     private final BlockPos pos;
     private final Direction face;
+    private final int channel;
     private final ResourceKey<Level> targetDimension;
     private final GroupKey groupKey;
     private final LogisticsResource<?> transferType;
@@ -40,17 +40,18 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
                                   GroupKey groupKey, LogisticsResource<?> type,
                                   boolean isInput, ItemStack upgradeStack) {
         this(containerId, inv, node.gPos().pos(), node.face(), node.gPos().dimension(),
-            groupKey, type, isInput, upgradeStack);
+            groupKey, node.channel(), type, isInput, upgradeStack);
     }
 
     private FilterConfiguratorMenu(int containerId, Inventory inv, BlockPos pos, Direction face,
                                    ResourceKey<Level> targetDimension,
-                                   GroupKey groupKey,
+                                   GroupKey groupKey, int channel,
                                    LogisticsResource<?> type, boolean isInput,
                                    ItemStack upgradeStack) {
         super(SLMenuTypes.FILTER_CONFIG.get(), containerId, upgradeStack);
         this.pos = pos;
         this.face = face;
+        this.channel = channel;
         this.targetDimension = targetDimension;
         this.groupKey = groupKey;
         this.transferType = type;
@@ -62,16 +63,17 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
     public static FilterConfiguratorMenu fromBuffer(int containerId, Inventory inv, FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
         Direction face = buf.readEnum(Direction.class);
+        int channel = buf.readVarInt();
         LogisticsResource<?> type = TransferRegistries.get(buf.readResourceLocation());
         boolean isInput = buf.readBoolean();
-        ItemStack upgradeStack = buf.readItem();
-        PortItemStackExtension.setData(upgradeStack, SLDataComponents.FILTER_DATA.get(),
+        ItemStack upgradeStack = ItemStack.STREAM_CODEC.decode((PortRegistryFriendlyByteBuf) buf);
+        upgradeStack.set(SLDataComponents.FILTER_DATA.get(),
             FilterData.STREAM_CODEC.decode((PortRegistryFriendlyByteBuf) buf));
         if (type == null) throw new IllegalArgumentException("Unknown transfer type");
         ResourceKey<Level> dimension = ResourceKey.create(
             Registries.DIMENSION, buf.readResourceLocation());
         GroupKey groupKey = GroupKey.STREAM_CODEC.decode((PortRegistryFriendlyByteBuf) buf);
-        return new FilterConfiguratorMenu(containerId, inv, pos, face, dimension, groupKey,
+        return new FilterConfiguratorMenu(containerId, inv, pos, face, dimension, groupKey, channel,
             type, isInput, upgradeStack);
     }
 
@@ -93,7 +95,7 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
     }
 
     public LogisticsNode getTargetNode() {
-        return new LogisticsNode(GlobalPos.of(targetDimension, pos), face);
+        return new LogisticsNode(GlobalPos.of(targetDimension, pos), face, channel);
     }
 
     public GroupKey getRemoteGroupKey() {
@@ -115,27 +117,20 @@ public class FilterConfiguratorMenu extends AbstractFilterMenu {
         return stack.getItem() instanceof UpgradeItem upgrade && upgrade.isFilterUpgrade();
     }
 
-    /**
-     * 过滤器编辑会话始终绑定打开时的那件权威物品；槽位被替换后旧窗口立即失效。
-     */
-    public boolean matchesInstalledFilter(FaceConfigComposite config) {
+    /// 过滤器编辑会话始终绑定打开时的那件权威物品；槽位被替换后旧窗口立即失效。
+    public boolean matchesInstalledFilter(EndpointConfig config) {
         if (config == null) return false;
-        ItemStack installed = config.filterConfig.getUpgrades().getStackInSlot(isInput ? 0 : 1);
+        ItemStack installed = config.filterConfig.getUpgrades().getStackInSlot(0);
         return installed == upgradeStack && isValidFilterUpgrade(installed);
     }
 
-    /**
-     * 将客户端编辑结果同时提交到面配置权威栈和当前菜单同步状态。
-     */
+    /// 将客户端编辑结果同时提交到面配置权威栈和当前菜单同步状态。
     public void commitFilterData(FilterData filter, ItemStack authoritativeStack) {
         FilterData normalized = filter.normalizedFor(getActiveUpgradeType());
-        PortItemStackExtension.setData(
-            authoritativeStack, SLDataComponents.FILTER_DATA.get(), normalized);
+        authoritativeStack.set(SLDataComponents.FILTER_DATA.get(), normalized);
         if (upgradeStack != authoritativeStack) {
-            PortItemStackExtension.setData(
-                upgradeStack, SLDataComponents.FILTER_DATA.get(), normalized);
+            upgradeStack.set(SLDataComponents.FILTER_DATA.get(), normalized);
         }
-        syncFromStack(upgradeStack);
         broadcastChanges();
     }
 

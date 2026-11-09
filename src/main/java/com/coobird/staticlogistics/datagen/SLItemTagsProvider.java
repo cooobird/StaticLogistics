@@ -2,11 +2,12 @@ package com.coobird.staticlogistics.datagen;
 
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.content.registry.SLItems;
-import com.coobird.staticlogistics.content.registry.SLTags;
-import mekanism.common.tags.MekanismTags;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.tags.ItemTagsProvider;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraftforge.common.Tags;
 import net.minecraftforge.common.data.ExistingFileHelper;
@@ -30,9 +31,8 @@ public class SLItemTagsProvider extends ItemTagsProvider {
 
     @Override
     protected void addTags(HolderLookup.@NotNull Provider provider) {
-        tag(SLTags.Items.TOOLS_WRENCH).add(SLItems.LINK_CONFIGURATOR.get());
-        tag(SLTags.Items.TOOLS_WIRE_CUTTERS).add(SLItems.LINK_CONFIGURATOR.get());
+        tag(TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("forge", "tools/wrench"))).add(SLItems.LINK_CONFIGURATOR.get());
         tag(Tags.Items.TOOLS).add(SLItems.LINK_CONFIGURATOR.get());
-        tag(MekanismTags.Items.CONFIGURATORS).add(SLItems.LINK_CONFIGURATOR.get());
+        tag(TagKey.create(Registries.ITEM, ResourceLocation.fromNamespaceAndPath("mekanism", "configurators"))).add(SLItems.LINK_CONFIGURATOR.get());
     }
 }

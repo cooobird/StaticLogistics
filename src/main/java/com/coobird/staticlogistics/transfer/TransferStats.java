@@ -4,22 +4,22 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 
 import java.util.*;
 
-/**
- * 服务器会话内的传输累计统计。
- */
+/// 服务器会话内的传输累计统计。
+/// 传输、命令和 Jade 查询均在服务器主线程执行，因此这里使用普通计数器和集合。
+/// 统计不会写入世界存档，服务器重启或执行重置命令后从零开始。
 class TransferStats {
     private long totalTransfers;
     private long totalAmount;
     private long failedTransfers;
 
     private final Map<String, TypeStats> perType = new HashMap<>();
-    private static final int MAX_NODE_STATS = 500;
-    private final Map<LogisticsNode, NodeStats> perNode = new LinkedHashMap<>(16, 0.75F, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<LogisticsNode, NodeStats> eldest) {
-            return size() > MAX_NODE_STATS;
-        }
-    };
+    /// 节点统计是会话累计数据，不按访问顺序淘汰；删除节点时显式释放。
+    /// 避免网络超过 500 个节点后，每轮都丢弃旧计数并重建速率数组。
+    private final Map<LogisticsNode, NodeStats> perNode = new HashMap<>();
+
+    void removeNode(LogisticsNode node) {
+        perNode.remove(node);
+    }
 
     void incrementTotal(long amount) {
         totalTransfers = saturatedAdd(totalTransfers, 1);
@@ -92,15 +92,15 @@ class TransferStats {
         return stats == null ? null : stats.snapshotAt(currentTick);
     }
 
-    List<Map.Entry<LogisticsNode, NodeStats>> getTopNodes(int count, boolean bySent) {
-        if (count <= 0) return List.of();
+    List<Map.Entry<LogisticsNode, NodeStats>> getTopNodes(int n, boolean bySent) {
+        if (n <= 0) return List.of();
         return perNode.entrySet().stream()
-            .sorted((leftEntry, rightEntry) -> {
-                long left = bySent ? leftEntry.getValue().sentCount : leftEntry.getValue().receivedCount;
-                long right = bySent ? rightEntry.getValue().sentCount : rightEntry.getValue().receivedCount;
+            .sorted((a, b) -> {
+                long left = bySent ? a.getValue().sentCount : a.getValue().receivedCount;
+                long right = bySent ? b.getValue().sentCount : b.getValue().receivedCount;
                 return Long.compare(right, left);
             })
-            .limit(count)
+            .limit(n)
             .<Map.Entry<LogisticsNode, NodeStats>>map(entry ->
                 new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), entry.getValue().copy()))
             .toList();

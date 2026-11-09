@@ -1,182 +1,187 @@
 package com.coobird.staticlogistics.logistics.filter;
 
-import PortLib.extensions.net.minecraft.world.item.ItemStack.PortItemStackExtension;
 import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.transfer.UpgradeType;
-import net.minecraft.tags.TagKey;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
+import com.coobird.staticlogistics.logistics.node.FilterConfig;
+import net.minecraft.nbt.NumericTag;
 import net.minecraft.world.item.BucketItem;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
-import javax.annotation.Nullable;
+import java.math.BigDecimal;
 import java.util.*;
-import java.util.stream.Collectors;
 
-public class FilterEvaluator {
-
-    private record CompiledItemFilters(
-        Set<Item> basicItems,
-        Set<TagKey<Item>> whitelistTags,
-        Set<TagKey<Item>> blacklistTags,
-        ItemStack nbtTemplate,
-        BasicLogisticsFilter basicFilter,
-        TagLogisticsFilter tagFilter,
-        NbtLogisticsFilter nbtFilter
-    ) {
+public final class FilterEvaluator {
+    private FilterEvaluator() {
     }
 
-    private record CompiledFluidFilters(
-        Set<Fluid> fluids,
-        Set<TagKey<Fluid>> whitelistTags,
-        Set<TagKey<Fluid>> blacklistTags,
-        BasicLogisticsFilter basicFilter,
-        TagLogisticsFilter tagFilter
-    ) {
+    private record Compiled(FilterData source, int tagGeneration, Map<String, ItemStack> items,
+                            Map<String, Fluid> fluids,
+                            Map<String, List<CompiledFilterRule>> rules,
+                            Map<String, List<CompiledFilterRule>> itemRules) {
     }
 
-    private static final Map<FilterData, CompiledItemFilters> ITEM_FILTER_CACHE =
-        Collections.synchronizedMap(new WeakHashMap<>(64));
-    private static final Map<FilterData, CompiledFluidFilters> FLUID_FILTER_CACHE =
-        Collections.synchronizedMap(new WeakHashMap<>(64));
+    private static final Map<FilterConfig, Compiled> CACHE = Collections.synchronizedMap(new WeakHashMap<>());
 
-    private static CompiledItemFilters compileItemFilters(FilterData filter) {
-        return ITEM_FILTER_CACHE.computeIfAbsent(filter, data -> {
-            Set<Item> items = data.items().values().stream()
-                .filter(stack -> !stack.isEmpty())
-                .map(ItemStack::getItem)
-                .collect(Collectors.toUnmodifiableSet());
-            Set<TagKey<Item>> whitelist = data.tagSlots().values().stream()
-                .flatMap(Set::stream).collect(Collectors.toUnmodifiableSet());
-            Set<TagKey<Item>> blacklist = data.excludedTagSlots().values().stream()
-                .flatMap(Set::stream).collect(Collectors.toUnmodifiableSet());
-            ItemStack template = data.items().values().stream()
-                .filter(stack -> !stack.isEmpty()).findFirst().orElse(ItemStack.EMPTY);
-            return new CompiledItemFilters(items, whitelist, blacklist, template,
-                new BasicLogisticsFilter(items, Collections.emptySet(), true),
-                new TagLogisticsFilter(whitelist, blacklist,
-                    Collections.emptySet(), Collections.emptySet(), true),
-                new NbtLogisticsFilter(template, data.nbtMatchMode(), true, data.ignoreDamage()));
-        });
-    }
-
-    private static CompiledFluidFilters compileFluidFilters(FilterData filter) {
-        return FLUID_FILTER_CACHE.computeIfAbsent(filter, data -> {
-            Set<Fluid> fluids = new HashSet<>(data.fluids().values());
-            for (ItemStack stack : data.items().values()) {
-                if (!stack.isEmpty() && stack.getItem() instanceof BucketItem bucket) {
-                    fluids.add(bucket.getFluid());
+    private static Compiled compiled(EndpointConfig config, FilterData data) {
+        return CACHE.compute(config.filterConfig, (owner, previous) -> {
+            if (previous != null && previous.source() == data && previous.tagGeneration() == FilterTagRegistry.generation())
+                return previous;
+            Map<String, ItemStack> items = data.items();
+            Map<String, Fluid> fluids = new HashMap<>(data.fluids());
+            items.forEach((slot, stack) -> {
+                if (stack.getItem() instanceof BucketItem bucket) fluids.put(slot, bucket.getFluid());
+            });
+            Map<String, List<CompiledFilterRule>> rules = new HashMap<>();
+            Map<String, List<CompiledFilterRule>> itemRules = new HashMap<>();
+            data.rules().forEach((slot, values) -> {
+                List<CompiledFilterRule> parsed = values.stream().map(CompiledFilterRule::new).toList();
+                rules.put(slot, parsed);
+                Set<String> overridden = new HashSet<>();
+                for (CompiledFilterRule rule : parsed) {
+                    if (rule.source().kind() == FilterRule.Kind.NUMERIC) overridden.add(rule.componentId());
+                    if (rule.source().kind() == FilterRule.Kind.DURABILITY) overridden.add("Damage");
                 }
-            }
-            Set<TagKey<Fluid>> whitelist = data.fluidFilterTags().values().stream()
-                .flatMap(Set::stream).collect(Collectors.toUnmodifiableSet());
-            Set<TagKey<Fluid>> blacklist = data.excludedFluidTags().values().stream()
-                .flatMap(Set::stream).collect(Collectors.toUnmodifiableSet());
-            return new CompiledFluidFilters(fluids, whitelist, blacklist,
-                new BasicLogisticsFilter(Collections.emptySet(), fluids, true),
-                new TagLogisticsFilter(Collections.emptySet(), Collections.emptySet(),
-                    whitelist, blacklist, true));
+                List<CompiledFilterRule> effective = new ArrayList<>();
+                for (CompiledFilterRule rule : parsed) {
+                    FilterRule source = rule.source();
+                    if (source.kind() == FilterRule.Kind.COMPONENT && source.mode() != FilterRule.Mode.MATCH
+                        && overridden.contains(source.key())) continue;
+                    effective.add(rule);
+                }
+                itemRules.put(slot, List.copyOf(effective));
+            });
+            return new Compiled(data, FilterTagRegistry.generation(), items, Map.copyOf(fluids), Map.copyOf(rules), Map.copyOf(itemRules));
         });
     }
 
-    private record FilterDataWithType(FilterData filter, @Nullable UpgradeType type) {
-        private FilterDataWithType(FilterData filter, @Nullable UpgradeType type) {
-            this.filter = Objects.requireNonNull(filter);
-            this.type = type;
+    private static FilterData data(EndpointConfig config) {
+        ItemStack stack = config.filterConfig.getUpgrades().getStackInSlot(0);
+        if (!(stack.getItem() instanceof LogisticsUpgrade upgrade) || !upgrade.isFilterUpgrade())
+            return FilterData.EMPTY;
+        return stack.getOrDefault(SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
+    }
+
+    static boolean itemRule(ItemStack sample, ItemStack target, CompiledFilterRule compiled) {
+        FilterRule rule = compiled.source();
+        boolean result;
+        if (rule.kind() == FilterRule.Kind.NUMERIC) {
+            if (!ItemStack.isSameItem(sample, target)) return false;
+            var raw = NbtRuleValues.get(target, compiled.componentId());
+            if (!(raw instanceof NumericTag numeric)) return false;
+            Number number = numeric.getAsNumber();
+            if (number instanceof Float || number instanceof Double) {
+                double actual = number.doubleValue();
+                double expected = compiled.floatingValue();
+                return switch (compiled.operator()) {
+                    case "gt" -> actual > expected;
+                    case "lt" -> actual < expected;
+                    case "eq" -> actual == expected;
+                    default -> false;
+                };
+            }
+            int comparison = new BigDecimal(number.toString()).compareTo(compiled.numericValue());
+            return switch (compiled.operator()) {
+                case "gt" -> comparison > 0;
+                case "lt" -> comparison < 0;
+                case "eq" -> comparison == 0;
+                default -> false;
+            };
         }
-    }
-
-    public static boolean isItemOutputAllowed(ItemStack stack, FaceConfigComposite config) {
-        if (!config.isGlobalOutputEnabled()) return false;
-        FilterDataWithType fwt = getFilterDataFromSlot(config, false);
-        if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
-        return testItemFilters(stack, fwt.filter, fwt.type);
-    }
-
-    public static boolean isItemInputAllowed(ItemStack stack, FaceConfigComposite config) {
-        if (!config.isGlobalInputEnabled()) return false;
-        FilterDataWithType fwt = getFilterDataFromSlot(config, true);
-        if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
-        return testItemFilters(stack, fwt.filter, fwt.type);
-    }
-
-    public static boolean isFluidOutputAllowed(FluidStack stack, FaceConfigComposite config) {
-        if (!config.isGlobalOutputEnabled()) return false;
-        FilterDataWithType fwt = getFilterDataFromSlot(config, false);
-        if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
-        return testFluidFilters(stack, fwt.filter, fwt.type);
-    }
-
-    public static boolean isFluidInputAllowed(FluidStack stack, FaceConfigComposite config) {
-        if (!config.isGlobalInputEnabled()) return false;
-        FilterDataWithType fwt = getFilterDataFromSlot(config, true);
-        if (fwt.filter == FilterData.EMPTY || fwt.type == null) return true;
-        return testFluidFilters(stack, fwt.filter, fwt.type);
-    }
-
-    private static FilterDataWithType getFilterDataFromSlot(FaceConfigComposite config, boolean isInput) {
-        int slot = isInput ? 0 : 1;
-        ItemStack upgradeStack = config.filterConfig.getUpgrades().getStackInSlot(slot);
-        if (upgradeStack.isEmpty() || !(upgradeStack.getItem() instanceof LogisticsUpgrade)) {
-            return new FilterDataWithType(FilterData.EMPTY, null);
+        if (rule.kind() == FilterRule.Kind.DURABILITY) {
+            if (!ItemStack.isSameItem(sample, target) || !target.isDamageableItem()) return false;
+            long remaining = target.getMaxDamage() - target.getDamageValue();
+            long value = compiled.durabilityValue();
+            if (compiled.percent()) {
+                remaining *= 100;
+                value *= target.getMaxDamage();
+            }
+            return switch (compiled.operator()) {
+                case "gt" -> remaining > value;
+                case "lt" -> remaining < value;
+                case "eq" -> remaining == value;
+                default -> false;
+            };
         }
-        UpgradeType type = ((LogisticsUpgrade) upgradeStack.getItem()).getType();
-        if (type != UpgradeType.BASIC_FILTER && type != UpgradeType.TAG_FILTER && type != UpgradeType.NBT_FILTER) {
-            return new FilterDataWithType(FilterData.EMPTY, null);
+        if (rule.kind() == FilterRule.Kind.NORMAL) {
+            result = ItemStack.isSameItem(sample, target);
+        } else if (rule.kind() == FilterRule.Kind.TAG) {
+            if (!compiled.tagAvailable()) return false;
+            result = compiled.itemTag().test(target);
+        } else if (rule.mode() == FilterRule.Mode.MATCH) {
+            result = ItemStack.isSameItemSameTags(sample, target);
+        } else {
+            result = NbtRuleValues.matchesSelected(sample, target, compiled.componentId());
         }
-        FilterData data = PortItemStackExtension.getDataOrDefault(upgradeStack, SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY);
-        return new FilterDataWithType(data, type);
+        boolean matches = (rule.mode() == FilterRule.Mode.INVERT) != result;
+        return rule.kind() == FilterRule.Kind.COMPONENT ? ItemStack.isSameItem(sample, target) && matches : matches;
     }
 
-    private static boolean testItemFilters(ItemStack stack, FilterData filter, UpgradeType upgradeType) {
-        Objects.requireNonNull(filter, "filter must not be null");
-        Objects.requireNonNull(upgradeType, "upgradeType must not be null");
-
-        boolean useBasic = upgradeType == UpgradeType.BASIC_FILTER;
-        boolean useTag = upgradeType == UpgradeType.TAG_FILTER;
-        boolean useNbt = upgradeType == UpgradeType.NBT_FILTER;
-
-        CompiledItemFilters compiled = compileItemFilters(filter);
-        boolean hasBasicFilter = useBasic && !compiled.basicItems().isEmpty();
-        boolean hasTagFilter = useTag
-            && (!compiled.whitelistTags().isEmpty() || !compiled.blacklistTags().isEmpty());
-        boolean hasNbtFilter = useNbt && !compiled.nbtTemplate().isEmpty();
-
-        if (!hasBasicFilter && !hasTagFilter && !hasNbtFilter) return true;
-
-        boolean isBlacklist = filter.isBlacklist();
-
-        boolean basicPass = !hasBasicFilter || compiled.basicFilter().test(stack, isBlacklist);
-        boolean tagPass = !hasTagFilter || compiled.tagFilter().test(stack, isBlacklist);
-        boolean nbtPass = !hasNbtFilter || compiled.nbtFilter().test(stack, isBlacklist);
-
-        return basicPass && tagPass && nbtPass;
+    private static boolean testItem(ItemStack stack, EndpointConfig config) {
+        FilterData filter = data(config);
+        Compiled compiled = compiled(config, filter);
+        Map<String, ItemStack> samples = compiled.items();
+        if (samples.isEmpty()) return true;
+        boolean hasWhitelist = false;
+        boolean matchedWhitelist = false;
+        for (var entry : samples.entrySet()) {
+            boolean blacklist = filter.blacklist().getOrDefault(entry.getKey(), false);
+            if (!blacklist) hasWhitelist = true;
+            ItemStack sample = entry.getValue();
+            List<CompiledFilterRule> rules = compiled.itemRules().getOrDefault(entry.getKey(), List.of());
+            boolean accepts = rules.isEmpty() ? ItemStack.isSameItem(sample, stack)
+                : rules.stream().allMatch(rule -> itemRule(sample, stack, rule));
+            if (accepts && blacklist) return false;
+            if (accepts) matchedWhitelist = true;
+        }
+        return !hasWhitelist || matchedWhitelist;
     }
 
-    private static boolean testFluidFilters(FluidStack stack, FilterData filter, UpgradeType upgradeType) {
-        Objects.requireNonNull(filter, "filter must not be null");
-        Objects.requireNonNull(upgradeType, "upgradeType must not be null");
-
-        boolean useBasic = upgradeType == UpgradeType.BASIC_FILTER;
-        boolean useTag = upgradeType == UpgradeType.TAG_FILTER;
-
-        CompiledFluidFilters compiled = compileFluidFilters(filter);
-        boolean hasBasicFilter = useBasic && !compiled.fluids().isEmpty();
-        boolean hasTagFilter = useTag
-            && (!compiled.whitelistTags().isEmpty() || !compiled.blacklistTags().isEmpty());
-
-        if (!hasBasicFilter && !hasTagFilter) return true;
-
-        boolean isBlacklist = filter.isBlacklist();
-
-        boolean basicPass = !hasBasicFilter || compiled.basicFilter().test(stack, isBlacklist);
-        boolean tagPass = !hasTagFilter || compiled.tagFilter().test(stack, isBlacklist);
-
-        return basicPass && tagPass;
+    static boolean fluidRule(Fluid sample, Fluid target, CompiledFilterRule compiled) {
+        FilterRule rule = compiled.source();
+        boolean result;
+        if (rule.kind() == FilterRule.Kind.TAG) {
+            if (!compiled.tagAvailable()) return false;
+            result = compiled.fluidTag().test(target);
+        } else result = sample == target;
+        return (rule.mode() == FilterRule.Mode.INVERT) != result;
     }
 
+    private static boolean testFluid(FluidStack stack, EndpointConfig config) {
+        FilterData filter = data(config);
+        Compiled compiled = compiled(config, filter);
+        Fluid fluid = stack.getFluid();
+        Map<String, Fluid> samples = compiled.fluids();
+        if (samples.isEmpty()) return true;
+        boolean hasWhitelist = false;
+        boolean matchedWhitelist = false;
+        for (var entry : samples.entrySet()) {
+            boolean blacklist = filter.blacklist().getOrDefault(entry.getKey(), false);
+            if (!blacklist) hasWhitelist = true;
+            List<CompiledFilterRule> rules = compiled.rules().getOrDefault(entry.getKey(), List.of());
+            boolean accepts = rules.isEmpty() ? entry.getValue() == fluid
+                : rules.stream().allMatch(rule -> fluidRule(entry.getValue(), fluid, rule));
+            if (accepts && blacklist) return false;
+            if (accepts) matchedWhitelist = true;
+        }
+        return !hasWhitelist || matchedWhitelist;
+    }
 
+    public static boolean isItemOutputAllowed(ItemStack stack, EndpointConfig config) {
+        return config.isGlobalOutputEnabled() && testItem(stack, config);
+    }
+
+    public static boolean isItemInputAllowed(ItemStack stack, EndpointConfig config) {
+        return config.isGlobalInputEnabled() && testItem(stack, config);
+    }
+
+    public static boolean isFluidOutputAllowed(FluidStack stack, EndpointConfig config) {
+        return config.isGlobalOutputEnabled() && testFluid(stack, config);
+    }
+
+    public static boolean isFluidInputAllowed(FluidStack stack, EndpointConfig config) {
+        return config.isGlobalInputEnabled() && testFluid(stack, config);
+    }
 }

@@ -2,9 +2,9 @@ package com.coobird.staticlogistics.logistics.blueprint;
 
 import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
-import com.coobird.staticlogistics.transfer.UpgradeTier;
 import com.coobird.staticlogistics.transfer.UpgradeType;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -14,9 +14,7 @@ import net.minecraftforge.items.ItemStackHandler;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * 对来自物品组件或旧存档的蓝图数据执行边界与内容校验。
- */
+/// 对来自物品组件或旧存档的蓝图数据执行边界与内容校验。
 public final class BlueprintDataValidator {
     public static final int MAX_BLUEPRINT_VOLUME = 4096;
     public static final int MAX_UNDO_WORK_ITEMS = 65_536;
@@ -24,7 +22,7 @@ public final class BlueprintDataValidator {
     private BlueprintDataValidator() {
     }
 
-    public static boolean isValid(BlueprintData data) {
+    public static boolean isValid(BlueprintData data, HolderLookup.Provider provider) {
         if (data.schemaVersion() != BlueprintData.CURRENT_SCHEMA_VERSION) return false;
         try {
             GroupConstraints.normalizeName(data.groupId());
@@ -37,9 +35,9 @@ public final class BlueprintDataValidator {
         int totalFaces = 0;
         int totalLinks = 0;
         for (BlueprintData.BlockEntry entry : data.blocks()) {
-            if (entry == null || !positions.add(entry.relativePos()) || entry.faces().size() > 6) return false;
+            if (entry == null || !positions.add(entry.relativePos())) return false;
             if (entry.linkedTo().size() > BlueprintData.MAX_LINKS_PER_FACE) return false;
-            if (!isUpgradeDataValid(entry.containerUpgrades(), false)) return false;
+            if (!isUpgradeDataValid(entry.containerUpgrades(), provider, false)) return false;
             BlockPos relative = entry.relativePos();
             if (Math.abs((long) relative.getX()) > MAX_BLUEPRINT_VOLUME
                 || Math.abs((long) relative.getY()) > MAX_BLUEPRINT_VOLUME
@@ -48,20 +46,24 @@ public final class BlueprintDataValidator {
             if (totalFaces > BlueprintData.MAX_BLOCKS * 6) return false;
             for (BlueprintData.FaceEntry face : entry.faces().values()) {
                 if (face == null || face.linkedTo().size() > BlueprintData.MAX_LINKS_PER_FACE) return false;
-                if (!isUpgradeDataValid(face.filterUpgrades(), true)) return false;
+                if (!isUpgradeDataValid(face.filterUpgrades(), provider, true)) return false;
+                /// 旧蓝图的方块级链接会由每个未携带精确链接的面分别迁移，必须按面计入上限。
                 totalLinks += face.linkedTo().isEmpty()
                     ? entry.linkedTo().size() : face.linkedTo().size();
                 if (totalLinks > BlueprintData.MAX_BLOCKS * 6) return false;
             }
         }
+        /// 每条链接除自身外，最坏还会引入目标面版本快照；额外保留一份余量，
+        /// 使这里始终是撤销快照工作量的保守上界。
         long estimatedUndoWork = (long) data.blocks().size() * 2L
             + (long) totalFaces * 3L + (long) totalLinks * 3L;
         return estimatedUndoWork <= MAX_UNDO_WORK_ITEMS;
     }
 
-    private static boolean isUpgradeDataValid(CompoundTag tag, boolean filter) {
+    private static boolean isUpgradeDataValid(CompoundTag tag, HolderLookup.Provider provider, boolean filter) {
         if (tag == null || tag.isEmpty()) return true;
-        int slotCount = filter ? 2 : 3;
+        int slotCount = 1;
+        if (tag.getInt("Size") != slotCount) return false;
         ListTag rawItems = tag.getList("Items", Tag.TAG_COMPOUND);
         if (rawItems.size() > slotCount) return false;
         boolean[] seenSlots = new boolean[slotCount];
@@ -84,15 +86,11 @@ public final class BlueprintDataValidator {
                 || stack.getCount() <= 0 || stack.getCount() > stack.getMaxStackSize()) return false;
             if (filter) {
                 if (!upgrade.isFilterUpgrade() || stack.getCount() > 1) return false;
-            } else if (slot == 0 && upgrade.getType() != UpgradeType.SPEED
-                || slot == 1 && upgrade.getType() != UpgradeType.RANGE
-                && upgrade.getType() != UpgradeType.DIMENSION
-                || slot == 2 && upgrade.getType() != UpgradeType.STACK) {
+            } else if (upgrade.getType() != UpgradeType.COMBINED || upgrade.getTier() == null || stack.getCount() != 1) {
                 return false;
             }
-            if (!filter && (upgrade.getTier() == UpgradeTier.NETHER_STAR
-                || upgrade.getType() == UpgradeType.DIMENSION) && stack.getCount() > 1) return false;
         }
         return true;
     }
+
 }

@@ -7,9 +7,11 @@ import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.mojang.logging.LogUtils;
 import mekanism.api.heat.IHeatHandler;
+import mekanism.common.capabilities.Capabilities;
 import mekanism.common.registries.MekanismBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -17,13 +19,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 通过 {@link mekanism.common.capabilities.Capabilities#HEAT_HANDLER} 访问 Mekanism 热量。
- * 热量使用 double，多电容按比例分配提取量。
- */
+/// 通过 {@link Capabilities#HEAT_HANDLER} 访问 Mekanism 热量。
+/// 热量使用 double，多电容按比例分配提取量。
 public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("mek_heat");
@@ -39,6 +39,11 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.heat");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.mek_heat";
     }
@@ -49,7 +54,7 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getMekHeatStack;
     }
 
@@ -63,7 +68,7 @@ public class MekanismHeatResource implements LogisticsResource<IHeatHandler> {
         BlockEntity be = level.getBlockEntity(pos);
         if (be == null) return null;
         return CapabilityCache.get(
-            level, pos, face, mekanism.common.capabilities.Capabilities.HEAT_HANDLER);
+            level, pos, face, Capabilities.HEAT_HANDLER);
     }
 
     @Override
