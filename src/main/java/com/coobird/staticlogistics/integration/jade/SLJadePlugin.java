@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.integration.jade;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.PermissionService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.transfer.NodeQueryService;
 import com.coobird.staticlogistics.transfer.NodeQuerySnapshot;
@@ -12,6 +13,7 @@ import com.coobird.staticlogistics.transfer.TransferTypeDisplay;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -31,9 +33,7 @@ import snownee.jade.api.ui.IElementHelper;
 
 import java.util.ArrayList;
 
-/**
- * Jade 集成：指向有物流连接的方块时显示面数据。
- */
+/// Jade 集成：指向有物流连接的方块时显示面数据。
 @WailaPlugin(StaticLogistics.MODID)
 public class SLJadePlugin implements IWailaPlugin {
 
@@ -64,26 +64,29 @@ public class SLJadePlugin implements IWailaPlugin {
             if (!(level instanceof ServerLevel serverLevel)) return;
             BlockPos pos = be.getBlockPos();
 
-            // 获取玩家手持配置器的选中组
+            /// 获取玩家手持配置器的选中组
             var player = accessor.getPlayer();
             String selectedGroup = "";
+            int selectedChannel = 0;
             GroupKey selectedGroupKey = null;
             if (player != null) {
                 ItemStack mainHand = player.getMainHandItem();
                 if (mainHand.getItem() instanceof LinkConfiguratorItem) {
                     selectedGroup = mainHand.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
                     selectedGroupKey = mainHand.get(SLDataComponents.SELECTED_GROUP_KEY.get());
+                    selectedChannel = LinkConfiguratorItem.selectedChannel(mainHand);
                 }
                 if (selectedGroup.isEmpty()) {
                     ItemStack offHand = player.getOffhandItem();
                     if (offHand.getItem() instanceof LinkConfiguratorItem) {
                         selectedGroup = offHand.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
                         selectedGroupKey = offHand.get(SLDataComponents.SELECTED_GROUP_KEY.get());
+                        selectedChannel = LinkConfiguratorItem.selectedChannel(offHand);
                     }
                 }
             }
 
-            // 没有选中组则不显示
+            /// 没有选中组则不显示
             if (selectedGroup.isEmpty()) return;
             if (selectedGroupKey == null) {
                 if (player == null) return;
@@ -96,15 +99,16 @@ public class SLJadePlugin implements IWailaPlugin {
             CompoundTag facesTag = new CompoundTag();
 
             for (Direction face : Direction.values()) {
-                NodeQuerySnapshot snapshot = NodeQueryService.query(serverLevel, pos, face).orElse(null);
+                NodeQuerySnapshot snapshot = NodeQueryService.query(serverLevel, new LogisticsNode(GlobalPos.of(serverLevel.dimension(), pos), face, selectedChannel)).orElse(null);
                 if (snapshot == null) continue;
-                if (player == null || !GroupService.canAccess(snapshot.ownerId(), player)) continue;
-                // 只显示属于选中组的面
+                if (player == null || !PermissionService.getInstance().canAccess(snapshot.ownerId(), player)) continue;
+                /// 只显示属于选中组的面
                 if (!snapshot.groupKeys().contains(selectedGroupKey)) continue;
 
                 CompoundTag faceTag = new CompoundTag();
                 String groups = String.join(", ", snapshot.groups());
                 faceTag.putString("groups", groups);
+                faceTag.putInt("channel", selectedChannel);
 
                 if (snapshot.outputEnabled() && snapshot.inputEnabled()) {
                     faceTag.putString("role", "both");
@@ -125,18 +129,18 @@ public class SLJadePlugin implements IWailaPlugin {
                 faceTag.put("output_type_ids", outputTypes);
                 faceTag.put("accepted_type_ids", acceptedTypes);
                 faceTag.putInt("linked", snapshot.linkedNodes().size());
-                int keepStock = snapshot.keepStock();
-                if (keepStock > 0) faceTag.putInt("keep_stock", keepStock);
+                long keepStock = snapshot.keepStock();
+                if (keepStock > 0) faceTag.putLong("keep_stock", keepStock);
 
-                // 策略、优先级、所有者
+                /// 策略、优先级、所有者
                 faceTag.putString("strategy", snapshot.strategyDescriptionId());
                 faceTag.putString("extraction_mode", snapshot.extractionDescriptionId());
-                faceTag.putInt("priority", snapshot.priority());
+                faceTag.putLong("priority", snapshot.priority());
                 if (snapshot.ownerId() != null) {
                     faceTag.putString("owner", snapshot.ownerName());
                 }
 
-                // 传输统计
+                /// 传输统计
                 faceTag.putLong("sent", snapshot.sentAmount());
                 faceTag.putLong("received", snapshot.receivedAmount());
                 faceTag.putDouble("rate", snapshot.transfersPerMinute());
@@ -179,7 +183,7 @@ public class SLJadePlugin implements IWailaPlugin {
             CompoundTag facesTag = tag.getCompound("sl_faces");
             if (facesTag.isEmpty()) return;
 
-            // 只显示玩家指向的那个面
+            /// 只显示玩家指向的那个面
             Direction hitFace = accessor.getHitResult().getDirection();
             CompoundTag faceTag = facesTag.getCompound(hitFace.getSerializedName());
             if (faceTag == null || faceTag.isEmpty()) return;
@@ -195,34 +199,34 @@ public class SLJadePlugin implements IWailaPlugin {
 
             ITooltip boxContent = IElementHelper.get().tooltip();
 
-            // 面名 + 角色 + 组
+            /// 面名 + 角色 + 组
             String groups = faceTag.getString("groups");
             int linked = faceTag.getInt("linked");
             String linkedStr = linked > 0
                 ? Component.translatable("jade.staticlogistics.linked", linked).getString()
                 : "";
-            MutableComponent line = Component.literal(hitFace.getSerializedName().toUpperCase() + " ")
+            MutableComponent line = Component.translatable("gui.staticlogistics.node.face_channel", Component.translatable("gui.staticlogistics.direction." + hitFace.getName()), faceTag.getInt("channel") + 1).append(" ")
                 .append(Component.translatable(roleKey));
             if (!groups.isEmpty()) {
                 line.append(Component.literal(" ")
-                    .append(Component.translatable("jade.staticlogistics.group_label", groups)));
+                    .append(Component.translatable("gui.staticlogistics.group_label", groups)));
             }
             if (!linkedStr.isEmpty()) {
                 line.append(Component.literal(linkedStr));
             }
             boxContent.add(line);
 
-            // 输入端信息
+            /// 输入端信息
             boolean hasIn = role.equals("input") || role.equals("both");
             boolean hasOut = role.equals("output") || role.equals("both");
-            int priority = faceTag.getInt("priority");
-            int keepStock = faceTag.getInt("keep_stock");
+            long priority = faceTag.getLong("priority");
+            long keepStock = faceTag.getLong("keep_stock");
             String strategyKey = faceTag.getString("strategy");
             String extractionKey = faceTag.getString("extraction_mode");
 
             if (hasIn) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_input").withStyle(ChatFormatting.AQUA));
-                addResourceTypeLine(boxContent, "jade.staticlogistics.receive_types", faceTag, "accepted_type_ids");
+                addResourceTypeLine(boxContent, "gui.staticlogistics.receive_types", faceTag, "accepted_type_ids");
                 boxContent.add(Component.literal("  ")
                     .append(Component.translatable("jade.staticlogistics.priority", priority))
                     .withStyle(ChatFormatting.GRAY));
@@ -235,7 +239,7 @@ public class SLJadePlugin implements IWailaPlugin {
 
             if (hasOut) {
                 boxContent.add(Component.translatable("jade.staticlogistics.section_output").withStyle(ChatFormatting.YELLOW));
-                addResourceTypeLine(boxContent, "jade.staticlogistics.transfer_types", faceTag, "output_type_ids");
+                addResourceTypeLine(boxContent, "gui.staticlogistics.transfer_types", faceTag, "output_type_ids");
                 if (!strategyKey.isEmpty()) {
                     boxContent.add(Component.literal("  ")
                         .append(Component.translatable("jade.staticlogistics.strategy_label",
@@ -250,7 +254,7 @@ public class SLJadePlugin implements IWailaPlugin {
                 }
             }
 
-            // 所有者
+            /// 所有者
             String owner = faceTag.getString("owner");
             if (owner != null && !owner.isEmpty()) {
                 boxContent.add(Component.literal("  ")
@@ -258,14 +262,14 @@ public class SLJadePlugin implements IWailaPlugin {
                     .withStyle(ChatFormatting.GRAY));
             }
 
-            // 传输统计
+            /// 传输统计
             long sent = faceTag.getLong("sent");
             long received = faceTag.getLong("received");
             if (sent > 0 || received > 0) {
                 boxContent.add(Component.translatable("jade.staticlogistics.transfer_stats", sent, received).withStyle(ChatFormatting.GRAY));
             }
 
-            // 面速率和上次传输时间
+            /// 面速率和上次传输时间
             double rate = faceTag.getDouble("rate");
             long lastMs = faceTag.getLong("last_ms");
             if (rate > 0 || faceTag.contains("last_ms", Tag.TAG_LONG)) {
@@ -289,7 +293,7 @@ public class SLJadePlugin implements IWailaPlugin {
                 if (typeId != null) parsedIds.add(typeId);
             }
             return TransferTypeDisplay.format(
-                parsedIds, "jade.staticlogistics.no_resource_types");
+                parsedIds, "gui.staticlogistics.no_resource_types");
         }
 
         private static void addResourceTypeLine(ITooltip tooltip, String translationKey,

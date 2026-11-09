@@ -10,9 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.WeakHashMap;
 
-/**
- * 记录由批量选点数据包声明的右击，阻止同一次原版交互继续打开容器或配置界面。
- */
+/// 记录由批量选点数据包声明的右击，阻止同一次原版交互继续打开容器或配置界面。
 public final class BulkSelectionInteractionGuard {
     private static final long MAX_AGE_TICKS = 2L;
     private static final Map<MinecraftServer, Map<UUID, Interaction>> INTERACTIONS =

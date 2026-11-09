@@ -1,13 +1,15 @@
 package com.coobird.staticlogistics.content.event;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.integration.ModCompat;
+import com.coobird.staticlogistics.integration.create.CreateContraptionService;
 import com.coobird.staticlogistics.integration.sable.SableNodeRelocationService;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.transfer.NodeQueryService;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -31,7 +33,6 @@ public class SLLevelEvents {
         if (SableNodeRelocationService.isAssemblyPosition(level, event.getPos())) return;
         try {
             LinkManager mgr = LinkManager.get(level);
-            NodeQueryService.invalidateBlock(level, event.getPos());
             mgr.onBlockRemoved(event.getPos());
             mgr.markOrphanScanNeeded();
         } catch (Exception e) {
@@ -46,7 +47,6 @@ public class SLLevelEvents {
         if (affected.isEmpty()) return;
         try {
             LinkManager mgr = LinkManager.get(level);
-            for (BlockPos pos : affected) NodeQueryService.invalidateBlock(level, pos);
             mgr.onBlocksRemovedBulk(affected);
             mgr.markOrphanScanNeeded();
         } catch (Exception e) {
@@ -61,20 +61,15 @@ public class SLLevelEvents {
             if (SableNodeRelocationService.isAssemblyPosition(level, event.getPos())) return;
             LinkManager manager = LinkManager.get(level);
             manager.onBlockRemoved(event.getPos());
-            manager.invalidateCapabilityCache(event.getPos());
         }
     }
 
     @SubscribeEvent
     public static void onLevelUnload(LevelEvent.Unload event) {
-        if (!event.getLevel().isClientSide()) {
-            if (event.getLevel() instanceof ServerLevel serverLevel) {
-                LinkManager mgr = LinkManager.get(serverLevel);
-                if (mgr != null) {
-                    mgr.shutdown();
-                }
-            }
+        if (ModCompat.isCreateLoaded() && event.getLevel() instanceof Level level) {
+            CreateContraptionService.release(level);
         }
+        if (event.getLevel() instanceof ServerLevel level) LinkManager.release(level);
     }
 
     @SubscribeEvent
@@ -82,6 +77,7 @@ public class SLLevelEvents {
         GlobalLogisticsManager manager = GlobalLogisticsManager.get(event.getServer());
         manager.tick();
         for (ServerLevel level : event.getServer().getAllLevels()) {
+            if (ModCompat.isCreateLoaded()) CreateContraptionService.prune(level);
             LinkManager mgr = LinkManager.get(level);
             if (level.getGameTime() % INTEGRITY_SCAN_INTERVAL == 0) {
                 mgr.markOrphanScanNeeded();

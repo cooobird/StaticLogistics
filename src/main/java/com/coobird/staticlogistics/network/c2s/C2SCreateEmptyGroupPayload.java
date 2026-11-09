@@ -16,9 +16,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/**
- * 客户端通知服务端创建了一个新的空分组
- */
+/// 客户端通知服务端创建了一个新的空分组
 public record C2SCreateEmptyGroupPayload(String groupId) implements CustomPacketPayload {
     public static final Type<C2SCreateEmptyGroupPayload> TYPE = new Type<>(StaticLogistics.asResource("create_empty_group"));
 
@@ -53,7 +51,7 @@ public record C2SCreateEmptyGroupPayload(String groupId) implements CustomPacket
                         new S2CGroupDirectoryPayload(player.getUUID(), groups));
                 }
             } catch (IllegalArgumentException | IllegalStateException ignored) {
-                // 无效请求不改变服务端状态。
+                /// 无效请求不改变服务端状态。
             }
         });
     }

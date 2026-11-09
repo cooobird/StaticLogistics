@@ -11,7 +11,7 @@
 第三方模组通过公开的 `ResourceAdapter<C, V>` SPI 接入统一物流管线；
 `LogisticsResource<C>` 是本模组内部桥接接口，不属于外部集成契约。
 
-所有传输类型（物品、流体、能量、化学品、魔源、热量、魔力）统一走 `TransferUtils.doTransferNodes` 管线，自动获得：
+所有传输类型（物品、流体、能量、化学品、魔源、热量、魔力）统一走 `TransferPipeline.execute` 管线，自动获得：
 - NeoForge `BlockCapabilityCache`（失效后自动释放条目）
 - 维度/距离/区块加载检查
 - 脏链接清理
@@ -21,6 +21,21 @@
 ---
 
 ## 快速开始
+
+### 过滤标签类型
+
+在两端的 common setup 中通过 `event.enqueueWork` 调用
+`StaticLogisticsApi.registerFilterTags(FilterTagProvider)`，注册一个标签类型。
+每种类型以 `registryId()` 区分，例如 `minecraft:item`、`minecraft:block` 或扩展模组的注册表 ID。
+同一注册表只能注册一次，后续新增标签由提供者动态读取，不需要重复注册。
+
+- `tags(ItemStack)` / `tags(Fluid)`：返回当前标记对应的标签 ID。
+- `compileItems(tag)` / `compileFluids(tag)`：生成服务端使用的匹配条件；应保存标签键，实时查询标签成员，不能固化数据包中的成员列表。
+- `displayName()`：提供类型名称；默认显示注册表 ID，可覆盖为翻译文本。
+
+界面自动列出提供者返回的标签，保存格式为 `注册表ID|标签ID`。旧的 `item|`、`block|`、`fluid|` 键仍可读取。
+提供者缺失时保留规则，但该规则不匹配任何资源，包括取反模式。
+当前标记载体仍为物品和流体；新增化学品等直接资源标记还需接入其保存、同步及传输过滤。
 
 ```java
 // 1. 实现公开的类型安全 ResourceAdapter<句柄, 资源值>
@@ -32,8 +47,9 @@ public class MyResource implements ResourceAdapter<MyHandle, MyValue> {
     @Override public ResourceLocation typeId() { return TYPE_ID; }
     @Override public int color() { return 0xFF55FFFF; }
     @Override public String translationKey() { return "transfer_type.mymod.my_type"; }
+    @Override public Component unit() { return Component.translatable("unit.mymod.my_type"); }
     @Override public Supplier<ItemStack> iconSupplier() { return () -> new ItemStack(MyItems.ICON); }
-    @Override public IntSupplier baseStackSizeSupplier() { return MyConfig::getStackSize; }
+    @Override public LongSupplier baseStackSizeSupplier() { return MyConfig::getStackSize; }
     @Override public Class<MyValue> valueType() { return MyValue.class; }
     @Override public TransactionCapabilities transactionCapabilities() {
         return TransactionCapabilities.exactCompensating();
@@ -52,14 +68,14 @@ public class MyResource implements ResourceAdapter<MyHandle, MyValue> {
 
     @Override
     public SimulationResult<MyValue> simulateExtract(MyHandle source, TransferRequest request) {
-        return source.simulateExtract(request.limit());
+        return source.simulateExtract(request.maxAmount());
     }
 
     @Override
     public CommitResult<MyValue> commitExtract(MyHandle source,
                                                 SimulationResult<MyValue> simulation,
                                                 TransferRequest request) {
-        return source.commitExtract(simulation, request.limit());
+        return source.commitExtract(simulation, request.maxAmount());
     }
 
     @Override
@@ -86,8 +102,8 @@ public class MyResource implements ResourceAdapter<MyHandle, MyValue> {
     }
 }
 
-// 2. 在双方约定的注册阶段分配稳定 bitOffset
-StaticLogisticsApi.resourceAdapters().register(new MyResource(), 10);
+// 2. 在两端公共初始化阶段注册
+StaticLogisticsApi.resourceAdapters().register(new MyResource());
 ```
 
 ---
@@ -114,38 +130,26 @@ StaticLogisticsApi.resourceAdapters().register(new MyResource(), 10);
 
 ## 注册参数
 
-资源类只负责实现能力解析和事务传输逻辑；第三方通过公开 API 显式分配稳定类型位偏移：
+资源类负责实现能力解析和事务传输逻辑。注册中心自动分配运行时位号，存档和网络使用资源 ID：
 
 ```java
-public static final int BIT_MY_TYPE = 10;
-StaticLogisticsApi.resourceAdapters().register(new MyResource(), BIT_MY_TYPE);
+StaticLogisticsApi.resourceAdapters().register(new MyResource());
 ```
 
 `ResourceAdapter` 的主要元数据方法：
 
-| 方法                        | 说明                       | 约束                         |
-|---------------------------|--------------------------|----------------------------|
-| `typeId()`                | ResourceLocation 格式的唯一标识 | `"modid:type_name"`        |
-| `color()`                 | ARGB 颜色值                 | `0xAARRGGBB`               |
-| 注册参数 `stableBitOffset`    | 稳定类型序号                   | 非负且唯一；0-31 会额外写入旧 mask 兼容值 |
-| `translationKey()`        | GUI 显示文本                 | 需提供 lang 文件                |
-| `iconSupplier()`          | 类型图标的 ItemStack          | —                          |
-| `baseStackSizeSupplier()` | 单次基础传输量                  | 读取 config 配置               |
-| `requiresCooldown()`      | 传输失败后是否冷却                | 默认 `true`                  |
-| `requiresValidLinks()`    | 是否需要有效链接                 | 默认 `true`                  |
+| 方法                      | 说明                             | 约束                                    |
+|---------------------------|----------------------------------|-----------------------------------------|
+| `typeId()`                | ResourceLocation 格式的唯一标识  | `"modid:type_name"`                     |
+| `color()`                 | ARGB 颜色值                      | `0xAARRGGBB`                            |
+| `translationKey()`        | GUI 显示文本                     | 需提供 lang 文件                        |
+| `unit()`                  | 传输量及速率显示单位             | 返回可翻译的 Component                  |
+| `iconSupplier()`          | 类型图标的 ItemStack             | —                                       |
+| `baseStackSizeSupplier()` | 单次基础传输量（`LongSupplier`） | 读取 long 配置，最大为 `Long.MAX_VALUE` |
+| `requiresCooldown()`      | 传输失败后是否冷却               | 默认 `true`                             |
+| `requiresValidLinks()`    | 是否需要有效链接                 | 默认 `true`                             |
 
-### 内置类型偏移分配
-
-| bitOffset | 类型                  |
-|-----------|---------------------|
-| 0         | 物品 (item)           |
-| 1         | 流体 (fluid)          |
-| 2         | 能量 (energy)         |
-| 3         | 化学品 (mek_chemicals) |
-| 4         | 热量 (mek_heat)       |
-| 5         | 魔源 (ars_source)     |
-| 6         | 魔力 (botania_mana)   |
-| 7+        | 自定义第三方类型            |
+运行时最多注册 64 个资源类型。位号可能随注册顺序变化，不能持久化或通过网络传输。
 
 ---
 
@@ -155,10 +159,9 @@ StaticLogisticsApi.resourceAdapters().register(new MyResource(), BIT_MY_TYPE);
 
 ```
 LogisticsTicker.tick()
-  └─ TransferExecutor.executeTransfer(context)
-       └─ ResourceAdapterHandler.performTransfer(context, targets)
-            └─ ResourceAdapterProtocol（每次调用独立创建，携带不可覆盖的上下文）
-                 └─ TransferUtils.doTransferNodes(...)
+  └─ ResourceAdapterHandler.performTransfer(context, targets)
+       └─ ResourceAdapterProtocol（每次调用独立创建，携带不可覆盖的上下文）
+            └─ TransferPipeline.execute(...)
                       ├─ 原生能力缓存（适配器声明 blockCapability 时）
                       ├─ 维度/距离/区块检查
                       ├─ dirty target 清理 + 反向索引增量更新

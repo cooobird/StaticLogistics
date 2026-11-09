@@ -1,12 +1,13 @@
 package com.coobird.staticlogistics.api.group;
 
-/**
- * 分组名称与每位所有者的容量边界。
- */
+/// 分组名称与每位所有者的容量边界。
 public final class GroupConstraints {
     public static final int MAX_NAME_LENGTH = 32;
     public static final int MAX_CONNECTION_NAME_LENGTH = 48;
     public static final int MAX_GROUPS_PER_OWNER = 128;
+    public static final int MAX_HIERARCHY_ENTRIES = 256;
+    public static final int MAX_HIERARCHY_LINKS = 4096;
+    public static final int MAX_HIERARCHY_ID_LENGTH = 80;
 
     private GroupConstraints() {
     }
@@ -21,9 +22,7 @@ public final class GroupConstraints {
         return normalized;
     }
 
-    /**
-     * 规范化连接显示名。空名称表示清除自定义名称，回退到本地化默认名称。
-     */
+    /// 规范化连接显示名。空名称表示清除自定义名称，回退到本地化默认名称。
     public static String normalizeConnectionName(String value) {
         if (value == null) throw new IllegalArgumentException("Connection name is required");
         String normalized = value.trim();

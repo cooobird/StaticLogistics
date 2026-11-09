@@ -14,7 +14,6 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class SLItemModelProvider extends ItemModelProvider {
-    protected final Set<Item> skip = new HashSet<>();
     protected final Set<Item> handheld = new HashSet<>();
 
     public SLItemModelProvider(PackOutput output, ExistingFileHelper existingFileHelper) {
@@ -29,12 +28,9 @@ public class SLItemModelProvider extends ItemModelProvider {
 
     protected void simpleItem(DeferredRegister.Items register) {
         for (DeferredHolder<Item, ? extends Item> item : register.getEntries()) {
-            if (skip.contains(item.get())) continue;
-
             String path = item.getId().getPath();
             String parent = handheld.contains(item.get()) ? "item/handheld" : "item/generated";
-            withExistingParent(path, parent)
-                .texture("layer0", StaticLogistics.asResource("item/" + path));
+            withExistingParent(path, parent).texture("layer0", StaticLogistics.asResource("item/" + path));
         }
     }
 }

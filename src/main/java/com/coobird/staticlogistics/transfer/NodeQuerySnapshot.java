@@ -9,17 +9,15 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * 面向 GUI、Jade、命令和集成层的不可变节点查询结果。
- */
+/// 面向 GUI、Jade、命令和集成层的不可变节点查询结果。
 public record NodeQuerySnapshot(
     List<String> groups,
     List<GroupKey> groupKeys,
     NodeRole role,
     boolean inputEnabled,
     boolean outputEnabled,
-    int priority,
-    int keepStock,
+    long priority,
+    long keepStock,
     ResourceLocation strategyId,
     String strategyDescriptionId,
     ExtractionMode extractionMode,

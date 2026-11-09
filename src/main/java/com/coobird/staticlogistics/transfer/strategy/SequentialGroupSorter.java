@@ -8,9 +8,7 @@ import net.minecraft.core.BlockPos;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 顺序排序：保持原始插入顺序不变，不做任何重排序。
- */
+/// 顺序排序：保持原始插入顺序不变，不做任何重排序。
 public enum SequentialGroupSorter implements GroupSorter {
     INSTANCE;
 

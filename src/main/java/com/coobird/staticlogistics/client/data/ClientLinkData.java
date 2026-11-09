@@ -4,28 +4,25 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
-import net.minecraft.core.Direction;
+import com.coobird.staticlogistics.network.c2s.C2SRequestAccessSnapshotPayload;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-/**
- * 客户端物流投影。
- *
- * <p>长期状态只保存分组目录和轻量拓扑；完整面配置仅在配置界面自己的菜单数据中存在。
- * 权威快照必须收齐全部页面后才会原子替换当前投影。
- */
+/// 客户端物流投影。
+/// 长期状态只保存分组目录和轻量拓扑；完整面配置仅在配置界面自己的菜单数据中存在。
+/// 权威快照必须收齐全部页面后才会原子替换当前投影。
 @OnlyIn(Dist.CLIENT)
 public enum ClientLinkData {
     INSTANCE;
@@ -34,16 +31,21 @@ public enum ClientLinkData {
     private static final int MAX_ASSEMBLY_ENTRIES = 1_000_000;
     private static final long ASSEMBLY_TIMEOUT_NANOS = 30_000_000_000L;
 
-    private final AtomicInteger dataVersion = new AtomicInteger();
-    private volatile ProjectionState projection = new ProjectionState();
-    private long committedSnapshotSequence = Long.MIN_VALUE;
-    private SnapshotAssembly stagingSnapshot;
-    private long committedUpdateSequence = Long.MIN_VALUE;
-    private TopologyUpdateAssembly stagingUpdate;
+    private record ConnectionIndex(List<ClientConnection> routes, List<ClientConnection> connections,
+                                   Map<ConnectionKey, ClientConnection> byKey) {
+    }
 
-    private record FaceKey(ResourceKey<Level> dimension, FaceAddress address) {
+    private final Map<GroupKey, ConnectionIndex> connectionIndexes = new HashMap<>();
+
+    private int dataVersion;
+    private ProjectionState projection = new ProjectionState();
+    private long committedSequence = Long.MIN_VALUE;
+    private TopologyAssembly stagingSnapshot;
+    private TopologyAssembly stagingUpdate;
+
+    private record FaceKey(ResourceKey<Level> dimension, EndpointAddress address) {
         static FaceKey of(LogisticsNode node) {
-            return new FaceKey(node.gPos().dimension(), FaceAddress.of(node));
+            return new FaceKey(node.gPos().dimension(), EndpointAddress.of(node));
         }
 
         LogisticsNode toNode() {
@@ -52,46 +54,28 @@ public enum ClientLinkData {
     }
 
     private static final class ProjectionState {
-        final Map<ResourceKey<Level>, Map<FaceAddress, FaceTopology>> topologyByDimension = new ConcurrentHashMap<>();
-        final Map<GroupKey, GroupRef> knownGroupRefs = new ConcurrentHashMap<>();
-        final Map<UUID, String> knownOwnerNames = new ConcurrentHashMap<>();
-        final Map<UUID, Set<GroupRef>> groupDirectoryByOwner = new ConcurrentHashMap<>();
-        final Map<GroupKey, Set<FaceKey>> groupFaces = new ConcurrentHashMap<>();
-        final Map<FaceKey, Set<GroupKey>> faceGroups = new ConcurrentHashMap<>();
-        final Map<GroupKey, Map<LogisticsNode, Set<LogisticsNode>>> scopedLinks = new ConcurrentHashMap<>();
-        final Map<ConnectionKey, String> connectionNames = new ConcurrentHashMap<>();
+        final Map<ResourceKey<Level>, Map<EndpointAddress, EndpointTopology>> topologyByDimension = new HashMap<>();
+        final Map<GroupKey, GroupRef> knownGroupRefs = new HashMap<>();
+        final Map<UUID, String> knownOwnerNames = new HashMap<>();
+        final Map<UUID, Set<GroupRef>> groupDirectoryByOwner = new HashMap<>();
+        final Map<GroupKey, Set<FaceKey>> groupFaces = new HashMap<>();
+        final Map<FaceKey, Set<GroupKey>> faceGroups = new HashMap<>();
+        final Map<GroupKey, Map<LogisticsNode, Set<LogisticsNode>>> scopedLinks = new HashMap<>();
+        final Map<ConnectionKey, String> connectionNames = new HashMap<>();
+        final Map<ConnectionKey, Integer> connectionReferences = new HashMap<>();
         final VersionGate<FaceKey> versionGate = new VersionGate<>();
     }
 
-    private static final class SnapshotAssembly {
+    private static final class TopologyAssembly {
         final long sequence;
         final int pageCount;
         final long startedNanos = System.nanoTime();
         final BitSet receivedPages;
-        final Map<FaceKey, FaceTopology> faces = new LinkedHashMap<>();
+        final Map<FaceKey, EndpointTopology> faces = new LinkedHashMap<>();
         final Set<ScopedTopologyLink> links = new LinkedHashSet<>();
         final Map<GroupKey, GroupRef> groups = new LinkedHashMap<>();
 
-        SnapshotAssembly(long sequence, int pageCount) {
-            this.sequence = sequence;
-            this.pageCount = pageCount;
-            this.receivedPages = new BitSet(pageCount);
-        }
-
-        boolean expired() {
-            return System.nanoTime() - startedNanos > ASSEMBLY_TIMEOUT_NANOS;
-        }
-    }
-
-    private static final class TopologyUpdateAssembly {
-        final long sequence;
-        final int pageCount;
-        final long startedNanos = System.nanoTime();
-        final BitSet receivedPages;
-        final Map<FaceKey, FaceTopology> faces = new LinkedHashMap<>();
-        final Set<ScopedTopologyLink> links = new LinkedHashSet<>();
-
-        TopologyUpdateAssembly(long sequence, int pageCount) {
+        TopologyAssembly(long sequence, int pageCount) {
             this.sequence = sequence;
             this.pageCount = pageCount;
             this.receivedPages = new BitSet(pageCount);
@@ -103,57 +87,78 @@ public enum ClientLinkData {
     }
 
     public int getDataVersion() {
-        return dataVersion.get();
+        return dataVersion;
+    }
+
+    public synchronized void discardExpiredAssemblies() {
+        boolean expired = false;
+        if (stagingSnapshot != null && stagingSnapshot.expired()) {
+            stagingSnapshot = null;
+            expired = true;
+        }
+        if (stagingUpdate != null && stagingUpdate.expired()) {
+            stagingUpdate = null;
+            expired = true;
+        }
+        if (expired && Minecraft.getInstance().getConnection() != null) {
+            PacketDistributor.sendToServer(new C2SRequestAccessSnapshotPayload());
+        }
     }
 
     private void incrementDataVersion() {
-        dataVersion.incrementAndGet();
+        connectionIndexes.clear();
+        dataVersion++;
     }
 
-    private Map<FaceAddress, FaceTopology> getOrCreateTopologyMap(
+    private void incrementDataVersion(Set<GroupKey> groups) {
+        groups.forEach(connectionIndexes::remove);
+        dataVersion++;
+    }
+
+    private Map<EndpointAddress, EndpointTopology> getOrCreateTopologyMap(
         ProjectionState state,
         ResourceKey<Level> dimension
     ) {
-        return state.topologyByDimension.computeIfAbsent(dimension, ignored -> new ConcurrentHashMap<>());
+        return state.topologyByDimension.computeIfAbsent(dimension, ignored -> new HashMap<>());
     }
 
-    public void removeFaceTopology(GlobalPos pos, Direction face, long version) {
+    public void removeFaceTopology(LogisticsNode node, long version) {
         ProjectionState state = projection;
-        LogisticsNode node = new LogisticsNode(pos, face);
+        GlobalPos pos = node.gPos();
         FaceKey key = FaceKey.of(node);
         if (!state.versionGate.acceptRemoval(key, version)) return;
 
-        Map<FaceAddress, FaceTopology> dimension = state.topologyByDimension.get(pos.dimension());
-        if (dimension == null || dimension.remove(key.address()) == null) return;
-        if (dimension.isEmpty()) state.topologyByDimension.remove(pos.dimension(), dimension);
+        Set<GroupKey> affectedGroups = new LinkedHashSet<>(state.faceGroups.getOrDefault(key, Set.of()));
+        Map<EndpointAddress, EndpointTopology> dimension = state.topologyByDimension.get(pos.dimension());
+        if (dimension != null) {
+            dimension.remove(key.address());
+            if (dimension.isEmpty()) state.topologyByDimension.remove(pos.dimension(), dimension);
+        }
         unindexFace(state, key);
-        removeIncidentLinks(state, node);
-        incrementDataVersion();
+        affectedGroups.addAll(removeIncidentLinks(state, node));
+        if (!affectedGroups.isEmpty()) incrementDataVersion(affectedGroups);
     }
 
     public void invalidate() {
         synchronized (this) {
-            committedSnapshotSequence = Long.MIN_VALUE;
+            committedSequence = Long.MIN_VALUE;
             stagingSnapshot = null;
-            committedUpdateSequence = Long.MIN_VALUE;
             stagingUpdate = null;
             projection = new ProjectionState();
         }
         incrementDataVersion();
     }
 
-    /**
-     * 收齐全部页面后一次性替换当前投影；缺页和旧页永远不会暴露给界面。
-     */
+    /// 收齐全部页面后一次性替换当前投影；缺页和旧页永远不会暴露给界面。
     public synchronized void acceptAuthoritativeSnapshotPage(
         long sequence,
         int pageIndex,
         int pageCount,
-        List<FaceTopology> pageFaces,
+        List<EndpointTopology> pageFaces,
         List<ScopedTopologyLink> pageLinks,
         List<GroupRef> pageGroups
     ) {
-        if (sequence <= Math.max(committedSnapshotSequence, committedUpdateSequence)) return;
+        if (sequence <= committedSequence) return;
         if (stagingUpdate != null) {
             if (sequence < stagingUpdate.sequence) return;
             if (sequence == stagingUpdate.sequence) {
@@ -167,7 +172,7 @@ public enum ClientLinkData {
         }
         if (stagingSnapshot != null && stagingSnapshot.expired()) stagingSnapshot = null;
         if (stagingSnapshot == null || sequence > stagingSnapshot.sequence) {
-            stagingSnapshot = new SnapshotAssembly(sequence, pageCount);
+            stagingSnapshot = new TopologyAssembly(sequence, pageCount);
         } else if (sequence < stagingSnapshot.sequence) {
             return;
         } else if (stagingSnapshot.pageCount != pageCount) {
@@ -182,7 +187,7 @@ public enum ClientLinkData {
             throw new IllegalStateException("Authoritative snapshot assembly is too large");
         }
 
-        for (FaceTopology face : pageFaces) {
+        for (EndpointTopology face : pageFaces) {
             FaceKey key = FaceKey.of(face.node());
             if (stagingSnapshot.faces.putIfAbsent(key, face) != null) {
                 throw new IllegalStateException("Duplicate face in authoritative snapshot");
@@ -208,11 +213,11 @@ public enum ClientLinkData {
         }
     }
 
-    private void commitAuthoritativeSnapshot(SnapshotAssembly snapshot) {
+    private void commitAuthoritativeSnapshot(TopologyAssembly snapshot) {
         ProjectionState next = new ProjectionState();
         for (var entry : snapshot.faces.entrySet()) {
             FaceKey key = entry.getKey();
-            FaceTopology topology = entry.getValue();
+            EndpointTopology topology = entry.getValue();
             getOrCreateTopologyMap(next, key.dimension()).put(key.address(), topology);
             next.versionGate.seed(key, topology.version());
             indexFace(next, key, topology);
@@ -222,27 +227,24 @@ public enum ClientLinkData {
         for (GroupRef group : snapshot.groups.values()) {
             next.knownGroupRefs.put(group.key(), group);
             next.groupDirectoryByOwner.computeIfAbsent(
-                group.key().ownerId(), ignored -> ConcurrentHashMap.newKeySet()).add(group);
+                group.key().ownerId(), ignored -> new LinkedHashSet<>()).add(group);
         }
         projection = next;
-        committedSnapshotSequence = snapshot.sequence;
-        committedUpdateSequence = Math.max(committedUpdateSequence, snapshot.sequence);
+        committedSequence = snapshot.sequence;
         stagingSnapshot = null;
         stagingUpdate = null;
         incrementDataVersion();
     }
 
-    /**
-     * 收齐一次拓扑增量的全部页面后，按面版本原子替换涉及的节点和出边。
-     */
+    /// 收齐一次拓扑增量的全部页面后，按面版本原子替换涉及的节点和出边。
     public synchronized void acceptTopologyUpdatePage(
         long sequence,
         int pageIndex,
         int pageCount,
-        List<FaceTopology> pageFaces,
+        List<EndpointTopology> pageFaces,
         List<ScopedTopologyLink> pageLinks
     ) {
-        if (sequence <= Math.max(committedSnapshotSequence, committedUpdateSequence)) return;
+        if (sequence <= committedSequence) return;
         if (stagingSnapshot != null) {
             if (sequence < stagingSnapshot.sequence) return;
             if (sequence == stagingSnapshot.sequence) {
@@ -256,7 +258,7 @@ public enum ClientLinkData {
         }
         if (stagingUpdate != null && stagingUpdate.expired()) stagingUpdate = null;
         if (stagingUpdate == null || sequence > stagingUpdate.sequence) {
-            stagingUpdate = new TopologyUpdateAssembly(sequence, pageCount);
+            stagingUpdate = new TopologyAssembly(sequence, pageCount);
         } else if (sequence < stagingUpdate.sequence) {
             return;
         } else if (stagingUpdate.pageCount != pageCount) {
@@ -270,7 +272,7 @@ public enum ClientLinkData {
             throw new IllegalStateException("Topology update assembly is too large");
         }
 
-        for (FaceTopology face : pageFaces) {
+        for (EndpointTopology face : pageFaces) {
             if (stagingUpdate.faces.putIfAbsent(FaceKey.of(face.node()), face) != null) {
                 throw new IllegalStateException("Duplicate face in topology update");
             }
@@ -286,15 +288,26 @@ public enum ClientLinkData {
         }
     }
 
-    private void commitTopologyUpdate(TopologyUpdateAssembly update) {
+    private void commitTopologyUpdate(TopologyAssembly update) {
         ProjectionState state = projection;
+        /// 增量可以重命名已有连接，但同一批次内部仍必须保持名称一致。
+        Map<ConnectionKey, String> updateNames = new HashMap<>();
+        for (ScopedTopologyLink link : update.links) {
+            ConnectionKey key = new ConnectionKey(link.groupKey(), link.source(), link.target());
+            String previous = updateNames.putIfAbsent(key, link.displayName());
+            if (previous != null && !previous.equals(link.displayName()))
+                throw new IllegalStateException("Conflicting connection names in topology update");
+        }
         Set<LogisticsNode> acceptedSources = new LinkedHashSet<>();
+        Set<GroupKey> affectedGroups = new LinkedHashSet<>();
         for (var entry : update.faces.entrySet()) {
             FaceKey key = entry.getKey();
-            FaceTopology topology = entry.getValue();
+            EndpointTopology topology = entry.getValue();
             if (!state.versionGate.acceptUpdate(key, topology.version())) continue;
+            affectedGroups.addAll(state.faceGroups.getOrDefault(key, Set.of()));
+            topology.groups().forEach(group -> affectedGroups.add(group.key()));
             unindexFace(state, key);
-            removeSourceLinks(state, topology.node());
+            affectedGroups.addAll(removeSourceLinks(state, topology.node()));
             getOrCreateTopologyMap(state, key.dimension()).put(key.address(), topology);
             indexFace(state, key, topology);
             rememberTopologyDirectory(state, topology);
@@ -302,21 +315,20 @@ public enum ClientLinkData {
         }
         update.links.stream()
             .filter(link -> acceptedSources.contains(link.source()))
-            .forEach(link -> putScopedLink(state, link));
-        committedUpdateSequence = update.sequence;
-        committedSnapshotSequence = Math.max(committedSnapshotSequence, update.sequence);
+            .forEach(link -> {
+                state.connectionNames.put(new ConnectionKey(link.groupKey(), link.source(), link.target()), link.displayName());
+                putScopedLink(state, link);
+            });
+        committedSequence = update.sequence;
         stagingUpdate = null;
         stagingSnapshot = null;
-        if (!acceptedSources.isEmpty()) incrementDataVersion();
+        if (!acceptedSources.isEmpty()) incrementDataVersion(affectedGroups);
     }
 
-    /**
-     * 替换某位所有者的权威分组目录；其中也包含没有节点的空分组。
-     */
+    /// 替换某位所有者的权威分组目录；其中也包含没有节点的空分组。
     public void replaceGroupDirectory(UUID owner, Set<GroupRef> groups) {
         ProjectionState state = projection;
-        Set<GroupRef> owned = ConcurrentHashMap.newKeySet();
-        owned.addAll(groups);
+        Set<GroupRef> owned = new LinkedHashSet<>(groups);
         state.groupDirectoryByOwner.put(owner, owned);
 
         Set<GroupKey> currentKeys = owned.stream().map(GroupRef::key).collect(Collectors.toSet());
@@ -325,9 +337,7 @@ public enum ClientLinkData {
         incrementDataVersion();
     }
 
-    /**
-     * 返回服务端已经按读取权限过滤后的权威分组集合。
-     */
+    /// 返回服务端已经按读取权限过滤后的权威分组集合。
     public List<GroupRef> getAccessibleGroupRefs() {
         return List.copyOf(projection.knownGroupRefs.values());
     }
@@ -339,56 +349,68 @@ public enum ClientLinkData {
         return targets == null ? Set.of() : Set.copyOf(targets);
     }
 
-    /**
-     * 返回分组中的唯一连接视图。
-     *
-     * <p>服务端会分别同步两个端点的出边，因此先按规范化端点对去重。只有两端拓扑都在同一份
-     * 已提交快照中存在时才公开，避免界面短暂展示无法配置的半连接。
-     */
+    /// 返回分组中的唯一连接视图。
+    /// 服务端会分别同步两个端点的出边，因此先按规范化端点对去重。只有两端拓扑都在同一份
+    /// 已提交快照中存在时才公开，避免界面短暂展示无法配置的半连接。
     public List<ClientConnection> getConnectionsForGroup(GroupKey groupKey) {
+        return connectionIndex(groupKey).connections();
+    }
+
+    private ConnectionIndex connectionIndex(GroupKey groupKey) {
+        return connectionIndexes.computeIfAbsent(groupKey, key -> {
+            List<ClientConnection> routes = buildConnectionRoutes(key);
+            Map<ConnectionKey, ClientConnection> unique = new LinkedHashMap<>();
+            routes.stream().sorted(Comparator.comparingInt(route ->
+                    (route.first().isConnectionFace() ? 1 : 0) + (route.second().isConnectionFace() ? 1 : 0)))
+                .forEach(route -> unique.putIfAbsent(route.key(), route));
+            return new ConnectionIndex(routes, List.copyOf(unique.values()), Map.copyOf(unique));
+        });
+    }
+
+
+    public List<ClientConnection> getConnectionRoutes(GroupKey groupKey) {
+        return connectionIndex(groupKey).routes();
+    }
+
+    private List<ClientConnection> buildConnectionRoutes(GroupKey groupKey) {
         ProjectionState state = projection;
         Map<LogisticsNode, Set<LogisticsNode>> sources = state.scopedLinks.get(groupKey);
         if (sources == null || sources.isEmpty()) return List.of();
 
-        Map<ConnectionKey, ClientConnection> connections = new LinkedHashMap<>();
+        List<ClientConnection> connections = new ArrayList<>();
         sources.forEach((source, targets) -> targets.forEach(target -> {
             Set<LogisticsNode> reciprocal = sources.get(target);
             if (reciprocal == null || !reciprocal.contains(source)) return;
             ConnectionKey key = new ConnectionKey(groupKey, source, target);
-            FaceTopology first = findTopology(state, key.first());
-            FaceTopology second = findTopology(state, key.second());
+            if (ConnectionKey.NODE_ORDER.compare(source, target) >= 0) return;
+            EndpointTopology first = findTopology(state, source);
+            EndpointTopology second = findTopology(state, target);
             if (first == null || second == null) return;
-            connections.putIfAbsent(key, new ClientConnection(
-                groupKey, key.first(), key.second(), first, second,
+            connections.add(new ClientConnection(
+                groupKey, source, target, first, second,
                 state.connectionNames.getOrDefault(key, "")));
         }));
-        return connections.values().stream()
+        return connections.stream()
             .sorted(ClientConnection.DISPLAY_ORDER)
             .toList();
     }
 
-    /**
-     * 使用稳定身份从最新客户端拓扑中解析连接。
-     *
-     * <p>调用方不得长期保存 {@link ClientConnection}，因为其中的端点拓扑会随服务端同步更新。
-     */
+    /// 使用稳定身份从最新客户端拓扑中解析连接。
+    /// 调用方不得长期保存 ClientConnection，因为其中的端点拓扑会随服务端同步更新。
     @Nullable
     public ClientConnection findConnection(ConnectionKey key) {
-        for (ClientConnection connection : getConnectionsForGroup(key.groupKey())) {
-            if (connection.key().equals(key)) return connection;
-        }
-        return null;
+        return connectionIndex(key.groupKey()).byKey().get(key);
     }
 
     @Nullable
-    public FaceTopology getTopology(LogisticsNode node) {
+    public EndpointTopology getTopology(LogisticsNode node) {
         return findTopology(projection, node);
     }
 
     @Nullable
-    private FaceTopology findTopology(ProjectionState state, LogisticsNode node) {
-        Map<FaceAddress, FaceTopology> dimension = state.topologyByDimension.get(node.gPos().dimension());
-        return dimension == null ? null : dimension.get(FaceAddress.of(node));
+    private EndpointTopology findTopology(ProjectionState state, LogisticsNode node) {
+        Map<EndpointAddress, EndpointTopology> dimension = state.topologyByDimension.get(node.gPos().dimension());
+        return dimension == null ? null : dimension.get(EndpointAddress.of(node));
     }
 
     @Nullable
@@ -404,30 +426,14 @@ public enum ClientLinkData {
         return projection.knownGroupRefs.get(key);
     }
 
-    /**
-     * 仅在显示名称唯一时为旧物品解析身份，避免同名不同所有者的分组串线。
-     */
-    @Nullable
-    public GroupKey resolveUniqueGroupKey(String displayName) {
-        GroupKey match = null;
-        for (GroupRef group : projection.knownGroupRefs.values()) {
-            if (!group.displayName().equals(displayName)) continue;
-            if (match != null && !match.equals(group.key())) return null;
-            match = group.key();
-        }
-        return match;
-    }
-
-    /**
-     * 返回完整节点身份，保留维度与具体面。
-     */
+    /// 返回完整节点身份，保留维度与具体面。
     public List<LogisticsNode> getNodesForGroup(GroupKey groupKey) {
         Set<FaceKey> faces = projection.groupFaces.get(groupKey);
         if (faces == null || faces.isEmpty()) return List.of();
         return faces.stream().map(FaceKey::toNode).toList();
     }
 
-    private void rememberTopologyDirectory(ProjectionState state, FaceTopology topology) {
+    private void rememberTopologyDirectory(ProjectionState state, EndpointTopology topology) {
         topology.groups().forEach(group -> {
             Set<GroupRef> directory = state.groupDirectoryByOwner.get(group.key().ownerId());
             if (directory == null) {
@@ -442,18 +448,18 @@ public enum ClientLinkData {
         rememberTopologyOwner(state, topology);
     }
 
-    private void rememberTopologyOwner(ProjectionState state, FaceTopology topology) {
+    private void rememberTopologyOwner(ProjectionState state, EndpointTopology topology) {
         if (topology.ownerId() != null && !"Unknown".equals(topology.ownerName())) {
             state.knownOwnerNames.putIfAbsent(topology.ownerId(), topology.ownerName());
         }
     }
 
-    private void indexFace(ProjectionState state, FaceKey face, FaceTopology topology) {
+    private void indexFace(ProjectionState state, FaceKey face, EndpointTopology topology) {
         Set<GroupKey> keys = topology.groupKeys();
         if (keys.isEmpty()) return;
         state.faceGroups.put(face, keys);
         for (GroupKey key : keys) {
-            state.groupFaces.computeIfAbsent(key, ignored -> ConcurrentHashMap.newKeySet()).add(face);
+            state.groupFaces.computeIfAbsent(key, ignored -> new LinkedHashSet<>()).add(face);
         }
     }
 
@@ -469,9 +475,7 @@ public enum ClientLinkData {
         }
     }
 
-    /**
-     * 分组目录与拓扑共同持有显示身份；两侧都不再引用时才回收。
-     */
+    /// 分组目录与拓扑共同持有显示身份；两侧都不再引用时才回收。
     private void retireGroupIfUnreferenced(ProjectionState state, GroupKey key) {
         if (state.groupFaces.containsKey(key)) return;
         Set<GroupRef> directory = state.groupDirectoryByOwner.get(key.ownerId());
@@ -480,43 +484,58 @@ public enum ClientLinkData {
     }
 
     private void putScopedLink(ProjectionState state, ScopedTopologyLink link) {
-        state.scopedLinks
-            .computeIfAbsent(link.groupKey(), ignored -> new ConcurrentHashMap<>())
-            .computeIfAbsent(link.source(), ignored -> ConcurrentHashMap.newKeySet())
+        boolean added = state.scopedLinks
+            .computeIfAbsent(link.groupKey(), ignored -> new LinkedHashMap<>())
+            .computeIfAbsent(link.source(), ignored -> new LinkedHashSet<>())
             .add(link.target());
         ConnectionKey key = new ConnectionKey(link.groupKey(), link.source(), link.target());
+        if (added) state.connectionReferences.merge(key, 1, Integer::sum);
         String previous = state.connectionNames.putIfAbsent(key, link.displayName());
         if (previous != null && !previous.equals(link.displayName())) {
             throw new IllegalStateException("Conflicting connection names in topology snapshot");
         }
     }
 
-    private void removeSourceLinks(ProjectionState state, LogisticsNode source) {
+    private Set<GroupKey> removeSourceLinks(ProjectionState state, LogisticsNode source) {
+        Set<GroupKey> affected = new LinkedHashSet<>();
         state.scopedLinks.entrySet().removeIf(group -> {
             Set<LogisticsNode> removedTargets = group.getValue().remove(source);
             if (removedTargets != null) {
+                affected.add(group.getKey());
                 for (LogisticsNode target : removedTargets) {
-                    state.connectionNames.remove(
-                        new ConnectionKey(group.getKey(), source, target));
+                    removeLinkReference(state, group.getKey(), source, target);
                 }
             }
             return group.getValue().isEmpty();
         });
+        return affected;
     }
 
-    private void removeIncidentLinks(ProjectionState state, LogisticsNode node) {
+    /// 名称属于容器连接；仅在最后一条面／通道引用消失后删除。
+    private void removeLinkReference(ProjectionState state, GroupKey group, LogisticsNode source, LogisticsNode target) {
+        ConnectionKey key = new ConnectionKey(group, source, target);
+        Integer count = state.connectionReferences.get(key);
+        if (count == null || count <= 1) {
+            state.connectionReferences.remove(key);
+            state.connectionNames.remove(key);
+        } else state.connectionReferences.put(key, count - 1);
+    }
+
+    private Set<GroupKey> removeIncidentLinks(ProjectionState state, LogisticsNode node) {
+        Set<GroupKey> affected = removeSourceLinks(state, node);
         state.scopedLinks.entrySet().removeIf(group -> {
             Map<LogisticsNode, Set<LogisticsNode>> sources = group.getValue();
-            sources.remove(node);
             sources.entrySet().removeIf(entry -> {
                 Set<LogisticsNode> targets = entry.getValue();
-                targets.remove(node);
+                if (targets.remove(node)) {
+                    affected.add(group.getKey());
+                    removeLinkReference(state, group.getKey(), entry.getKey(), node);
+                }
                 return targets.isEmpty();
             });
             return sources.isEmpty();
         });
-        state.connectionNames.keySet().removeIf(key ->
-            key.first().equals(node) || key.second().equals(node));
+        return affected;
     }
 
     public String getOwnerName(UUID owner) {

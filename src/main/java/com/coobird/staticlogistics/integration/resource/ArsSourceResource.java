@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.util.SaturatedMath;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.hollingsworth.arsnouveau.api.source.ISourceCap;
@@ -11,6 +12,7 @@ import com.hollingsworth.arsnouveau.setup.registry.ItemsRegistry;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -18,15 +20,10 @@ import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * Ars Nouveau 魔源资源适配器。
- *
- * <p>通过 {@link LogisticsResource} 接口接入物流管线。
- * 魔源使用 int 量，extractSource/receiveSource 均为幂等安全操作。
- */
+/// 接入 Ars Nouveau 魔源传输。
 public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("ars_source");
@@ -42,6 +39,11 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.source");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.ars_source";
     }
@@ -52,7 +54,7 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getArsSourceStack;
     }
 
@@ -92,4 +94,11 @@ public class ArsSourceResource implements LogisticsResource<ISourceCap> {
             return 0;
         }
     }
+
+    @Override
+    public long maxInsertToTarget(ISourceCap handle, Object value, EndpointConfig config) {
+        long stock = config.linkConfig.getKeepStock();
+        return stock <= 0 ? Long.MAX_VALUE : Math.max(0L, stock - handle.getSource());
+    }
+
 }

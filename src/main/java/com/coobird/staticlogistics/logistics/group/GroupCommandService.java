@@ -12,9 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * 创建、重命名和删除分组的服务端命令入口。
- */
+/// 创建、重命名和删除分组的服务端命令入口。
 public final class GroupCommandService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final long MUTATION_COOLDOWN_TICKS = 4L;
@@ -33,7 +31,9 @@ public final class GroupCommandService {
     }
 
     public GroupRef create(ServerPlayer actor, String displayName) {
-        if (actor == null) throw new IllegalArgumentException("Group actor is required");
+        if (LogisticsOperationStore.get(server).hasDirectoryDeletion(actor.getUUID())) {
+            throw new IllegalStateException("A directory deletion is still in progress");
+        }
         String normalized = GroupConstraints.normalizeName(displayName);
         return PlayerGroupStore.get(server).createGroup(actor.getUUID(), normalized);
     }
@@ -47,7 +47,9 @@ public final class GroupCommandService {
     }
 
     public boolean rename(ServerPlayer actor, GroupKey groupKey, String newDisplayName) {
-        if (actor == null || groupKey == null || !tryAcquireMutation(actor)) return false;
+        if (actor == null || groupKey == null
+            || LogisticsOperationStore.get(server).isGroupDeletionPending(groupKey)
+            || !tryAcquireMutation(actor)) return false;
         try {
             return new GroupRenameService(
                 PermissionService.getInstance(), globalManager)
@@ -77,9 +79,7 @@ public final class GroupCommandService {
         }
     }
 
-    /**
-     * 限制昂贵的全图分组修改，避免同一玩家用连续数据包占满主线程。
-     */
+    /// 限制昂贵的全图分组修改，避免同一玩家用连续数据包占满主线程。
     private boolean tryAcquireMutation(ServerPlayer actor) {
         long now = server.overworld().getGameTime();
         RateKey key = new RateKey(server, actor.getUUID());

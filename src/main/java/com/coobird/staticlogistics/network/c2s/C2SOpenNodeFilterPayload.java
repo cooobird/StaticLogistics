@@ -22,9 +22,7 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/**
- * 从连接配置器打开所选连接面的输入或输出过滤器。
- */
+/// 从连接配置器打开所选连接面的输入或输出过滤器。
 public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean input) implements CustomPacketPayload {
     public static final Type<C2SOpenNodeFilterPayload> TYPE = new Type<>(StaticLogistics.asResource("open_node_filter"));
 
@@ -49,7 +47,7 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
             NodeMutationService.ValidatedNode node = menu.resolveValidatedNode(player);
             if (node == null) return;
 
-            int slotIndex = payload.input() ? 0 : 1;
+            int slotIndex = 0;
             if (!menu.getSlot(slotIndex).isActive()) return;
             ItemStack upgradeStack = menu.getSlot(slotIndex).getItem();
             if (!(upgradeStack.getItem() instanceof UpgradeItem upgrade) || !upgrade.isFilterUpgrade()) return;
@@ -67,6 +65,7 @@ public record C2SOpenNodeFilterPayload(BlockPos pos, Direction face, boolean inp
                 buffer -> {
                     buffer.writeBlockPos(payload.pos());
                     buffer.writeEnum(payload.face());
+                    buffer.writeVarInt(menu.getTargetNode().channel());
                     buffer.writeResourceLocation(transferType.typeId());
                     buffer.writeBoolean(payload.input());
                     ItemStack.STREAM_CODEC.encode(buffer, upgradeStack);

@@ -2,6 +2,7 @@ package com.coobird.staticlogistics.integration.ftb;
 
 import com.coobird.staticlogistics.content.event.PlayerEvents;
 import com.coobird.staticlogistics.logistics.group.PermissionService;
+import dev.ftb.mods.ftbteams.api.event.TeamAllyEvent;
 import dev.ftb.mods.ftbteams.api.event.TeamEvent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,7 +20,7 @@ public class FTBEventHandlers {
         PermissionService.getInstance().installTeamAccessPolicy(teamService);
         PermissionService.getInstance().installTeamMemberProvider(teamService);
         NeoForge.EVENT_BUS.addListener(FTBEventHandlers::onServerTick);
-        // 删除回调中的团队成员集合可能已被 FTB Teams 清空，必须从服务器在线玩家表重算权限。
+        /// 删除回调中的团队成员集合可能已被 FTB Teams 清空，必须从服务器在线玩家表重算权限。
         TeamEvent.DELETED.register(FTBEventHandlers::queueDeletedTeamRefresh);
         TeamEvent.PLAYER_CHANGED.register(event -> {
             queuePlayers(event.getTeam().getMembers());
@@ -37,14 +38,14 @@ public class FTBEventHandlers {
         TeamEvent.REMOVE_ALLY.register(event -> refreshAlliance(event));
     }
 
-    private static void refreshAlliance(dev.ftb.mods.ftbteams.api.event.TeamAllyEvent event) {
+    private static void refreshAlliance(TeamAllyEvent event) {
         LinkedHashSet<UUID> affected = new LinkedHashSet<>(event.getTeam().getMembers());
         event.getPlayers().forEach(profile -> affected.add(profile.getId()));
         queuePlayers(affected);
     }
 
     private static void queueDeletedTeamRefresh(TeamEvent event) {
-        // FTB Teams 会在删除事件前清空成员映射；稀有事件直接重算全部在线玩家才能可靠撤权。
+        /// FTB Teams 会在删除事件前清空成员映射；稀有事件直接重算全部在线玩家才能可靠撤权。
         synchronized (PENDING_REFRESHES) {
             pendingGlobalRefresh = true;
         }
@@ -57,9 +58,7 @@ public class FTBEventHandlers {
         }
     }
 
-    /**
-     * 同一服务器 tick 内的重复团队事件只为每名玩家重建一次权威快照。
-     */
+    /// 同一服务器 tick 内的重复团队事件只为每名玩家重建一次权威快照。
     private static void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
         LinkedHashSet<UUID> affected;
@@ -72,20 +71,18 @@ public class FTBEventHandlers {
             pendingGlobalRefresh = false;
         }
         if (refreshAll) {
-            server.getPlayerList().getPlayers().forEach(PlayerEvents::refreshClientState);
+            server.getPlayerList().getPlayers().forEach(PlayerEvents::requestClientStateRefresh);
             return;
         }
         for (UUID memberId : affected) {
             ServerPlayer player = server.getPlayerList().getPlayer(memberId);
             if (player != null) {
-                PlayerEvents.refreshClientState(player);
+                PlayerEvents.requestClientStateRefresh(player);
             }
         }
     }
 
-    /**
-     * 服务端停止时清除尚未消费的跨 tick 刷新请求，避免下一实例继承旧状态。
-     */
+    /// 服务端停止时清除尚未消费的跨 tick 刷新请求，避免下一实例继承旧状态。
     public static void clearPending() {
         synchronized (PENDING_REFRESHES) {
             PENDING_REFRESHES.clear();

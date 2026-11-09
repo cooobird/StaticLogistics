@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.network;
 
 import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.logistics.node.FaceTopology;
+import com.coobird.staticlogistics.logistics.node.EndpointTopology;
 import com.coobird.staticlogistics.logistics.node.ScopedTopologyLink;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.transfer.TransferTypeSelection;
@@ -11,14 +11,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.ToIntFunction;
 
-/**
- * 按条目数量和编码复杂度双重限制拓扑页面。
- */
+/// 按条目数量和编码复杂度双重限制拓扑页面。
 public final class TopologyPagePartitioner {
     private TopologyPagePartitioner() {
     }
 
-    public static List<List<FaceTopology>> faces(List<FaceTopology> values) {
+    public static List<List<EndpointTopology>> faces(List<EndpointTopology> values) {
         return partition(values, TopologyPagePartitioner::faceWeight);
     }
 
@@ -30,11 +28,11 @@ public final class TopologyPagePartitioner {
         return partition(values, ignored -> 1);
     }
 
-    public static int pageWeight(List<FaceTopology> faces,
+    public static int pageWeight(List<EndpointTopology> faces,
                                  List<ScopedTopologyLink> links,
                                  List<GroupRef> groups) {
         long weight = links.size() * 3L + groups.size();
-        for (FaceTopology face : faces) weight += faceWeight(face);
+        for (EndpointTopology face : faces) weight += faceWeight(face);
         return weight > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) weight;
     }
 
@@ -42,17 +40,16 @@ public final class TopologyPagePartitioner {
         long configured = (long) LogisticsConstants.Network.getMaxBulkEntries() * 4L;
         long maximumFaceWeight = GroupConstraints.MAX_GROUPS_PER_OWNER + 1L
             + TransferTypeSelection.MAX_SELECTED_TYPES * 2L;
-        return (int) Math.min(Integer.MAX_VALUE,
-            Math.max(maximumFaceWeight, configured));
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(maximumFaceWeight, configured));
     }
 
     public static int maximumCombinedPageWeight() {
         return (int) Math.min(Integer.MAX_VALUE, maximumPageWeight() * 3L);
     }
 
-    private static int faceWeight(FaceTopology face) {
+    private static int faceWeight(EndpointTopology face) {
         long weight = 1L + face.groups().size()
-            + face.outputTypeIds().size() + face.acceptedTypeIds().size();
+            + face.outputTypeIds().size() + face.acceptedTypeIds().size() + face.presentTypeIds().size();
         return weight > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) weight;
     }
 

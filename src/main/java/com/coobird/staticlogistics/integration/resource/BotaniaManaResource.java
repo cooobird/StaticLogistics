@@ -3,11 +3,12 @@ package com.coobird.staticlogistics.integration.resource;
 import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
 import com.coobird.staticlogistics.transfer.TransferContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -19,15 +20,12 @@ import vazkii.botania.api.mana.ManaPool;
 import vazkii.botania.api.mana.ManaReceiver;
 import vazkii.botania.common.block.BotaniaBlocks;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * Botania 魔力资源适配器。
- *
- * <p>产能花只提供魔力；魔力池与魔力收集器既可提供也可接收魔力；
- * 其他 ManaReceiver 仅作为接收端。
- */
+/// Botania 魔力资源适配器。
+/// 产能花只提供魔力；魔力池与魔力收集器既可提供也可接收魔力；
+/// 其他 ManaReceiver 仅作为接收端。
 public class BotaniaManaResource implements LogisticsResource<BotaniaManaResource.ManaHandle> {
     private static final ResourceLocation TYPE_ID = StaticLogistics.asResource("botania_mana");
 
@@ -42,6 +40,11 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
+    public Component unit() {
+        return Component.translatable("gui.staticlogistics.unit.mana");
+    }
+
+    @Override
     public String translationKey() {
         return "transfer_type.staticlogistics.botania_mana";
     }
@@ -52,7 +55,7 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return SLConfig::getBotaniaManaStack;
     }
 
@@ -61,32 +64,27 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
         return TransactionCapabilities.exactCompensating();
     }
 
-    /**
-     * 魔力句柄，区分产能花与 ManaReceiver。
-     * currentMana 随真实变更结果更新，确保多次操作使用最新值。
-     */
+    /// 魔力句柄，区分产能花与 ManaReceiver。
+    /// 每次操作读取实时存量，外部回调和同容器的其他连接不会留下旧快照。
     public static final class ManaHandle {
         private final @Nullable GeneratingFlowerBlockEntity flower;
         private final @Nullable ManaReceiver receiver;
-        private int currentMana;
         private boolean nonDepletingSource;
 
         private ManaHandle(@Nullable GeneratingFlowerBlockEntity flower,
-                           @Nullable ManaReceiver receiver,
-                           int currentMana) {
+                           @Nullable ManaReceiver receiver) {
             if ((flower == null) == (receiver == null))
                 throw new IllegalArgumentException("Exactly one of flower or receiver must be non-null");
             this.flower = flower;
             this.receiver = receiver;
-            this.currentMana = currentMana;
         }
 
-        static ManaHandle source(GeneratingFlowerBlockEntity flower, int current) {
-            return new ManaHandle(flower, null, current);
+        static ManaHandle source(GeneratingFlowerBlockEntity flower) {
+            return new ManaHandle(flower, null);
         }
 
-        static ManaHandle target(ManaReceiver receiver, int current) {
-            return new ManaHandle(null, receiver, current);
+        static ManaHandle target(ManaReceiver receiver) {
+            return new ManaHandle(null, receiver);
         }
 
         boolean canExtract() {
@@ -98,20 +96,18 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
         }
 
         int currentMana() {
-            return currentMana;
+            return receiver != null ? receiver.getCurrentMana() : flower.getMana();
         }
 
         int changeMana(int amount) {
-            int before = currentMana;
+            int before = currentMana();
             if (receiver != null) {
                 receiver.receiveMana(amount);
-                currentMana = receiver.getCurrentMana();
             } else if (flower != null) {
                 flower.addMana(amount);
-                currentMana = flower.getMana();
             }
-            int changed = currentMana - before;
-            // 创造型魔力池的读数不会下降，但应保持无限魔力源语义。
+            int changed = currentMana() - before;
+            /// 创造型魔力池的读数不会下降，但应保持无限魔力源语义。
             if (amount < 0 && receiver instanceof ManaPool && before > 0 && changed == 0) {
                 nonDepletingSource = true;
                 return amount;
@@ -143,14 +139,14 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
         if (be == null) return null;
 
         if (be instanceof GeneratingFlowerBlockEntity flower) {
-            // 即使魔力为0也返回handle，让extract方法处理
-            return ManaHandle.source(flower, flower.getMana());
+            /// 即使魔力为0也返回handle，让extract方法处理
+            return ManaHandle.source(flower);
         }
 
         ManaReceiver receiver = ManaReceiver.LOOKUP.find(be, face);
         if (receiver == null) return null;
 
-        return ManaHandle.target(receiver, receiver.getCurrentMana());
+        return ManaHandle.target(receiver);
     }
 
     @Override
@@ -172,10 +168,17 @@ public class BotaniaManaResource implements LogisticsResource<BotaniaManaResourc
 
     @Override
     public boolean rollback(ManaHandle source, Object value, long amount,
-                            @Nullable FaceConfigComposite sourceConfig, boolean pullMode,
+                            @Nullable EndpointConfig sourceConfig, boolean pullMode,
                             @Nullable TransferContext context) {
         if (!(value instanceof Number) || amount <= 0L || amount > Integer.MAX_VALUE) return amount <= 0L;
         int restored = source.changeMana((int) amount);
         return restored >= amount || source.nonDepletingSource;
     }
+
+    @Override
+    public long maxInsertToTarget(ManaHandle handle, Object value, EndpointConfig config) {
+        long stock = config.linkConfig.getKeepStock();
+        return stock <= 0 ? Long.MAX_VALUE : Math.max(0L, stock - handle.currentMana());
+    }
+
 }

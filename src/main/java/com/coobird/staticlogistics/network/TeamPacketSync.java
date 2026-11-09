@@ -11,9 +11,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.*;
 
-/**
- * 把已授权数据包发送给发起玩家所在团队的在线成员。
- */
+/// 把已授权数据包发送给发起玩家所在团队的在线成员。
 public final class TeamPacketSync {
     private TeamPacketSync() {
     }
@@ -23,23 +21,13 @@ public final class TeamPacketSync {
         UUID ownerId,
         CustomPacketPayload payload
     ) {
-        boolean sentToPlayer = false;
         PermissionService permissions = PermissionService.getInstance();
-        Set<UUID> recipients = permissions.teamMembersOf(player.getUUID());
-        for (UUID memberId : recipients) {
-            ServerPlayer member = player.server.getPlayerList().getPlayer(memberId);
-            if (!permissions.canAccess(ownerId, member)) continue;
+        for (ServerPlayer member : permissions.authorizedOnlinePlayers(player.server, ownerId)) {
             PacketDistributor.sendToPlayer(member, payload);
-            sentToPlayer |= member.getUUID().equals(player.getUUID());
-        }
-        if (!sentToPlayer && permissions.canAccess(ownerId, player)) {
-            PacketDistributor.sendToPlayer(player, payload);
         }
     }
 
-    /**
-     * 将同一次拓扑变更的全部页面发送给相同的授权成员集合。
-     */
+    /// 将同一次拓扑变更的全部页面发送给相同的授权成员集合。
     public static void sendTopology(
         ServerPlayer player,
         UUID ownerId,
@@ -47,16 +35,8 @@ public final class TeamPacketSync {
     ) {
         PlayerGroupStore store = PlayerGroupStore.get(player.server);
         PermissionService permissions = PermissionService.getInstance();
-        Set<UUID> recipients = permissions.teamMembersOf(player.getUUID());
-        boolean sentToPlayer = false;
-        for (UUID memberId : recipients) {
-            ServerPlayer member = player.server.getPlayerList().getPlayer(memberId);
-            if (!permissions.canAccess(ownerId, member)) continue;
+        for (ServerPlayer member : permissions.authorizedOnlinePlayers(player.server, ownerId)) {
             sendTopologyTo(member, sanitize(updates, member, permissions), store);
-            sentToPlayer |= member.getUUID().equals(player.getUUID());
-        }
-        if (!sentToPlayer && permissions.canAccess(ownerId, player)) {
-            sendTopologyTo(player, sanitize(updates, player, permissions), store);
         }
     }
 

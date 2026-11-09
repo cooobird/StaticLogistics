@@ -17,16 +17,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/**
- * 客户端请求删除指定分组及其所有链接。
- */
+/// 客户端请求删除指定分组及其所有链接。
 public record C2SDeleteGroupPayload(GroupKey groupKey) implements CustomPacketPayload {
 
     public static final Type<C2SDeleteGroupPayload> TYPE = new Type<>(StaticLogistics.asResource("delete_group"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SDeleteGroupPayload> STREAM_CODEC =
-        StreamCodec.composite(GroupKey.STREAM_CODEC, C2SDeleteGroupPayload::groupKey,
-            C2SDeleteGroupPayload::new);
+        StreamCodec.composite(GroupKey.STREAM_CODEC, C2SDeleteGroupPayload::groupKey, C2SDeleteGroupPayload::new);
 
     @Override
     public Type<? extends CustomPacketPayload> type() {
@@ -49,7 +46,7 @@ public record C2SDeleteGroupPayload(GroupKey groupKey) implements CustomPacketPa
                     && payload.groupKey().equals(menu.getRemoteGroupKey())) {
                     menu.clearTarget();
                     PacketDistributor.sendToPlayer(
-                        sp, new S2CClearLinkEndpointPayload());
+                        sp, new S2CClearLinkEndpointPayload(menu.containerId));
                     menu.broadcastFullState();
                 }
                 TeamPacketSync.send(sp, payload.groupKey().ownerId(),

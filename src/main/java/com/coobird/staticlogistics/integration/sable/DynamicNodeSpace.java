@@ -4,15 +4,14 @@ import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.create.CreateContraptionService;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 
 import java.util.function.Predicate;
 
-/**
- * 将节点的存储坐标投影到真实世界坐标。Sable 未安装时退化为恒等变换。
- */
+/// 将节点的存储坐标投影到真实世界坐标。Sable 未安装时退化为恒等变换。
 public final class DynamicNodeSpace {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Adapter ADAPTER = loadAdapter();
@@ -31,13 +30,11 @@ public final class DynamicNodeSpace {
     }
 
     public static Vec3 faceNormal(Level level, BlockPos position,
-                                  net.minecraft.core.Direction face, float partialTick) {
+                                  Direction face, float partialTick) {
         return vectorToWorld(level, position, Vec3.atLowerCornerOf(face.getNormal()), partialTick);
     }
 
-    /**
-     * 将节点局部方向旋转到世界空间，并保留动态结构完整的滚转角。
-     */
+    /// 将节点局部方向旋转到世界空间，并保留动态结构完整的滚转角。
     public static Vec3 vectorToWorld(Level level, BlockPos position, Vec3 vector, float partialTick) {
         Vec3 transformed = vector;
         Vec3 projectedCenter = Vec3.atCenterOf(position);
@@ -50,7 +47,7 @@ public final class DynamicNodeSpace {
     }
 
     public static Vec3 faceAxis1(Level level, BlockPos position,
-                                 net.minecraft.core.Direction face, float partialTick) {
+                                 Direction face, float partialTick) {
         Vec3 normal = Vec3.atLowerCornerOf(face.getNormal());
         Vec3 seed = Math.abs(normal.y) > 0.5 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
         Vec3 axis2 = normal.cross(seed).normalize();
@@ -59,7 +56,7 @@ public final class DynamicNodeSpace {
     }
 
     public static Vec3 faceAxis2(Level level, BlockPos position,
-                                 net.minecraft.core.Direction face, float partialTick) {
+                                 Direction face, float partialTick) {
         Vec3 normal = Vec3.atLowerCornerOf(face.getNormal());
         Vec3 seed = Math.abs(normal.y) > 0.5 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
         return vectorToWorld(level, position, normal.cross(seed).normalize(), partialTick);
@@ -78,9 +75,7 @@ public final class DynamicNodeSpace {
         return blockCenter(level, first, 1.0F).distanceToSqr(blockCenter(level, second, 1.0F));
     }
 
-    /**
-     * 使用 Sable 的子世界感知规则，计算两个存储空间或世界空间坐标之间的距离。
-     */
+    /// 使用 Sable 的子世界感知规则，计算两个存储空间或世界空间坐标之间的距离。
     public static double distanceSquared(Level level, Vec3 first, Vec3 second) {
         return ADAPTER.distanceSquared(level, first, second);
     }

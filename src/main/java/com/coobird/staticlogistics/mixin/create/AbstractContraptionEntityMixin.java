@@ -18,10 +18,8 @@ public abstract class AbstractContraptionEntityMixin {
         CreateContraptionService.onContraptionSet((AbstractContraptionEntity) (Object) this, contraption);
     }
 
-    /**
-     * 机械动力的生成数据会直接写入客户端结构，不会调用 setContraption。
-     */
-    @Inject(method = "readAdditional", at = @At("TAIL"), remap = false, require = 0, expect = 1)
+    /// 机械动力的生成数据会直接写入客户端结构，不会调用 setContraption。
+    @Inject(method = "readAdditional", at = @At("TAIL"), remap = false, require = 0)
     private void staticlogistics$registerClientContraption(
         CompoundTag tag, boolean spawnData, CallbackInfo callbackInfo
     ) {

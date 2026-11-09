@@ -9,8 +9,6 @@ import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.integration.resource.IntegrationResourceBootstrap;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.node.sync.TopologySyncPort;
-import com.coobird.staticlogistics.network.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
 import com.coobird.staticlogistics.transfer.TransferTypeBootstrap;
 import com.mojang.logging.LogUtils;
@@ -36,7 +34,6 @@ public class StaticLogistics {
     public static final List<Consumer<SLLanguageProvider>> chineseProviders = new CopyOnWriteArrayList<>();
 
     public StaticLogistics(IEventBus modEventBus, ModContainer modContainer) {
-        TopologySyncPort.install(NetworkSyncManager::new);
         SLConfig.register(modContainer);
         if (FMLEnvironment.dist.isClient())
             modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);

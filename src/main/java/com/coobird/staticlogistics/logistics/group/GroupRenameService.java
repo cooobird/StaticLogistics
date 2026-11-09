@@ -4,22 +4,15 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
-import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.node.NodeMutationTransaction;
+import com.coobird.staticlogistics.logistics.node.*;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
-/**
- * 组重命名服务——遍历所有维度中属于旧组 ID 的配置，原子替换为新组 ID。
- */
+/// 组重命名服务——遍历所有维度中属于旧组 ID 的配置，原子替换为新组 ID。
 public class GroupRenameService {
     private final PermissionService permissionService;
     private final GlobalLogisticsManager globalManager;
@@ -29,30 +22,16 @@ public class GroupRenameService {
         this.globalManager = globalManager;
     }
 
-    public boolean renameGroup(Level level, Player player, String oldId, String newId) {
-        return renameGroup(level, player, player.getUUID(), oldId, newId);
-    }
-
-    public boolean renameGroup(Level level, Player player, UUID ownerId,
-                               String oldId, String newId) {
-        return renameGroup(level, player, ownerId, oldId, newId, false);
-    }
-
     public boolean renameGroupAsAdmin(Level level, Player player, UUID ownerId,
                                       String oldId, String newId) {
         if (!player.hasPermissions(2)) return false;
-        return renameGroup(level, player, ownerId, oldId, newId, true);
-    }
-
-    private boolean renameGroup(Level level, Player player, UUID ownerId,
-                                String oldId, String newId, boolean administrative) {
-        if (oldId.equals(newId) || newId.isEmpty()) return false;
+        if (oldId == null || newId == null || oldId.equals(newId) || newId.isEmpty()) return false;
 
         MinecraftServer server = level.getServer();
         if (server == null) return false;
         GroupRef group = PlayerGroupStore.get(server).findGroup(ownerId, oldId);
         if (group == null) return false;
-        return renameGroup(level, player, group.key(), newId, administrative);
+        return renameGroup(level, player, group.key(), newId, true);
     }
 
     public boolean renameGroup(Level level, Player player, GroupKey groupKey, String newDisplayName) {
@@ -83,8 +62,8 @@ public class GroupRenameService {
 
         for (ServerLevel serverLevel : server.getAllLevels()) {
             LinkManager mgr = LinkManager.get(serverLevel);
-            for (FaceAddress key : mgr.getAllConfigKeys()) {
-                FaceConfigComposite config = mgr.getFaceConfig(key);
+            for (EndpointAddress key : mgr.getAllConfigKeys()) {
+                EndpointConfig config = mgr.getEndpointConfig(key);
                 if (config == null || !config.faceConfig.getGroupKeys().contains(groupKey)) continue;
                 if (!administrative
                     && !permissionService.canModify(config.faceConfig.getOwner(), player)) return false;
@@ -116,9 +95,7 @@ public class GroupRenameService {
         return true;
     }
 
-    /**
-     * 仅合并同一所有者下的两个稳定分组身份。
-     */
+    /// 仅合并同一所有者下的两个稳定分组身份。
     private boolean mergeGroup(MinecraftServer server, Player player,
                                GroupRef source, GroupRef target, boolean administrative) {
         if (!source.key().ownerId().equals(target.key().ownerId())) return false;
@@ -128,8 +105,8 @@ public class GroupRenameService {
         List<LogisticsNode> sourceNodes = new ArrayList<>();
         for (ServerLevel serverLevel : server.getAllLevels()) {
             LinkManager manager = LinkManager.get(serverLevel);
-            for (FaceAddress key : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
+            for (EndpointAddress key : manager.getAllConfigKeys()) {
+                EndpointConfig config = manager.getEndpointConfig(key);
                 if (config == null
                     || !config.faceConfig.getGroupKeys().contains(source.key())) continue;
                 if (!source.key().ownerId().equals(config.faceConfig.getOwner())
@@ -139,10 +116,32 @@ public class GroupRenameService {
             }
         }
 
+        Map<ConnectionKey, ConnectionKey> connectionMoves = new LinkedHashMap<>();
+        for (LogisticsNode node : sourceNodes) {
+            ServerLevel nodeLevel = server.getLevel(node.gPos().dimension());
+            if (nodeLevel == null) continue;
+            EndpointConfig config = LinkManager.get(nodeLevel)
+                .getEndpointConfig(EndpointAddress.of(node));
+            if (config == null) continue;
+            for (LogisticsNode linked : config.getLinkedNodes(source.key())) {
+                if (node.gPos().equals(linked.gPos())) continue;
+                ConnectionKey before = new ConnectionKey(source.key(), node, linked);
+                connectionMoves.put(before, new ConnectionKey(
+                    target.key(), before.first(), before.second()));
+            }
+        }
+
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
+            PlayerGroupStore.GroupDirectorySnapshot groupSnapshot =
+                store.captureGroups(Set.of(source.key(), target.key()));
+            PlayerGroupStore.ConnectionMetadataSnapshot metadataSnapshot =
+                store.captureConnectionMetadata(
+                    connectionMoves, Map.of(source.key(), target.key()));
             transaction.captureAll(sourceNodes);
-            transaction.onRollback(() -> store.registerClaimedGroups(
-                source.key().ownerId(), List.of(source)));
+            transaction.onRollback(() -> {
+                store.restoreGroups(groupSnapshot);
+                store.restoreConnectionMetadata(metadataSnapshot);
+            });
 
             for (LogisticsNode node : sourceNodes) {
                 ServerLevel nodeLevel = server.getLevel(node.gPos().dimension());
@@ -152,8 +151,7 @@ public class GroupRenameService {
                 }
                 LinkManager.get(nodeLevel).mergeGroupMetadata(node, source, target);
             }
-            PlayerGroupStore.ConnectionNameMerge nameMerge = store.mergeConnectionNames(source.key(), target.key());
-            transaction.onRollback(() -> store.rollbackConnectionNameMerge(nameMerge));
+            store.remapConnectionMetadata(connectionMoves, Map.of(source.key(), target.key()));
             if (!store.removeGroup(source.key())) {
                 throw new IllegalStateException("Source group directory changed during merge");
             }

@@ -1,17 +1,18 @@
 package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
+import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintGeometry;
+import com.coobird.staticlogistics.logistics.node.ChannelPort;
 import com.coobird.staticlogistics.logistics.node.persistence.ConfigKeys;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.ParticleStatus;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -19,8 +20,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -33,18 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * 蓝图区域渲染器 —— 在世界中渲染蓝图的选区、预览和粘贴效果。
- *
- * <p>渲染内容：
- * <ul>
- *   <li>锚点模式：选区线框 + 锚点（绿）+ 终点（红）</li>
- *   <li>预览模式：旋转后的选区 + 每个方块的面状态指示器 + 链接流动粒子</li>
- * </ul>
- *
- * <p>使用 X-Ray 渲染，在 {@link RenderLevelStageEvent.Stage#AFTER_TRANSLUCENT_BLOCKS} 阶段绘制。
- * 只在手持蓝图时激活。
- */
+/// 在世界中渲染蓝图选区和放置预览。
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class BlueprintRegionRenderer {
 
@@ -67,66 +55,18 @@ public class BlueprintRegionRenderer {
         if (mc.player == null || mc.level == null) return;
 
         ItemStack bp = getBlueprint(mc);
-        if (bp == null) return;
+        if (bp == null || mc.screen instanceof LinkConfiguratorScreen) return;
 
         BlueprintData data = bp.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY);
-        String anchorS = bp.getOrDefault(SLDataComponents.BLUEPRINT_ANCHOR.get(), "");
         String previewS = bp.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "");
         int rot = bp.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), 0);
 
-        if (!previewS.isEmpty() && !data.isEmpty()) {
-            renderPreview(event, data, parsePos(previewS), rot);
-            return;
+        String dimension = mc.level.dimension().location().toString();
+        if (!previewS.isEmpty() && dimension.equals(bp.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_DIMENSION.get(), "")) && !data.isEmpty()) {
+            BlockPos anchor = parsePos(previewS);
+            if (anchor != null) renderPreview(event, data, anchor, rot);
         }
 
-        BlockPos a, b, green;
-        if (!data.isEmpty()) {
-            green = data.anchor();
-            a = green;
-            b = data.corner2();
-        } else if (!anchorS.isEmpty()) {
-            a = parsePos(anchorS);
-            green = a;
-            if (a == null) return;
-            HitResult hit = mc.hitResult;
-            if (!(hit instanceof BlockHitResult bh) || hit.getType() == HitResult.Type.MISS) return;
-            b = bh.getBlockPos();
-        } else return;
-
-        renderBox(event, a, b, green, 0.3f, 0.6f, 1f, 0.7f);
-    }
-
-    private static void renderBox(RenderLevelStageEvent event, BlockPos p1, BlockPos p2, BlockPos green,
-                                  float r, float g, float bl, float alpha) {
-        PoseStack ps = event.getPoseStack();
-        Vec3 cam = event.getCamera().getPosition();
-        Minecraft mc = Minecraft.getInstance();
-        WorldOverlayVisibility visibility = new WorldOverlayVisibility(mc.levelRenderer, event.getFrustum());
-        if (!visibility.isBlockVisible(p1)
-            && !visibility.isBlockVisible(p2)) {
-            return;
-        }
-
-        MultiBufferSource.BufferSource buf = mc.renderBuffers().bufferSource();
-        VertexConsumer bc = buf.getBuffer(BP_BOX);
-        ps.pushPose();
-        ps.translate(-cam.x, -cam.y, -cam.z);
-        Matrix4f mat = ps.last().pose();
-
-        float R = 0.025f;
-        float x1 = Math.min(p1.getX(), p2.getX()) - R, y1 = Math.min(p1.getY(), p2.getY()) - R, z1 = Math.min(p1.getZ(), p2.getZ()) - R;
-        float x2 = Math.max(p1.getX(), p2.getX()) + 1 + R, y2 = Math.max(p1.getY(), p2.getY()) + 1 + R, z2 = Math.max(p1.getZ(), p2.getZ()) + 1 + R;
-
-        drawEdges12(bc, mat, x1, y1, z1, x2, y2, z2, R, r, g, bl, alpha);
-        if (visibility.isBlockVisible(p2)) {
-            LogisticsRenderHelper.drawFrame(bc, mat, p2, 1f, 0.3f, 0.3f, 0.9f);
-        }
-        if (green != null && visibility.isBlockVisible(green)) {
-            LogisticsRenderHelper.drawFrame(bc, mat, green, 0.3f, 1f, 0.3f, 0.9f);
-        }
-
-        ps.popPose();
-        buf.endBatch(BP_BOX);
     }
 
     private static void renderPreview(RenderLevelStageEvent event, BlueprintData data, BlockPos anchor, int rot) {
@@ -135,13 +75,17 @@ public class BlueprintRegionRenderer {
         int cx1 = Math.min(anchor.getX(), c2.getX()), cy1 = Math.min(anchor.getY(), c2.getY()), cz1 = Math.min(anchor.getZ(), c2.getZ());
         int cx2 = Math.max(anchor.getX(), c2.getX()), cy2 = Math.max(anchor.getY(), c2.getY()), cz2 = Math.max(anchor.getZ(), c2.getZ());
 
-        // 构建绝对坐标 → BlockEntry 的快速查找表
+        /// 构建绝对坐标 → BlockEntry 的快速查找表
         var entryMap = new HashMap<BlockPos, BlueprintData.BlockEntry>();
-        var relativeEntryMap = new HashMap<BlockPos, BlueprintData.BlockEntry>();
         for (BlueprintData.BlockEntry e : data.blocks()) {
             BlockPos abs = BlueprintGeometry.rotateToAbsolute(e.relativePos(), anchor, rot);
             entryMap.put(abs, e);
-            relativeEntryMap.put(e.relativePos(), e);
+            cx1 = Math.min(cx1, abs.getX());
+            cy1 = Math.min(cy1, abs.getY());
+            cz1 = Math.min(cz1, abs.getZ());
+            cx2 = Math.max(cx2, abs.getX());
+            cy2 = Math.max(cy2, abs.getY());
+            cz2 = Math.max(cz2, abs.getZ());
         }
 
         PoseStack ps = event.getPoseStack();
@@ -166,21 +110,16 @@ public class BlueprintRegionRenderer {
         ps.pushPose();
         ps.translate(-cam.x, -cam.y, -cam.z);
         Matrix4f mat = ps.last().pose();
-        long frameTimeMillis = System.currentTimeMillis();
-        float pulse = (float) Math.sin(frameTimeMillis / 200.0) * 0.03f;
-        double time = frameTimeMillis / 1000.0;
-        ParticleStatus particleStatus = mc.options.particles().get();
 
-        // 选区外框
+        /// 选区外框
         float R = 0.025f;
-        drawEdges12(bc, mat, cx1 - R, cy1 - R, cz1 - R, cx2 + 1 + R, cy2 + 1 + R, cz2 + 1 + R,
-            R, 0.3f, 0.6f, 1f, 0.7f);
-        // 锚点（起点）绿色高亮
+        drawEdges12(bc, mat, cx1 - R, cy1 - R, cz1 - R, cx2 + 1 + R, cy2 + 1 + R, cz2 + 1 + R, R, 0.3f, 0.6f, 1f, 0.7f);
+        /// 锚点（起点）绿色高亮
         if (visibility.isBlockVisible(anchor)) {
             LogisticsRenderHelper.drawFrame(
                 bc, mat, anchor, 0.3f, 1f, 0.3f, 0.9f);
         }
-        // 终点（对角）红色高亮
+        /// 终点（对角）红色高亮
         if (visibility.isBlockVisible(corner2Abs)) {
             LogisticsRenderHelper.drawFrame(
                 bc, mat, corner2Abs, 1f, 0.3f, 0.3f, 0.9f);
@@ -192,14 +131,14 @@ public class BlueprintRegionRenderer {
             BlueprintData.BlockEntry be = entry.getValue();
             boolean vis = visibility.isBlockVisible(absPos);
 
-            // 方块线框（锚点和终点已单独高亮，跳过以免覆盖颜色）
+            /// 方块线框（锚点和终点已单独高亮，跳过以免覆盖颜色）
             if (vis && renderedFrames.add(absPos) && !absPos.equals(anchor) && !absPos.equals(corner2Abs)) {
                 LogisticsRenderHelper.drawFrame(bc, mat, absPos, 1f, 1f, 1f, 0.25f);
             }
 
-            // 面指示器
+            /// 面指示器
             for (var faceEntry : be.faces().entrySet()) {
-                Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey(), rot);
+                Direction rotatedFace = BlueprintGeometry.rotateDirection(faceEntry.getKey().face(), rot);
                 BlueprintData.FaceEntry fe = faceEntry.getValue();
                 CompoundTag ft = fe.faceConfig();
                 boolean hasIn = ft.getBoolean(ConfigKeys.GLOBAL_INPUT);
@@ -208,19 +147,18 @@ public class BlueprintRegionRenderer {
                     LogisticsRenderHelper.drawFaceStatus(bc, mat, absPos, rotatedFace,
                         LogisticsRenderHelper.INPUT_COLOR,
                         LogisticsRenderHelper.OUTPUT_COLOR,
-                        hasIn, hasOut, pulse);
+                        hasIn, hasOut, 0.0F);
                 }
 
-                // 流动粒子
+                /// 蓝图中的连接也使用静态线，不生成随时间更新的粒子。
                 if (hasOut) {
-                    for (BlueprintData.LinkEntry exactLink : BlueprintGeometry.resolveLinks(
-                        be, fe, relativeEntryMap)) {
+                    for (BlueprintData.LinkEntry exactLink : fe.linkedTo()) {
                         BlockPos linkAbs = BlueprintGeometry.rotateToAbsolute(
                             exactLink.relativePos(), anchor, rot);
                         if (!visibility.isConnectionVisible(absPos, linkAbs)) continue;
                         BlueprintData.BlockEntry dstEntry = entryMap.get(linkAbs);
                         if (dstEntry == null) continue;
-                        BlueprintData.FaceEntry destination = dstEntry.faces().get(exactLink.face());
+                        BlueprintData.FaceEntry destination = dstEntry.faces().get(new ChannelPort(exactLink.face(), exactLink.channel()));
                         if (destination != null) {
                             CompoundTag dstFt = destination.faceConfig();
                             if (!dstFt.getBoolean(ConfigKeys.GLOBAL_INPUT)) continue;
@@ -229,10 +167,9 @@ public class BlueprintRegionRenderer {
                                 .add(Vec3.atLowerCornerOf(rotatedFace.getNormal()).scale(0.52));
                             Vec3 t = Vec3.atCenterOf(linkAbs)
                                 .add(Vec3.atLowerCornerOf(dstRotatedFace.getNormal()).scale(0.52));
-                            LogisticsRenderHelper.drawFlowParticles(
+                            LogisticsRenderHelper.drawStaticLink(
                                 bc, mat, s, t,
-                                LogisticsRenderHelper.FLOW_COLOR, time,
-                                particleStatus);
+                                LogisticsRenderHelper.FLOW_COLOR, 0.62F, 0.018F);
                         }
                     }
                 }
@@ -247,9 +184,9 @@ public class BlueprintRegionRenderer {
     private static ItemStack getBlueprint(Minecraft mc) {
         if (mc.player == null) return null;
         ItemStack m = mc.player.getMainHandItem();
-        if (m.getItem() instanceof BlueprintItem) return m;
+        if (BlueprintModeHandler.isActive(m)) return m;
         ItemStack o = mc.player.getOffhandItem();
-        return o.getItem() instanceof BlueprintItem ? o : null;
+        return BlueprintModeHandler.isActive(o) ? o : null;
     }
 
     private static BlockPos parsePos(String s) {

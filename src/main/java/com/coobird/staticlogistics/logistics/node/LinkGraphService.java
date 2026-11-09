@@ -3,6 +3,7 @@ package com.coobird.staticlogistics.logistics.node;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
+import com.coobird.staticlogistics.logistics.group.LogisticsOperationStore;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -10,11 +11,8 @@ import net.minecraft.server.level.ServerLevel;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * 分组作用域链接图的存储适配服务。
- *
- * <p>双向邻接与批次语义由纯领域图实现；本类只解析跨维度端点，并把领域动作映射到面配置聚合根。
- */
+/// 分组作用域链接图的存储适配服务。
+/// 双向邻接与批次语义由纯领域图实现；本类只解析跨维度端点，并把领域动作映射到面配置聚合根。
 final class LinkGraphService {
     private static final LinkMutationPermit MUTATION_PERMIT = new LinkMutationPermit();
 
@@ -29,6 +27,13 @@ final class LinkGraphService {
     }
 
     void addEdge(GroupKey groupKey, LogisticsNode first, LogisticsNode second) {
+        if (first == null || second == null || first.gPos().equals(second.gPos())) return;
+        ConnectionKey connection = new ConnectionKey(groupKey, first, second);
+        LogisticsOperationStore operations = LogisticsOperationStore.get(server);
+        if (operations.isConnectionDeletionBlocked(connection)
+            || operations.isGroupDeletionPending(groupKey)) {
+            throw new IllegalStateException("Connection belongs to topology being deleted");
+        }
         mutatePair(first, second, () -> graph.addEdge(groupKey, first, second));
     }
 
@@ -70,7 +75,7 @@ final class LinkGraphService {
         LogisticsNode node,
         boolean deferCleanup
     ) {
-        FaceConfigComposite config = findConfig(node);
+        EndpointConfig config = findConfig(node);
         if (config == null) return;
         Set<LogisticsNode> affected = new LinkedHashSet<>(config.getLinkedNodes(groupKey));
         try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
@@ -85,7 +90,7 @@ final class LinkGraphService {
         }
     }
 
-    void cascadeRemove(LogisticsNode node, FaceConfigComposite config) {
+    void cascadeRemove(LogisticsNode node, EndpointConfig config) {
         if (node == null || config == null) return;
         Set<LogisticsNode> counterparts = new LinkedHashSet<>(config.getLinkedNodes());
         counterparts.addAll(globalManager.getSourcesLinkedTo(node));
@@ -106,19 +111,14 @@ final class LinkGraphService {
         }
     }
 
-    /**
-     * 清除指向已不存在端点的所有反向引用。
-     *
-     * <p>该入口不依赖被移除端点仍保有本地面配置，因此可以修复单边残留的损坏拓扑。
-     */
+    /// 清除指向已不存在端点的所有反向引用。
+    /// 该入口不依赖被移除端点仍保有本地面配置，因此可以修复单边残留的损坏拓扑。
     boolean purgeInboundReferences(LogisticsNode removedNode) {
         if (removedNode == null) return false;
         return purgeInboundReferences(List.of(removedNode));
     }
 
-    /**
-     * 以一次全局索引扫描和一个事务清除多个已消失端点的反向引用。
-     */
+    /// 以一次全局索引扫描和一个事务清除多个已消失端点的反向引用。
     boolean purgeInboundReferences(Collection<LogisticsNode> removedNodes) {
         Set<LogisticsNode> removed = removedNodes == null
             ? Set.of()
@@ -147,20 +147,6 @@ final class LinkGraphService {
         return true;
     }
 
-    void repairReciprocalEdges(LogisticsNode node, FaceConfigComposite config) {
-        if (node == null || config == null) return;
-        Set<LogisticsNode> affected = new LinkedHashSet<>(config.getLinkedNodes());
-        Set<GroupKey> affectedGroups =
-            Set.copyOf(config.faceConfig.getGroupKeys());
-        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(server)) {
-            transaction.capture(node);
-            captureAvailableStates(transaction, affected);
-            graph.repairReciprocalEdges(node);
-            affectedGroups.forEach(this::deferEmptyGroupRemoval);
-            transaction.commit();
-        }
-    }
-
     private void mutatePair(LogisticsNode first, LogisticsNode second, Runnable mutation) {
         if (first == null || second == null || first.equals(second)) return;
         if (findConfig(first) == null || findConfig(second) == null) return;
@@ -172,9 +158,7 @@ final class LinkGraphService {
         }
     }
 
-    /**
-     * 损坏拓扑中的远端可能已消失；只捕获当前可解析维度的“存在或缺失”状态。
-     */
+    /// 损坏拓扑中的远端可能已消失；只捕获当前可解析维度的“存在或缺失”状态。
     private void captureAvailableStates(NodeMutationTransaction transaction,
                                         Iterable<LogisticsNode> nodes) {
         for (LogisticsNode candidate : nodes) {
@@ -184,21 +168,21 @@ final class LinkGraphService {
         }
     }
 
-    private FaceConfigComposite findConfig(LogisticsNode node) {
+    private EndpointConfig findConfig(LogisticsNode node) {
         if (node == null) return null;
         ServerLevel level = server.getLevel(node.gPos().dimension());
-        return level == null ? null : LinkManager.get(level).getFaceConfig(FaceAddress.of(node));
+        return level == null ? null : LinkManager.get(level).getEndpointConfig(EndpointAddress.of(node));
     }
 
     private Set<GroupKey> groupsConnecting(LogisticsNode first, LogisticsNode second) {
         Set<GroupKey> groups = new LinkedHashSet<>();
-        FaceConfigComposite firstConfig = findConfig(first);
+        EndpointConfig firstConfig = findConfig(first);
         if (firstConfig != null) {
             firstConfig.getLinkedNodesByGroup().forEach((group, targets) -> {
                 if (targets.contains(second)) groups.add(group);
             });
         }
-        FaceConfigComposite secondConfig = findConfig(second);
+        EndpointConfig secondConfig = findConfig(second);
         if (secondConfig != null) {
             secondConfig.getLinkedNodesByGroup().forEach((group, targets) -> {
                 if (targets.contains(first)) groups.add(group);
@@ -215,7 +199,11 @@ final class LinkGraphService {
         ConnectionKey connection = new ConnectionKey(group, first, second);
         boolean deferred = NodeMutationTransaction.defer(
             server, new ConnectionNameRemoval(connection),
-            () -> PlayerGroupStore.get(server).removeConnectionName(connection));
+            () -> {
+                if (ContainerConnections.routes(server, connection).isEmpty()) {
+                    PlayerGroupStore.get(server).removeConnectionMetadata(Set.of(connection));
+                }
+            });
         if (!deferred) {
             throw new IllegalStateException(
                 "Connection name removal requires an active node mutation");
@@ -223,12 +211,9 @@ final class LinkGraphService {
         deferEmptyGroupRemoval(group);
     }
 
-    /**
-     * 将空分组清理合并到当前图事务的提交阶段。
-     *
-     * <p>判断必须发生在全部端点修改提交之后；同一分组一次事务内删除多条边时，
-     * 去重键保证只扫描一次权威拓扑。
-     */
+    /// 将空分组清理合并到当前图事务的提交阶段。
+    /// 判断必须发生在全部端点修改提交之后；同一分组一次事务内删除多条边时，
+    /// 去重键保证只扫描一次权威拓扑。
     private void deferEmptyGroupRemoval(GroupKey group) {
         boolean deferred = NodeMutationTransaction.defer(
             server, new EmptyGroupRemoval(group),
@@ -244,11 +229,11 @@ final class LinkGraphService {
         ServerLevel level = server.getLevel(node.gPos().dimension());
         if (level == null) return null;
         LinkManager manager = LinkManager.get(level);
-        FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(node));
+        EndpointConfig config = manager.getEndpointConfig(EndpointAddress.of(node));
         return config == null ? null : new FaceEndpoint(node, manager, config);
     }
 
-    private record FaceEndpoint(LogisticsNode node, LinkManager manager, FaceConfigComposite config)
+    private record FaceEndpoint(LogisticsNode node, LinkManager manager, EndpointConfig config)
         implements ReciprocalLinkGraph.Endpoint<LogisticsNode, GroupKey> {
 
         @Override
@@ -273,7 +258,7 @@ final class LinkGraphService {
 
         @Override
         public ReciprocalLinkGraph.Edit beginEdit() {
-            FaceConfigComposite.BulkEdit edit = config.beginBulkEdit();
+            EndpointConfig.BulkEdit edit = config.beginBulkEdit();
             return edit::close;
         }
 
@@ -305,7 +290,7 @@ final class LinkGraphService {
 
         @Override
         public void cleanup() {
-            if (manager.getFaceConfig(FaceAddress.of(node)) == config) {
+            if (manager.getEndpointConfig(EndpointAddress.of(node)) == config) {
                 manager.cleanUpFaceIfNeeded(node, config);
             }
         }

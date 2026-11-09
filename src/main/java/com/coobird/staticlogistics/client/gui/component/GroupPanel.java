@@ -1,1024 +1,915 @@
 package com.coobird.staticlogistics.client.gui.component;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
-import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
-import com.coobird.staticlogistics.client.data.GroupConnectionTreeModel;
+import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel;
+import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel.Row;
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
-import com.coobird.staticlogistics.content.SLKeyNames;
-import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.group.GroupHierarchy;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
-import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
+import com.coobird.staticlogistics.network.c2s.C2SGroupHierarchyPayload;
+import com.coobird.staticlogistics.network.c2s.C2SManageConnectionsPayload;
 import net.minecraft.ChatFormatting;
-import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.resources.sounds.SimpleSoundInstance;
-import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.Rect2i;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.HoverEvent;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.*;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
-/**
- * 右侧组面板：搜索框 + 分组列表 + 滚动条 + 行内重命名。
- */
-public class GroupPanel {
+import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.GroupDirectory.*;
+
+/// 右侧分组目录。
+/// 本组件负责目录与连接选择；目录、连接和通道的管理操作统一使用右键弹窗。
+public final class GroupPanel {
+    // 面板与标题栏。
+    // 右侧面板的横向位置。
     public static final int SIDE_PANEL_X = SLGuiTextures.LinkConfigurator.GROUP_X;
-    public static final int BAR_W = 76, BAR_X = 73, BAR_Y = 9;
-    private static final int BAR_TEXT_WIDTH = 62;
-    public static final int LIST_OFFSET_X = 4, LIST_OFFSET_Y = 43;
-    public static final int SCROLLBAR_X = 133, SCROLLBAR_Y = 40;
-    public static final int SELECTION_WIDTH = 126;
-    /**
-     * 只微调分组折叠/展开箭头，不移动整行内容。
-     */
-    private static final int GROUP_ARROW_X_OFFSET = 1;
-    private static final int GROUP_ARROW_Y_OFFSET = 0;
-    /**
-     * 只微调连接方向箭头，不移动连接名称。
-     */
-    private static final int CONNECTION_ARROW_X_OFFSET = 0;
-    private static final int CONNECTION_ARROW_Y_OFFSET = 0;
-    /**
-     * 整个列表框为四行高，添加行跟随内容且最多停靠在第四行。
-     */
-    private static final int LIST_HEIGHT = SLGuiTextures.List.ITEM_H * 4;
-    /**
-     * 滚动轨道从自身起点延伸到整个分组面板的真实底边。
-     */
-    private static final int SCROLLBAR_BOTTOM_OFFSET = -2;
-    private static final int SCROLLBAR_TRACK_HEIGHT =
-        SLGuiTextures.LinkConfigurator.GROUP_HEIGHT - (SCROLLBAR_Y - SLGuiTextures.LinkConfigurator.GROUP_Y) + SCROLLBAR_BOTTOM_OFFSET;
+    public static final int BAR_W = ConfiguratorLayout.GroupDirectory.BAR_W;
+    public static final int BAR_X = ConfiguratorLayout.GroupDirectory.BAR_X;
+    public static final int BAR_Y = ConfiguratorLayout.GroupDirectory.BAR_Y;
+    public static final int LIST_OFFSET_X = ConfiguratorLayout.GroupDirectory.LIST_OFFSET_X;
+    public static final int LIST_OFFSET_Y = ConfiguratorLayout.GroupDirectory.LIST_OFFSET_Y;
+    public static final int SCROLLBAR_X = ConfiguratorLayout.GroupDirectory.SCROLLBAR_X;
+    public static final int SCROLLBAR_Y = ConfiguratorLayout.GroupDirectory.SCROLLBAR_Y;
+    public static final int SELECTION_WIDTH = ConfiguratorLayout.GroupDirectory.SELECTION_WIDTH;
+    // 树形横向分支相对连接行顶端的纵向偏移。
+    private static final int TREE_BRANCH_Y = ROW_HEIGHT / 2;
+
     private final EditBox searchBox;
-    private final EditBox renameBox;
-    private final EditBox newGroupBox;
-
     private float scrollOffset;
-    private boolean isScrolling;
+    private boolean scrolling;
     private double scrollGrabOffset;
-    private long lastClickTime;
-    private GroupKey lastClickedGroup;
-    private ConnectionKey lastClickedConnection;
-    private GroupRef editingGroup;
-    private ClientConnection editingConnection;
-    private boolean creatingGroup;
-    private String confirmedSearchTerm = "";
-    private GroupRef hoveredGroup;
-    private ClientConnection hoveredConnection;
-
+    private String searchTerm = "";
     private int lastSeenVersion = -1;
-    private List<GroupRef> cachedGroupList = Collections.emptyList();
-    private List<GroupConnectionTreeModel.Row> cachedRows = Collections.emptyList();
-    private final Set<GroupKey> expandedGroups = new HashSet<>();
+    private List<GroupRef> cachedGroups = Collections.emptyList();
+    private CompoundTag hierarchy = new CompoundTag();
+    private boolean hierarchyReceived;
+    private int hierarchyRevision, builtHierarchy = -1, builtTopology = -1;
+    private Set<String> builtCollapsed = Set.of();
+    private String builtSearch = "";
+    private final Set<String> collapsed = new HashSet<>();
+    private List<Row> directoryRows = List.of();
+    private final List<AtlasButton> directoryButtons = new ArrayList<>();
+    private final AtlasButton scopeButton;
+    private boolean builtTeamScope;
+    private String selectedDirectory = "";
+    private ClientConnection selectedConnection, hoveredConnection;
+    private String hoveredDirectory;
+    private List<ClientConnection> monitoredConnections = List.of();
+    private final Set<ConnectionKey> selectedConnections = new LinkedHashSet<>();
+    private ConnectionKey connectionAnchor;
+    private ConnectionKey pendingSingleClick;
+    private List<ConnectionKey> dragConnections = List.of();
+    private double dragStartX, dragStartY;
+    private boolean draggingConnections;
+
+    public boolean hasDirectorySelection() {
+        return !selectedDirectory.isEmpty();
+    }
+
+    public Set<ConnectionKey> getSelectedConnections() {
+        return Set.copyOf(selectedConnections);
+    }
+
+    public ConnectionKey getSelectedConnection() {
+        return selectedConnection == null ? null : selectedConnection.key();
+    }
+
+    public record ViewState(String search, Set<String> collapsed, float scroll, String directory, ConnectionKey primary,
+                            Set<ConnectionKey> selected, ConnectionKey anchor) {
+    }
+
+    public ViewState saveView() {
+        return new ViewState(searchBox.getValue(), Set.copyOf(collapsed), scrollOffset, selectedDirectory, getSelectedConnection(), Set.copyOf(selectedConnections), connectionAnchor);
+    }
+
+    public boolean restoreView(ViewState state) {
+        if (!hierarchyReceived) return false;
+        if (state.primary() != null && !focusConnection(state.primary())) {
+            selectedConnection = null;
+        }
+        searchBox.setValue(state.search());
+        collapsed.clear();
+        collapsed.addAll(state.collapsed());
+        scrollOffset = state.scroll();
+        selectedDirectory = state.directory();
+        selectedConnections.clear();
+        state.selected().stream().filter(key -> ClientLinkData.INSTANCE.findConnection(key) != null).forEach(selectedConnections::add);
+        connectionAnchor = state.anchor();
+        builtTopology = -1;
+        return true;
+    }
+
+    public boolean focusConnection(ConnectionKey key) {
+        var connection = ClientLinkData.INSTANCE.getConnectionsForGroup(key.groupKey()).stream().filter(c -> c.key().equals(key)).findFirst().orElse(null);
+        if (connection == null) return false;
+        if (key.equals(getSelectedConnection())) {
+            selectedConnection = connection;
+            return true;
+        }
+        selectedDirectory = "";
+        selectedConnection = connection;
+        selectedConnections.clear();
+        selectedConnections.add(key);
+        connectionAnchor = key;
+        return true;
+    }
+
+    private GroupHierarchyDialog dialog;
+    private PlayerGrantDialog grantDialog;
+    private AtlasButton grantButton;
+    private int scopePage;
+    private long builtScopeRevision = -1;
+    private final List<AtlasButton> contextButtons = new ArrayList<>();
+    private Consumer<ClickResult> contextAction = result -> {
+    };
+
+    public void setContextAction(Consumer<ClickResult> action) {
+        contextAction = action;
+    }
+
+    private final Font directoryFont;
+    private final int originX, originY;
+    private Map<ConnectionKey, String> connectionNames = Map.of();
+
+    private String connectionName(ClientConnection c) {
+        return connectionNames.getOrDefault(c.key(), c.displayName());
+    }
+
+    public void acceptHierarchy(CompoundTag data) {
+        hierarchy = data == null ? new CompoundTag() : data.copy();
+        if (grantDialog != null) grantDialog.accept(hierarchy);
+        hierarchyReceived = true;
+        hierarchyRevision++;
+    }
+
+    public boolean hasDialog() {
+        return dialog != null || grantDialog != null || !contextButtons.isEmpty();
+    }
+
+    public void openPresetName(Consumer<String> save) {
+        contextButtons.clear();
+        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+            "gui.staticlogistics.preset.name_title", "", true, false, "", List.of(),
+            (operation, value) -> save.accept(value.trim()), () -> dialog = null);
+    }
+
+    public void openPresetSelection(List<String> names, Consumer<String> select, Consumer<String> delete) {
+        contextButtons.clear();
+        var entries = names.stream().map(name -> new GroupHierarchyDialog.Destination(name,
+            name.isEmpty() ? Component.translatable("gui.staticlogistics.preset.legacy").getString() : name, "", true)).toList();
+        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+            "gui.staticlogistics.preset.select_title", "", false, true, "preset_select", entries,
+            (operation, value) -> select.accept(value), () -> dialog = null);
+        dialog.onPresetDelete(name -> {
+            String displayName = name.isEmpty() ? Component.translatable("gui.staticlogistics.preset.legacy").getString() : name;
+            dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+                "gui.staticlogistics.preset.delete_title", displayName, false, false, "delete", List.of(),
+                (operation, ignored) -> delete.accept(name), () -> dialog = null);
+        });
+    }
+
+    public void openPresetReview(List<String> labels, int targetCount, Consumer<Set<Integer>> apply) {
+        openPresetReview(labels, targetCount, apply, null);
+    }
+
+    public void openPresetReview(List<String> labels, int targetCount, Consumer<Set<Integer>> apply, Runnable back) {
+        var entries = new ArrayList<GroupHierarchyDialog.Destination>();
+        for (int i = 0; i < labels.size(); i++)
+            entries.add(new GroupHierarchyDialog.Destination(Integer.toString(i), labels.get(i), "", true));
+        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+            targetCount > 1 ? "gui.staticlogistics.preset.review_batch_title" : "gui.staticlogistics.preset.review_title",
+            Integer.toString(targetCount), false, true, back == null ? "preset_review" : "preset_review_batch", entries,
+            (operation, value) -> {
+                if (operation.equals("back")) back.run();
+                else apply.accept(Arrays.stream(value.split(",")).map(Integer::parseInt).collect(Collectors.toSet()));
+            }, () -> dialog = null);
+    }
+
+    public void openPresetTargetSelection(List<LogisticsNode> targets, Consumer<LogisticsNode> select) {
+        var entries = new ArrayList<GroupHierarchyDialog.Destination>();
+        for (int i = 0; i < targets.size(); i++)
+            entries.add(new GroupHierarchyDialog.Destination(Integer.toString(i),
+                NodeDisplayText.details(targets.get(i)).getString(), "", true));
+        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+            "gui.staticlogistics.preset.target_title", "", false, true, "preset_target", entries,
+            (operation, value) -> select.accept(targets.get(Integer.parseInt(value))), () -> dialog = null);
+    }
+
+    public boolean dragDialog(double x, double y, int button, int width, int height) {
+        return dialog != null && dialog.mouseDragged(x, y, button, width, height);
+    }
+
+    public boolean dragDialog(double x, double y, int button, int viewportX, int viewportY, int width, int height) {
+        if (grantDialog != null) {
+            grantDialog.drag(x, y, button, viewportX, viewportY, width, height);
+            return true;
+        }
+        return dialog != null && dialog.mouseDragged(x, y, button, viewportX, viewportY, width, height);
+    }
+
+    public List<Rect2i> dialogBounds() {
+        List<Rect2i> result = new ArrayList<>();
+        if (dialog != null) result.add(dialog.bounds());
+        if (grantDialog != null) result.add(grantDialog.bounds());
+        for (AtlasButton widget : contextButtons)
+            result.add(new Rect2i(widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight()));
+        return result;
+    }
+
+    public boolean releaseDialog() {
+        if (grantDialog != null) {
+            grantDialog.release();
+            return true;
+        }
+        return dialog != null && dialog.mouseReleased();
+    }
+
+    public boolean scrollDialog(double delta) {
+        if (grantDialog != null) {
+            grantDialog.scroll(delta);
+            return true;
+        }
+        return dialog != null && dialog.mouseScrolled(delta);
+    }
+
+    public void renderDialog(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (dialog != null) dialog.render(graphics, directoryFont, mouseX, mouseY);
+        if (grantDialog != null) grantDialog.render(graphics, mouseX, mouseY);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 600);
+        for (AtlasButton widget : contextButtons) widget.render(graphics, mouseX, mouseY, 0);
+        graphics.pose().popPose();
+    }
+
+    public void constrainDialogs(int viewportX, int viewportY, int width, int height) {
+        if (dialog != null) dialog.constrainToViewport(viewportX, viewportY, width, height);
+        if (grantDialog != null) grantDialog.constrain(viewportX, viewportY, width, height);
+        if (contextButtons.isEmpty()) return;
+        int left = contextButtons.stream().mapToInt(AtlasButton::getX).min().orElse(0);
+        int top = contextButtons.stream().mapToInt(AtlasButton::getY).min().orElse(0);
+        int right = contextButtons.stream().mapToInt(b -> b.getX() + b.getWidth()).max().orElse(left);
+        int bottom = contextButtons.stream().mapToInt(b -> b.getY() + b.getHeight()).max().orElse(top);
+        int dx = WindowDrag.constrain(left, right - left, viewportX, width) - left;
+        int dy = WindowDrag.constrain(top, bottom - top, viewportY, height) - top;
+        for (var button : contextButtons) {
+            button.setX(button.getX() + dx);
+            button.setY(button.getY() + dy);
+        }
+    }
+
+    public boolean dialogKeyPressed(int key, int scan, int modifiers) {
+        if (grantDialog != null) return grantDialog.key(key, scan, modifiers);
+        if (!contextButtons.isEmpty()) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) contextButtons.clear();
+            return true;
+        }
+        return dialog != null && dialog.keyPressed(key, scan, modifiers);
+    }
+
+    public boolean dialogCharTyped(char character, int modifiers) {
+        if (grantDialog != null) return grantDialog.typed(character, modifiers);
+        return dialog != null && dialog.charTyped(character, modifiers);
+    }
+
+    public boolean directoryMouseClicked(double x, double y, int button) {
+        if (grantDialog != null) return grantDialog.click(x, y, button);
+        if (dialog != null) return dialog.mouseClicked(x, y, button);
+        if (!contextButtons.isEmpty()) {
+            for (AtlasButton widget : List.copyOf(contextButtons)) if (widget.mouseClicked(x, y, button)) return true;
+            contextButtons.clear();
+            return true;
+        }
+        if (grantButton.mouseClicked(x, y, button)) return true;
+        for (AtlasButton widget : directoryButtons) if (widget.mouseClicked(x, y, button)) return true;
+        if (scopeButton.mouseClicked(x, y, button)) return true;
+        return false;
+    }
+
+    private void request(String action, String id, String parent, String name) {
+        PacketDistributor.sendToServer(new C2SGroupHierarchyPayload(action, id, parent, name));
+    }
+
+    private void openDirectoryDialog(boolean create, boolean root) {
+        openDirectoryDialog(create, root, "");
+    }
+
+    public void openChannelContext(double mouseX, double mouseY, String name, BiConsumer<String, String> action) {
+        contextButtons.clear();
+        int x = Math.clamp((int) mouseX, originX, originX + CONTEXT_MENU_MAX_X);
+        int y = Math.clamp((int) mouseY, originY, originY + CONTEXT_MENU_MAX_Y);
+        for (String operation : List.of("rename", "delete")) {
+            contextButtons.add(AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.directory." + operation), button -> {
+                contextButtons.clear();
+                dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+                    "gui.staticlogistics.compact.channel_" + operation, name, false, false, operation, List.of(), action, () -> dialog = null);
+            }).bounds(x, y + contextButtons.size() * CONTEXT_MENU_ROW_HEIGHT, CONTEXT_MENU_WIDTH, CONTEXT_MENU_ROW_HEIGHT).build());
+        }
+    }
+
+    private void openContextMenu(double mouseX, double mouseY) {
+        contextButtons.clear();
+        int x = Math.clamp((int) mouseX, originX, originX + CONTEXT_MENU_MAX_X);
+        int y = Math.clamp((int) mouseY, originY, originY + CONTEXT_MENU_MAX_Y);
+        List<String> actions = new ArrayList<>(List.of("rename"));
+        if (!hasDirectorySelection() && selectedConnection != null) actions.add("move");
+        actions.add("delete");
+        for (String action : actions) {
+            String key = action.equals("delete") && !hasDirectorySelection() && selectedConnection != null ? "delete_link" : action;
+            if (!hasDirectorySelection() && selectedConnections.size() > 1) key = "batch_" + action;
+            contextButtons.add(AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.directory." + key), b -> {
+                contextButtons.clear();
+                if (!hasDirectorySelection() && selectedConnection != null) openConnectionDialog(action);
+                else openDirectoryDialog(false, false, action);
+            }).bounds(x, y + contextButtons.size() * CONTEXT_MENU_ROW_HEIGHT, CONTEXT_MENU_WIDTH, CONTEXT_MENU_ROW_HEIGHT).build());
+        }
+    }
+
+    private void openConnectionDialog(String operation) {
+        Set<String> savedCollapsed = Set.copyOf(collapsed);
+        String savedSearch = searchTerm;
+        List<ConnectionKey> targets;
+        try {
+            collapsed.clear();
+            searchTerm = "";
+            buildRows();
+            targets = directoryRows.stream().filter(row -> row.connection() != null && selectedConnections.contains(row.connection().key())).map(row -> row.connection().key()).distinct().toList();
+        } finally {
+            collapsed.addAll(savedCollapsed);
+            searchTerm = savedSearch;
+            buildRows();
+        }
+        if (targets.isEmpty()) return;
+        if (targets.size() != selectedConnections.size() || targets.size() > 256) {
+            if (Minecraft.getInstance().player != null)
+                Minecraft.getInstance().player.displayClientMessage(Component.translatable("gui.staticlogistics.directory.batch_manage_limit"), false);
+            return;
+        }
+        var player = Minecraft.getInstance().player;
+        if (player == null) return;
+        int menuId = player.containerMenu.containerId;
+        List<GroupHierarchyDialog.Destination> destinations = new ArrayList<>();
+        destinations.add(new GroupHierarchyDialog.Destination("", Component.translatable("gui.staticlogistics.directory.root").getString(), "", true));
+        var entries = hierarchy.getCompound("entries");
+        for (String id : entries.getAllKeys()) {
+            var entry = entries.getCompound(id);
+            destinations.add(new GroupHierarchyDialog.Destination(id, entry.getString("name"), "", true));
+        }
+        destinations.sort(Comparator.comparing(GroupHierarchyDialog.Destination::name));
+        String title = targets.size() > 1 ? "batch_" + operation : operation;
+        String initialName = targets.size() == 1 ? connectionName(selectedConnection) : "";
+        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y, "gui.staticlogistics.directory." + title,
+            initialName, false, true, operation, destinations,
+            (action, value) -> PacketDistributor.sendToServer(new C2SManageConnectionsPayload(menuId, targets, action, value)), () -> dialog = null);
+    }
+
+    private void openDirectoryDialog(boolean create, boolean root, String operation) {
+        CompoundTag entries = hierarchy.getCompound("entries");
+        String id = selectedDirectory;
+        if (!create && id.isEmpty()) return;
+        String titleKey = create ? "new_collection" : "manage";
+        String initialName = create ? "" : entries.getCompound(id).getString("name");
+        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y, "gui.staticlogistics.directory." + titleKey,
+            initialName, create, false, operation, List.of(), (action, value) -> {
+            if (create) request("create", "", "", value);
+            else request(action, id, action.equals("move") ? value : "", action.equals("rename") ? value : "");
+        }, () -> dialog = null);
+    }
+
+    private void buildRows() {
+        refreshGroups();
+        if (builtScopeRevision >= 0 && builtScopeRevision != ConnectionDirectoryModel.scopeRevision()) {
+            selectedDirectory = "";
+            selectedConnection = null;
+            selectedConnections.clear();
+            connectionAnchor = null;
+            scrollOffset = 0;
+            contextAction.accept(ClickResult.consumed(null));
+        }
+        int version = ClientLinkData.INSTANCE.getDataVersion();
+        if (version == builtTopology && hierarchyRevision == builtHierarchy
+            && builtCollapsed.equals(collapsed) && builtSearch.equals(searchTerm)
+            && builtTeamScope == ConnectionDirectoryModel.teamScope()
+            && builtScopeRevision == ConnectionDirectoryModel.scopeRevision()) return;
+        List<ClientConnection> connections = ConnectionDirectoryModel.connections();
+        monitoredConnections = connections;
+        connectionNames = ConnectionDirectoryModel.connectionNames(connections);
+        directoryRows = ConnectionDirectoryModel.rows(hierarchy, connections, collapsed, searchTerm, this::connectionName);
+        builtTopology = version;
+        builtHierarchy = hierarchyRevision;
+        builtTeamScope = ConnectionDirectoryModel.teamScope();
+        builtScopeRevision = ConnectionDirectoryModel.scopeRevision();
+        builtCollapsed = Set.copyOf(collapsed);
+        builtSearch = searchTerm;
+    }
 
     public GroupPanel(Font font, int leftPos, int topPos) {
-        int sx = leftPos + SIDE_PANEL_X;
-        this.searchBox = new EditBox(font, sx + BAR_X, topPos + BAR_Y, BAR_TEXT_WIDTH, 8, Component.empty());
-        this.searchBox.setBordered(false);
-        this.searchBox.setMaxLength(20);
-        this.searchBox.setTextColor(0xFFFFFF);
-        this.searchBox.setHint(Component.translatable("gui.staticlogistics.search_hint").withStyle(ChatFormatting.DARK_GRAY));
-        this.searchBox.setResponder(value -> {
-            this.confirmedSearchTerm = value.trim();
-            this.scrollOffset = 0;
-            this.lastSeenVersion = -1;
+        directoryFont = font;
+        originX = leftPos;
+        originY = topPos;
+        directoryButtons.add(AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.directory.new_collection"), b -> openDirectoryDialog(true, true)).bounds(leftPos + SIDE_PANEL_X + ADD_GROUP_BUTTON_X, topPos + ADD_GROUP_BUTTON_Y, ADD_GROUP_BUTTON_WIDTH, ADD_GROUP_BUTTON_HEIGHT).build().icon(SLGuiTextures.ADD).iconOnly());
+        directoryButtons.get(0).setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.directory.new_collection_hint")));
+        grantButton = AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.permissions.entry"), b -> {
+            grantDialog = new PlayerGrantDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
+                (recipient, permission) -> request(recipient.length() == 36 ? "grant" : "grant_name",
+                    recipient, Integer.toString(permission), ""),
+                enabled -> request("team_access", "", enabled ? "1" : "0", ""), () -> grantDialog = null);
+            grantDialog.accept(hierarchy);
+        }).bounds(leftPos + SIDE_PANEL_X + GRANT_BUTTON_X, topPos + GRANT_BUTTON_Y, GRANT_BUTTON_WIDTH, GRANT_BUTTON_HEIGHT).build();
+        grantButton.setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.permissions.title")));
+        scopeButton = AtlasButton.atlasBuilder(Component.empty(), b -> openScopeMenu())
+            .bounds(leftPos + SIDE_PANEL_X + SCOPE_BUTTON_X, topPos + SCOPE_BUTTON_Y, SCOPE_BUTTON_WIDTH, SCOPE_BUTTON_HEIGHT).build();
+        scopeButton.setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.directory.scope_hint")));
+        int panelX = leftPos + SIDE_PANEL_X;
+        searchBox = new AtlasEditBox(font, panelX + BAR_X + SEARCH_TEXT_INSET, topPos + BAR_Y + SEARCH_TEXT_INSET,
+            BAR_TEXT_WIDTH, SEARCH_TEXT_HEIGHT, Component.empty());
+        ((AtlasEditBox) searchBox).setRightInset(SEARCH_RIGHT_INSET);
+        searchBox.setBordered(false);
+        searchBox.setMaxLength(32);
+        searchBox.setTextColor(ConfiguratorStyle.TEXT);
+        searchBox.setHint(Component.translatable(
+            "gui.staticlogistics.directory.search").withStyle(ChatFormatting.GRAY));
+        searchBox.setResponder(value -> {
+            searchTerm = value.trim();
+            scrollOffset = 0;
+            clampScroll();
         });
 
-        this.renameBox = new EditBox(font, 0, 0, SELECTION_WIDTH - 4, 10, Component.empty());
-        this.renameBox.setBordered(false);
-        this.renameBox.setVisible(false);
-        this.renameBox.setTextColor(0xFFFFCC);
 
-        this.newGroupBox = new EditBox(
-            font, 0, 0, SELECTION_WIDTH - 12, 8, Component.empty());
-        this.newGroupBox.setBordered(false);
-        this.newGroupBox.setVisible(false);
-        this.newGroupBox.setMaxLength(32);
-        this.newGroupBox.setTextColor(0xFFFFCC);
     }
 
     public EditBox getSearchBox() {
         return searchBox;
     }
 
-    public EditBox getRenameBox() {
-        return renameBox;
+    private void selectScope(UUID owner) {
+        if (Objects.equals(ConnectionDirectoryModel.selectedOwner(), owner)) return;
+        ConnectionDirectoryModel.setOwnerScope(owner);
+        selectedDirectory = "";
+        selectedConnection = null;
+        selectedConnections.clear();
+        connectionAnchor = null;
+        scrollOffset = 0;
+        builtTopology = -1;
+        request("select", "", "", "");
+        contextAction.accept(ClickResult.consumed(null));
     }
 
-    public EditBox getNewGroupBox() {
-        return newGroupBox;
+    private void openScopeMenu() {
+        contextButtons.clear();
+        int x = originX + SIDE_PANEL_X + SCOPE_BUTTON_X;
+        int y = originY + SCOPE_BUTTON_Y + SCOPE_BUTTON_HEIGHT + SCOPE_MENU_GAP;
+        var owners = ConnectionDirectoryModel.availableOwners();
+        int pageCount = Math.max(1, (owners.size() + 4) / 5);
+        scopePage = Math.max(0, Math.min(scopePage, pageCount - 1));
+        addScopeOption(x, y, null, Component.translatable("gui.staticlogistics.directory.all"));
+        UUID self = Minecraft.getInstance().player == null ? null : Minecraft.getInstance().player.getUUID();
+        if (self != null) addScopeOption(x, y, self, Component.translatable("gui.staticlogistics.directory.own"));
+        for (int i = scopePage * 5; i < Math.min(owners.size(), scopePage * 5 + 5); i++) {
+            UUID owner = owners.get(i);
+            int permission = ConnectionDirectoryModel.ownerPermission(owner);
+            String state = Component.translatable(permission == 2 ? "gui.staticlogistics.permissions.manage"
+                : permission == 1 ? "gui.staticlogistics.permissions.view" : "gui.staticlogistics.permissions.no_access").getString();
+            addScopeOption(x, y, owner, Component.literal(directoryFont.plainSubstrByWidth(
+                ConnectionDirectoryModel.ownerName(owner), Math.max(0, SCOPE_MENU_WIDTH - 10 - directoryFont.width(state) - directoryFont.width("  "))) + "  " + state));
+        }
+        if (pageCount > 1) {
+            int rowY = y + contextButtons.size() * SCOPE_MENU_ROW_HEIGHT;
+            contextButtons.add(AtlasButton.atlasBuilder(Component.literal("<"), button -> {
+                scopePage = Math.max(0, scopePage - 1);
+                openScopeMenu();
+            }).bounds(x, rowY, SCOPE_PREVIOUS_WIDTH, SCOPE_MENU_ROW_HEIGHT).build());
+            contextButtons.add(AtlasButton.atlasBuilder(Component.literal((scopePage + 1) + "/" + pageCount), button -> {
+                })
+                .bounds(x + SCOPE_PREVIOUS_WIDTH, rowY, SCOPE_PAGE_WIDTH, SCOPE_MENU_ROW_HEIGHT).build());
+            contextButtons.add(AtlasButton.atlasBuilder(Component.literal(">"), button -> {
+                scopePage = Math.min(pageCount - 1, scopePage + 1);
+                openScopeMenu();
+            }).bounds(x + SCOPE_PREVIOUS_WIDTH + SCOPE_PAGE_WIDTH, rowY, SCOPE_NEXT_WIDTH, SCOPE_MENU_ROW_HEIGHT).build());
+        }
+    }
+
+    private void addScopeOption(int x, int y, UUID owner, Component text) {
+        int rowY = y + contextButtons.size() * SCOPE_MENU_ROW_HEIGHT;
+        var button = AtlasButton.atlasBuilder(text, clicked -> {
+                contextButtons.clear();
+                selectScope(owner);
+            }).bounds(x, rowY, SCOPE_MENU_WIDTH, SCOPE_MENU_ROW_HEIGHT).build()
+            .selection(() -> Objects.equals(ConnectionDirectoryModel.selectedOwner(), owner));
+        if (owner != null) {
+            Component tip = ConnectionDirectoryModel.ownerTeamPermission(owner) > 0
+                ? Component.translatable("gui.staticlogistics.permissions.team_source", ConnectionDirectoryModel.ownerName(owner))
+                : Component.literal(ConnectionDirectoryModel.ownerName(owner));
+            button.setTooltip(Tooltip.create(tip));
+        }
+        contextButtons.add(button);
     }
 
     @Nullable
     public GroupRef getHoveredGroup() {
-        return hoveredGroup;
-    }
-
-    @Nullable
-    public ClientConnection getHoveredConnection() {
-        return hoveredConnection;
-    }
-
-    @Nullable
-    public GroupRef getEditingGroup() {
-        return editingGroup;
-    }
-
-    @Nullable
-    public ClientConnection getEditingConnection() {
-        return editingConnection;
-    }
-
-    public boolean isRenaming() {
-        return editingGroup != null || editingConnection != null;
-    }
-
-    public boolean isScrolling() {
-        return isScrolling;
-    }
-
-    public void setInitialState(ItemStack stack) {
-        this.lastClickedGroup = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
-        this.expandedGroups.clear();
-        if (this.lastClickedGroup != null) this.expandedGroups.add(this.lastClickedGroup);
-        this.lastSeenVersion = -1;
-    }
-
-    public void render(GuiGraphics g, Font font, ItemStack stack,
-                       Set<ConnectionKey> highlightedConnections,
-                       int leftPos, int topPos, int mx, int my, float partialTick,
-                       double interfaceScale) {
-        this.hoveredGroup = null;
-        this.hoveredConnection = null;
-        int sx = leftPos + SIDE_PANEL_X;
-
-        this.searchBox.setX(sx + BAR_X + 1);
-        this.searchBox.setY(topPos + BAR_Y + 1);
-        this.searchBox.render(g, mx, my, partialTick);
-
-        renderGroupList(
-            g, font, stack, highlightedConnections, sx, topPos, mx, my, interfaceScale);
-
-        if (this.renameBox.isVisible()) {
-            this.renameBox.render(g, mx, my, partialTick);
-        }
-        if (this.newGroupBox.isVisible()) {
-            this.newGroupBox.render(g, mx, my, partialTick);
-        }
-    }
-
-    private void renderGroupList(GuiGraphics g, Font font, ItemStack stack,
-                                 Set<ConnectionKey> highlightedConnections,
-                                 int sx, int topPos, int mx, int my,
-                                 double interfaceScale) {
-        List<GroupConnectionTreeModel.Row> rows = getVisibleRows(stack);
-        int maxScroll = getMaxScroll();
-        renderScrollBar(g, sx + SCROLLBAR_X, topPos + SCROLLBAR_Y, mx, my, maxScroll);
-
-        int listX = sx + LIST_OFFSET_X;
-        int listY = topPos + LIST_OFFSET_Y;
-        int addRowY = getAddRowY(listY);
-        String currentGroupId = stack.getOrDefault(SLDataComponents.SELECTED_GROUP.get(), "");
-        GroupKey currentGroupKey = stack.get(SLDataComponents.SELECTED_GROUP_KEY.get());
-        renameBox.setVisible(false);
-        boolean editingRowVisible = false;
-        boolean pinnedGroup = !expandedGroups.isEmpty() && !rows.isEmpty();
-        int contentTop = pinnedGroup
-            ? listY + SLGuiTextures.List.ITEM_H : listY;
-        GuiScissor.enable(g, interfaceScale, listX - 2, contentTop,
-            listX + SELECTION_WIDTH + 2, addRowY);
-
-        for (int i = pinnedGroup ? 1 : 0; i < rows.size(); i++) {
-            int itemY = getRowY(i, listY);
-            if (itemY + SLGuiTextures.List.ITEM_H <= contentTop
-                || itemY >= addRowY) continue;
-            editingRowVisible |= renderListRow(g, font, rows.get(i), listX,
-                itemY, mx, my, currentGroupId, currentGroupKey,
-                highlightedConnections);
-        }
-        g.disableScissor();
-        if (pinnedGroup) {
-            editingRowVisible |= renderListRow(g, font, rows.getFirst(), listX,
-                listY, mx, my, currentGroupId, currentGroupKey,
-                highlightedConnections);
-        }
-        renderAddGroupRow(g, font, listX, addRowY, mx, my);
-        if (isRenaming() && !editingRowVisible) cancelRename();
-    }
-
-    private boolean renderListRow(
-        GuiGraphics graphics,
-        Font font,
-        GroupConnectionTreeModel.Row row,
-        int listX,
-        int itemY,
-        int mouseX,
-        int mouseY,
-        String currentGroupId,
-        @Nullable GroupKey currentGroupKey,
-        Set<ConnectionKey> highlightedConnections
-    ) {
-        GroupRef group = row.group();
-        boolean groupRow = row.connection() == null;
-        boolean selectedGroup = groupRow && (currentGroupKey != null
-            ? currentGroupKey.equals(group.key())
-            : Objects.equals(currentGroupId, group.displayName()));
-        boolean selectedConnection = !groupRow
-            && highlightedConnections.contains(row.connection().key());
-        boolean hovered = mouseX >= listX
-            && mouseX <= listX + SELECTION_WIDTH
-            && mouseY >= itemY
-            && mouseY < itemY + SLGuiTextures.List.ITEM_H;
-        if (hovered) {
-            if (groupRow) hoveredGroup = group;
-            else hoveredConnection = row.connection();
-        }
-        if (selectedGroup || selectedConnection) {
-            graphics.fill(listX, itemY, listX + SELECTION_WIDTH,
-                itemY + SLGuiTextures.List.ITEM_H,
-                selectedConnection ? 0x55FFD45A : 0x4498FB98);
-        } else if (hovered) {
-            graphics.fill(listX, itemY, listX + SELECTION_WIDTH,
-                itemY + SLGuiTextures.List.ITEM_H, 0x22FFFFFF);
-        }
-
-        boolean editing = groupRow
-            ? editingGroup != null && editingGroup.key().equals(group.key())
-            : editingConnection != null
-                && editingConnection.key().equals(row.connection().key());
-        if (editing) {
-            renameBox.setX(listX);
-            renameBox.setY(itemY + 1);
-            renameBox.setVisible(true);
-            return true;
-        }
-
-        int color = selectedConnection ? 0xFFFFD45A
-            : selectedGroup ? 0xFF98FB98 : 0xFFCCCCCC;
-        int textX = listX;
-        if (groupRow) {
-            renderChevron(graphics, textX, itemY,
-                expandedGroups.contains(group.key()));
-            textX += 8;
-        } else {
-            renderConnectionIcon(graphics, row.connection(), textX, itemY);
-            textX += 10;
-        }
-        UUID ownerUUID = group.key().ownerId();
-        if (groupRow && ownerUUID != null) {
-            int headSize = 10;
-            PlayerAvatarRenderer.render(
-                graphics, ownerUUID, textX + 2, itemY + 1, headSize);
-            textX += headSize + 3;
-            if (mouseX >= textX - headSize - 3 && mouseX < textX - 3
-                && mouseY >= itemY + 1 && mouseY < itemY + 1 + headSize) {
-                hoveredGroup = group;
-            }
-        }
-        int availableWidth = listX + SELECTION_WIDTH - textX;
-        String display;
-        if (groupRow) {
-            display = "#" + group.displayName();
-        } else {
-            String customName = row.connection().displayName();
-            display = customName.isEmpty()
-                ? Component.translatable("gui.staticlogistics.connection")
-                .append(" " + row.connectionIndex()).getString()
-                : customName;
-        }
-        graphics.drawString(font,
-            font.plainSubstrByWidth(display, availableWidth),
-            textX, itemY + 2, color, false);
-        return false;
-    }
-
-    private void renderAddGroupRow(
-        GuiGraphics graphics,
-        Font font,
-        int listX,
-        int itemY,
-        int mouseX,
-        int mouseY
-    ) {
-        if (creatingGroup) {
-            newGroupBox.setX(listX + 10);
-            newGroupBox.setY(itemY + 1);
-            newGroupBox.setWidth(SELECTION_WIDTH - 12);
-            newGroupBox.setVisible(true);
-            return;
-        }
-        newGroupBox.setVisible(false);
-        boolean hovered = mouseX >= listX
-            && mouseX <= listX + SELECTION_WIDTH
-            && mouseY >= itemY
-            && mouseY < itemY + SLGuiTextures.List.ITEM_H;
-        if (hovered) {
-            graphics.fill(listX, itemY,
-                listX + SELECTION_WIDTH,
-                itemY + SLGuiTextures.List.ITEM_H, 0x22FFFFFF);
-        }
-        graphics.drawString(font, "+", listX + 1, itemY + 1,
-            0xFF98FB98, false);
-        String label = Component.translatable(
-            "gui.staticlogistics.add_group").getString();
-        graphics.drawString(font,
-            font.plainSubstrByWidth(label, SELECTION_WIDTH - 12),
-            listX + 10, itemY + 1,
-            hovered ? 0xFF98FB98 : 0xFF777777, false);
-    }
-
-    private void renderScrollBar(GuiGraphics g, int x, int y, int mx, int my, int maxScroll) {
-        boolean showActive = maxScroll > 0
-            && ((mx >= x && mx <= x + SLGuiTextures.Scrollbar.WIDTH
-            && my >= y && my <= y + SCROLLBAR_TRACK_HEIGHT) || this.isScrolling);
-        int knobY = scrollKnobOffset(maxScroll);
-        g.blit(SLGuiTextures.GUI_ATLAS, x, y + knobY,
-            showActive ? SLGuiTextures.Scrollbar.ENABLED_U : SLGuiTextures.Scrollbar.DISABLED_U,
-            SLGuiTextures.Scrollbar.ENABLED_V,
-            SLGuiTextures.Scrollbar.WIDTH, SLGuiTextures.Scrollbar.HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-    }
-
-    public boolean isSearchTriggerHit(double mx, double my, int leftPos, int topPos) {
-        int sx = leftPos + SIDE_PANEL_X;
-        int iconX = sx + BAR_X + BAR_W - SLGuiTextures.SEARCH_ICON_WIDTH;
-        return mx >= iconX
-            && mx <= iconX + SLGuiTextures.SEARCH_ICON_WIDTH
-            && my >= topPos + BAR_Y
-            && my <= topPos + BAR_Y + SLGuiTextures.SEARCH_ICON_HEIGHT;
-    }
-
-    public void triggerSearch() {
-        this.confirmedSearchTerm = this.searchBox.getValue().trim();
-        this.scrollOffset = 0;
-        this.lastSeenVersion = -1;
-        playClickSound();
-    }
-
-    public boolean searchBoxMouseClicked(double mx, double my, int button) {
-        return this.searchBox.mouseClicked(mx, my, button);
+        return hoveredConnection == null ? null : ClientLinkData.INSTANCE.findGroupRef(hoveredConnection.groupKey());
     }
 
     public boolean isSearchBoxFocused() {
-        return this.searchBox.isFocused();
+        return searchBox.isFocused();
     }
 
-    public boolean renameBoxMouseClicked(double mx, double my, int button) {
-        if (this.renameBox.isVisible()) {
-            return this.renameBox.mouseClicked(mx, my, button);
+
+    public void render(GuiGraphics graphics, Font font,
+                       int leftPos, int topPos, int mouseX, int mouseY,
+                       float partialTick, double interfaceScale) {
+        hoveredConnection = null;
+        hoveredDirectory = null;
+        int panelX = leftPos + SIDE_PANEL_X;
+        String title = Component.translatable("gui.staticlogistics.directory.title").getString();
+        int addX = Math.max(ADD_GROUP_BUTTON_X, TITLE_X + font.width(title) + TITLE_ADD_GAP);
+        addX = Math.min(addX, SCOPE_BUTTON_X - ADD_GROUP_BUTTON_WIDTH - ADD_SCOPE_GAP);
+        directoryButtons.get(0).setX(panelX + addX);
+        searchBox.setX(panelX + BAR_X + SEARCH_TEXT_INSET);
+        searchBox.setY(topPos + BAR_Y + SEARCH_TEXT_INSET);
+        searchBox.render(graphics, mouseX, mouseY, partialTick);
+        renderGroups(graphics, font, panelX, topPos, mouseX, mouseY, interfaceScale);
+    }
+
+    private void renderGroups(GuiGraphics graphics, Font font,
+                              int panelX, int topPos, int mouseX, int mouseY,
+                              double interfaceScale) {
+        int searchIconX = panelX + BAR_X + BAR_W - SEARCH_ICON_RIGHT_INSET;
+        int searchIconY = topPos + BAR_Y + SEARCH_ICON_Y_OFFSET;
+        boolean searchHovered = inside(mouseX, mouseY, searchIconX, searchIconY, SLGuiTextures.SEARCH_ICON_WIDTH, SLGuiTextures.SEARCH_ICON_HEIGHT);
+        (searchHovered || searchBox.isFocused() ? SLGuiTextures.SEARCH_SELECTED : SLGuiTextures.SEARCH)
+            .draw(graphics, searchIconX, searchIconY);
+        refreshGroups();
+        buildRows();
+        scrollOffset = Math.clamp(scrollOffset, 0, maxScroll());
+        int maximum = maxScroll();
+        int listX = panelX + LIST_OFFSET_X;
+        int listY = topPos + LIST_OFFSET_Y;
+        int addY = addRowY(listY);
+        SLGuiTextures.LIST_SURFACE.frame(graphics, listX - 1, listY - 1, SELECTION_WIDTH + 2, LIST_HEIGHT + 2, 1);
+        if (maximum > 0) renderScrollbar(graphics, panelX + SCROLLBAR_X, topPos + SCROLLBAR_Y, mouseX, mouseY, maximum);
+        String dropTarget = draggingConnections ? dropTarget(mouseX, mouseY, panelX, topPos) : null;
+        GuiScissor.enable(graphics, interfaceScale, listX - 2, listY, listX + SELECTION_WIDTH + 2, addY);
+        for (int index = 0; index < directoryRows.size(); index++) {
+            int rowY = rowY(index, listY);
+            if (rowY + ROW_HEIGHT <= listY || rowY >= addY) continue;
+            Row row = directoryRows.get(index);
+            if (row.connection() == null && inside(mouseX, mouseY, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT)
+                && mouseY >= listY && mouseY < addY) hoveredDirectory = row.id();
+            int indent = row.depth() * DIRECTORY_INDENT_STEP;
+            boolean active = row.connection() != null ? selectedConnections.contains(row.connection().key()) && selectedDirectory.isEmpty() : row.id().equals(selectedDirectory) || row.id().equals(dropTarget);
+            if (active) ConfiguratorStyle.row(graphics, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT, true, false);
+            else {
+                graphics.fill(listX, rowY, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFFC2C2C2);
+                graphics.fill(listX, rowY + ROW_HEIGHT - ROW_DIVIDER_HEIGHT, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFF999999);
+            }
+            if (row.connection() != null) {
+                if (inside(mouseX, mouseY, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT) && mouseY >= listY && mouseY < addY) {
+                    hoveredConnection = row.connection();
+                }
+                if (row.depth() > 0) {
+                    int lineX = listX + TREE_LINE_X;
+                    boolean hasNextChild = index + 1 < directoryRows.size() && directoryRows.get(index + 1).depth() > 0;
+                    int lineEnd = hasNextChild ? ROW_HEIGHT : ROW_HEIGHT / 2 + 1;
+                    for (int dy = 0; dy < lineEnd; dy += TREE_DASH_STEP)
+                        graphics.fill(lineX, rowY + TREE_LINE_Y + dy, lineX + TREE_LINE_WIDTH, rowY + TREE_LINE_Y + Math.min(dy + TREE_DASH_LENGTH, lineEnd), 0xFF444444);
+                    for (int dx = 0; dx < TREE_BRANCH_LENGTH; dx += TREE_DASH_STEP)
+                        graphics.fill(lineX + dx, rowY + TREE_BRANCH_Y, lineX + Math.min(dx + TREE_DASH_LENGTH, TREE_BRANCH_LENGTH), rowY + TREE_BRANCH_Y + TREE_LINE_WIDTH, 0xFF444444);
+                }
+                graphics.renderItem(ConnectionDirectoryModel.connectionIcon(row.connection()), listX + indent + CONNECTION_ICON_X, rowY + CONNECTION_ICON_Y);
+                graphics.drawString(font,
+                    ConfiguratorStyle.scrollingText(font, row.name(), SELECTION_WIDTH - indent - CONNECTION_TEXT_WIDTH_INSET,
+                        inside(mouseX, mouseY, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT) && mouseY >= listY && mouseY < addY),
+                    listX + indent + CONNECTION_TEXT_X, rowY + DIRECTORY_TEXT_Y, ConfiguratorStyle.TEXT, false);
+            } else {
+                ConfiguratorStyle.disclosure(graphics, listX + indent + FOLDER_ARROW_X, rowY + FOLDER_ARROW_Y, collapsed.contains(row.id()));
+                ConfiguratorStyle.directory(graphics, listX + indent + FOLDER_ICON_X, rowY + FOLDER_ICON_Y, active);
+                int textX = listX + indent + DIRECTORY_TEXT_X;
+                int textRight = listX + SELECTION_WIDTH - DIRECTORY_TEXT_RIGHT_INSET;
+                graphics.drawString(font,
+                    font.plainSubstrByWidth(row.name(), Math.max(0, textRight - textX)),
+                    textX, rowY + DIRECTORY_TEXT_Y, ConfiguratorStyle.TEXT, false);
+            }
         }
-        return false;
+        graphics.flush();
+        graphics.disableScissor();
+        if (draggingConnections) {
+            if (dropTarget != null && dropTarget.isEmpty()) {
+                int blankY = Math.max(listY, rowY(directoryRows.size(), listY));
+                if (blankY < addY) graphics.fill(listX, blankY, listX + SELECTION_WIDTH, addY, 0x668899DD);
+            }
+            Component label = Component.translatable("gui.staticlogistics.directory.drag_count", dragConnections.size());
+            int labelX = mouseX + DRAG_LABEL_X_OFFSET, labelY = mouseY + DRAG_LABEL_Y_OFFSET;
+            graphics.fill(labelX - DRAG_LABEL_PADDING, labelY - DRAG_LABEL_PADDING, labelX + font.width(label) + DRAG_LABEL_PADDING, labelY + font.lineHeight + DRAG_LABEL_PADDING, 0xDD303030);
+            graphics.drawString(font, label, labelX, labelY, 0xFFFFFF, false);
+        }
+        int titleWidth = Math.max(0, directoryButtons.get(0).getX() - panelX - TITLE_X - TITLE_ADD_GAP);
+        String title = font.plainSubstrByWidth(Component.translatable("gui.staticlogistics.directory.title").getString(), titleWidth);
+        graphics.drawString(font, title, panelX + TITLE_X, topPos + TITLE_Y, ConfiguratorStyle.TEXT, false);
+        for (AtlasButton widget : directoryButtons) widget.render(graphics, mouseX, mouseY, 0);
+        grantButton.render(graphics, mouseX, mouseY, 0);
+        scopeButton.setMessage(ConnectionDirectoryModel.scopeLabel());
+        scopeButton.render(graphics, mouseX, mouseY, 0);
+        SLGuiTextures.ARROW_DOWN.draw(graphics, panelX + SCOPE_BUTTON_X + SCOPE_BUTTON_WIDTH - SCOPE_ARROW_RIGHT_INSET, topPos + SCOPE_BUTTON_Y + SCOPE_ARROW_Y_OFFSET);
     }
 
-    public boolean newGroupBoxMouseClicked(
-        double mouseX,
-        double mouseY,
-        int button
-    ) {
-        return creatingGroup
-            && newGroupBox.mouseClicked(mouseX, mouseY, button);
+    private void renderScrollbar(GuiGraphics graphics, int x, int y,
+                                 int mouseX, int mouseY, int maximum) {
+        boolean active = maximum > 0 && (scrolling
+            || inside(mouseX, mouseY, x, y,
+            SLGuiTextures.Scrollbar.WIDTH, SCROLLBAR_TRACK_HEIGHT));
+        ConfiguratorStyle.scrollbar(graphics, x, y, SCROLLBAR_TRACK_HEIGHT, scrollKnobOffset(maximum) + SCROLLBAR_THUMB_Y_OFFSET, active);
     }
 
-    public boolean isCreatingGroup() {
-        return creatingGroup;
+    public boolean searchBoxMouseClicked(double x, double y, int button) {
+        return searchBox.mouseClicked(x, y, button);
     }
 
-    public boolean isCreateRowHit(
-        double mouseX,
-        double mouseY,
-        int leftPos,
-        int topPos
-    ) {
+
+    public boolean isSearchTriggerHit(double x, double y, int leftPos, int topPos) {
+        int panelX = leftPos + SIDE_PANEL_X;
+        int iconX = panelX + BAR_X + BAR_W - SEARCH_ICON_RIGHT_INSET;
+        return inside(x, y, iconX, topPos + BAR_Y + SEARCH_ICON_Y_OFFSET, SLGuiTextures.SEARCH_ICON_WIDTH, SLGuiTextures.SEARCH_ICON_HEIGHT);
+    }
+
+    public void triggerSearch() {
+        searchTerm = searchBox.getValue().trim();
+        scrollOffset = 0;
+        clampScroll();
+        SoundUtil.playClickSound();
+    }
+
+
+    @Nullable
+    public ClickResult handleListClick(double mouseX, double mouseY, int button,
+                                       int leftPos, int topPos) {
+        refreshGroups();
+        buildRows();
         int listX = leftPos + SIDE_PANEL_X + LIST_OFFSET_X;
         int listY = topPos + LIST_OFFSET_Y;
-        int itemY = getAddRowY(listY);
-        return mouseX >= listX
-            && mouseX <= listX + SELECTION_WIDTH
-            && mouseY >= itemY
-            && mouseY < itemY + SLGuiTextures.List.ITEM_H;
-    }
-
-    public void beginCreateGroup() {
-        creatingGroup = true;
-        newGroupBox.setValue("");
-        newGroupBox.setVisible(true);
-        newGroupBox.setFocused(true);
-    }
-
-    public String confirmCreateGroup() {
-        String name = newGroupBox.getValue().trim();
-        cancelCreateGroup();
-        return name;
-    }
-
-    public void cancelCreateGroup() {
-        creatingGroup = false;
-        newGroupBox.setFocused(false);
-        newGroupBox.setVisible(false);
-        newGroupBox.setValue("");
-    }
-
-    public boolean isRenameBoxVisible() {
-        return this.renameBox.isVisible();
-    }
-
-    public void startRename(GroupRef group, int leftPos, int topPos) {
-        int sx = leftPos + SIDE_PANEL_X;
-        this.renameBox.setX(sx + LIST_OFFSET_X);
-        this.renameBox.setY(topPos + LIST_OFFSET_Y);
-        this.editingGroup = group;
-        this.editingConnection = null;
-        this.renameBox.setValue(group.displayName());
-        this.renameBox.setVisible(true);
-        this.renameBox.setFocused(true);
-    }
-
-    public void startRename(ClientConnection connection, int leftPos, int topPos) {
-        int sx = leftPos + SIDE_PANEL_X;
-        this.renameBox.setX(sx + LIST_OFFSET_X);
-        this.renameBox.setY(topPos + LIST_OFFSET_Y);
-        this.editingGroup = null;
-        this.editingConnection = Objects.requireNonNull(connection);
-        this.renameBox.setValue(connection.displayName());
-        this.renameBox.setVisible(true);
-        this.renameBox.setFocused(true);
-    }
-
-    /**
-     * 将 renameBox 定位到指定绝对坐标
-     */
-    public String confirmRename() {
-        String newId = renameBox.getValue().trim();
-        cancelRename();
-        return newId;
-    }
-
-    public void cancelRename() {
-        this.editingGroup = null;
-        this.editingConnection = null;
-        this.renameBox.setVisible(false);
-    }
-
-    /**
-     * 处理分组列表区域的鼠标点击。
-     *
-     * @return 点击结果：null=未命中，ClickResult=命中
-     */
-    @Nullable
-    public ClickResult handleListClick(double mx, double my, int button, int leftPos, int topPos,
-                                       ItemStack stack, boolean shiftDown) {
-        int sx = leftPos + SIDE_PANEL_X;
-        List<GroupConnectionTreeModel.Row> rows = getVisibleRows(stack);
-        int listX = sx + LIST_OFFSET_X;
-        int listY = topPos + LIST_OFFSET_Y;
-        int addRowY = getAddRowY(listY);
-        if (!(mx >= listX && mx <= listX + SELECTION_WIDTH
-            && my >= listY && my < addRowY))
-            return null;
-
-        for (int i = 0; i < rows.size(); i++) {
-            GroupConnectionTreeModel.Row row = rows.get(i);
-            int itemY = getRowY(i, listY);
-            if (my >= itemY
-                && my < itemY + SLGuiTextures.List.ITEM_H) {
-                GroupRef group = row.group();
-                if (row.connection() != null) {
-                    ClientConnection connection = row.connection();
-                    if (button == 1) return ClickResult.deleteConnection(group, connection);
-                    if (button != 0) return ClickResult.consumed(group);
-                    long now = Util.getMillis();
-                    boolean isDoubleClick = Objects.equals(
-                        lastClickedConnection, connection.key())
-                        && now - lastClickTime < LogisticsConstants.UI.DOUBLE_CLICK_THRESHOLD_MS;
-                    lastClickedConnection = connection.key();
-                    lastClickedGroup = null;
-                    lastClickTime = now;
-                    return isDoubleClick
-                        ? ClickResult.renameConnection(group, connection)
-                        : ClickResult.open(group, connection);
-                }
+        int addY = addRowY(listY);
+        if (!inside(mouseX, mouseY, listX, listY,
+            SELECTION_WIDTH, addY - listY)) return null;
+        for (int index = 0; index < directoryRows.size(); index++) {
+            int rowY = rowY(index, listY);
+            if (!inside(mouseX, mouseY, listX, rowY,
+                SELECTION_WIDTH, ROW_HEIGHT)) continue;
+            Row row = directoryRows.get(index);
+            if (row.connection() == null) {
+                selectedDirectory = row.id();
+                selectedConnection = null;
+                selectedConnections.clear();
+                connectionAnchor = null;
                 if (button == 1) {
-                    return ClickResult.delete(group);
+                    if (hierarchy.getCompound("entries").contains(row.id())) openContextMenu(mouseX, mouseY);
+                    return ClickResult.consumed(null);
                 }
-                if (shiftDown) {
-                    return ClickResult.export(group);
-                }
-                if (button == 0 && mx < listX + 8) {
-                    boolean collapse = expandedGroups.contains(group.key());
-                    expandedGroups.clear();
-                    if (!collapse) expandedGroups.add(group.key());
-                    scrollOffset = 0;
-                    rebuildRows();
-                    clampScroll();
-                    return ClickResult.consumed(group);
-                }
-                if (button == 0 && expandedGroups.isEmpty()) {
-                    expandedGroups.add(group.key());
-                    scrollOffset = 0;
-                    rebuildRows();
-                    lastClickedGroup = group.key();
-                    lastClickedConnection = null;
-                    lastClickTime = Util.getMillis();
-                    return ClickResult.select(group);
-                }
-                long now = Util.getMillis();
-                boolean isDoubleClick = Objects.equals(lastClickedGroup, group.key())
-                    && now - lastClickTime < LogisticsConstants.UI.DOUBLE_CLICK_THRESHOLD_MS;
-                lastClickedGroup = group.key();
-                lastClickedConnection = null;
-                lastClickTime = now;
-                return isDoubleClick ? ClickResult.rename(group) : ClickResult.select(group);
+                request("select", row.id(), "", "");
+                if (!collapsed.add(row.id())) collapsed.remove(row.id());
+                return ClickResult.consumed(null);
             }
+            GroupRef group = ClientLinkData.INSTANCE.findGroupRef(row.connection().groupKey());
+            selectedDirectory = "";
+            selectedConnection = row.connection();
+            ConnectionKey clicked = row.connection().key();
+            boolean ctrl = Screen.hasControlDown();
+            boolean shift = Screen.hasShiftDown();
+            List<ConnectionKey> order = directoryRows.stream().filter(r -> r.connection() != null).map(r -> r.connection().key()).toList();
+            int anchor = order.indexOf(connectionAnchor), end = order.indexOf(clicked);
+            if (button == 1 && selectedConnections.contains(clicked)) {
+                /// 右键已选项保留整批选择。
+            } else if (button == 0 && !ctrl && !shift && selectedConnections.size() > 1 && selectedConnections.contains(clicked)) {
+                pendingSingleClick = clicked;
+            } else if (button == 0 && shift && anchor >= 0) {
+                if (!ctrl) selectedConnections.clear();
+                selectedConnections.addAll(order.subList(Math.min(anchor, end), Math.max(anchor, end) + 1));
+            } else {
+                if (!ctrl || button != 0) selectedConnections.clear();
+                if (!selectedConnections.add(clicked)) selectedConnections.remove(clicked);
+                connectionAnchor = clicked;
+            }
+            if (selectedConnections.isEmpty()) {
+                selectedConnection = null;
+                return ClickResult.consumed(null);
+            }
+            if (!selectedConnections.contains(clicked)) {
+                selectedConnection = directoryRows.stream().filter(r -> r.connection() != null && selectedConnections.contains(r.connection().key())).map(Row::connection).findFirst().orElse(null);
+                if (selectedConnection == null) {
+                    selectedConnections.clear();
+                    return ClickResult.consumed(null);
+                }
+                group = ClientLinkData.INSTANCE.findGroupRef(selectedConnection.groupKey());
+            }
+            request("select", GroupHierarchy.connectionFolder(hierarchy, row.connection().key()), "", "");
+            if (button == 1) {
+                openContextMenu(mouseX, mouseY);
+                return ClickResult.select(group);
+            }
+            if (button != 0) return ClickResult.consumed(group);
+            if (selectedConnections.contains(clicked)) {
+                dragStartX = mouseX;
+                dragStartY = mouseY;
+                dragConnections = List.copyOf(selectedConnections);
+            }
+            return ClickResult.select(group);
         }
         return null;
     }
 
-    public boolean handleScrollbarClick(double mx, double my, int leftPos, int topPos) {
-        int sx = leftPos + SIDE_PANEL_X;
-        int scrollX = sx + SCROLLBAR_X;
-        int scrollY = topPos + SCROLLBAR_Y;
-        if (mx >= scrollX && mx <= scrollX + SLGuiTextures.Scrollbar.WIDTH
-            && my >= scrollY && my <= scrollY + SCROLLBAR_TRACK_HEIGHT) {
-            if (getMaxScroll() > 0) {
-                int knobY = scrollY + scrollKnobOffset(getMaxScroll());
-                this.scrollGrabOffset = my >= knobY
-                    && my <= knobY + SLGuiTextures.Scrollbar.HEIGHT
-                    ? my - knobY
-                    : SLGuiTextures.Scrollbar.HEIGHT / 2.0D;
-                this.isScrolling = true;
-                updateScrollFromMouse(my, topPos);
-            }
-            return true;
+    public boolean handleScrollbarClick(double mouseX, double mouseY,
+                                        int leftPos, int topPos) {
+        if (maxScroll() <= 0) return false;
+        int x = leftPos + SIDE_PANEL_X + SCROLLBAR_X;
+        int y = topPos + SCROLLBAR_Y;
+        int hitTop = y + Math.min(0, SCROLLBAR_THUMB_Y_OFFSET);
+        int hitHeight = SCROLLBAR_TRACK_HEIGHT + Math.abs(SCROLLBAR_THUMB_Y_OFFSET);
+        if (!inside(mouseX, mouseY, x, hitTop,
+            SLGuiTextures.Scrollbar.WIDTH, hitHeight)) return false;
+        if (maxScroll() > 0) {
+            int knobY = y + scrollKnobOffset(maxScroll()) + SCROLLBAR_THUMB_Y_OFFSET;
+            scrollGrabOffset = mouseY >= knobY
+                && mouseY <= knobY + SLGuiTextures.Scrollbar.HEIGHT
+                ? mouseY - knobY : SLGuiTextures.Scrollbar.HEIGHT / 2.0D;
+            scrolling = true;
+            updateScrollFromMouse(mouseY, topPos);
         }
-        return false;
+        return true;
     }
 
-    public void updateScrollFromMouse(double mouseY, int topPos) {
-        int maxScroll = getMaxScroll();
-        if (maxScroll > 0) {
-            int travel = scrollbarTravel();
-            float relativePos = travel == 0 ? 0.0F : (float) (
-                (mouseY - (topPos + SCROLLBAR_Y) - scrollGrabOffset) / travel);
-            this.scrollOffset = Mth.clamp(relativePos * maxScroll, 0, maxScroll);
-        }
-    }
-
-    public boolean mouseScrolled(double mx, double my, double dy, int leftPos, int topPos) {
-        int sx = leftPos + SIDE_PANEL_X;
-        int listX = sx + LIST_OFFSET_X;
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta,
+                                 int leftPos, int topPos) {
+        int listX = leftPos + SIDE_PANEL_X + LIST_OFFSET_X;
         int listY = topPos + LIST_OFFSET_Y;
-        int scrollbarX = sx + SCROLLBAR_X;
-        int scrollbarY = topPos + SCROLLBAR_Y;
-        boolean overList = mx >= listX && mx < listX + SELECTION_WIDTH
-            && my >= listY && my < listY + LIST_HEIGHT;
-        boolean overScrollbar = mx >= scrollbarX
-            && mx < scrollbarX + SLGuiTextures.Scrollbar.WIDTH
-            && my >= scrollbarY
-            && my < scrollbarY + SCROLLBAR_TRACK_HEIGHT;
-        if (!overList && !overScrollbar) return false;
+        if (!inside(mouseX, mouseY, listX, listY,
+            SELECTION_WIDTH, LIST_HEIGHT) || maxScroll() <= 0) return false;
+        scrollOffset = Math.clamp(scrollOffset
+            - (float) delta * ROW_HEIGHT, 0, maxScroll());
+        return true;
+    }
 
-        int maxScroll = getMaxScroll();
-        if (maxScroll > 0) {
-            this.scrollOffset = Mth.clamp(
-                this.scrollOffset - (float) dy * SLGuiTextures.List.ITEM_H, 0, maxScroll);
+    public boolean mouseDragged(double mouseX, double mouseY, int button, int topPos) {
+        if (scrolling) {
+            updateScrollFromMouse(mouseY, topPos);
             return true;
         }
-        return false;
+        if (button != 0 || dragConnections.isEmpty()) return false;
+        double dx = mouseX - dragStartX, dy = mouseY - dragStartY;
+        if (dx * dx + dy * dy >= 16) draggingConnections = true;
+        return draggingConnections;
     }
 
-    public boolean mouseDragged(double my, int topPos) {
-        if (this.isScrolling) {
-            updateScrollFromMouse(my, topPos);
-            return true;
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        scrolling = false;
+        if (button != 0) return false;
+        boolean wasDragging = draggingConnections;
+        if (wasDragging) {
+            String target = dropTarget(mouseX, mouseY, originX + SIDE_PANEL_X, originY);
+            if (target != null && dragConnections.size() <= 256) {
+                List<ConnectionKey> moved = dragConnections.stream()
+                    .filter(key -> !GroupHierarchy.connectionFolder(hierarchy, key).equals(target)).toList();
+                if (!moved.isEmpty() && Minecraft.getInstance().player != null) {
+                    int menuId = Minecraft.getInstance().player.containerMenu.containerId;
+                    PacketDistributor.sendToServer(new C2SManageConnectionsPayload(menuId, moved, "move", target));
+                }
+            }
+        } else if (pendingSingleClick != null) {
+            selectedConnections.clear();
+            selectedConnections.add(pendingSingleClick);
+            connectionAnchor = pendingSingleClick;
         }
-        return false;
+        pendingSingleClick = null;
+        dragConnections = List.of();
+        draggingConnections = false;
+        return wasDragging;
     }
 
-    public void mouseReleased() {
-        this.isScrolling = false;
+    @Nullable
+    private String dropTarget(double mouseX, double mouseY, int panelX, int topPos) {
+        int listX = panelX + LIST_OFFSET_X, listY = topPos + LIST_OFFSET_Y;
+        if (!inside(mouseX, mouseY, listX, listY, SELECTION_WIDTH, LIST_HEIGHT)) return null;
+        for (int index = 0; index < directoryRows.size(); index++) {
+            int y = rowY(index, listY);
+            if (inside(mouseX, mouseY, listX, y, SELECTION_WIDTH, ROW_HEIGHT)) {
+                Row row = directoryRows.get(index);
+                return row.connection() == null ? row.id() : null;
+            }
+        }
+        return "";
     }
 
-    private int scrollKnobOffset(int maxScroll) {
-        if (maxScroll <= 0) return 0;
-        return Math.round(scrollOffset / maxScroll * scrollbarTravel());
+    private void updateScrollFromMouse(double mouseY, int topPos) {
+        int maximum = maxScroll();
+        if (maximum <= 0) return;
+        float relative = (float) ((mouseY - (topPos + SCROLLBAR_Y + SCROLLBAR_THUMB_Y_OFFSET) - scrollGrabOffset) / scrollbarTravel());
+        scrollOffset = Math.clamp(relative * maximum, 0, maximum);
     }
 
-    private static int scrollbarTravel() {
-        return Math.max(0,
-            SCROLLBAR_TRACK_HEIGHT - SLGuiTextures.Scrollbar.HEIGHT);
-    }
-
-    private int getMaxScroll() {
-        int fixedRows = expandedGroups.isEmpty() ? 1 : 2;
-        int scrollingRows = expandedGroups.isEmpty()
-            ? cachedRows.size() : Math.max(0, cachedRows.size() - 1);
-        return Math.max(0, scrollingRows * SLGuiTextures.List.ITEM_H
-            - (LIST_HEIGHT - fixedRows * SLGuiTextures.List.ITEM_H));
-    }
-
-    /**
-     * 添加分组行固定在列表底部，不参与连接滚动。
-     */
-    private int getAddRowY(int listY) {
-        return listY + LIST_HEIGHT - SLGuiTextures.List.ITEM_H;
-    }
-
-    /**
-     * 展开分组时固定首行标题，仅让后续连接行参与滚动。
-     */
-    private int getRowY(int rowIndex, int listY) {
-        if (!expandedGroups.isEmpty() && rowIndex == 0) return listY;
-        return listY + rowIndex * SLGuiTextures.List.ITEM_H
-            - (int) scrollOffset;
-    }
-
-    private List<GroupRef> getFilteredGroups(ItemStack stack) {
+    private void refreshGroups() {
         int version = ClientLinkData.INSTANCE.getDataVersion();
-        if (version == lastSeenVersion) return cachedGroupList;
-
-        Player p = Minecraft.getInstance().player;
-        if (p == null) return Collections.emptyList();
-
-        this.cachedGroupList = GroupConnectionTreeModel.filterAndSort(
+        if (version == lastSeenVersion) return;
+        var previousKeys = cachedGroups.stream().map(GroupRef::key).collect(Collectors.toSet());
+        cachedGroups = ConnectionDirectoryModel.filterAndSort(
             ClientLinkData.INSTANCE.getAccessibleGroupRefs(), "");
-
-        this.lastSeenVersion = version;
-        rebuildRows();
-        return cachedGroupList;
-    }
-
-    private List<GroupConnectionTreeModel.Row> getVisibleRows(ItemStack stack) {
-        getFilteredGroups(stack);
-        return cachedRows;
-    }
-
-    private void rebuildRows() {
-        expandedGroups.removeIf(key -> cachedGroupList.stream().noneMatch(
-            group -> group.key().equals(key)));
-        List<GroupRef> displayedGroups = expandedGroups.isEmpty()
-            ? GroupConnectionTreeModel.filterAndSort(
-            cachedGroupList, confirmedSearchTerm)
-            : cachedGroupList.stream()
-            .filter(group -> expandedGroups.contains(group.key()))
-            .toList();
-        List<GroupConnectionTreeModel.Row> rows = GroupConnectionTreeModel.buildRows(
-            displayedGroups, expandedGroups);
-        if (!expandedGroups.isEmpty() && !confirmedSearchTerm.isBlank()) {
-            String query = confirmedSearchTerm.toLowerCase(Locale.ROOT);
-            rows = rows.stream()
-                .filter(row -> row.connection() == null
-                    || connectionMatchesSearch(row.connection(), query))
-                .toList();
-        }
-        this.cachedRows = rows;
-        if (editingGroup != null && cachedGroupList.stream().noneMatch(
-            group -> group.key().equals(editingGroup.key()))) {
-            cancelRename();
-        } else if (editingConnection != null && cachedRows.stream().noneMatch(
-            row -> row.connection() != null
-                && row.connection().key().equals(editingConnection.key()))) {
-            cancelRename();
-        }
+        if (!previousKeys.equals(cachedGroups.stream().map(GroupRef::key).collect(Collectors.toSet())))
+            request("query", "", "", "");
+        lastSeenVersion = version;
         clampScroll();
     }
 
     private void clampScroll() {
-        this.scrollOffset = Mth.clamp(this.scrollOffset, 0, getMaxScroll());
+        scrollOffset = Math.clamp(scrollOffset, 0, maxScroll());
     }
 
-    /**
-     * 展开并滚动到网络预览关联的连接。搜索条件挡住目标分组时自动清空搜索。
-     */
-    public void revealConnections(Collection<ConnectionKey> connections, ItemStack stack) {
-        if (connections == null || connections.isEmpty()) return;
-        LinkedHashSet<ConnectionKey> targets = new LinkedHashSet<>(connections);
-        GroupKey targetGroup = targets.iterator().next().groupKey();
-        getFilteredGroups(stack);
-        if (cachedGroupList.stream().noneMatch(group -> group.key().equals(targetGroup))) {
-            searchBox.setValue("");
-            getFilteredGroups(stack);
-        }
-        if (cachedGroupList.stream().noneMatch(group -> group.key().equals(targetGroup))) return;
-        expandedGroups.clear();
-        expandedGroups.add(targetGroup);
-        rebuildRows();
-        if (cachedRows.stream().noneMatch(row -> row.connection() != null
-            && targets.contains(row.connection().key()))) {
-            searchBox.setValue("");
-            rebuildRows();
-        }
-        for (int index = 0; index < cachedRows.size(); index++) {
-            ClientConnection connection = cachedRows.get(index).connection();
-            if (connection == null || !targets.contains(connection.key())) continue;
-            scrollRowIntoView(index);
+    private int maxScroll() {
+        return Math.max(0, directoryRows.size() * ROW_HEIGHT
+            - LIST_HEIGHT);
+    }
+
+    private int scrollKnobOffset(int maximum) {
+        return maximum <= 0 ? 0
+            : Math.round(scrollOffset / maximum * scrollbarTravel());
+    }
+
+    private static int scrollbarTravel() {
+        return Math.max(1, SCROLLBAR_TRACK_HEIGHT - SLGuiTextures.Scrollbar.HEIGHT - 2 * SCROLLBAR_THUMB_Y_OFFSET);
+    }
+
+    private static int addRowY(int listY) {
+        return listY + LIST_HEIGHT;
+    }
+
+    private int rowY(int rowIndex, int listY) {
+        return listY + rowIndex * ROW_HEIGHT - (int) scrollOffset;
+    }
+
+    public void renderGroupTooltip(GuiGraphics graphics, Font font,
+                                   int mouseX, int mouseY) {
+        if (hoveredConnection == null) {
+            if (hoveredDirectory == null) return;
+            Map<ConnectionKey, Boolean> states = new LinkedHashMap<>();
+            for (ClientConnection connection : monitoredConnections) {
+                if (!GroupHierarchy.connectionFolder(hierarchy, connection.key()).equals(hoveredDirectory)) continue;
+                states.merge(connection.key(), connection.transfersFirstToSecond() || connection.transfersSecondToFirst(), Boolean::logicalOr);
+            }
+            long active = states.values().stream().filter(Boolean::booleanValue).count();
+            graphics.renderComponentTooltip(font, List.of(
+                Component.translatable("gui.staticlogistics.monitor.connections", states.size()),
+                Component.translatable("gui.staticlogistics.monitor.configured", active, states.size() - active),
+                Component.translatable("gui.staticlogistics.monitor.configured_only")), mouseX, mouseY);
             return;
         }
+        ClientConnection connection = hoveredConnection;
+        String direction = connection.transfersFirstToSecond()
+            ? connection.transfersSecondToFirst() ? "both" : "forward"
+            : connection.transfersSecondToFirst() ? "reverse" : "inactive";
+        graphics.renderComponentTooltip(font, List.of(Component.literal(connectionName(connection)),
+            Component.translatable("gui.staticlogistics.diagnostic.endpoint_a", NodeDisplayText.details(connection.first())),
+            Component.translatable("gui.staticlogistics.diagnostic.endpoint_b", NodeDisplayText.details(connection.second())),
+            Component.translatable("gui.staticlogistics.diagnostic.direction." + direction),
+            Component.translatable("gui.staticlogistics.diagnostic.topology_only"),
+            Component.translatable("gui.staticlogistics.tooltip.group_context")), mouseX, mouseY);
     }
 
-    private void scrollRowIntoView(int rowIndex) {
-        if (!expandedGroups.isEmpty() && rowIndex == 0) return;
-        int scrollingIndex = expandedGroups.isEmpty() ? rowIndex : rowIndex - 1;
-        int rowTop = scrollingIndex * SLGuiTextures.List.ITEM_H;
-        int rowBottom = rowTop + SLGuiTextures.List.ITEM_H;
-        int fixedRows = expandedGroups.isEmpty() ? 1 : 2;
-        int visibleHeight = LIST_HEIGHT
-            - fixedRows * SLGuiTextures.List.ITEM_H;
-        if (rowTop < scrollOffset) {
-            scrollOffset = rowTop;
-        } else if (rowBottom > scrollOffset + visibleHeight) {
-            scrollOffset = rowBottom - visibleHeight;
-        }
-        clampScroll();
+
+    private static boolean inside(double mouseX, double mouseY,
+                                  int x, int y, int width, int height) {
+        return mouseX >= x && mouseX < x + width
+            && mouseY >= y && mouseY < y + height;
     }
 
-    private static boolean connectionMatchesSearch(
-        ClientConnection connection, String query
-    ) {
-        if (connection.displayName().toLowerCase(Locale.ROOT).contains(query)) return true;
-        return NodeDisplayText.details(connection.first()).getString()
-            .toLowerCase(Locale.ROOT).contains(query)
-            || NodeDisplayText.details(connection.second()).getString()
-            .toLowerCase(Locale.ROOT).contains(query);
-    }
-
-    private static void renderConnectionIcon(GuiGraphics graphics, ClientConnection connection,
-                                             int x, int y) {
-        int arrowX = x + CONNECTION_ARROW_X_OFFSET;
-        int arrowY = y + CONNECTION_ARROW_Y_OFFSET;
-        if (connection.isBidirectional()) {
-            drawBidirectionalConnectionArrow(graphics, arrowX,
-                arrowY + (SLGuiTextures.List.ITEM_H
-                    - SLGuiTextures.Direction.CONNECTION_BIDIRECTIONAL_HEIGHT) / 2);
-        } else if (connection.transfersFirstToSecond()) {
-            drawConnectionArrow(graphics, arrowX,
-                arrowY + (SLGuiTextures.List.ITEM_H
-                    - SLGuiTextures.Direction.CONNECTION_HEIGHT) / 2, true);
-        } else if (connection.transfersSecondToFirst()) {
-            drawConnectionArrow(graphics, arrowX,
-                arrowY + (SLGuiTextures.List.ITEM_H
-                    - SLGuiTextures.Direction.CONNECTION_HEIGHT) / 2, false);
-        } else {
-            graphics.fill(x + 1, y + 1, x + 2, y + 7, 0xFFFF5555);
-            graphics.fill(x + 6, y + 1, x + 7, y + 7, 0xFFFF5555);
-            graphics.fill(x + 2, y + 2, x + 6, y + 6, 0xFFFF5555);
-        }
-    }
-
-    private static void renderChevron(GuiGraphics graphics, int x, int y, boolean expanded) {
-        if (expanded) {
-            graphics.blit(SLGuiTextures.GUI_ATLAS,
-                x + GROUP_ARROW_X_OFFSET,
-                y + (SLGuiTextures.List.ITEM_H
-                    - SLGuiTextures.Direction.DOWN_HEIGHT) / 2
-                    + GROUP_ARROW_Y_OFFSET,
-                SLGuiTextures.Direction.DOWN_U,
-                SLGuiTextures.Direction.ENABLED_V,
-                SLGuiTextures.Direction.DOWN_WIDTH,
-                SLGuiTextures.Direction.DOWN_HEIGHT,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        } else {
-            graphics.blit(SLGuiTextures.GUI_ATLAS,
-                x + (SLGuiTextures.Direction.DOWN_WIDTH
-                    - SLGuiTextures.Direction.HORIZONTAL_WIDTH) / 2
-                    + GROUP_ARROW_X_OFFSET,
-                y + (SLGuiTextures.List.ITEM_H
-                    - SLGuiTextures.Direction.HORIZONTAL_HEIGHT) / 2
-                    + GROUP_ARROW_Y_OFFSET,
-                SLGuiTextures.Direction.RIGHT_U,
-                SLGuiTextures.Direction.ENABLED_V,
-                SLGuiTextures.Direction.HORIZONTAL_WIDTH,
-                SLGuiTextures.Direction.HORIZONTAL_HEIGHT,
-                SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        }
-    }
-
-    private static void drawConnectionArrow(GuiGraphics graphics, int x, int y,
-                                            boolean right) {
-        graphics.blit(SLGuiTextures.GUI_ATLAS, x, y,
-            right
-                ? SLGuiTextures.Direction.CONNECTION_RIGHT_U
-                : SLGuiTextures.Direction.CONNECTION_LEFT_U,
-            SLGuiTextures.Direction.CONNECTION_V,
-            SLGuiTextures.Direction.CONNECTION_WIDTH,
-            SLGuiTextures.Direction.CONNECTION_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-    }
-
-    private static void drawBidirectionalConnectionArrow(GuiGraphics graphics,
-                                                         int x, int y) {
-        graphics.blit(SLGuiTextures.GUI_ATLAS, x, y,
-            SLGuiTextures.Direction.CONNECTION_BIDIRECTIONAL_U,
-            SLGuiTextures.Direction.CONNECTION_BIDIRECTIONAL_V,
-            SLGuiTextures.Direction.CONNECTION_BIDIRECTIONAL_WIDTH,
-            SLGuiTextures.Direction.CONNECTION_BIDIRECTIONAL_HEIGHT,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-    }
-
-    public void renderConnectionTooltip(GuiGraphics g, Font font, int mx, int my, ClientConnection connection) {
-        List<Component> lines = new ArrayList<>();
-        lines.add((connection.displayName().isEmpty()
-            ? Component.translatable("gui.staticlogistics.connection")
-            : Component.literal(connection.displayName())).withStyle(ChatFormatting.GOLD));
-        lines.add(NodeDisplayText.details(connection.first()).withStyle(ChatFormatting.WHITE));
-        lines.add(NodeDisplayText.details(connection.second()).withStyle(ChatFormatting.WHITE));
-        Component direction = connection.isBidirectional()
-            ? Component.translatable("gui.staticlogistics.connection.bidirectional")
-            : connection.transfersFirstToSecond()
-            ? Component.translatable("gui.staticlogistics.connection.first_to_second")
-            : connection.transfersSecondToFirst()
-            ? Component.translatable("gui.staticlogistics.connection.second_to_first")
-            : Component.translatable("gui.staticlogistics.connection.blocked");
-        lines.add(direction.copy().withStyle(
-            connection.isBlocked() ? ChatFormatting.RED : ChatFormatting.GREEN));
-        lines.add(Component.translatable("gui.staticlogistics.connection.open_hint")
-            .withStyle(ChatFormatting.AQUA));
-        lines.add(Component.translatable("gui.staticlogistics.connection.rename_hint")
-            .withStyle(ChatFormatting.AQUA));
-        lines.add(Component.translatable("gui.staticlogistics.connection.delete_hint")
-            .withStyle(ChatFormatting.RED, ChatFormatting.ITALIC));
-        g.renderComponentTooltip(font, lines, mx, my);
-    }
-
-    public void renderGroupTooltip(GuiGraphics g, Font font, int mx, int my, GroupRef group, boolean shiftDown) {
-        Player player = Minecraft.getInstance().player;
-        if (player == null) return;
-
-        String gid = group.displayName();
-        List<LogisticsNode> nodes = ClientLinkData.INSTANCE.getNodesForGroup(group.key());
-
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.translatable("gui.staticlogistics.tooltip.group_id", gid).withStyle(ChatFormatting.GOLD));
-        String ownerName = ClientLinkData.INSTANCE.getOwnerName(group.key().ownerId());
-        if (!ownerName.isEmpty()) {
-            lines.add(Component.translatable("msg.staticlogistics.owner_display", ownerName).withStyle(ChatFormatting.GRAY));
-        }
-
-        int maxShown = shiftDown ? Integer.MAX_VALUE : 5;
-        if (!nodes.isEmpty()) {
-            int count = 0;
-            for (LogisticsNode node : nodes) {
-                if (count >= maxShown) break;
-                lines.add(formatNode(node, player));
-                count++;
-            }
-            if (nodes.size() > maxShown) {
-                lines.add(Component.translatable("gui.staticlogistics.tooltip.shift_more",
-                    Component.keybind(SLKeyNames.GROUP_DETAILS_AND_EXPORT),
-                    nodes.size() - maxShown).withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
-            }
-            lines.add(Component.empty());
-        }
-
-        if (editingGroup == null) {
-            lines.add(Component.translatable("gui.staticlogistics.tooltip.select_hint")
-                .withStyle(ChatFormatting.BLUE));
-            lines.add(Component.translatable("gui.staticlogistics.tooltip.right_click_delete")
-                .withStyle(ChatFormatting.RED, ChatFormatting.ITALIC));
-            lines.add(Component.translatable("gui.staticlogistics.tooltip.rename_hint")
-                .withStyle(ChatFormatting.AQUA));
-        }
-        lines.add(Component.translatable("gui.staticlogistics.tooltip.shift_export",
-                Component.keybind(SLKeyNames.GROUP_DETAILS_AND_EXPORT))
-            .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
-        g.renderComponentTooltip(font, lines, mx, my);
-    }
-
-    public void exportToChat(GroupRef group) {
-        Player player = Minecraft.getInstance().player;
-        if (player == null) return;
-        String gid = group.displayName();
-        List<LogisticsNode> nodes = ClientLinkData.INSTANCE.getNodesForGroup(group.key());
-        player.sendSystemMessage(Component.translatable("msg.staticlogistics.export.header", gid)
-            .withStyle(ChatFormatting.GOLD));
-        if (nodes.isEmpty()) {
-            player.sendSystemMessage(Component.literal(" §7> ").append(
-                Component.translatable("msg.staticlogistics.no_nodes_stored").withStyle(ChatFormatting.RED)));
-        } else {
-            for (LogisticsNode node : nodes) {
-                BlockPos p = node.gPos().pos();
-                String posStr = p.getX() + " " + p.getY() + " " + p.getZ();
-                String dimensionId = node.gPos().dimension().location().toString();
-                String command = node.isInSameDimension(player.level().dimension())
-                    ? "/tp " + posStr
-                    : "/execute in " + dimensionId + " run tp @s " + posStr;
-                MutableComponent posEntry = Component.literal(" > ")
-                    .withStyle(ChatFormatting.DARK_GRAY)
-                    .append(NodeDisplayText.details(node).withStyle(ChatFormatting.GREEN))
-                    .withStyle(style -> style
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND,
-                            command))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                            Component.translatable("msg.staticlogistics.export.tp_hover")
-                                .withStyle(ChatFormatting.ITALIC))));
-                player.sendSystemMessage(posEntry);
-            }
-        }
-        Minecraft.getInstance().getSoundManager()
-            .play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
-    }
-
-    private static Component formatNode(LogisticsNode node, Player player) {
-        BlockPos pos = node.gPos().pos();
-        MutableComponent location = NodeDisplayText.details(node).withStyle(ChatFormatting.WHITE);
-        if (!node.isInSameDimension(player.level().dimension())) return location;
-        double distance = Math.sqrt(pos.distToCenterSqr(player.position()));
-        return location.append(Component.literal("  "))
-            .append(NodeDisplayText.distanceFromPlayer(distance).withStyle(ChatFormatting.AQUA));
-    }
-
-    private void playClickSound() {
-        SoundUtil.playClickSound();
-    }
-
-    public static class ClickResult {
-        public enum Action {
-            SELECT,
-            RENAME,
-            EXPORT,
-            DELETE,
-            OPEN_CONNECTION,
-            RENAME_CONNECTION,
-            DELETE_CONNECTION,
-            CONSUME
-        }
-
-        private final Action action;
-        private final GroupRef group;
-        private final ClientConnection connection;
-
-        private ClickResult(Action action, GroupRef group, @Nullable ClientConnection connection) {
-            this.action = action;
-            this.group = group;
-            this.connection = connection;
-        }
+    public record ClickResult(Action action, GroupRef group) {
+        public enum Action {SELECT, CONSUME}
 
         public static ClickResult select(GroupRef group) {
-            return new ClickResult(Action.SELECT, group, null);
-        }
-
-        public static ClickResult rename(GroupRef group) {
-            return new ClickResult(Action.RENAME, group, null);
-        }
-
-        public static ClickResult export(GroupRef group) {
-            return new ClickResult(Action.EXPORT, group, null);
-        }
-
-        public static ClickResult delete(GroupRef group) {
-            return new ClickResult(Action.DELETE, group, null);
-        }
-
-        public static ClickResult open(GroupRef group, ClientConnection connection) {
-            return new ClickResult(Action.OPEN_CONNECTION, group, connection);
-        }
-
-        public static ClickResult renameConnection(
-            GroupRef group,
-            ClientConnection connection
-        ) {
-            return new ClickResult(Action.RENAME_CONNECTION, group, connection);
-        }
-
-        public static ClickResult deleteConnection(
-            GroupRef group,
-            ClientConnection connection
-        ) {
-            return new ClickResult(Action.DELETE_CONNECTION, group, connection);
+            return new ClickResult(Action.SELECT, group);
         }
 
         public static ClickResult consumed(GroupRef group) {
-            return new ClickResult(Action.CONSUME, group, null);
+            return new ClickResult(Action.CONSUME, group);
         }
 
         public Action getAction() {
             return action;
         }
 
-        public String getGroupId() {
-            return group.displayName();
-        }
-
         public GroupRef getGroup() {
             return group;
         }
-
-        @Nullable
-        public ClientConnection getConnection() {
-            return connection;
-        }
     }
-
 }

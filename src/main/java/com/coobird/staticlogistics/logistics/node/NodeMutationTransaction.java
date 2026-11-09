@@ -10,12 +10,9 @@ import org.slf4j.Logger;
 
 import java.util.*;
 
-/**
- * 服务器级物流修改 Unit of Work。
- *
- * <p>嵌套图操作加入当前根事务；配置回调、成员事件和网络同步延迟到根提交阶段。
- * 未显式提交时按逆序恢复快照，再对回滚后的最终状态执行一次合并 reconcile。
- */
+/// 服务器级物流修改 Unit of Work。
+/// 嵌套图操作加入当前根事务；配置回调、成员事件和网络同步延迟到根提交阶段。
+/// 未显式提交时按逆序恢复快照，再对回滚后的最终状态执行一次合并 reconcile。
 public final class NodeMutationTransaction implements AutoCloseable {
     private static final ThreadLocal<RootState> CURRENT = new ThreadLocal<>();
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -31,7 +28,6 @@ public final class NodeMutationTransaction implements AutoCloseable {
     }
 
     public static NodeMutationTransaction begin(MinecraftServer server) {
-        if (server == null) throw new IllegalArgumentException("Mutation server must not be null");
         RootState current = CURRENT.get();
         if (current == null) {
             RootState root = new RootState(server);
@@ -44,9 +40,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
         return new NodeMutationTransaction(current, false);
     }
 
-    /**
-     * 在当前服务器事务提交后合并执行副作用；没有事务时返回 false。
-     */
+    /// 在当前服务器事务提交后合并执行副作用；没有事务时返回 false。
     public static boolean defer(MinecraftServer server, Object key, Runnable action) {
         if (server == null || key == null || action == null) {
             throw new IllegalArgumentException("Deferred mutation server, key and action are required");
@@ -56,28 +50,23 @@ public final class NodeMutationTransaction implements AutoCloseable {
         if (current.server != server) {
             throw new IllegalStateException("Deferred mutation belongs to a different server");
         }
-        if (current.flushing) return false;
         current.afterCommit.put(key, action);
         return true;
     }
 
-    /**
-     * 捕获一个当前必须存在的面；重复捕获同一节点不会生成重复快照。
-     */
+    /// 捕获一个当前必须存在的面；重复捕获同一节点不会生成重复快照。
     public void capture(LogisticsNode node) {
         capture(node, true);
     }
 
-    /**
-     * 捕获一个面当前的存在性和内容，允许修改前尚不存在。
-     */
+    /// 捕获一个面当前的存在性和内容，允许修改前尚不存在。
     public void captureState(LogisticsNode node) {
         capture(node, false);
     }
 
     private void capture(LogisticsNode node, boolean requireExisting) {
-        if (node == null) throw new IllegalArgumentException("Mutation node must not be null");
-        if (!root.capturedNodes.add(node)) return;
+        ensureActive();
+        if (root.capturedNodes.contains(node)) return;
 
         ServerLevel level = root.server.getLevel(node.gPos().dimension());
         if (level == null) {
@@ -85,51 +74,61 @@ public final class NodeMutationTransaction implements AutoCloseable {
                 "Mutation dimension is unavailable: " + node.gPos().dimension().location());
         }
         LinkManager manager = LinkManager.get(level);
-        FaceConfigComposite config = manager.getFaceConfig(FaceAddress.of(node));
+        EndpointConfig config = manager.getEndpointConfig(EndpointAddress.of(node));
         if (config == null) {
             if (requireExisting) {
                 throw new IllegalStateException("Mutation face is unavailable: " + node);
             }
             root.rollbackActions.push(() -> manager.restoreFaceAbsence(node));
+            root.capturedNodes.add(node);
             return;
         }
         CompoundTag snapshot = config.serializeNBT(level.registryAccess()).copy();
         root.rollbackActions.push(() -> manager.restoreFaceSnapshot(node, snapshot));
+        root.capturedNodes.add(node);
     }
 
     public void captureAll(Iterable<LogisticsNode> nodes) {
-        if (nodes == null) throw new IllegalArgumentException("Mutation nodes must not be null");
+        ensureActive();
         for (LogisticsNode node : nodes) capture(node);
     }
 
-    /**
-     * 捕获容器级升级配置，供面生命周期与玩家移交共同回滚。
-     */
+    /// 捕获容器级升级配置，供面生命周期与玩家移交共同回滚。
     public void captureContainer(ServerLevel level, BlockPos pos) {
+        ensureActive();
         if (level == null || pos == null) {
             throw new IllegalArgumentException("Container mutation level and position are required");
         }
-        ContainerCaptureKey key = new ContainerCaptureKey(level, pos.immutable());
-        if (!root.capturedContainers.add(key)) return;
+        if (level.getServer() != root.server) {
+            throw new IllegalStateException("Container mutation belongs to a different server");
+        }
+        BlockPos position = pos.immutable();
+        ContainerCaptureKey key = new ContainerCaptureKey(level, position);
+        if (root.capturedContainers.contains(key)) return;
         LinkManager manager = LinkManager.get(level);
-        ContainerConfig config = manager.getContainerConfig(pos);
+        ContainerConfig config = manager.getContainerConfig(position);
         boolean existed = config != null;
         CompoundTag upgrades = existed
             ? config.getUpgrades().serializeNBT(level.registryAccess()).copy() : null;
         root.rollbackActions.push(() ->
-            manager.restoreContainerSnapshot(pos, existed, upgrades));
+            manager.restoreContainerSnapshot(position, existed, upgrades));
+        root.capturedContainers.add(key);
     }
 
-    /**
-     * 注册节点快照之外的补偿动作，例如恢复分组目录。
-     */
+    /// 注册节点快照之外的补偿动作，例如恢复分组目录。
     public void onRollback(Runnable action) {
-        if (action == null) throw new IllegalArgumentException("Rollback action must not be null");
+        ensureActive();
         root.rollbackActions.push(action);
     }
 
+    private void ensureActive() {
+        if (closed || scopeCommitted || root.committed || CURRENT.get() != root) {
+            throw new IllegalStateException("Mutation scope is no longer active");
+        }
+    }
+
     public void commit() {
-        if (closed) throw new IllegalStateException("Mutation scope is already closed");
+        ensureActive();
         scopeCommitted = true;
         if (!ownerScope) return;
         if (root.rollbackOnly) {
@@ -139,7 +138,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
         var actions = List.copyOf(root.afterCommit.values());
         root.afterCommit.clear();
 
-        // 先确定领域状态，再发布缓存、事件和网络副作用；发布失败不得回滚已经对外可见的提交。
+        /// 先确定领域状态，再发布缓存、事件和网络副作用；发布失败不得回滚已经对外可见的提交。
         root.committed = true;
         root.rollbackActions.clear();
         CURRENT.remove();
@@ -162,7 +161,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
         RuntimeException failure = null;
         try {
             if (!root.committed) {
-                // 丢弃修改阶段产生的提交副作用；回滚过程中重新收集最终状态的 reconcile 回调。
+                /// 丢弃修改阶段产生的提交副作用；回滚过程中重新收集最终状态的 reconcile 回调。
                 root.afterCommit.clear();
                 while (!root.rollbackActions.isEmpty()) {
                     try {
@@ -174,7 +173,8 @@ public final class NodeMutationTransaction implements AutoCloseable {
                 }
                 var reconciliation = List.copyOf(root.afterCommit.values());
                 root.afterCommit.clear();
-                root.flushing = true;
+                /// 快照恢复阶段已经结束；后续更新可能开启新事务，不得再加入旧事务。
+                CURRENT.remove();
                 for (Runnable action : reconciliation) {
                     try {
                         action.run();
@@ -185,7 +185,7 @@ public final class NodeMutationTransaction implements AutoCloseable {
                 }
             }
         } finally {
-            CURRENT.remove();
+            if (CURRENT.get() == root) CURRENT.remove();
         }
         if (failure != null) {
             throw new IllegalStateException("Node mutation rollback failed", failure);
@@ -200,7 +200,6 @@ public final class NodeMutationTransaction implements AutoCloseable {
         final Map<Object, Runnable> afterCommit = new LinkedHashMap<>();
         boolean rollbackOnly;
         boolean committed;
-        boolean flushing;
 
         RootState(MinecraftServer server) {
             this.server = server;

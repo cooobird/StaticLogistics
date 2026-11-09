@@ -4,7 +4,8 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.node.ConnectionKey;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
@@ -12,9 +13,7 @@ import org.slf4j.Logger;
 
 import java.util.*;
 
-/**
- * 服务器启动后从权威面配置收敛分组目录和全服运行时成员索引。
- */
+/// 服务器启动后从权威面配置收敛分组目录和全服运行时成员索引。
 public final class GroupDirectoryReconciler {
     private static final Logger LOGGER = LogUtils.getLogger();
 
@@ -22,17 +21,17 @@ public final class GroupDirectoryReconciler {
     }
 
     public static Report reconcile(MinecraftServer server) {
-        if (server == null) throw new IllegalArgumentException("Reconciliation server must not be null");
 
         Map<LogisticsNode, DesiredNode> desiredNodes = new LinkedHashMap<>();
         Map<UUID, LinkedHashMap<GroupKey, GroupRef>> groupsByOwner = new LinkedHashMap<>();
+        Set<ConnectionKey> connections = new LinkedHashSet<>();
         int faceCount = 0;
         int conflicts = 0;
 
         for (var level : server.getAllLevels()) {
             LinkManager manager = LinkManager.get(level);
-            for (FaceAddress faceKey : manager.getAllConfigKeys()) {
-                var config = manager.getFaceConfig(faceKey);
+            for (EndpointAddress faceKey : manager.getAllConfigKeys()) {
+                var config = manager.getEndpointConfig(faceKey);
                 if (config == null || config.isDefault()) continue;
                 faceCount++;
                 LogisticsNode node = manager.createNodeFromKey(faceKey);
@@ -55,12 +54,19 @@ public final class GroupDirectoryReconciler {
                         continue;
                     }
                     nodeGroups.put(group.key(), group);
+                    for (LogisticsNode linked : config.getLinkedNodes(group.key())) {
+                        if (!node.gPos().equals(linked.gPos())) {
+                            connections.add(new ConnectionKey(group.key(), node, linked));
+                        }
+                    }
                 }
                 if (!nodeGroups.isEmpty()) desiredNodes.put(node, new DesiredNode(role, nodeGroups));
             }
         }
 
         DirectoryResult directory = reconcileDirectory(server, groupsByOwner);
+        int metadataRemovals = PlayerGroupStore.get(server)
+            .reconcileConnectionMetadata(connections);
         conflicts += directory.conflicts();
         int indexRemovals = 0;
         int indexRegistrations = 0;
@@ -84,12 +90,12 @@ public final class GroupDirectoryReconciler {
             }
         }
 
-        Report report = new Report(faceCount, directory.additions(), conflicts,
+        Report report = new Report(faceCount, directory.additions(), metadataRemovals, conflicts,
             indexRegistrations, indexRemovals);
         if (report.changed()) {
-            LOGGER.info("Logistics reconciliation completed: faces={}, directoryAdditions={}, conflicts={}, "
-                    + "indexRegistrations={}, indexRemovals={}",
-                report.faceCount(), report.directoryAdditions(), report.conflicts(),
+            LOGGER.info("Logistics reconciliation completed: faces={}, directoryAdditions={}, "
+                    + "metadataRemovals={}, conflicts={}, indexRegistrations={}, indexRemovals={}",
+                report.faceCount(), report.directoryAdditions(), report.metadataRemovals(), report.conflicts(),
                 report.indexRegistrations(), report.indexRemovals());
         }
         return report;
@@ -144,10 +150,11 @@ public final class GroupDirectoryReconciler {
     private record DirectoryResult(int additions, int conflicts) {
     }
 
-    public record Report(int faceCount, int directoryAdditions, int conflicts,
+    public record Report(int faceCount, int directoryAdditions, int metadataRemovals, int conflicts,
                          int indexRegistrations, int indexRemovals) {
         public boolean changed() {
-            return directoryAdditions > 0 || conflicts > 0 || indexRegistrations > 0 || indexRemovals > 0;
+            return directoryAdditions > 0 || metadataRemovals > 0 || conflicts > 0
+                || indexRegistrations > 0 || indexRemovals > 0;
         }
     }
 }

@@ -33,7 +33,7 @@ public record C2SUpdateFilterOnHandPayload(UpgradeType filterType, FilterData fi
                 throw new IllegalArgumentException("Invalid filter upgrade type: " + payload.filterType());
             }
             buf.writeEnum(payload.filterType());
-            // 类型只决定客户端写包时的数据表示；服务端仍以真实物品类型为准。
+            /// 类型只决定客户端写包时的数据表示；服务端仍以真实物品类型为准。
             FilterData.STREAM_CODEC.encode(buf, payload.filter().normalizedFor(payload.filterType()));
         }
     };
@@ -44,7 +44,7 @@ public record C2SUpdateFilterOnHandPayload(UpgradeType filterType, FilterData fi
     }
 
     private static boolean isFilterType(UpgradeType type) {
-        return type == UpgradeType.BASIC_FILTER || type == UpgradeType.TAG_FILTER || type == UpgradeType.NBT_FILTER;
+        return type == UpgradeType.FILTER;
     }
 
     public static void handle(final C2SUpdateFilterOnHandPayload payload, final IPayloadContext context) {

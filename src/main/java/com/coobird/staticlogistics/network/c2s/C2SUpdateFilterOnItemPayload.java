@@ -46,7 +46,7 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos, Direction face, Resourc
             ResourceLocation.STREAM_CODEC.encode(buf, payload.typeId());
             buf.writeBoolean(payload.isInput());
             buf.writeEnum(payload.filterType());
-            // 类型只决定客户端写包时的数据表示；服务端仍以已安装过滤器为准。
+            /// 类型只决定客户端写包时的数据表示；服务端仍以已安装过滤器为准。
             FilterData.STREAM_CODEC.encode(buf, payload.filter().normalizedFor(payload.filterType()));
         }
     };
@@ -57,7 +57,7 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos, Direction face, Resourc
     }
 
     private static boolean isFilterType(UpgradeType type) {
-        return type == UpgradeType.BASIC_FILTER || type == UpgradeType.TAG_FILTER || type == UpgradeType.NBT_FILTER;
+        return type == UpgradeType.FILTER;
     }
 
     public static void handle(final C2SUpdateFilterOnItemPayload payload, final IPayloadContext context) {
@@ -72,7 +72,7 @@ public record C2SUpdateFilterOnItemPayload(BlockPos pos, Direction face, Resourc
                 player.containerMenu instanceof FilterConfiguratorMenu menu
                     ? menu.resolveValidatedNode(player) : null;
             if (node != null) {
-                int slotIndex = payload.isInput() ? 0 : 1;
+                int slotIndex = 0;
                 var upgradeStack = node.config().filterConfig.getUpgrades().getStackInSlot(slotIndex);
                 if (upgradeStack.getItem() instanceof UpgradeItem upgrade
                     && player.containerMenu instanceof FilterConfiguratorMenu menu

@@ -1,7 +1,7 @@
 package com.coobird.staticlogistics.content.item;
 
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -30,7 +30,7 @@ public class LinkModeHandler implements ModeHandler {
             }
 
             LinkManager mgr = LinkManager.get(serverLevel);
-            FaceConfigComposite config = mgr.getFaceConfig(FaceAddress.of(pos, face));
+            EndpointConfig config = mgr.getEndpointConfig(new EndpointAddress(pos.asLong(), face, LinkConfiguratorItem.channelForFace(serverLevel, pos, face, settings.channel())));
             if (config == null || config.canPlayerAccess(player)) {
                 LinkOperationHelper.addNode(stack, GlobalPos.of(level.dimension(), pos), face, settings.mode(), player, level);
             } else {

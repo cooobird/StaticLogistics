@@ -1,10 +1,11 @@
 package com.coobird.staticlogistics.transfer;
 
 import com.coobird.staticlogistics.api.transfer.*;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -12,21 +13,17 @@ import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 将公开的类型安全 SPI 接入 core 传输协议。
- */
+/// 将公开的类型安全 SPI 接入 core 传输协议。
 final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private final ResourceAdapter<C, V> adapter;
-    private final int bitOffset;
 
-    TypedResourceAdapterBridge(ResourceAdapter<C, V> adapter, int bitOffset) {
+    TypedResourceAdapterBridge(ResourceAdapter<C, V> adapter) {
         this.adapter = adapter;
-        this.bitOffset = bitOffset;
     }
 
     @Override
@@ -40,11 +37,6 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     }
 
     @Override
-    public int bitOffset() {
-        return bitOffset;
-    }
-
-    @Override
     public int color() {
         return adapter.color();
     }
@@ -55,12 +47,17 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     }
 
     @Override
+    public Component unit() {
+        return adapter.unit();
+    }
+
+    @Override
     public Supplier<ItemStack> iconSupplier() {
         return adapter.iconSupplier();
     }
 
     @Override
-    public IntSupplier baseStackSizeSupplier() {
+    public LongSupplier baseStackSizeSupplier() {
         return adapter.baseStackSizeSupplier();
     }
 
@@ -86,7 +83,7 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
 
     @Override
     public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate,
-                                            @Nullable FaceConfigComposite sourceConfig,
+                                            @Nullable EndpointConfig sourceConfig,
                                             boolean pullMode,
                                             @Nullable TransferContext context) {
         if (!simulate || context == null || amount <= 0L) return ExtractionResult.of(null);
@@ -104,15 +101,14 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
 
     @Override
     public long insertTyped(C handle, Object value, boolean simulate,
-                            @Nullable FaceConfigComposite sourceConfig,
+                            @Nullable EndpointConfig sourceConfig,
                             boolean pullMode,
                             @Nullable TransferContext context) {
         ResourceValue<V> resource = castResource(value);
         if (resource == null || context == null) return 0L;
         TransferRequest request = request(context, resource.amount());
         if (!simulate) {
-            return validateAmount(adapter.commitInsert(handle, resource, request),
-                resource.amount(), "commit insert");
+            return validateAmount(adapter.commitInsert(handle, resource, request), resource.amount(), "commit insert");
         }
         try {
             return validateAmount(adapter.simulateInsert(handle, resource, request),
@@ -126,7 +122,7 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     @Override
     public ExtractionResult<?> executeExtract(C handle, ExtractionResult<?> simulated,
                                               long requested,
-                                              @Nullable FaceConfigComposite sourceConfig,
+                                              @Nullable EndpointConfig sourceConfig,
                                               boolean pullMode,
                                               @Nullable TransferContext context) {
         if (context == null || requested <= 0L
@@ -176,7 +172,7 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
 
     @Override
     public boolean rollback(C source, Object value, long amount,
-                            @Nullable FaceConfigComposite sourceConfig,
+                            @Nullable EndpointConfig sourceConfig,
                             boolean pullMode,
                             @Nullable TransferContext context) {
         ResourceValue<V> resource = castResource(value);
@@ -187,8 +183,7 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
             if (!isValidResource(rollbackValue) || rollbackValue.amount() != amount) return false;
             long restored = adapter.rollback(source, rollbackValue, request(context, amount));
             if (restored != amount) {
-                LOGGER.error("Resource adapter rollback restored {} of {} for {}",
-                    restored, amount, typeId());
+                LOGGER.error("Resource adapter rollback restored {} of {} for {}", restored, amount, typeId());
                 return false;
             }
             return true;
@@ -199,8 +194,7 @@ final class TypedResourceAdapterBridge<C, V> implements LogisticsResource<C> {
     }
 
     private TransferRequest request(TransferContext context, long amount) {
-        return new TransferRequest(typeId(), context.sourceNode(), amount,
-            context.isPullMode(), context.currentTick());
+        return new TransferRequest(typeId(), context.sourceNode(), amount, context.isPullMode(), context.currentTick());
     }
 
     @Nullable

@@ -6,20 +6,19 @@ import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.content.item.LinkOperationHelper;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
-import com.coobird.staticlogistics.logistics.node.persistence.ConfigRepository;
 import com.coobird.staticlogistics.logistics.node.persistence.ContainerRepository;
+import com.coobird.staticlogistics.logistics.node.persistence.EndpointRepository;
+import com.coobird.staticlogistics.logistics.node.sync.NodeMembershipPublisher;
 import com.coobird.staticlogistics.logistics.node.sync.PendingSyncBuffer;
-import com.coobird.staticlogistics.logistics.node.sync.SyncManager;
-import com.coobird.staticlogistics.logistics.node.sync.TopologySyncPort;
-import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
+import com.coobird.staticlogistics.network.sync.NetworkSyncManager;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.NodeQueryService;
 import com.mojang.authlib.GameProfile;
-import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Rotation;
@@ -30,133 +29,103 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.function.UnaryOperator;
 
-/**
- * 物流链接管理器 —— 维度级物流配置的核心 facade。
- * <p>
- * 职责委托：
- * <ul>
- *   <li>{@link FaceConfigHandler} — 面配置 CRUD、级联删除、孤儿扫描</li>
- *   <li>{@link ContainerConfigService} — 容器配置 CRUD</li>
- *   <li>{@link CacheManager} — 活跃节点缓存</li>
- *   <li>{@link LinkDirtyTracker} — 脏数据追踪</li>
- *   <li>{@link LinkSaveScheduler} — 异步保存调度</li>
- *   <li>{@link PendingSyncBuffer} — 延迟批量网络同步</li>
- *   <li>{@link TopologySyncPort} — 拓扑网络输出端口</li>
- * </ul>
- */
+/// 协调单个维度的节点配置、链接、持久化和同步。
 public class LinkManager {
-    private final FaceConfigHandler faceConfigHandler;
+    private static final LinkMutationPermit MUTATION_PERMIT = new LinkMutationPermit();
+    private static final Map<MinecraftServer, Map<ServerLevel, LinkManager>> RUNTIMES =
+        new IdentityHashMap<>();
+    private final EndpointRepository endpoints;
+    private final NodeMembershipPublisher membershipPublisher;
     private final ServerLevel level;
     private final ContainerRepository containerRepository;
-    private final ContainerConfigService containerConfigService;
-    private final TopologySyncPort topologySyncPort;
-    private final CacheManager cacheManager;
+    private final NetworkSyncManager networkSync;
+    private final ActiveProviderIndex activeProviders;
     private final CapabilityCache capabilityCache;
     private final LinkChangeHandler changeHandler;
     private final LinkGraphService linkGraphService;
     private final NodeLifecycleService lifecycleService;
+    private boolean closed;
 
-    private final LinkDirtyTracker dirtyTracker = new LinkDirtyTracker();
-    private final LinkSaveScheduler saveScheduler = new LinkSaveScheduler();
+    final LinkManagerStorage storage;
     private final PendingSyncBuffer syncBuffer = new PendingSyncBuffer();
 
-    // key 级版本计数器：确保删除重建后新配置的版本号高于旧配置
-    private final Map<FaceAddress, Long> keyVersions = new HashMap<>();
+    /// 键级版本计数器：确保删除重建后新配置的版本号高于旧配置。
+    private final Map<EndpointAddress, Long> keyVersions = new HashMap<>();
 
     public LinkManager(ServerLevel level) {
         this.level = level;
-        ConfigRepository configRepository = new ConfigRepository();
+        this.storage = new LinkManagerStorage(this);
         this.containerRepository = new ContainerRepository();
-        this.cacheManager = new CacheManager();
+        this.endpoints = new EndpointRepository(containerRepository);
+        this.activeProviders = new ActiveProviderIndex();
         this.capabilityCache = new CapabilityCache(level);
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
-        SyncManager syncManager = new SyncManager(level.dimension(), globalManager);
-        this.topologySyncPort = TopologySyncPort.create(level);
+        this.membershipPublisher = new NodeMembershipPublisher(globalManager);
+        this.networkSync = new NetworkSyncManager(level);
         DropHandler dropHandler = new DropHandler(level);
         this.linkGraphService = new LinkGraphService(level.getServer(), globalManager);
-
-        this.containerConfigService = new ContainerConfigService(containerRepository);
-        FaceConfigService faceConfigService = new FaceConfigService(configRepository, containerConfigService);
-
-        this.changeHandler = new LinkChangeHandler(level, syncManager, this);
-
-        this.faceConfigHandler = new FaceConfigHandler(level, faceConfigService, configRepository,
-            cacheManager, changeHandler, syncManager, this);
-        this.lifecycleService = new NodeLifecycleService(
-            this, faceConfigHandler, containerConfigService, dropHandler::beginHandoff);
+        this.changeHandler = new LinkChangeHandler(level, membershipPublisher, this);
+        this.lifecycleService = new NodeLifecycleService(level, this, endpoints, containerRepository, activeProviders, dropHandler::beginHandoff);
     }
 
-    // 版本管理
-    public long nextVersion(FaceAddress key) {
+    /// 版本管理
+    public long nextVersion(EndpointAddress key) {
         return keyVersions.merge(key, 1L, Long::sum);
     }
 
-    /**
-     * 将对象本地版本提升为该键的下一个单调版本。
-     */
-    long normalizeVersion(FaceAddress key, long observedVersion) {
+    /// 将对象本地版本提升为该键的下一个单调版本。
+    long normalizeVersion(EndpointAddress key, long observedVersion) {
         return keyVersions.compute(key, (ignored, current) -> {
             if (current == null) return Math.max(1L, observedVersion);
             return Math.max(current + 1L, observedVersion);
         });
     }
 
-    public void initKeyVersions() {
-        for (FaceAddress key : getAllConfigKeys()) {
-            FaceConfigComposite cfg = getFaceConfig(key);
-            if (cfg != null) {
-                keyVersions.merge(key, cfg.getVersion(), Math::max);
-            }
+    /// 反序列化完成后统一恢复运行状态，存储层不直接发布事件或安装回调。
+    void initializeLoadedState() {
+        for (var entry : endpoints.getAllEntries()) {
+            EndpointAddress key = entry.getKey();
+            EndpointConfig config = entry.getValue();
+            keyVersions.merge(key, config.getVersion(), Math::max);
+            activeProviders.update(key, config);
+        }
+        for (var entry : endpoints.getAllEntries()) {
+            membershipPublisher.syncNode(createNodeFromKey(entry.getKey()), entry.getValue());
+        }
+        for (var entry : endpoints.getAllEntries()) {
+            bindEndpointChanges(entry.getKey(), entry.getValue());
+        }
+        for (var entry : containerRepository.getAllEntries()) {
+            entry.getValue().setOnDirty(changeHandler::onContainerConfigChanged);
         }
     }
 
-    public void markFaceDirty(FaceAddress faceKey) {
-        dirtyTracker.markFaceDirty(faceKey);
-        saveScheduler.scheduleSave();
+    private void bindEndpointChanges(EndpointAddress key, EndpointConfig config) {
+        config.setOnDirty(changed -> changeHandler.onEndpointConfigChanged(key, changed));
+    }
+
+    public void markFaceDirty(EndpointAddress faceKey) {
+        storage.markFaceDirty(faceKey);
     }
 
     public void markContainerDirty(long containerKey) {
-        dirtyTracker.markContainerDirty(containerKey);
-        saveScheduler.scheduleSave();
+        storage.markContainerDirty(containerKey);
     }
 
-    Set<FaceAddress> snapshotDirtyFaces() {
-        return dirtyTracker.snapshotDirtyFaces();
-    }
-
-    LongSet snapshotDirtyContainers() {
-        return dirtyTracker.snapshotDirtyContainers();
-    }
-
-    void ackDirtyFaces(Set<FaceAddress> keys) {
-        dirtyTracker.ackDirtyFaces(keys);
-    }
-
-    void ackDirtyContainers(LongSet keys) {
-        dirtyTracker.ackDirtyContainers(keys);
-    }
-
-    void setStorage(LinkManagerStorage storage) {
-        saveScheduler.setStorage(storage);
-    }
-
-    boolean needsFullSave() {
-        return saveScheduler.needsFullSave();
-    }
-
-    void resetFullSaveCounter() {
-        saveScheduler.resetFullSaveCounter();
-    }
-
-    public void shutdown() {
+    private void shutdown() {
+        if (closed) return;
+        closed = true;
+        GlobalLogisticsManager global = GlobalLogisticsManager.get(level.getServer());
+        for (EndpointAddress key : endpoints.keySet()) {
+            global.unregisterNode(createNodeFromKey(key));
+        }
         capabilityCache.shutdown();
-        saveScheduler.shutdown();
     }
 
     public void scheduleNetworkSync(LogisticsNode node) {
         if (NodeMutationTransaction.defer(level.getServer(), new DeferredNetworkKey(this, node),
             () -> scheduleNetworkSync(node))) return;
-        FaceConfigComposite cfg = getFaceConfig(FaceAddress.of(node));
+        EndpointConfig cfg = getEndpointConfig(EndpointAddress.of(node));
         if (cfg == null) return;
         syncBuffer.schedule(level, node, cfg);
     }
@@ -164,15 +133,23 @@ public class LinkManager {
     void scheduleNetworkRemoval(LogisticsNode node, long version, @Nullable UUID ownerId) {
         if (NodeMutationTransaction.defer(level.getServer(), new DeferredNetworkKey(this, node),
             () -> scheduleNetworkRemoval(node, version, ownerId))) return;
-        syncBuffer.scheduleRemoval(node, version, ownerId);
+        EndpointConfig current = getEndpointConfig(EndpointAddress.of(node));
+        if (current != null) {
+            /// 删除意图延迟执行期间可能发生重建，客户端应收到最终存在的端点。
+            syncBuffer.schedule(level, node, current);
+        } else {
+            syncBuffer.scheduleRemoval(node, version, ownerId);
+        }
     }
 
-    public void flushPendingNetworkSync() {
-        syncBuffer.flush(topologySyncPort);
+    public void flushPendingNetworkSync(long deadline) {
+        if (System.nanoTime() - deadline >= 0L) return;
+        syncBuffer.flush(networkSync::enqueueBroadcast);
+        networkSync.flushPending(deadline);
     }
 
-    LinkChangeHandler getChangeHandler() {
-        return changeHandler;
+    public void snapshotDelivered(ServerPlayer player, long contentBoundary) {
+        networkSync.snapshotDelivered(player, contentBoundary);
     }
 
     boolean isLifecycleRemovalInProgress() {
@@ -182,75 +159,99 @@ public class LinkManager {
     private record DeferredNetworkKey(LinkManager manager, LogisticsNode node) {
     }
 
-    private record DeferredRedstoneSyncKey(LinkManager manager, GroupKey groupKey) {
-    }
-
     ContainerRepository getContainerRepository() {
         return containerRepository;
     }
 
-    ContainerConfigService getContainerConfigService() {
-        return containerConfigService;
+    EndpointRepository getEndpointRepository() {
+        return endpoints;
     }
 
-    ConfigRepository getConfigRepository() {
-        return faceConfigHandler.configRepository;
-    }
-
-    SyncManager getSyncManager() {
-        return faceConfigHandler.syncManager;
-    }
-
-    public LogisticsNode createNodeFromKey(FaceAddress key) {
+    public LogisticsNode createNodeFromKey(EndpointAddress key) {
         return key.toNode(level.dimension());
     }
 
     @Nullable
-    public FaceConfigComposite getFaceConfig(FaceAddress key) {
-        return faceConfigHandler.getFaceConfig(key);
+    public EndpointConfig getEndpointConfig(EndpointAddress key) {
+        return endpoints.get(key);
     }
 
-    public FaceConfigComposite getOrCreateFaceConfig(BlockPos pos, Direction face) {
-        return faceConfigHandler.getOrCreateFaceConfig(pos, face);
+    public EndpointConfig getOrCreateEndpointConfig(BlockPos pos, Direction face) {
+        return getOrCreateEndpointConfig(EndpointAddress.of(pos, face));
+    }
+
+    public EndpointConfig getOrCreateChannel(LogisticsNode node) {
+        return getOrCreateEndpointConfig(EndpointAddress.of(node));
+    }
+
+    private EndpointConfig getOrCreateEndpointConfig(EndpointAddress key) {
+        BlockPos pos = key.pos();
+        getOrCreateContainerConfig(pos);
+        boolean isNew = !endpoints.containsKey(key);
+        EndpointConfig config = endpoints.getOrCreate(key);
+        bindEndpointChanges(key, config);
+        if (isNew) {
+            config.setVersion(nextVersion(key));
+            lifecycleService.bindCurrentEndpoint(config, pos);
+        }
+        return config;
     }
 
     public void claimOwner(LogisticsNode node, GameProfile profile) {
-        faceConfigHandler.claimOwner(node, profile);
+        if (node == null || profile == null) return;
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
+        if (config == null || config.faceConfig.getOwner() != null) return;
+        config.setOwner(MUTATION_PERMIT, profile.getId(), profile.getName(), profile);
     }
 
     public void refreshOwnerProfile(LogisticsNode node, GameProfile profile) {
-        faceConfigHandler.refreshOwnerProfile(node, profile);
+        if (node == null || profile == null) return;
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
+        if (config == null || !profile.getId().equals(config.faceConfig.getOwner())) return;
+        config.setOwner(MUTATION_PERMIT, profile.getId(), profile.getName(), profile);
     }
 
     public void addNodeToGroup(LogisticsNode node, GroupRef group) {
-        faceConfigHandler.addNodeToGroup(node, group);
+        if (node == null || group == null) return;
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
+        if (config == null) return;
+        config.addGroup(MUTATION_PERMIT, group);
     }
 
     public void renameGroupMetadata(LogisticsNode node, GroupKey groupKey, String displayName) {
-        faceConfigHandler.renameGroupMetadata(node, groupKey, displayName);
+        if (node == null || groupKey == null || displayName == null || displayName.isEmpty()) return;
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
+        if (config == null) return;
+        config.renameGroup(MUTATION_PERMIT, groupKey, displayName);
     }
 
-    public void mergeGroupMetadata(LogisticsNode node, GroupRef source, GroupRef target) {
-        faceConfigHandler.mergeGroupMetadata(node, source, target);
+    public void mergeGroupMetadata(LogisticsNode node,
+                                   GroupRef source,
+                                   GroupRef target) {
+        if (node == null || source == null || target == null) return;
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
+        if (config == null) return;
+        config.mergeGroup(MUTATION_PERMIT, source, target);
     }
 
     public void restoreFaceSnapshot(LogisticsNode node, CompoundTag snapshot) {
-        faceConfigHandler.restoreFaceSnapshot(node, snapshot);
+        if (node == null || snapshot == null) return;
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
+        if (config == null) {
+            config = getOrCreateEndpointConfig(EndpointAddress.of(node));
+        }
+        config.restoreSnapshot(MUTATION_PERMIT, level.registryAccess(), snapshot);
     }
 
-    /**
-     * 恢复“修改前不存在此面”的状态，不移交尚未提交的升级物。
-     */
+    /// 恢复“修改前不存在此面”的状态，不移交尚未提交的升级物。
     public void restoreFaceAbsence(LogisticsNode node) {
         if (node == null) return;
-        FaceConfigComposite config = getFaceConfig(FaceAddress.of(node));
+        EndpointConfig config = getEndpointConfig(EndpointAddress.of(node));
         if (config == null) return;
-        faceConfigHandler.removeFaceAfterHandoff(FaceAddress.of(node), config, true, true);
+        lifecycleService.removeFaceAfterHandoff(EndpointAddress.of(node), config, true, true);
     }
 
-    /**
-     * 恢复容器升级快照；修改前不存在时直接丢弃尚未提交的临时配置。
-     */
+    /// 恢复容器升级快照；修改前不存在时直接丢弃尚未提交的临时配置。
     public void restoreContainerSnapshot(BlockPos pos, boolean existed, @Nullable CompoundTag upgrades) {
         if (pos == null) return;
         if (existed) {
@@ -264,7 +265,7 @@ public class LinkManager {
             return;
         }
         ContainerConfig current = getContainerConfig(pos);
-        if (current != null && !containerConfigService.removeAfterHandoff(pos, current)) {
+        if (current != null && !containerRepository.removeAfterHandoff(pos, current)) {
             throw new IllegalStateException("Container snapshot changed during rollback at " + pos);
         }
         markContainerDirty(pos.asLong());
@@ -312,44 +313,36 @@ public class LinkManager {
         return linkGraphService.purgeInboundReferences(removedNodes);
     }
 
-    void cascadeRemove(LogisticsNode node, FaceConfigComposite config) {
+    void cascadeRemove(LogisticsNode node, EndpointConfig config) {
         linkGraphService.cascadeRemove(node, config);
     }
 
-    void repairReciprocalEdges(LogisticsNode node, FaceConfigComposite config) {
-        linkGraphService.repairReciprocalEdges(node, config);
-    }
-
-    public void cleanUpFaceIfNeeded(LogisticsNode node, FaceConfigComposite cfg) {
+    public void cleanUpFaceIfNeeded(LogisticsNode node, EndpointConfig cfg) {
         lifecycleService.removeOrphan(node, cfg);
     }
 
-    public void removeFaceConfig(FaceAddress key) {
-        lifecycleService.removeFace(key);
+    public boolean removeFaceConfig(EndpointAddress key) {
+        return lifecycleService.removeFace(key);
     }
 
-    public void removeFaceConfigDataOnly(FaceAddress key) {
-        faceConfigHandler.removeFaceConfigDataOnly(key);
+    public void removeFaceConfigDataOnly(EndpointAddress key) {
+        lifecycleService.removeFaceConfigDataOnly(key);
     }
 
-    public void refreshLocalCache(FaceAddress key, BlockPos pos, Direction face, FaceConfigComposite cfg) {
-        faceConfigHandler.refreshLocalCache(key, pos, face, cfg);
-    }
-
-    public void activateNode(FaceAddress key, BlockPos pos, Direction face, FaceConfigComposite cfg) {
-        faceConfigHandler.activateNode(key, pos, face, cfg);
+    void refreshLocalCache(EndpointAddress key, EndpointConfig config) {
+        activeProviders.update(key, config);
     }
 
     public void markOrphanScanNeeded() {
-        faceConfigHandler.markOrphanScanNeeded();
+        lifecycleService.markOrphanScanNeeded();
     }
 
     public boolean isOrphanScanNeeded() {
-        return faceConfigHandler.isOrphanScanNeeded();
+        return lifecycleService.isOrphanScanNeeded();
     }
 
     public void validateOrphanedConfigs() {
-        faceConfigHandler.validateOrphanedConfigs();
+        lifecycleService.validateOrphanedConfigs();
     }
 
     public void onBlockRemoved(BlockPos pos) {
@@ -359,21 +352,17 @@ public class LinkManager {
 
     @Nullable
     public ContainerConfig getContainerConfig(BlockPos pos) {
-        return containerConfigService.get(pos);
+        return containerRepository.get(pos);
     }
 
     public ContainerConfig getOrCreateContainerConfig(BlockPos pos) {
-        ContainerConfig config = containerConfigService.getOrCreate(pos);
+        ContainerConfig config = containerRepository.getOrCreate(pos);
         config.setOnDirty(changeHandler::onContainerConfigChanged);
         return config;
     }
 
-    public Set<FaceAddress> getActiveProviderKeys() {
-        return cacheManager.getActiveProviderKeys();
-    }
-
-    public FaceAddress[] getActiveProviderKeysArray() {
-        return cacheManager.getActiveProviderKeysArray();
+    public List<EndpointAddress> getActiveProviderKeys() {
+        return activeProviders.snapshot();
     }
 
     public <C> C getCapability(BlockPos pos, Direction face,
@@ -389,96 +378,77 @@ public class LinkManager {
         capabilityCache.invalidateBlock(pos);
     }
 
-    public Set<FaceAddress> getAllConfigKeys() {
-        return faceConfigHandler.getAllConfigKeys();
+    public Set<EndpointAddress> getAllConfigKeys() {
+        return endpoints.keySet();
     }
 
-    /**
-     * 返回具有面配置或容器配置的全部方块位置。
-     */
+    public List<EndpointAddress> getConfiguredBlockRepresentatives() {
+        return endpoints.blockRepresentatives();
+    }
+
+    /// 返回具有面配置或容器配置的全部方块位置。
     public Set<BlockPos> getAllConfiguredBlockPositions() {
         Set<BlockPos> positions = new HashSet<>();
-        for (FaceAddress key : getAllConfigKeys()) positions.add(key.pos());
+        for (EndpointAddress key : getAllConfigKeys()) positions.add(key.pos());
         for (long key : containerRepository.keySet()) positions.add(BlockPos.of(key));
         return positions;
-    }
-
-    public void syncToPlayer(ServerPlayer player) {
-        // 直接从 repository 收集非默认配置，避免遍历所有 key 再逐个 getFaceConfig
-        List<Map.Entry<FaceAddress, FaceConfigComposite>> nonDefault = new ArrayList<>();
-        for (var entry : getConfigRepository().getAllEntries()) {
-            FaceConfigComposite cfg = entry.getValue();
-            if (cfg != null && !cfg.isDefault()) {
-                nonDefault.add(Map.entry(entry.getKey(), cfg));
-            }
-        }
-        if (!nonDefault.isEmpty()) {
-            topologySyncPort.syncBulkToPlayer(player, nonDefault);
-        }
     }
 
     public void onBlocksRemovedBulk(Collection<BlockPos> positions) {
         if (positions.isEmpty()) return;
         for (BlockPos pos : positions) capabilityCache.invalidateBlock(pos);
         lifecycleService.destroyBlocks(positions);
-        saveScheduler.scheduleSave();
+        storage.setDirty();
     }
 
-    /**
-     * 在同一维度内搬移一个容器的全部面配置。用于 Sable 在世界与 plot 间转移方块时保留物流身份。
-     */
+    /// 在同一维度内搬移一个容器的全部面配置。用于 Sable 在世界与 plot 间转移方块时保留物流身份。
     public boolean relocateBlock(BlockPos oldPos, BlockPos newPos) {
         return relocateBlock(oldPos, newPos, Rotation.NONE);
     }
 
-    /**
-     * 在同一维度内搬移一个容器的全部面配置，并按照结构装配时的旋转同步面朝向。
-     */
+    /// 在同一维度内搬移一个容器的全部面配置，并按照结构装配时的旋转同步面朝向。
     public boolean relocateBlock(BlockPos oldPos, BlockPos newPos, Rotation rotation) {
         Rotation appliedRotation = rotation == null ? Rotation.NONE : rotation;
         return relocateBlock(oldPos, newPos, appliedRotation::rotate);
     }
 
-    /**
-     * 搬移一个容器，并使用任意三维结构变换同步其面朝向。
-     */
+    /// 搬移一个容器，并使用任意三维结构变换同步其面朝向。
     public boolean relocateBlock(BlockPos oldPos, BlockPos newPos,
                                  UnaryOperator<Direction> faceTransform) {
         if (oldPos == null || newPos == null) return false;
         return relocateBlocks(Map.of(oldPos, newPos), faceTransform);
     }
 
-    /**
-     * 原子迁移整座刚性结构，并正确处理节点坐标互换形成的循环。
-     */
+    /// 原子迁移整座刚性结构，并正确处理节点坐标互换形成的循环。
     public boolean relocateBlocks(Map<BlockPos, BlockPos> positionMoves,
                                   UnaryOperator<Direction> faceTransform) {
         if (positionMoves == null || positionMoves.isEmpty()) return false;
         UnaryOperator<Direction> appliedTransform = faceTransform == null
             ? UnaryOperator.identity() : faceTransform;
 
-        Map<FaceAddress, FaceAddress> faceMoves = new LinkedHashMap<>();
+        Map<EndpointAddress, EndpointAddress> faceMoves = new LinkedHashMap<>();
         Map<LogisticsNode, LogisticsNode> nodeMoves = new LinkedHashMap<>();
         Map<BlockPos, ContainerConfig> movingContainers = new LinkedHashMap<>();
         for (var positionMove : positionMoves.entrySet()) {
             BlockPos oldPos = positionMove.getKey();
             BlockPos newPos = positionMove.getValue();
             if (oldPos == null || newPos == null) continue;
-            for (Direction face : Direction.values()) {
-                FaceAddress oldKey = FaceAddress.of(oldPos, face);
-                if (getFaceConfig(oldKey) == null) continue;
-                FaceAddress newKey = FaceAddress.of(newPos, appliedTransform.apply(face));
+            ContainerConfig sourceContainer = getContainerConfig(oldPos);
+            for (EndpointAddress oldKey : sourceContainer == null ? Set.<EndpointAddress>of() : sourceContainer.getLinkedFaceKeys()) {
+                Direction face = oldKey.face();
+                if (getEndpointConfig(oldKey) == null) continue;
+                EndpointAddress newKey = new EndpointAddress(newPos.asLong(), appliedTransform.apply(face), oldKey.channel());
                 faceMoves.put(oldKey, newKey);
                 nodeMoves.put(createNodeFromKey(oldKey), createNodeFromKey(newKey));
             }
             ContainerConfig container = containerRepository.get(oldPos.asLong());
             if (container != null) movingContainers.put(oldPos, container);
         }
-        Set<FaceAddress> movingKeys = faceMoves.keySet();
-        Set<FaceAddress> destinations = new HashSet<>();
-        for (FaceAddress newKey : faceMoves.values()) {
+        Set<EndpointAddress> movingKeys = faceMoves.keySet();
+        Set<EndpointAddress> destinations = new HashSet<>();
+        for (EndpointAddress newKey : faceMoves.values()) {
             if (!destinations.add(newKey)) return false;
-            if (!movingKeys.contains(newKey) && getFaceConfig(newKey) != null) return false;
+            if (!movingKeys.contains(newKey) && getEndpointConfig(newKey) != null) return false;
         }
         if (faceMoves.isEmpty() && movingContainers.isEmpty()) return false;
         Set<Long> movingContainerPositions = new HashSet<>();
@@ -495,117 +465,177 @@ public class LinkManager {
             .anyMatch(move -> move.getKey() != null && !move.getKey().equals(move.getValue()));
         if (!facesChanged && !positionsChanged) return false;
 
-        // 所有维度中的入站与出站引用必须在移动面之前统一换址。
-        for (ServerLevel serverLevel : level.getServer().getAllLevels()) {
-            LinkManager manager = LinkManager.get(serverLevel);
-            for (FaceAddress key : manager.getAllConfigKeys()) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
-                if (config != null && config.remapLinkedNodes(nodeMoves)) {
-                    manager.markFaceDirty(key);
-                    // 客户端只公开双端互惠的连接；静止端也必须同步其已换址的远端引用。
-                    // 对正在移动的旧端点，后续删除消息会覆盖这里排队的旧坐标同步。
-                    manager.scheduleNetworkSync(manager.createNodeFromKey(key));
+        try (NodeMutationTransaction transaction = NodeMutationTransaction.begin(level.getServer())) {
+            PlayerGroupStore groupStore = PlayerGroupStore.get(level.getServer());
+            GlobalLogisticsManager global = GlobalLogisticsManager.get(level.getServer());
+            Map<GlobalPos, GlobalPos> containerMoves = new LinkedHashMap<>();
+            positionMoves.forEach((before, after) -> {
+                if (before != null && after != null) {
+                    containerMoves.put(GlobalPos.of(level.dimension(), before), GlobalPos.of(level.dimension(), after));
+                }
+            });
+            Set<LogisticsNode> affectedSources = new LinkedHashSet<>(nodeMoves.keySet());
+            global.getSourcesLinkedTo(nodeMoves.keySet()).values()
+                .forEach(affectedSources::addAll);
+            Map<ConnectionKey, ConnectionKey> connectionMoves =
+                collectConnectionMoves(containerMoves, affectedSources);
+            PlayerGroupStore.ConnectionMetadataSnapshot metadataSnapshot =
+                groupStore.captureConnectionMetadata(connectionMoves, Map.of());
+            transaction.onRollback(() -> groupStore.restoreConnectionMetadata(metadataSnapshot));
+            for (var move : faceMoves.entrySet()) {
+                transaction.captureState(createNodeFromKey(move.getKey()));
+                transaction.captureState(createNodeFromKey(move.getValue()));
+            }
+            for (var move : positionMoves.entrySet()) {
+                if (move.getKey() == null || move.getValue() == null) continue;
+                transaction.captureContainer(level, move.getKey());
+                transaction.captureContainer(level, move.getValue());
+            }
+            /// 只修改移动节点和反向索引给出的直接来源，不再扫描全服端点。
+            for (LogisticsNode source : affectedSources) {
+                ServerLevel sourceLevel = level.getServer().getLevel(source.gPos().dimension());
+                if (sourceLevel == null) continue;
+                LinkManager manager = get(sourceLevel);
+                EndpointAddress address = EndpointAddress.of(source);
+                EndpointConfig config = manager.getEndpointConfig(address);
+                if (config == null) continue;
+                transaction.capture(source);
+                if (config.remapLinkedNodes(nodeMoves)) {
+                    manager.markFaceDirty(address);
+                    manager.scheduleNetworkSync(source);
+                }
+            }
+
+            Map<EndpointAddress, EndpointConfig> movingConfigs = new LinkedHashMap<>();
+            for (EndpointAddress oldKey : faceMoves.keySet()) {
+                EndpointConfig config = getEndpointConfig(oldKey);
+                if (config != null) movingConfigs.put(oldKey, config);
+            }
+            movingConfigs.keySet().forEach(getEndpointRepository()::remove);
+
+            movingContainers.keySet().forEach(pos -> containerRepository.remove(pos.asLong()));
+            for (var movingContainer : movingContainers.entrySet()) {
+                BlockPos oldPos = movingContainer.getKey();
+                BlockPos newPos = positionMoves.get(oldPos);
+                ContainerConfig container = movingContainer.getValue();
+                containerRepository.put(newPos.asLong(), container);
+                markContainerDirty(oldPos.asLong());
+                markContainerDirty(newPos.asLong());
+                /// 移动使旧位置的恢复任务失效；为新位置明确安排提交后的状态更新。
+                changeHandler.onContainerConfigChanged(container);
+            }
+
+            movingConfigs.forEach((oldKey, config) -> {
+                activeProviders.remove(oldKey);
+                LogisticsNode oldNode = createNodeFromKey(oldKey);
+                global.removeOutgoingLinks(oldNode);
+                for (var group : List.copyOf(config.faceConfig.getGroups())) {
+                    global.unregisterNode(group.key(), oldNode);
+                }
+            });
+            for (var move : faceMoves.entrySet()) {
+                EndpointAddress oldKey = move.getKey();
+                EndpointAddress newKey = move.getValue();
+                EndpointConfig config = movingConfigs.get(oldKey);
+                if (config == null) continue;
+                LogisticsNode oldNode = createNodeFromKey(oldKey);
+                LogisticsNode newNode = createNodeFromKey(newKey);
+                var groups = List.copyOf(config.faceConfig.getGroups());
+                var role = config.determineRole();
+
+                getEndpointRepository().put(newKey, config);
+                bindEndpointChanges(newKey, config);
+                refreshLocalCache(newKey, config);
+                keyVersions.put(newKey, Math.max(
+                    keyVersions.getOrDefault(newKey, 0L), config.getVersion()));
+
+                for (var group : groups) {
+                    global.registerNode(group, newNode, role);
+                    global.markGroupDirty(group.key());
+                }
+                global.syncOutgoingLinks(newNode, config.getLinkedNodesByGroup());
+                NodeQueryService.invalidateNode(level.getServer(), oldNode);
+                NodeQueryService.invalidateNode(level.getServer(), newNode);
+                scheduleNetworkRemoval(oldNode, nextVersion(oldKey), config.faceConfig.getOwner());
+                scheduleNetworkSync(newNode);
+                markFaceDirty(oldKey);
+                markFaceDirty(newKey);
+            }
+            for (var positionMove : positionMoves.entrySet()) {
+                BlockPos oldPos = positionMove.getKey();
+                BlockPos newPos = positionMove.getValue();
+                if (oldPos == null || newPos == null) continue;
+                invalidateCapabilityCache(oldPos);
+                invalidateCapabilityCache(newPos);
+            }
+            groupStore.remapConnectionMetadata(connectionMoves, Map.of());
+            transaction.commit();
+            return true;
+        }
+    }
+
+    private Map<ConnectionKey, ConnectionKey> collectConnectionMoves(
+        Map<GlobalPos, GlobalPos> positionMoves,
+        Collection<LogisticsNode> affectedSources
+    ) {
+        Map<ConnectionKey, ConnectionKey> moves = new LinkedHashMap<>();
+        if (positionMoves.isEmpty()) return moves;
+        for (LogisticsNode source : affectedSources) {
+            ServerLevel sourceLevel = level.getServer().getLevel(source.gPos().dimension());
+            if (sourceLevel == null) continue;
+            EndpointConfig config = get(sourceLevel)
+                .getEndpointConfig(EndpointAddress.of(source));
+            if (config == null) continue;
+            for (GroupKey group : config.faceConfig.getGroupKeys()) {
+                for (LogisticsNode linked : config.getLinkedNodes(group)) {
+                    if (source.gPos().equals(linked.gPos())) continue;
+                    ConnectionKey before = new ConnectionKey(group, source, linked);
+                    GlobalPos first = positionMoves.getOrDefault(before.first(), before.first());
+                    GlobalPos second = positionMoves.getOrDefault(before.second(), before.second());
+                    if (!first.equals(before.first()) || !second.equals(before.second())) {
+                        moves.put(before, new ConnectionKey(group, first, second));
+                    }
                 }
             }
         }
-
-        movingContainers.keySet().forEach(pos -> containerRepository.remove(pos.asLong()));
-        for (var movingContainer : movingContainers.entrySet()) {
-            BlockPos oldPos = movingContainer.getKey();
-            BlockPos newPos = positionMoves.get(oldPos);
-            ContainerConfig container = movingContainer.getValue();
-            container.remapLinkedFaces(faceMoves);
-            container.setPos(newPos);
-            containerRepository.put(newPos.asLong(), container);
-            markContainerDirty(oldPos.asLong());
-            markContainerDirty(newPos.asLong());
-        }
-
-        GlobalLogisticsManager global = GlobalLogisticsManager.get(level.getServer());
-        Map<FaceAddress, FaceConfigComposite> movingConfigs = new LinkedHashMap<>();
-        for (FaceAddress oldKey : faceMoves.keySet()) {
-            FaceConfigComposite config = getFaceConfig(oldKey);
-            if (config != null) movingConfigs.put(oldKey, config);
-        }
-        movingConfigs.keySet().forEach(getConfigRepository()::remove);
-        movingConfigs.forEach((oldKey, config) -> {
-            cacheManager.remove(oldKey);
-            LogisticsNode oldNode = createNodeFromKey(oldKey);
-            for (var group : List.copyOf(config.faceConfig.getGroups())) {
-                global.unregisterNode(group.key(), oldNode);
-            }
-        });
-        for (var move : faceMoves.entrySet()) {
-            FaceAddress oldKey = move.getKey();
-            FaceAddress newKey = move.getValue();
-            FaceConfigComposite config = movingConfigs.get(oldKey);
-            if (config == null) continue;
-            LogisticsNode oldNode = createNodeFromKey(oldKey);
-            LogisticsNode newNode = createNodeFromKey(newKey);
-            BlockPos newPos = newKey.pos();
-            var groups = List.copyOf(config.faceConfig.getGroups());
-            var role = config.determineRole();
-
-            getConfigRepository().put(newKey, config);
-            config.setPosition(newPos);
-            config.setOnDirty(changed -> changeHandler.onFaceConfigChanged(
-                newKey, newPos, newKey.face(), changed));
-            refreshLocalCache(newKey, newPos, newKey.face(), config);
-            keyVersions.put(newKey, Math.max(
-                keyVersions.getOrDefault(newKey, 0L), config.getVersion()));
-
-            for (var group : groups) {
-                global.registerNode(group, newNode, role);
-                global.markGroupDirty(group.key());
-            }
-            NodeQueryService.invalidateNode(level.getServer(), oldNode);
-            NodeQueryService.invalidateNode(level.getServer(), newNode);
-            scheduleNetworkRemoval(oldNode, nextVersion(oldKey), config.faceConfig.getOwner());
-            scheduleNetworkSync(newNode);
-            markFaceDirty(oldKey);
-            markFaceDirty(newKey);
-        }
-        PlayerGroupStore.get(level.getServer()).remapConnectionNodes(nodeMoves);
-        Map<GlobalPos, GlobalPos> controllerMoves = new LinkedHashMap<>();
-        for (var positionMove : positionMoves.entrySet()) {
-            BlockPos oldPos = positionMove.getKey();
-            BlockPos newPos = positionMove.getValue();
-            if (oldPos == null || newPos == null) continue;
-            controllerMoves.put(
-                GlobalPos.of(level.dimension(), oldPos),
-                GlobalPos.of(level.dimension(), newPos));
-            invalidateCapabilityCache(oldPos);
-            invalidateCapabilityCache(newPos);
-        }
-        Set<GroupKey> changedControlGroups = RedstoneControlStore.get(level.getServer())
-            .remapNodes(level.getServer(), nodeMoves, controllerMoves);
-        for (GroupKey groupKey : changedControlGroups) {
-            Runnable sync = () -> topologySyncPort.syncRedstoneGroups(Set.of(groupKey));
-            if (!NodeMutationTransaction.defer(level.getServer(),
-                new DeferredRedstoneSyncKey(this, groupKey), sync)) {
-                sync.run();
-            }
-        }
-        return true;
+        return moves;
     }
 
     public static LinkManager get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(
+        Map<ServerLevel, LinkManager> levels = RUNTIMES.computeIfAbsent(
+            level.getServer(), ignored -> new IdentityHashMap<>());
+        LinkManager existing = levels.get(level);
+        if (existing != null) return existing;
+        LinkManagerStorage loaded = level.getDataStorage().computeIfAbsent(
             new SavedData.Factory<>(
                 () -> {
                     LinkManager mgr = new LinkManager(level);
-                    LinkManagerStorage stor = new LinkManagerStorage(level, mgr);
-                    mgr.setStorage(stor);
-                    return stor;
+                    return mgr.storage;
                 },
                 (tag, provider) -> {
                     LinkManager mgr = new LinkManager(level);
-                    LinkManagerStorage stor = LinkManagerStorage.load(tag, provider, level, mgr);
-                    mgr.setStorage(stor);
-                    return stor;
+                    return LinkManagerStorage.load(tag, provider, level, mgr);
                 }
             ),
-            "static_logistics_configs"
-        ).linkManager;
+            "static_logistics_configs_v2"
+        );
+        loaded.requireLoaded();
+        LinkManager created = loaded.linkManager;
+        levels.put(level, created);
+        return created;
+    }
+
+    public static void release(ServerLevel level) {
+        Map<ServerLevel, LinkManager> levels = RUNTIMES.get(level.getServer());
+        LinkManager manager = levels == null ? null : levels.remove(level);
+        if (manager != null) manager.shutdown();
+        if (levels != null && levels.isEmpty()) RUNTIMES.remove(level.getServer());
+        NodeQueryService.release(level);
+    }
+
+    public static void release(MinecraftServer server) {
+        Map<ServerLevel, LinkManager> levels = RUNTIMES.remove(server);
+        if (levels != null) levels.values().forEach(LinkManager::shutdown);
+        NodeQueryService.release(server);
     }
 }

@@ -4,9 +4,10 @@ import com.coobird.staticlogistics.api.ITransferHandler;
 import com.coobird.staticlogistics.api.transfer.ResourceAdapter;
 import com.coobird.staticlogistics.api.transfer.ResourceAdapterRegistrar;
 import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -14,90 +15,67 @@ import net.neoforged.neoforge.capabilities.BlockCapability;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 传输类型注册中心 —— 管理所有 {@link LogisticsResource} 实例。
- * 资源类型 bitOffset 必须显式分配；0-31 同时用于兼容旧 int 掩码。
- */
-public class TransferRegistries {
-    private static final Map<ResourceLocation, LogisticsResource<?>> RESOURCES = new LinkedHashMap<>();
-    private static final Map<ResourceLocation, ITransferHandler> HANDLERS = new LinkedHashMap<>();
-    private static final Collection<LogisticsResource<?>> ACTIVE_VIEW =
-        Collections.unmodifiableCollection(RESOURCES.values());
-    private static int generation = 0;
-
-    /**
-     * 注册一个显式分配稳定 bitOffset 的资源适配器。
-     */
-    public static <C> void registerAdapter(LogisticsResource<C> adapter, int bitOffset) {
-        Objects.requireNonNull(adapter, "Logistics resource adapter must not be null");
-        ResourceLocation id = Objects.requireNonNull(adapter.typeId(),
-            "Logistics resource type id must not be null");
-        if (bitOffset < 0 || bitOffset >= Long.SIZE) {
-            throw new IllegalArgumentException("bitOffset must be between 0 and 63 for logistics resource type " + adapter.typeId());
-        }
-        if (RESOURCES.containsKey(id)) {
-            throw new IllegalStateException("Logistics resource type is already registered: " + id);
-        }
-        ensureBitOffsetAvailable(id, bitOffset);
-        validateTransactionalContract(adapter);
-
-        LogisticsResource<C> wrapped = new BitOffsetWrapper<>(adapter, bitOffset);
-        RESOURCES.put(id, wrapped);
-        HANDLERS.put(id, new ResourceAdapterHandler<>(wrapped));
-        generation++;
+/// 传输类型注册中心 —— 管理所有 LogisticsResource 实例。
+/// 运行时位号由注册中心自动分配；持久化身份使用资源 ID。
+public final class TransferRegistries {
+    private record RegistryState(Map<ResourceLocation, LogisticsResource<?>> resources,
+                                 Map<ResourceLocation, ITransferHandler> handlers,
+                                 Collection<LogisticsResource<?>> active,
+                                 int generation) {
     }
 
-    /**
-     * 注册公开的类型安全资源适配器。
-     */
-    public static <C, V> void registerAdapter(ResourceAdapter<C, V> adapter, int bitOffset) {
-        Objects.requireNonNull(adapter, "Resource adapter must not be null");
-        Objects.requireNonNull(adapter.valueType(), "Resource value type must not be null");
-        TransactionCapabilities capabilities = Objects.requireNonNull(
-            adapter.transactionCapabilities(), "Transaction capabilities must not be null");
-        if (!capabilities.exactSimulation() || !capabilities.exactSplit()
-            || capabilities.rollbackMode() == TransactionCapabilities.RollbackMode.NONE) {
-            throw new IllegalArgumentException("Resource adapter must support exact simulation, value splitting and rollback: "
-                + adapter.typeId());
+    private static volatile RegistryState state = new RegistryState(Map.of(), Map.of(), List.of(), 0);
+    private static volatile boolean frozen;
+
+    private TransferRegistries() {
+    }
+
+    /// 注册适配器并自动分配空闲位。
+    public static synchronized <C> void registerAdapter(LogisticsResource<C> adapter) {
+        ensureRegistrationOpen();
+        ResourceLocation id = adapter.typeId();
+        RegistryState current = state;
+        if (current.resources().containsKey(id)) {
+            throw new IllegalStateException("Logistics resource type is already registered: " + id);
         }
-        registerBridge(new TypedResourceAdapterBridge<>(adapter, bitOffset));
+        validateTransactionalContract(adapter);
+
+        int bitOffset = nextBitOffset();
+        LogisticsResource<C> wrapped = new BitOffsetWrapper<>(adapter, bitOffset);
+        publish(current, id, wrapped);
+    }
+
+    /// 注册公开的类型安全资源适配器。
+    public static synchronized <C, V> void registerAdapter(ResourceAdapter<C, V> adapter) {
+        registerAdapter(new TypedResourceAdapterBridge<>(adapter));
     }
 
     public static ResourceAdapterRegistrar registrar() {
         return TransferRegistries::registerAdapter;
     }
 
-    private static void registerBridge(LogisticsResource<?> bridge) {
-        ResourceLocation id = Objects.requireNonNull(bridge.typeId(),
-            "Logistics resource type id must not be null");
-        int bitOffset = bridge.bitOffset();
-        if (bitOffset < 0 || bitOffset >= Long.SIZE) {
-            throw new IllegalArgumentException("bitOffset must be between 0 and 63 for logistics resource type " + id);
-        }
-        if (RESOURCES.containsKey(id)) {
-            throw new IllegalStateException("Logistics resource type is already registered: " + id);
-        }
-        ensureBitOffsetAvailable(id, bitOffset);
-        RESOURCES.put(id, bridge);
-        HANDLERS.put(id, new ResourceAdapterHandler<>(bridge));
-        generation++;
+    private static void publish(RegistryState current, ResourceLocation id, LogisticsResource<?> resource) {
+        Map<ResourceLocation, LogisticsResource<?>> resources = new LinkedHashMap<>(current.resources());
+        Map<ResourceLocation, ITransferHandler> handlers = new LinkedHashMap<>(current.handlers());
+        resources.put(id, resource);
+        handlers.put(id, new ResourceAdapterHandler<>(resource));
+        Map<ResourceLocation, LogisticsResource<?>> immutableResources =
+            Collections.unmodifiableMap(resources);
+        state = new RegistryState(immutableResources, Collections.unmodifiableMap(handlers),
+            List.copyOf(immutableResources.values()), current.generation() + 1);
     }
 
-    private static void ensureBitOffsetAvailable(ResourceLocation id, int bitOffset) {
-        for (LogisticsResource<?> resource : RESOURCES.values()) {
-            if (resource.bitOffset() == bitOffset && !resource.typeId().equals(id)) {
-                throw new IllegalArgumentException("bitOffset " + bitOffset + " is already used by "
-                    + resource.typeId() + "; cannot assign it to " + id);
-            }
-        }
+    private static int nextBitOffset() {
+        long occupied = 0L;
+        for (LogisticsResource<?> resource : state.resources().values()) occupied |= 1L << resource.bitOffset();
+        return TypeBitAllocator.firstFree(occupied);
     }
 
     private static void validateTransactionalContract(LogisticsResource<?> adapter) {
-        TransactionCapabilities capabilities = Objects.requireNonNull(
-            adapter.transactionCapabilities(), "Transaction capabilities must not be null");
+        TransactionCapabilities capabilities = adapter.transactionCapabilities();
         if (!capabilities.exactSimulation() || !capabilities.exactSplit()
             || capabilities.rollbackMode() == TransactionCapabilities.RollbackMode.NONE) {
             throw new IllegalArgumentException(
@@ -105,27 +83,33 @@ public class TransferRegistries {
         }
     }
 
+    public static synchronized void freeze() {
+        frozen = true;
+    }
+
+    private static void ensureRegistrationOpen() {
+        if (frozen) throw new IllegalStateException("Logistics resource registration is already frozen");
+    }
+
     @Nullable
     public static LogisticsResource<?> get(ResourceLocation id) {
-        return RESOURCES.get(id);
+        return state.resources().get(id);
     }
 
     public static Collection<LogisticsResource<?>> getAllActive() {
-        return ACTIVE_VIEW;
+        return state.active();
     }
 
     @Nullable
     public static ITransferHandler getHandler(LogisticsResource<?> resource) {
-        return HANDLERS.get(resource.typeId());
+        return state.handlers().get(resource.typeId());
     }
 
     public static int generation() {
-        return generation;
+        return state.generation();
     }
 
-    /**
-     * 包装器：覆写 bitOffset() 为注册时分配的稳定值。
-     */
+    /// 包装器：覆写 bitOffset() 为注册时分配的运行时值。
     private record BitOffsetWrapper<C>(LogisticsResource<C> delegate,
                                        int assignedOffset) implements LogisticsResource<C> {
 
@@ -150,12 +134,17 @@ public class TransferRegistries {
         }
 
         @Override
+        public Component unit() {
+            return delegate.unit();
+        }
+
+        @Override
         public Supplier<ItemStack> iconSupplier() {
             return delegate.iconSupplier();
         }
 
         @Override
-        public IntSupplier baseStackSizeSupplier() {
+        public LongSupplier baseStackSizeSupplier() {
             return delegate.baseStackSizeSupplier();
         }
 
@@ -215,35 +204,40 @@ public class TransferRegistries {
         }
 
         @Override
-        public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
+        public ExtractionResult<?> extractTyped(C handle, long amount, boolean simulate, @Nullable EndpointConfig sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
             return delegate.extractTyped(handle, amount, simulate, sourceCfg, isPullMode, context);
         }
 
         @Override
-        public long insertTyped(C handle, Object value, boolean simulate, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
+        public long insertTyped(C handle, Object value, boolean simulate, @Nullable EndpointConfig sourceCfg, boolean isPullMode, @Nullable TransferContext context) {
             return delegate.insertTyped(handle, value, simulate, sourceCfg, isPullMode, context);
         }
 
         @Override
-        public boolean canInsertToTarget(C handle, Object value, FaceConfigComposite targetCfg) {
+        public boolean canInsertToTarget(C handle, Object value, EndpointConfig targetCfg) {
             return delegate.canInsertToTarget(handle, value, targetCfg);
         }
 
         @Override
-        public long maxInsertToTarget(C handle, Object value, FaceConfigComposite targetCfg) {
+        public long maxInsertToTarget(C handle, Object value, EndpointConfig targetCfg) {
             return delegate.maxInsertToTarget(handle, value, targetCfg);
         }
 
         @Override
+        public long evaluateInsertToTarget(C handle, Object value, EndpointConfig targetCfg) {
+            return delegate.evaluateInsertToTarget(handle, value, targetCfg);
+        }
+
+        @Override
         public ExtractionResult<?> executeExtract(C handle, ExtractionResult<?> simulated, long requested,
-                                                  @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+                                                  @Nullable EndpointConfig sourceCfg, boolean isPullMode,
                                                   @Nullable TransferContext context) {
             return delegate.executeExtract(handle, simulated, requested, sourceCfg, isPullMode, context);
         }
 
         @Override
         public ResourceExtractionSession openExtractionSession(
-            C handle, @Nullable FaceConfigComposite sourceCfg, boolean isPullMode,
+            C handle, @Nullable EndpointConfig sourceCfg, boolean isPullMode,
             @Nullable TransferContext context
         ) {
             return delegate.openExtractionSession(handle, sourceCfg, isPullMode, context);
@@ -261,7 +255,7 @@ public class TransferRegistries {
 
         @Override
         public boolean rollback(C source, Object value, long amount,
-                                @Nullable FaceConfigComposite sourceConfig,
+                                @Nullable EndpointConfig sourceConfig,
                                 boolean pullMode,
                                 @Nullable TransferContext context) {
             return delegate.rollback(source, value, amount, sourceConfig, pullMode, context);

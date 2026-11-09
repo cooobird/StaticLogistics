@@ -2,9 +2,7 @@ package com.coobird.staticlogistics.transfer;
 
 import java.util.Arrays;
 
-/**
- * 按完整节点地址累计的服务器会话统计快照。
- */
+/// 按完整节点地址累计的服务器会话统计快照。
 public class NodeStats {
     private static final int RATE_SLOTS = 5;
     private static final long TICKS_PER_MINUTE = 1_200L;
@@ -34,9 +32,7 @@ public class NodeStats {
         return receivedAmount;
     }
 
-    /**
-     * 返回最近五分钟滑动窗口内的平均每分钟传输次数。
-     */
+    /// 返回最近五分钟滑动窗口内的平均每分钟传输次数。
     public double getTransfersPerMinute() {
         if (snapshotTick < 0) return 0;
         long currentSlot = Math.floorDiv(snapshotTick, TICKS_PER_MINUTE);

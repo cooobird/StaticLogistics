@@ -1,6 +1,7 @@
 package com.coobird.staticlogistics.network.s2c;
 
 import com.coobird.staticlogistics.StaticLogistics;
+import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.logistics.util.LogisticsConstants;
 import io.netty.handler.codec.DecoderException;
@@ -14,21 +15,14 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
-/**
- * 批量应用面拓扑删除墓碑。
- */
+/// 批量应用面拓扑删除墓碑。
 public record S2CRemoveFaceTopologyPayload(List<Entry> entries) implements CustomPacketPayload {
     public S2CRemoveFaceTopologyPayload {
-        entries = List.copyOf(Objects.requireNonNull(entries, "Topology removals must not be null"));
+        entries = List.copyOf(entries);
     }
 
-    public record Entry(GlobalPos pos, Direction face, long version) {
-        public Entry {
-            Objects.requireNonNull(pos, "Topology removal position must not be null");
-            Objects.requireNonNull(face, "Topology removal face must not be null");
-        }
+    public record Entry(GlobalPos pos, Direction face, int channel, long version) {
     }
 
     public static final Type<S2CRemoveFaceTopologyPayload> TYPE =
@@ -45,8 +39,9 @@ public record S2CRemoveFaceTopologyPayload(List<Entry> entries) implements Custo
             for (int i = 0; i < size; i++) {
                 GlobalPos pos = GlobalPos.STREAM_CODEC.decode(buf);
                 Direction face = Direction.STREAM_CODEC.decode(buf);
+                int channel = buf.readVarInt();
                 long version = buf.readLong();
-                entries.add(new Entry(pos, face, version));
+                entries.add(new Entry(pos, face, channel, version));
             }
             return new S2CRemoveFaceTopologyPayload(entries);
         }
@@ -60,6 +55,7 @@ public record S2CRemoveFaceTopologyPayload(List<Entry> entries) implements Custo
             for (Entry entry : packet.entries()) {
                 GlobalPos.STREAM_CODEC.encode(buf, entry.pos());
                 Direction.STREAM_CODEC.encode(buf, entry.face());
+                buf.writeVarInt(entry.channel());
                 buf.writeLong(entry.version());
             }
         }
@@ -73,7 +69,7 @@ public record S2CRemoveFaceTopologyPayload(List<Entry> entries) implements Custo
     public static void handle(S2CRemoveFaceTopologyPayload packet, IPayloadContext context) {
         context.enqueueWork(() -> {
             for (Entry entry : packet.entries()) {
-                ClientLinkData.INSTANCE.removeFaceTopology(entry.pos(), entry.face(), entry.version());
+                ClientLinkData.INSTANCE.removeFaceTopology(new LogisticsNode(entry.pos(), entry.face(), entry.channel()), entry.version());
             }
         });
     }

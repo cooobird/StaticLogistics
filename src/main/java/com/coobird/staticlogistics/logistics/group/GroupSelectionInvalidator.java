@@ -6,9 +6,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * 在分组生命周期结束时清理在线玩家物品中指向该分组的持久化选择。
- */
+/// 在分组生命周期结束时清理在线玩家物品中指向该分组的持久化选择。
 public final class GroupSelectionInvalidator {
     private GroupSelectionInvalidator() {
     }

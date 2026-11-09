@@ -5,7 +5,7 @@ import com.coobird.staticlogistics.api.group.GroupConstraints;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.PermissionService;
 import com.coobird.staticlogistics.logistics.group.PlayerGroupStore;
 import com.coobird.staticlogistics.network.BoundedNetworkCodecs;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -16,9 +16,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 仅更新工具当前选中的分组。
- */
+/// 仅更新工具当前选中的分组。
 public record C2SUpdateToolGroupPayload(String groupId, @Nullable GroupKey groupKey) implements CustomPacketPayload {
     public static final Type<C2SUpdateToolGroupPayload> TYPE = new Type<>(StaticLogistics.asResource("update_tool_group"));
 
@@ -67,7 +65,7 @@ public record C2SUpdateToolGroupPayload(String groupId, @Nullable GroupKey group
         if (payload.groupKey() != null) {
             selectedGroup = PlayerGroupStore.get(player.server).findGroup(payload.groupKey());
             if (selectedGroup == null
-                || !GroupService.canModify(selectedGroup.key().ownerId(), player)) {
+                || !PermissionService.getInstance().canModify(selectedGroup.key().ownerId(), player)) {
                 return;
             }
             finalId = selectedGroup.displayName();

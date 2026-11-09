@@ -1,8 +1,9 @@
 package com.coobird.staticlogistics.network.c2s;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.content.item.BlueprintItem;
+import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
+import com.coobird.staticlogistics.logistics.blueprint.BlueprintData;
 import com.coobird.staticlogistics.network.ServerPacketRateLimiter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -14,9 +15,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/**
- * 客户端滚轮调整预览位置/旋转 → 服务端同步 BLUEPRINT_PREVIEW_ANCHOR / BLUEPRINT_PREVIEW_ROTATION。
- */
+/// 客户端滚轮调整预览位置/旋转 → 服务端同步 BLUEPRINT_PREVIEW_ANCHOR / BLUEPRINT_PREVIEW_ROTATION。
 public record C2SUpdateBlueprintPreviewPayload(BlockPos previewAnchor,
                                                int rotation) implements CustomPacketPayload {
 
@@ -42,11 +41,15 @@ public record C2SUpdateBlueprintPreviewPayload(BlockPos previewAnchor,
                 || !ServerPacketRateLimiter.allow(serverPlayer,
                 ServerPacketRateLimiter.Action.BLUEPRINT_PREVIEW)) return;
             ItemStack stack = player.getItemInHand(InteractionHand.MAIN_HAND);
-            if (!(stack.getItem() instanceof BlueprintItem)) {
+            if (!(BlueprintModeHandler.isPlacing(stack))) {
                 stack = player.getItemInHand(InteractionHand.OFF_HAND);
-                if (!(stack.getItem() instanceof BlueprintItem)) return;
+                if (!(BlueprintModeHandler.isPlacing(stack))) return;
             }
 
+            if (stack.getOrDefault(SLDataComponents.BLUEPRINT_DATA.get(), BlueprintData.EMPTY).isEmpty()
+                || stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), "").isEmpty()
+                || !player.level().dimension().location().toString().equals(stack.getOrDefault(SLDataComponents.BLUEPRINT_PREVIEW_DIMENSION.get(), "")))
+                return;
             stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ANCHOR.get(), payload.previewAnchor().toShortString());
             stack.set(SLDataComponents.BLUEPRINT_PREVIEW_ROTATION.get(), payload.rotation() & 3);
         });

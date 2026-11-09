@@ -4,83 +4,61 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.group.GroupKey;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
-/**
- * 维护节点到所属组的映射，以及组内节点角色。
- * 支持一个节点属于多个组。
- * 线程安全：所有修改操作通过 synchronized 保证原子性。
- */
-public class NodeGroupService {
+/// 服务端主线程维护分组成员与反向归属；角色只保存一份，关闭的节点仍是分组成员。
+public final class NodeGroupService {
+    private final Map<GroupKey, LinkedHashMap<LogisticsNode, NodeRole>> groups = new HashMap<>();
     private final Map<LogisticsNode, Set<GroupKey>> nodeToGroups = new HashMap<>();
-    private final GroupMemberService groupMemberService;
-    private final Object lock = new Object();
 
-    public NodeGroupService(GroupMemberService groupMemberService) {
-        this.groupMemberService = groupMemberService;
+    public void register(GroupKey group, LogisticsNode node, NodeRole role) {
+        if (group == null) return;
+        groups.computeIfAbsent(group, ignored -> new LinkedHashMap<>()).put(node, role);
+        nodeToGroups.computeIfAbsent(node, ignored -> new HashSet<>()).add(group);
     }
 
-    /**
-     * 注册节点到指定组。支持多组——已存在其他组时不会移除，只追加。
-     */
-    public void register(GroupKey groupKey, LogisticsNode node, NodeRole role) {
-        synchronized (lock) {
-            if (groupKey == null) return;
-            groupMemberService.addNode(groupKey, node, role);
-            nodeToGroups.computeIfAbsent(node, k -> new HashSet<>()).add(groupKey);
-        }
-    }
-
-    /**
-     * 注销节点（从所有已注册的组中移除）
-     */
     public void unregister(LogisticsNode node) {
-        synchronized (lock) {
-            Set<GroupKey> groups = nodeToGroups.remove(node);
-            if (groups != null) {
-                for (GroupKey groupKey : groups) {
-                    groupMemberService.removeNode(groupKey, node);
-                }
-            }
+        for (GroupKey group : getAllGroupKeys(node)) unregister(group, node);
+    }
+
+    public void unregister(GroupKey group, LogisticsNode node) {
+        Set<GroupKey> memberships = nodeToGroups.get(node);
+        if (memberships == null || !memberships.remove(group)) return;
+        if (memberships.isEmpty()) nodeToGroups.remove(node);
+        Map<LogisticsNode, NodeRole> members = groups.get(group);
+        if (members != null) {
+            members.remove(node);
+            if (members.isEmpty()) groups.remove(group);
         }
     }
 
-    /**
-     * 返回节点所属的第一个组 ID（向后兼容），未注册则返回 null。
-     */
-    public GroupKey getGroupKey(LogisticsNode node) {
-        Set<GroupKey> groups = nodeToGroups.get(node);
-        return groups != null && !groups.isEmpty() ? groups.iterator().next() : null;
-    }
-
-    /**
-     * 返回节点所属的所有组 ID 副本，未注册则返回空集合。
-     */
     public Set<GroupKey> getAllGroupKeys(LogisticsNode node) {
-        Set<GroupKey> groups = nodeToGroups.get(node);
-        return groups != null ? Set.copyOf(groups) : Set.of();
+        Set<GroupKey> memberships = nodeToGroups.get(node);
+        return memberships == null ? Set.of() : Set.copyOf(memberships);
     }
 
-    /**
-     * 返回指定组内所有节点及其角色。
-     */
-    public Map<LogisticsNode, NodeRole> getNodesInGroup(GroupKey groupKey) {
-        return groupMemberService.getNodesInGroup(groupKey);
+    public Set<GroupKey> getAllGroupKeys() {
+        return Set.copyOf(groups.keySet());
     }
 
-    /**
-     * 从一个分组中移除节点，同时保留它的其他分组成员关系。
-     */
-    public void unregister(GroupKey groupKey, LogisticsNode node) {
-        synchronized (lock) {
-            Set<GroupKey> groups = nodeToGroups.get(node);
-            if (groups == null || !groups.remove(groupKey)) return;
-            groupMemberService.removeNode(groupKey, node);
-            if (groups.isEmpty()) nodeToGroups.remove(node);
-        }
+    public Map<LogisticsNode, NodeRole> getNodesInGroup(GroupKey group) {
+        Map<LogisticsNode, NodeRole> members = groups.get(group);
+        return members == null ? Map.of() : Map.copyOf(members);
     }
 
+    public List<LogisticsNode> getSenders(GroupKey group) {
+        return membersWithRole(group, NodeRole.SENDER);
+    }
+
+    public List<LogisticsNode> getReceivers(GroupKey group) {
+        return membersWithRole(group, NodeRole.RECEIVER);
+    }
+
+    private List<LogisticsNode> membersWithRole(GroupKey group, NodeRole role) {
+        Map<LogisticsNode, NodeRole> members = groups.get(group);
+        if (members == null) return List.of();
+        return members.entrySet().stream()
+            .filter(entry -> entry.getValue() == role || entry.getValue() == NodeRole.BOTH)
+            .map(Map.Entry::getKey).toList();
+    }
 }

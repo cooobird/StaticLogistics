@@ -9,9 +9,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * 服务端修改玩家手持链接配置器分组选择的统一入口。
- */
+/// 服务端修改玩家手持链接配置器分组选择的统一入口。
 public final class LinkConfiguratorSelection {
     private LinkConfiguratorSelection() {
     }
@@ -25,9 +23,7 @@ public final class LinkConfiguratorSelection {
         return true;
     }
 
-    /**
-     * 重命名或合并成功后，把来源选择切换到服务端最终保留的分组身份。
-     */
+    /// 重命名或合并成功后，把来源选择切换到服务端最终保留的分组身份。
     public static void replaceIfSelected(Player player, GroupKey sourceKey,
                                          String oldName, GroupRef result) {
         ItemStack stack = findConfigurator(player);
@@ -53,9 +49,7 @@ public final class LinkConfiguratorSelection {
         }
     }
 
-    /**
-     * 删除连接后同步清理工具中指向该连接的持久化焦点。
-     */
+    /// 删除连接后同步清理工具中指向该连接的持久化焦点。
     public static void clearConnectionIfSelected(
         Player player,
         ConnectionKey connectionKey

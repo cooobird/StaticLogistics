@@ -9,9 +9,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.Coerce;
 
-/**
- * 在 Sable 搬移方块的完整事务外层保护并提交物流节点换址。
- */
+/// 在 Sable 搬移方块的完整事务外层保护并提交物流节点换址。
 @Pseudo
 @Mixin(targets = "dev.ryanhcode.sable.api.SubLevelAssemblyHelper", remap = false)
 public abstract class SableSubLevelAssemblyHelperMixin {

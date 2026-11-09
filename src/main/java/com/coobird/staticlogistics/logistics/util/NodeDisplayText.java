@@ -7,11 +7,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 
-import java.util.Locale;
-
-/**
- * 统一生成节点位置的可翻译文本，避免各界面自行拼接字段和原始 ID。
- */
+/// 统一生成节点位置的可翻译文本，避免各界面自行拼接字段和原始 ID。
 public final class NodeDisplayText {
     private NodeDisplayText() {
     }
@@ -33,21 +29,14 @@ public final class NodeDisplayText {
             Component.translatable("gui.staticlogistics.node.block_position"),
             Component.literal(pos.getX() + ", " + pos.getY() + ", " + pos.getZ()),
             Component.translatable("gui.staticlogistics.node.connection_face"),
-            direction(node.face()));
+            direction(node.face()), node.channel() + 1);
     }
 
-    /**
-     * 适合窄列表与标签页的无损简写；完整维度信息仍由悬停文本提供。
-     */
+    /// 适合窄列表与标签页的无损简写；完整维度信息仍由悬停文本提供。
     public static MutableComponent compact(LogisticsNode node) {
         var pos = node.gPos().pos();
-        return Component.literal(pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
-            .append(" ")
-            .append(direction(node.face()));
+        return Component.translatable("gui.staticlogistics.node.compact",
+            pos.getX() + ", " + pos.getY() + ", " + pos.getZ(), direction(node.face()), node.channel() + 1);
     }
 
-    public static MutableComponent distanceFromPlayer(double distanceInBlocks) {
-        String value = String.format(Locale.ROOT, "%.1f", distanceInBlocks);
-        return Component.translatable("gui.staticlogistics.node.distance_from_player", value);
-    }
 }

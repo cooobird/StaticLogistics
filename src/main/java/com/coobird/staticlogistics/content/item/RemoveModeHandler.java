@@ -2,8 +2,8 @@ package com.coobird.staticlogistics.content.item;
 
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
-import com.coobird.staticlogistics.logistics.group.GroupService;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.group.PermissionService;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -22,16 +22,15 @@ public class RemoveModeHandler implements ModeHandler {
         var level = context.getLevel();
         var player = context.getPlayer();
         if (player == null) return InteractionResult.PASS;
-        if (!player.isSecondaryUseActive()) return InteractionResult.PASS;
         if (!level.isClientSide && level instanceof ServerLevel serverLevel) {
             if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResult.PASS;
             BlockPos pos = context.getClickedPos();
             Direction face = context.getClickedFace();
             LinkManager mgr = LinkManager.get(serverLevel);
-            FaceAddress key = FaceAddress.of(pos, face);
-            var config = mgr.getFaceConfig(key);
+            EndpointAddress key = new EndpointAddress(pos.asLong(), face, LinkConfiguratorItem.channelForFace(serverLevel, pos, face, settings.channel()));
+            var config = mgr.getEndpointConfig(key);
             if (config != null) {
-                if (GroupService.canModify(config.faceConfig.getOwner(), player)) {
+                if (PermissionService.getInstance().canModify(config.faceConfig.getOwner(), player)) {
                     String selectedGroup = settings.group();
 
                     if (selectedGroup.isEmpty()) {
@@ -47,7 +46,7 @@ public class RemoveModeHandler implements ModeHandler {
                         return InteractionResult.SUCCESS;
                     }
 
-                    // 统一由链接管理器按组删除边，并回收所有无连接端点。
+                    /// 统一由链接管理器按组删除边，并回收所有无连接端点。
                     GroupRef group = config.faceConfig.getGroups().stream()
                         .filter(ref -> settings.groupKey() != null
                             ? ref.key().equals(settings.groupKey())
@@ -55,8 +54,7 @@ public class RemoveModeHandler implements ModeHandler {
                         .findFirst().orElse(null);
                     if (group == null) return InteractionResult.SUCCESS;
                     boolean removed = new ConnectionCommandService(serverLevel.getServer())
-                        .deleteNodeFromGroup(serverPlayer,
-                            group.key(), mgr.createNodeFromKey(key));
+                        .deleteNodeFromGroup(serverPlayer, group.key(), mgr.createNodeFromKey(key));
                     if (!removed) return InteractionResult.SUCCESS;
 
                     level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.5f, 0.8f);

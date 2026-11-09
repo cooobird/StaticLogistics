@@ -4,11 +4,17 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.StringRepresentable;
 
+import java.util.List;
+
 public enum ToolMode implements StringRepresentable {
     WRENCH("wrench", ChatFormatting.YELLOW, 0),
     LINK_AS_INSERT("link_as_input", ChatFormatting.AQUA, 1),
     LINK_AS_EXTRACT("link_as_output", ChatFormatting.GOLD, 2),
-    REMOVE("remove", ChatFormatting.RED, 3);
+    REMOVE("remove", ChatFormatting.RED, 3),
+    BLUEPRINT("blueprint", ChatFormatting.LIGHT_PURPLE, 4);
+
+    /// 滚轮只切换常规操作；蓝图通过页签选择并同步工具状态。
+    public static final List<ToolMode> ORDER = List.of(WRENCH, LINK_AS_EXTRACT, LINK_AS_INSERT, REMOVE);
 
     private final String name;
     private final ChatFormatting color;
@@ -32,21 +38,12 @@ public enum ToolMode implements StringRepresentable {
         for (ToolMode mode : values()) {
             if (mode.id == id) return mode;
         }
-        // 旧版“节点配置”模式 ID 4 已迁移到默认建链模式。
         return LINK_AS_INSERT;
     }
 
     @Override
     public String getSerializedName() {
         return name;
-    }
-
-    public ToolMode next() {
-        return values()[(this.ordinal() + 1) % values().length];
-    }
-
-    public ToolMode previous() {
-        return values()[(this.ordinal() - 1 + values().length) % values().length];
     }
 
     public boolean isLinkMode() {

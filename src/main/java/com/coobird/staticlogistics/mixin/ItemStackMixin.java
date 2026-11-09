@@ -11,9 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * 拦截 ItemStack.is(TagKey)，在非扳手模式下让配置器"伪装"成不是扳手。
- */
+/// 拦截 ItemStack.is(TagKey)，在非扳手模式下让配置器"伪装"成不是扳手。
 @Mixin(ItemStack.class)
 public class ItemStackMixin {
 

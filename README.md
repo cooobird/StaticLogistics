@@ -132,7 +132,7 @@ selected node. The server validates the operation and settles all inventory chan
 
 - Enable or disable the input role
 - Input filter
-- Priority
+- Target priority: outputs try higher-priority inputs first and continue to lower priorities when needed
 - Stock keeping
 - Read-only accepted types derived from connected outputs
 
@@ -173,14 +173,16 @@ capabilities.
 
 ## Upgrades
 
-Speed, range, and stack upgrades have Iron, Gold, Diamond, Netherite, and Nether Star tiers. The Dimension Upgrade is a
-separate single-tier item.
+The combined upgrade card has Iron, Gold, Diamond, Netherite, and Nether Star tiers. One container-wide upgrade affects
+activation interval, connection range, and per-activation transfer amount. Only the Nether Star tier permits
+cross-dimensional transfer.
 
-| Container capability | Effect                                                                                                                     |
-|----------------------|----------------------------------------------------------------------------------------------------------------------------|
-| Speed                | Reduces the interval between container activations                                                                         |
-| Range / Dimension    | Range increases maximum distance; Dimension permits cross-dimensional transfer and removes the normal distance restriction |
-| Stack                | Increases the resource amount transferable per activation                                                                  |
+| Container capability  | Effect                                                              |
+|-----------------------|---------------------------------------------------------------------|
+| Activation interval   | Higher tiers let the container participate in scheduling more often |
+| Connection range      | Higher tiers allow longer same-dimensional connections              |
+| Per-activation amount | Higher tiers increase the transferable resource amount              |
+| Cross-dimensional     | Available only at the Nether Star tier                              |
 
 Upgrades belong to the container, not to one connection. They remain while the same container still has another valid
 link and are returned when the last relevant link is removed or the container is dismantled.
@@ -190,7 +192,7 @@ reconnecting them.
 
 ## Filters
 
-Filters are separate plugin items, not tiers of the performance upgrades.
+Filters are channel-local configuration items, not tiers of the shared combined upgrade.
 
 | Filter       | Matches                                                                                  |
 |--------------|------------------------------------------------------------------------------------------|
@@ -284,10 +286,7 @@ provider_size = 1000
 max_bulk_entries = 100
 ticker_batch_size = 50
 ticker_time_budget_us = 1500
-clean_interval = 200
 default_cooldown = 10
-batch_clean_threshold = 500
-batch_clean_size = 200
 context_pool_size = 100
 
 [upgrades]

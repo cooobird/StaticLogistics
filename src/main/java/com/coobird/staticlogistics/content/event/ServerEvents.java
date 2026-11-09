@@ -4,6 +4,7 @@ import com.coobird.staticlogistics.StaticLogistics;
 import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.event.LogisticsNodeEvent;
 import com.coobird.staticlogistics.command.SLCommands;
+import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.content.item.BulkSelectionInteractionGuard;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
@@ -11,19 +12,12 @@ import com.coobird.staticlogistics.integration.ModCompat;
 import com.coobird.staticlogistics.integration.ftb.FTBEventHandlers;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
 import com.coobird.staticlogistics.logistics.blueprint.BlueprintUndoManager;
-import com.coobird.staticlogistics.logistics.group.ConnectionCommandService;
-import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logistics.group.GroupCommandService;
-import com.coobird.staticlogistics.logistics.group.GroupDirectoryReconciler;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
+import com.coobird.staticlogistics.logistics.group.*;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
-import com.coobird.staticlogistics.logistics.redstone.RedstoneControlStore;
-import com.coobird.staticlogistics.logistics.redstone.RedstonePointSelectionSession;
 import com.coobird.staticlogistics.network.c2s.*;
 import com.coobird.staticlogistics.network.s2c.*;
-import com.coobird.staticlogistics.transfer.LogisticsTicker;
-import com.coobird.staticlogistics.transfer.NodeQueryService;
-import com.coobird.staticlogistics.transfer.TransferLogManager;
+import com.coobird.staticlogistics.transfer.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -56,25 +50,33 @@ public class ServerEvents {
 
     @SubscribeEvent
     public static void onServerStarting(ServerAboutToStartEvent event) {
+        TransferRegistries.freeze();
+        DistributionStrategyRegistry.freeze();
+        TransferFailureReason.freeze();
         GlobalLogisticsManager.get(event.getServer());
     }
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
         GroupDirectoryReconciler.reconcile(event.getServer());
+        LogisticsOperationStore.get(event.getServer()).directoryDeletionOwners()
+            .forEach(owner -> new ConnectionCommandService(event.getServer())
+                .resumePendingDirectoryDeletion(owner));
+        LogisticsOperationStore.get(event.getServer()).groupDeletions()
+            .forEach(group -> new ConnectionCommandService(event.getServer())
+                .resumePendingGroupDeletion(group));
     }
 
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         if (ModList.get().isLoaded("ftbteams")) FTBEventHandlers.clearPending();
         BlueprintUndoManager.release(event.getServer());
+        LinkManager.release(event.getServer());
         TransferLogManager.release(event.getServer());
         LogisticsTicker.release(event.getServer());
-        NodeQueryService.release(event.getServer());
         ConnectionCommandService.release(event.getServer());
         GroupCommandService.release(event.getServer());
         BulkSelectionInteractionGuard.release(event.getServer());
-        RedstonePointSelectionSession.release(event.getServer());
         GlobalLogisticsManager.release(event.getServer());
     }
 
@@ -83,33 +85,38 @@ public class ServerEvents {
         MinecraftServer server = event.getEntity().getServer();
         if (server != null) {
             BlueprintUndoManager.get(server).clear(event.getEntity().getUUID());
-            if (event.getEntity() instanceof ServerPlayer player) {
-                RedstonePointSelectionSession.cancel(player);
-            }
         }
     }
 
     @SubscribeEvent
     public static void register(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("18");
-
+        final PayloadRegistrar registrar = event.registrar("58");
+        registrar.playToServer(C2SBeginBlueprintPlacementPayload.TYPE, C2SBeginBlueprintPlacementPayload.STREAM_CODEC, C2SBeginBlueprintPlacementPayload::handle);
+        registrar.playToServer(C2SObserveTransferRatesPayload.TYPE, C2SObserveTransferRatesPayload.STREAM_CODEC, C2SObserveTransferRatesPayload::handle);
+        registrar.playToClient(S2CTransferRatesPayload.TYPE, S2CTransferRatesPayload.STREAM_CODEC, S2CTransferRatesPayload::handle);
+        registrar.playToClient(S2CConfiguratorReadyPayload.TYPE, S2CConfiguratorReadyPayload.STREAM_CODEC, S2CConfiguratorReadyPayload::handle);
+        registrar.playToServer(C2SManageConnectionsPayload.TYPE, C2SManageConnectionsPayload.STREAM_CODEC, C2SManageConnectionsPayload::handle);
+        registrar.playToServer(C2SManageChannelPayload.TYPE, C2SManageChannelPayload.STREAM_CODEC, C2SManageChannelPayload::handle);
+        registrar.playToServer(C2SCreateChannelPayload.TYPE, C2SCreateChannelPayload.STREAM_CODEC, C2SCreateChannelPayload::handle);
+        registrar.playToClient(S2CChannelCreatedPayload.TYPE, S2CChannelCreatedPayload.STREAM_CODEC, S2CChannelCreatedPayload::handle);
+        registrar.playToServer(C2SGroupHierarchyPayload.TYPE, C2SGroupHierarchyPayload.STREAM_CODEC, C2SGroupHierarchyPayload::handle);
+        registrar.playToClient(S2CGroupHierarchyPayload.TYPE, S2CGroupHierarchyPayload.STREAM_CODEC, S2CGroupHierarchyPayload::handle);
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
+        registrar.playToClient(S2CStoredSelectionPage.TYPE, S2CStoredSelectionPage.STREAM_CODEC, S2CStoredSelectionPage::handle);
+        registrar.playToClient(S2CPresetPreviewPayload.TYPE, S2CPresetPreviewPayload.STREAM_CODEC, S2CPresetPreviewPayload::handle);
         registrar.playToClient(S2CRemoveFaceTopologyPayload.TYPE, S2CRemoveFaceTopologyPayload.STREAM_CODEC, S2CRemoveFaceTopologyPayload::handle);
         registrar.playToClient(S2CGroupDirectoryPayload.TYPE, S2CGroupDirectoryPayload.STREAM_CODEC, S2CGroupDirectoryPayload::handle);
         registrar.playToClient(S2CAccessSnapshotPayload.TYPE, S2CAccessSnapshotPayload.STREAM_CODEC, S2CAccessSnapshotPayload::handle);
+        registrar.playToServer(C2SRequestAccessSnapshotPayload.TYPE, C2SRequestAccessSnapshotPayload.STREAM_CODEC, C2SRequestAccessSnapshotPayload::handle);
         registrar.playToClient(S2CSelectLinkEndpointPayload.TYPE, S2CSelectLinkEndpointPayload.STREAM_CODEC, S2CSelectLinkEndpointPayload::handle);
         registrar.playToClient(S2CClearLinkEndpointPayload.TYPE, S2CClearLinkEndpointPayload.STREAM_CODEC, S2CClearLinkEndpointPayload::handle);
-        registrar.playToClient(S2CRedstoneControlStatePayload.TYPE, S2CRedstoneControlStatePayload.STREAM_CODEC, S2CRedstoneControlStatePayload::handle);
-        registrar.playToClient(S2CRedstoneControlGroupPayload.TYPE, S2CRedstoneControlGroupPayload.STREAM_CODEC, S2CRedstoneControlGroupPayload::handle);
-        registrar.playToClient(S2CRedstoneSignalsPayload.TYPE, S2CRedstoneSignalsPayload.STREAM_CODEC, S2CRedstoneSignalsPayload::handle);
-
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
-        registrar.playToServer(C2SConfigureFacesPayload.TYPE, C2SConfigureFacesPayload.STREAM_CODEC, C2SConfigureFacesPayload::handle);
-        registrar.playToServer(C2SApplyNodeTemplatePayload.TYPE, C2SApplyNodeTemplatePayload.STREAM_CODEC, C2SApplyNodeTemplatePayload::handle);
         registrar.playToServer(C2SBulkSelectNodesPayload.TYPE, C2SBulkSelectNodesPayload.STREAM_CODEC, C2SBulkSelectNodesPayload::handle);
+        registrar.playToServer(C2SPresetPreviewPayload.TYPE, C2SPresetPreviewPayload.STREAM_CODEC, C2SPresetPreviewPayload::handle);
         registrar.playToServer(C2SOpenNodeFilterPayload.TYPE, C2SOpenNodeFilterPayload.STREAM_CODEC, C2SOpenNodeFilterPayload::handle);
         registrar.playToServer(C2SReturnToLinkConfiguratorPayload.TYPE, C2SReturnToLinkConfiguratorPayload.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::handle);
+        registrar.playToClient(S2CToolModeResultPayload.TYPE, S2CToolModeResultPayload.STREAM_CODEC, S2CToolModeResultPayload::handle);
         registrar.playToServer(C2SUpdateToolModePayload.TYPE, C2SUpdateToolModePayload.STREAM_CODEC, C2SUpdateToolModePayload::handle);
         registrar.playToServer(C2SUpdateToolTypesPayload.TYPE, C2SUpdateToolTypesPayload.STREAM_CODEC, C2SUpdateToolTypesPayload::handle);
         registrar.playToServer(C2SUpdateToolGroupPayload.TYPE, C2SUpdateToolGroupPayload.STREAM_CODEC, C2SUpdateToolGroupPayload::handle);
@@ -120,20 +127,14 @@ public class ServerEvents {
         registrar.playToServer(C2SOpenHandFilterPayload.TYPE, C2SOpenHandFilterPayload.STREAM_CODEC, C2SOpenHandFilterPayload::handle);
         registrar.playToServer(C2SUpdateBlueprintPreviewPayload.TYPE, C2SUpdateBlueprintPreviewPayload.STREAM_CODEC, C2SUpdateBlueprintPreviewPayload::handle);
         registrar.playToServer(C2SOpenLinkEndpointPayload.TYPE, C2SOpenLinkEndpointPayload.STREAM_CODEC, C2SOpenLinkEndpointPayload::handle);
-        registrar.playToServer(C2SSelectLinkEndpointSidePayload.TYPE, C2SSelectLinkEndpointSidePayload.STREAM_CODEC, C2SSelectLinkEndpointSidePayload::handle);
         registrar.playToServer(C2SClearLinkEndpointPayload.TYPE, C2SClearLinkEndpointPayload.STREAM_CODEC, C2SClearLinkEndpointPayload::handle);
         registrar.playToServer(C2SClearStoredNodesPayload.TYPE, C2SClearStoredNodesPayload.STREAM_CODEC, C2SClearStoredNodesPayload::handle);
         registrar.playToServer(C2SDeleteGroupPayload.TYPE, C2SDeleteGroupPayload.STREAM_CODEC, C2SDeleteGroupPayload::handle);
+        registrar.playToServer(C2SSelectBlueprintGroupPayload.TYPE, C2SSelectBlueprintGroupPayload.STREAM_CODEC, C2SSelectBlueprintGroupPayload::handle);
+        registrar.playToServer(C2SCopyBlueprintSelectionPayload.TYPE, C2SCopyBlueprintSelectionPayload.STREAM_CODEC, C2SCopyBlueprintSelectionPayload::handle);
+        registrar.playToClient(S2CBlueprintCopyResultPayload.TYPE, S2CBlueprintCopyResultPayload.STREAM_CODEC, S2CBlueprintCopyResultPayload::handle);
         registrar.playToServer(C2SBlueprintUndoPayload.TYPE, C2SBlueprintUndoPayload.STREAM_CODEC, C2SBlueprintUndoPayload::handle);
         registrar.playToServer(C2SCreateEmptyGroupPayload.TYPE, C2SCreateEmptyGroupPayload.STREAM_CODEC, C2SCreateEmptyGroupPayload::handle);
-        registrar.playToServer(C2SRenameConnectionPayload.TYPE, C2SRenameConnectionPayload.STREAM_CODEC, C2SRenameConnectionPayload::handle);
-        registrar.playToServer(C2SDeleteConnectionPayload.TYPE, C2SDeleteConnectionPayload.STREAM_CODEC, C2SDeleteConnectionPayload::handle);
-        registrar.playToServer(C2SQueryRedstoneControlPayload.TYPE, C2SQueryRedstoneControlPayload.STREAM_CODEC, C2SQueryRedstoneControlPayload::handle);
-        registrar.playToServer(C2SSetRedstoneControlPayload.TYPE, C2SSetRedstoneControlPayload.STREAM_CODEC, C2SSetRedstoneControlPayload::handle);
-        registrar.playToServer(C2SBeginRedstonePointSelectionPayload.TYPE, C2SBeginRedstonePointSelectionPayload.STREAM_CODEC, C2SBeginRedstonePointSelectionPayload::handle);
-        registrar.playToServer(C2SQueryRedstoneGroupPayload.TYPE, C2SQueryRedstoneGroupPayload.STREAM_CODEC, C2SQueryRedstoneGroupPayload::handle);
-        registrar.playToServer(C2SQueryRedstoneSignalsPayload.TYPE, C2SQueryRedstoneSignalsPayload.STREAM_CODEC, C2SQueryRedstoneSignalsPayload::handle);
-        registrar.playToServer(C2SRemoveRedstoneControlGroupPayload.TYPE, C2SRemoveRedstoneControlGroupPayload.STREAM_CODEC, C2SRemoveRedstoneControlGroupPayload::handle);
     }
 
     @SubscribeEvent
@@ -162,12 +163,9 @@ public class ServerEvents {
             .filter(node -> {
                 ServerLevel level = event.getServer().getLevel(node.gPos().dimension());
                 return level == null
-                    || LinkManager.get(level).getFaceConfig(FaceAddress.of(node)) == null;
+                    || LinkManager.get(level).getEndpointConfig(EndpointAddress.of(node)) == null;
             })
             .collect(Collectors.toSet());
-
-        RedstoneControlStore controls = RedstoneControlStore.get(event.getServer());
-        removedNodes.forEach(controls::removeNode);
 
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
@@ -197,14 +195,14 @@ public class ServerEvents {
         );
     }
 
-    /**
-     * 处理mek及其扩展的扳手模式
-     */
+    /// 处理mek及其扩展的扳手模式
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         ItemStack stack = event.getItemStack();
         if (stack.getItem() instanceof LinkConfiguratorItem item) {
-            if (item.getSettings(stack).mode() != ToolMode.WRENCH) {
+            if (BlueprintModeHandler.isActive(stack) || item.getSettings(stack).mode() != ToolMode.WRENCH) {
+                /// 选点和移除模式优先使用工具，避免普通右键先打开箱子或机器界面。
+                event.setUseBlock(TriState.FALSE);
                 Block block = event.getLevel().getBlockState(event.getPos()).getBlock();
                 if (ModCompat.isMekanismLoaded() && (
                     BuiltInRegistries.BLOCK.getKey(block).getNamespace().startsWith("mekanism") ||
@@ -218,29 +216,12 @@ public class ServerEvents {
         }
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onRedstonePointSelectionRightClick(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)
-            || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
-            || !RedstonePointSelectionSession.hasPending(player)) return;
-
-        RedstonePointSelectionSession.BindResult result = RedstonePointSelectionSession.bind(player,
-            net.minecraft.core.GlobalPos.of(event.getLevel().dimension(), event.getPos()));
-        result.groupKeys().forEach(groupKey ->
-            C2SQueryRedstoneGroupPayload.sendGroupToAuthorized(player, groupKey));
-        player.displayClientMessage(Component.translatable(
-            "message.staticlogistics.redstone.point_bound", result.count(),
-            event.getPos().toShortString()).withStyle(ChatFormatting.GREEN), true);
-        event.setUseBlock(TriState.FALSE);
-        event.setUseItem(TriState.FALSE);
-        event.setCanceled(true);
-        event.setCancellationResult(InteractionResult.SUCCESS);
-    }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBulkSelectionRightClick(PlayerInteractEvent.RightClickBlock event) {
         if (!(event.getEntity() instanceof ServerPlayer player)
             || !(event.getItemStack().getItem() instanceof LinkConfiguratorItem)
+            || BlueprintModeHandler.isActive(event.getItemStack())
             || !BulkSelectionInteractionGuard.matches(
             player, event.getPos(), event.getFace())) return;
         event.setUseBlock(TriState.FALSE);

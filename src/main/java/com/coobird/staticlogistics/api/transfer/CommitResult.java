@@ -2,9 +2,7 @@ package com.coobird.staticlogistics.api.transfer;
 
 import java.util.Optional;
 
-/**
- * 真实提取的提交结果。
- */
+/// 真实提取的提交结果。
 public record CommitResult<V>(Status status, Optional<ResourceValue<V>> resource) {
     public enum Status {
         SUCCESS,
@@ -14,8 +12,6 @@ public record CommitResult<V>(Status status, Optional<ResourceValue<V>> resource
     }
 
     public CommitResult {
-        if (status == null) throw new IllegalArgumentException("Commit status must not be null");
-        resource = resource == null ? Optional.empty() : resource;
         if (status == Status.SUCCESS && resource.isEmpty()) {
             throw new IllegalArgumentException("Successful commit must contain a resource");
         }

@@ -17,14 +17,11 @@ import java.util.concurrent.CompletableFuture;
 
 public class SLItemTagsProvider extends ItemTagsProvider {
 
-    public SLItemTagsProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider,
-                              @Nullable ExistingFileHelper helper) {
+    public SLItemTagsProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, @Nullable ExistingFileHelper helper) {
         this(output, lookupProvider, CompletableFuture.completedFuture(TagLookup.empty()), helper);
     }
 
-    public SLItemTagsProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider,
-                              CompletableFuture<TagLookup<Block>> blockTags,
-                              @Nullable ExistingFileHelper helper) {
+    public SLItemTagsProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider, CompletableFuture<TagLookup<Block>> blockTags, @Nullable ExistingFileHelper helper) {
         super(output, lookupProvider, blockTags, StaticLogistics.MODID, helper);
     }
 

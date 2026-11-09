@@ -23,8 +23,7 @@ public record C2SOpenHandFilterPayload(boolean offhand) implements CustomPacketP
         new Type<>(StaticLogistics.asResource("open_hand_filter"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, C2SOpenHandFilterPayload> STREAM_CODEC =
-        StreamCodec.composite(ByteBufCodecs.BOOL, C2SOpenHandFilterPayload::offhand,
-            C2SOpenHandFilterPayload::new);
+        StreamCodec.composite(ByteBufCodecs.BOOL, C2SOpenHandFilterPayload::offhand, C2SOpenHandFilterPayload::new);
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

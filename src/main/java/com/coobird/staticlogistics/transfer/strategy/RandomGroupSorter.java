@@ -9,9 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * 随机排序：打乱目标顺序，每次结果不同。
- */
+/// 随机排序：打乱目标顺序，每次结果不同。
 public enum RandomGroupSorter implements GroupSorter {
     INSTANCE;
 

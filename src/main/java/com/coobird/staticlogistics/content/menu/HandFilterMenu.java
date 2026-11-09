@@ -30,15 +30,13 @@ public class HandFilterMenu extends AbstractFilterMenu {
 
     @Override
     public ItemStack getFilterStack() {
-        // 客户端背包同步不再携带过滤规则，界面编辑使用菜单打开时显式下发的快照。
+        /// 客户端背包同步不再携带过滤规则，界面编辑使用菜单打开时显式下发的快照。
         if (player.level().isClientSide) return filterStack;
         ItemStack current = getBoundStack();
         return current.isEmpty() ? filterStack : current;
     }
 
-    /**
-     * 返回菜单打开时绑定的真实背包槽，切换当前快捷栏槽位不会改变绑定。
-     */
+    /// 返回菜单打开时绑定的真实背包槽，切换当前快捷栏槽位不会改变绑定。
     public ItemStack getBoundStack() {
         if (inventorySlot < 0 || inventorySlot >= player.getInventory().getContainerSize()) {
             return ItemStack.EMPTY;

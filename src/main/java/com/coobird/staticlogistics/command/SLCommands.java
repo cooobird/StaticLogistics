@@ -4,11 +4,12 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.NodeRole;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.logistics.group.GlobalLogisticsManager;
-import com.coobird.staticlogistics.logistics.group.GroupService;
+import com.coobird.staticlogistics.logistics.group.GroupRenameService;
 import com.coobird.staticlogistics.logistics.group.OwnershipTransferService;
+import com.coobird.staticlogistics.logistics.group.PermissionService;
 import com.coobird.staticlogistics.logistics.node.ContainerConfig;
-import com.coobird.staticlogistics.logistics.node.FaceAddress;
-import com.coobird.staticlogistics.logistics.node.FaceConfigComposite;
+import com.coobird.staticlogistics.logistics.node.EndpointAddress;
+import com.coobird.staticlogistics.logistics.node.EndpointConfig;
 import com.coobird.staticlogistics.logistics.node.LinkManager;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.transfer.*;
@@ -38,19 +39,16 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
-/**
- * 注册模组的所有命令（/sl），包括信息查询、所有权转移、重命名、清理、策略列表和统计。
- */
+/// 注册模组的所有命令（/sl），包括信息查询、所有权转移、重命名、清理、策略列表和统计。
 public class SLCommands {
     private static final int LIST_PAGE_SIZE = 8;
 
-    /**
-     * 注册 /sl 命令及其所有子命令
-     */
+    /// 注册 /sl 命令及其所有子命令
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("sl")
             .requires(source -> source.hasPermission(2))
@@ -99,17 +97,13 @@ public class SLCommands {
         );
     }
 
-    /**
-     * 为命令参数提供已有的分组名作为建议
-     */
+    /// 为命令参数提供已有的分组名作为建议
     private static CompletableFuture<Suggestions> suggestGroups(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         MinecraftServer server = context.getSource().getServer();
         return SharedSuggestionProvider.suggest(GlobalLogisticsManager.get(server).getActiveGroups(), builder);
     }
 
-    /**
-     * 显示指定位置的容器配置和面配置信息
-     */
+    /// 显示指定位置的容器配置和面配置信息
     private static int handleInfo(CommandSourceStack source, BlockPos pos) {
         ServerLevel level = source.getLevel();
         LinkManager manager = LinkManager.get(level);
@@ -136,12 +130,14 @@ public class SLCommands {
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_configs_title").withStyle(ChatFormatting.GOLD), false);
         boolean found = false;
-        for (Direction dir : Direction.values()) {
-            NodeQuerySnapshot snapshot = NodeQueryService.query(level, pos, dir).orElse(null);
+        for (var address : container == null ? Set.<EndpointAddress>of() : container.getLinkedFaceKeys()) {
+            Direction dir = address.face();
+            NodeQuerySnapshot snapshot = NodeQueryService.query(level, address.toNode(level.dimension())).orElse(null);
             if (snapshot != null) {
                 found = true;
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_direction", dir.getName()).withStyle(ChatFormatting.AQUA), false);
-                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.group",
+                source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.face_direction",
+                    Component.translatable("gui.staticlogistics.node.face_channel", NodeDisplayText.direction(dir), address.channel() + 1)).withStyle(ChatFormatting.AQUA), false);
+                source.sendSuccess(() -> Component.translatable("gui.staticlogistics.group_label",
                     snapshot.groups().isEmpty() ? "" : snapshot.groups().getFirst()).withStyle(ChatFormatting.WHITE), false);
                 UUID ownerUuid = snapshot.ownerId();
                 Component ownerText = (ownerUuid == null)
@@ -193,9 +189,7 @@ public class SLCommands {
         return result;
     }
 
-    /**
-     * /sl transfer <from> <to>：把某个玩家的所有节点所有权转移给另一个玩家
-     */
+    /// /sl transfer <from> <to>：把某个玩家的所有节点所有权转移给另一个玩家
     private static int transferOwnership(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "from");
         GameProfile fromProfile = profiles.iterator().next();
@@ -203,17 +197,15 @@ public class SLCommands {
         MinecraftServer server = context.getSource().getServer();
 
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(server);
-        int finalCount = new OwnershipTransferService(
+        OwnershipTransferService.TransferResult result = new OwnershipTransferService(
             server, globalManager).transfer(context.getSource(), fromProfile.getId(), toPlayer, null);
-        if (finalCount == 0) return 0;
+        if (!result.success()) return 0;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.success",
-            finalCount, fromProfile.getName(), toPlayer.getDisplayName()), true);
-        return finalCount;
+            result.nodes(), fromProfile.getName(), toPlayer.getDisplayName()), true);
+        return result.commandResult();
     }
 
-    /**
-     * /sl transfer <from> group <groupId> <to>：转移某个分组下的节点所有权
-     */
+    /// /sl transfer <from> group <groupId> <to>：转移某个分组下的节点所有权
     private static int transferGroupOwnership(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "from");
         GameProfile fromProfile = profiles.iterator().next();
@@ -222,17 +214,15 @@ public class SLCommands {
         MinecraftServer server = context.getSource().getServer();
 
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(server);
-        int finalCount = new OwnershipTransferService(
+        OwnershipTransferService.TransferResult result = new OwnershipTransferService(
             server, globalManager).transfer(context.getSource(), fromProfile.getId(), toPlayer, groupId);
-        if (finalCount == 0) return 0;
+        if (!result.success()) return 0;
         context.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.transfer.group_success",
-            finalCount, groupId, toPlayer.getDisplayName()), true);
-        return finalCount;
+            result.nodes(), groupId, toPlayer.getDisplayName()), true);
+        return result.commandResult();
     }
 
-    /**
-     * /sl rename <owner> <oldGroup> <newGroup>：重命名某个玩家的分组
-     */
+    /// /sl rename <owner> <oldGroup> <newGroup>：重命名某个玩家的分组
     private static int renameGroup(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "owner");
         GameProfile profile = profiles.iterator().next();
@@ -244,8 +234,8 @@ public class SLCommands {
         if (player == null) return 0;
 
         GlobalLogisticsManager globalManager = GlobalLogisticsManager.get(level.getServer());
-        boolean renamed = GroupService.renameGroupAsAdmin(
-            level, player, profile.getId(), oldGroup, newGroup, globalManager);
+        boolean renamed = new GroupRenameService(PermissionService.getInstance(), globalManager)
+            .renameGroupAsAdmin(level, player, profile.getId(), oldGroup, newGroup);
         if (!renamed) {
             context.getSource().sendFailure(Component.translatable(
                 "commands.staticlogistics.rename.failed", oldGroup, profile.getName()));
@@ -257,9 +247,7 @@ public class SLCommands {
         return 1;
     }
 
-    /**
-     * /sl cleanup <owner>：删除某个玩家的所有节点配置
-     */
+    /// /sl cleanup <owner>：删除某个玩家的所有节点配置
     private static int cleanupNodes(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, "owner");
         GameProfile profile = profiles.iterator().next();
@@ -268,11 +256,10 @@ public class SLCommands {
         int count = 0;
         for (ServerLevel level : server.getAllLevels()) {
             LinkManager manager = LinkManager.get(level);
-            for (FaceAddress key : new ArrayList<>(manager.getAllConfigKeys())) {
-                FaceConfigComposite config = manager.getFaceConfig(key);
+            for (EndpointAddress key : new ArrayList<>(manager.getAllConfigKeys())) {
+                EndpointConfig config = manager.getEndpointConfig(key);
                 if (config != null && profile.getId().equals(config.faceConfig.getOwner())) {
-                    manager.removeFaceConfig(key);
-                    count++;
+                    if (manager.removeFaceConfig(key)) count++;
                 }
             }
         }
@@ -283,9 +270,7 @@ public class SLCommands {
         return count;
     }
 
-    /**
-     * /sl info：查询玩家正在看的那一面的物流配置详情
-     */
+    /// /sl info：查询玩家正在看的那一面的物流配置详情
     private static int queryInfo(CommandContext<CommandSourceStack> context) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) return 0;
@@ -298,17 +283,13 @@ public class SLCommands {
         return 0;
     }
 
-    /**
-     * /sl info <pos>：查询指定坐标的物流配置详情
-     */
+    /// /sl info <pos>：查询指定坐标的物流配置详情
     private static int queryInfoWithPos(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         BlockPos pos = BlockPosArgument.getLoadedBlockPos(context, "pos");
         return handleInfo(context.getSource(), pos);
     }
 
-    /**
-     * /sl stats：显示传输统计总览（总次数、总量、失败数、按类型分）
-     */
+    /// /sl stats：显示传输统计总览（总次数、总量、失败数、按类型分）
     private static int showStatsOverview(CommandContext<CommandSourceStack> ctx) {
         var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
@@ -333,9 +314,7 @@ public class SLCommands {
         return 1;
     }
 
-    /**
-     * /sl stats recent：显示最近N条传输记录
-     */
+    /// /sl stats recent：显示最近N条传输记录
     private static int showRecentTransfers(CommandContext<CommandSourceStack> ctx, int count) {
         var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
@@ -343,7 +322,7 @@ public class SLCommands {
         int size = recent.size();
 
         source.sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.recent_header", size).withStyle(ChatFormatting.AQUA), false);
-        java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("HH:mm:ss");
+        SimpleDateFormat fmt = new SimpleDateFormat("HH:mm:ss");
         for (TransferEntry e : recent) {
             String time = fmt.format(new Date(e.timestamp()));
             String srcStr = String.format("%d,%d,%d", e.sx(), e.sy(), e.sz());
@@ -356,9 +335,7 @@ public class SLCommands {
         return 1;
     }
 
-    /**
-     * /sl stats top：显示发送/接收最多的前N个节点排行
-     */
+    /// /sl stats top：显示发送/接收最多的前N个节点排行
     private static int showTopNodes(CommandContext<CommandSourceStack> ctx, int count) {
         var mgr = TransferLogManager.get(ctx.getSource().getServer());
         var source = ctx.getSource();
@@ -391,9 +368,7 @@ public class SLCommands {
         return 1;
     }
 
-    /**
-     * /sl stats reset：重置所有传输统计数据
-     */
+    /// /sl stats reset：重置所有传输统计数据
     private static int resetStats(CommandContext<CommandSourceStack> ctx) {
         TransferLogManager.get(ctx.getSource().getServer()).reset();
         ctx.getSource().sendSuccess(() -> Component.translatable("commands.staticlogistics.stats.reset").withStyle(ChatFormatting.GREEN), true);

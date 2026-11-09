@@ -11,25 +11,25 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * 物流节点发生变化时触发的事件，比如新增节点、删除节点、修改节点
- */
+/// 物流节点发生变化时触发的事件，比如新增节点、删除节点、修改节点
 public class LogisticsNodeEvent extends Event {
-    // 当前所在的 MC 服务器实例
+    /// 当前所在的 MC 服务器实例
     private final MinecraftServer server;
-    // 本次事件涉及到的节点列表（一个或多个）
+    /// 本次事件涉及到的节点列表（一个或多个）
     private final Collection<NodeEntry> affectedEntries;
-    // 变动类型：新增、删除、还是改了
+    /// 变动类型：新增、删除、还是改了
     private final ChangeType type;
 
-    // 节点变动类型
+    /// 节点变动类型
     public enum ChangeType {
-        ADDED,   // 新增了节点
-        REMOVED, // 移除了节点
-        CHANGED  // 节点信息被修改了
+        ADDED,
+        /// 新增了节点
+        REMOVED,
+        /// 移除了节点
+        CHANGED  /// 节点信息被修改了
     }
 
-    // 受影响的节点条目：记录稳定分组键、节点本体和节点角色。
+    /// 受影响的节点条目：记录稳定分组键、节点本体和节点角色。
     public record NodeEntry(GroupKey groupKey, String displayName, LogisticsNode node, NodeRole role) {
         public NodeEntry(GroupKey groupKey, LogisticsNode node, NodeRole role) {
             this(groupKey, groupKey.toString(), node, role);
@@ -41,14 +41,14 @@ public class LogisticsNodeEvent extends Event {
 
     }
 
-    // 构造函数——批量节点变动（一次性多个节点一起触发）
+    /// 构造函数——批量节点变动（一次性多个节点一起触发）
     public LogisticsNodeEvent(MinecraftServer server, Collection<NodeEntry> entries, ChangeType type) {
         this.server = server;
         this.affectedEntries = List.copyOf(entries);
         this.type = type;
     }
 
-    // 构造函数——单个节点变动
+    /// 构造函数——单个节点变动
     public LogisticsNodeEvent(MinecraftServer server, NodeEntry entry, ChangeType type) {
         this(server, Collections.singletonList(entry), type);
     }

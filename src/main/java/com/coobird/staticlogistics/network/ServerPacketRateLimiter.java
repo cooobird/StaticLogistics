@@ -6,20 +6,21 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/**
- * 按玩家限制高放大倍率的客户端配置请求；弱键保证离线玩家不会被静态状态留存。
- */
+/// 按玩家限制高放大倍率的客户端配置请求；弱键保证离线玩家不会被静态状态留存。
 public final class ServerPacketRateLimiter {
     public enum Action {
         FILTER_UPDATE(24),
         FACE_CONFIGURATION(80),
         BATCH_FACE_CONFIGURATION(512),
+        BATCH_VALUE_QUERY(2048),
         NODE_TEMPLATE_CONFIGURATION(256),
         BULK_NODE_SELECTION(4),
         TOOL_SETTINGS(120),
         BLUEPRINT_PREVIEW(80),
         STORED_NODE_CLEAR(20),
         GROUP_CREATION(4),
+        CONNECTION_MANAGEMENT(4096),
+        ACCESS_SNAPSHOT_RESYNC(1),
         BLUEPRINT_UNDO(2),
         REDSTONE_SIGNAL_QUERY(10);
 
@@ -40,9 +41,7 @@ public final class ServerPacketRateLimiter {
         return allow(player, action, 1);
     }
 
-    /**
-     * 按服务端实际需要处理的工作量计费，避免单个超大批量请求绕过包频率限制。
-     */
+    /// 按服务端实际需要处理的工作量计费，避免单个超大批量请求绕过包频率限制。
     public static synchronized boolean allow(ServerPlayer player, Action action, int workUnits) {
         if (workUnits <= 0 || workUnits > action.maximumPerSecond) return false;
         int now = player.getServer().getTickCount();

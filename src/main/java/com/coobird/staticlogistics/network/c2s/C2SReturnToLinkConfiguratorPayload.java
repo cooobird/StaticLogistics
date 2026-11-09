@@ -15,9 +15,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-/**
- * 从连接面的过滤器子界面返回连接配置器。
- */
+/// 从连接面的过滤器子界面返回连接配置器。
 public record C2SReturnToLinkConfiguratorPayload(BlockPos pos, Direction face) implements CustomPacketPayload {
     public static final Type<C2SReturnToLinkConfiguratorPayload> TYPE = new Type<>(StaticLogistics.asResource("return_to_link_configurator"));
 
@@ -47,7 +45,7 @@ public record C2SReturnToLinkConfiguratorPayload(BlockPos pos, Direction face) i
                     new LinkConfiguratorMenu(
                         id, inventory, menu.getTargetNode(),
                         menu.getRemoteGroupKey(), menu.isInput()),
-                    Component.translatable("gui.staticlogistics.face_config")),
+                    Component.translatable("gui.staticlogistics.node_configuration")),
                 buffer -> LinkConfiguratorMenu.writeTargetOpenData(
                     buffer, menu.getTargetNode(), menu.getRemoteGroupKey(),
                     menu.isInput(), node.config(), toolSlot));

@@ -1,666 +1,727 @@
 package com.coobird.staticlogistics.client.gui.component;
 
 import com.coobird.staticlogistics.api.LogisticsNode;
+import com.coobird.staticlogistics.api.NodeRole;
+import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
+import com.coobird.staticlogistics.client.data.ClientLinkData;
+import com.coobird.staticlogistics.client.data.ConfiguratorEditSession;
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
-import com.coobird.staticlogistics.logistics.node.FaceConfigurationEdit;
+import com.coobird.staticlogistics.logistics.node.ChannelConfigurationEdit;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
-import com.coobird.staticlogistics.network.c2s.C2SApplyNodeTemplatePayload;
-import com.coobird.staticlogistics.network.c2s.C2SConfigureFacePayload;
-import com.coobird.staticlogistics.network.c2s.C2SConfigureFacesPayload;
 import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
-import net.minecraft.ChatFormatting;
+import com.coobird.staticlogistics.transfer.LogisticsCalculator;
+import com.coobird.staticlogistics.transfer.TransferRegistries;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.Slot;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraft.resources.ResourceLocation;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * 连接配置器底部的节点配置区域。
- */
+import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.NodeConfiguration.*;
+
+/// 紧凑节点配置。
 public final class NodeConfigurationPanel {
-    private static final int BUTTON_SIZE = NodeConfigControls.BTN;
-    private static final int EDIT_BOX_WIDTH = 36;
-    private static final int CONFIG_Y = SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y;
+    // 面板基准位置与通道新增按钮。
+    // 节点配置面板相对界面顶部的位置。
+    private static final int Y = SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y;
+    private Runnable savePreset = () -> {
+    }, applyPreset = () -> {
+    };
 
-    private static final int HEADER_X = 12;
-    private static final int HEADER_Y = CONFIG_Y + 8;
-    private static final int INPUT_SIDE_X = 194;
-    private static final int OUTPUT_SIDE_X = 236;
-    private static final int SIDE_Y = CONFIG_Y + 3;
-    private static final int SIDE_WIDTH = 40;
-    private static final int SIDE_HEIGHT = 17;
-
-    private static final int UTILITY_Y = CONFIG_Y + 23;
-    private static final int TOGGLE_X = 12;
-    private static final int STATUS_X = 34;
-    private static final int FILTER_LABEL_X = 76;
-    private static final int UPGRADE_LABEL_X = 202;
-    private static final int UPGRADE_LABEL_Y_OFFSET = 3;
-
-    private static final int INPUT_ROW_ONE_Y = CONFIG_Y + 52;
-    private static final int INPUT_ROW_TWO_Y = CONFIG_Y + 76;
-    private static final int VALUE_LABEL_X = 12;
-    private static final int VALUE_BOX_X = 72;
-    private static final int VALUE_OPERATOR_X = 112;
-
-    private static final int STRATEGY_X = 12;
-    private static final int EXTRACTION_X = 12;
-    private static final int STRATEGY_Y = CONFIG_Y + 50;
-    private static final int EXTRACTION_Y = CONFIG_Y + 70;
-    private static final int OUTPUT_ACTION_WIDTH = 124;
-    private static final int APPLY_TEMPLATE_X = 152;
-    private static final int APPLY_TEMPLATE_Y = CONFIG_Y + 70;
-    private static final int APPLY_TEMPLATE_WIDTH = 124;
-
+    public void setPresetActions(Runnable save, Runnable apply) {
+        savePreset = save;
+        applyPreset = apply;
+    }
     private final LinkConfiguratorMenu menu;
     private final Font font;
-    private final Runnable openFilter;
-    private final Consumer<Boolean> selectSide;
-    private final Runnable playClick;
-    private final Supplier<List<LogisticsNode>> selectedNodes;
+    private final Runnable openFilter, playClick;
+    private EditBox priority, stock;
+    private boolean priorityDirty, stockDirty;
+    private BiFunction<LogisticsNode, ChannelConfigurationEdit.NumberField, Long> pendingValues = (node, field) -> null;
 
-    private EditBox priorityBox;
-    private EditBox keepStockBox;
-    private int left;
-    private int top;
+    public void setPendingValues(BiFunction<LogisticsNode, ChannelConfigurationEdit.NumberField, Long> values) {
+        pendingValues = values;
+    }
 
-    public NodeConfigurationPanel(
-        LinkConfiguratorMenu menu,
-        Font font,
-        Runnable openFilter,
-        Consumer<Boolean> selectSide,
-        Runnable playClick,
-        Supplier<List<LogisticsNode>> selectedNodes
-    ) {
+    private LogisticsNode target;
+    private ConfiguratorEditSession editSession;
+    private Runnable applyBatch = () -> {
+    }, resetBatch = () -> {
+    };
+
+    public void setBatchActions(ConfiguratorEditSession session, Runnable apply, Runnable reset) {
+        editSession = session;
+        applyBatch = apply;
+        resetBatch = reset;
+    }
+
+    private <T extends ChannelConfigurationEdit> T preview(T current) {
+        return editSession == null ? current : editSession.preview(current);
+    }
+
+    private int batchSize;
+    private boolean batchEditing;
+
+    public void setBatchSelection(boolean batch, int count) {
+        batchEditing = batch;
+        batchSize = count;
+    }
+
+    public boolean hasInputError() {
+        return !error.isEmpty();
+    }
+
+    private int left, top;
+    private String error = "";
+
+    public record Draft(LogisticsNode target, String priority, boolean priorityDirty, String stock, boolean stockDirty,
+                        String error) {
+    }
+
+    public Draft saveDraft() {
+        return new Draft(target, priority.getValue(), priorityDirty, stock.getValue(), stockDirty, error);
+    }
+
+    public void restoreDraft(Draft draft) {
+        if (draft == null || !menu.hasTarget() || !menu.getTargetNode().equals(draft.target())) return;
+        target = draft.target();
+        if (draft.priorityDirty()) priority.setValue(draft.priority());
+        if (draft.stockDirty()) stock.setValue(draft.stock());
+        priorityDirty = draft.priorityDirty();
+        stockDirty = draft.stockDirty();
+        error = draft.error();
+    }
+
+    private Consumer<ChannelConfigurationEdit> submit;
+
+    public void setSubmission(Consumer<ChannelConfigurationEdit> submit) {
+        this.submit = submit;
+    }
+
+    @FunctionalInterface
+    public interface ChannelContext {
+        void open(LogisticsNode channel, double x, double y);
+    }
+
+    private ChannelContext channelContext = (channel, x, y) -> {
+    };
+
+    public void setChannelContext(ChannelContext context) {
+        channelContext = context;
+    }
+
+    private Runnable addChannel = () -> {
+    };
+    private Consumer<LogisticsNode> selectChannel = ignored -> {
+    };
+    private Supplier<List<LogisticsNode>> channelOptions = List::of;
+    private List<LogisticsNode> dropdownOptions = List.of();
+    private boolean channelDropdownOpen;
+    private boolean extractionDropdown;
+    private List<Component> settingLabels = List.of();
+    private List<ChannelConfigurationEdit> settingEdits = List.of();
+    private int settingScroll;
+    public static final int RESOURCE_ROW_Y = ConfiguratorLayout.NodeConfiguration.RESOURCE_ROW_Y;
+    public static final int RESOURCE_BUTTON_X = ConfiguratorLayout.NodeConfiguration.RESOURCE_BUTTON_X;
+    public static final int RESOURCE_BUTTON_WIDTH = ConfiguratorLayout.NodeConfiguration.RESOURCE_BUTTON_WIDTH;
+    public static final int RESOURCE_BUTTON_HEIGHT = ConfiguratorLayout.NodeConfiguration.RESOURCE_BUTTON_HEIGHT;
+    private int channelScroll;
+
+    public void setChannelActions(Runnable add, Supplier<List<LogisticsNode>> options, Consumer<LogisticsNode> select) {
+        addChannel = add;
+        channelOptions = options;
+        selectChannel = select;
+    }
+
+    public NodeConfigurationPanel(LinkConfiguratorMenu menu, Font font, Runnable openFilter, Runnable playClick) {
         this.menu = menu;
         this.font = font;
         this.openFilter = openFilter;
-        this.selectSide = selectSide;
         this.playClick = playClick;
-        this.selectedNodes = selectedNodes;
     }
 
-    public void init(int left, int top, Consumer<EditBox> addWidget) {
+    public void init(int left, int top, Consumer<EditBox> add) {
         this.left = left;
         this.top = top;
-        priorityBox = makeBox(INPUT_ROW_ONE_Y - 2, "priority", true,
-            menu.getPriority(), "-?[0-9]*", 10);
-        keepStockBox = makeBox(INPUT_ROW_TWO_Y - 2, "keepStock", false,
-            menu.getKeepStock(), "[0-9]*", 6);
-        addWidget.accept(priorityBox);
-        addWidget.accept(keepStockBox);
-        updateWidgetVisibility();
+        priority = field(left + PRIORITY_FIELD_X, top + Y + NUMBER_FIELD_Y, true);
+        stock = field(left + STOCK_FIELD_X, top + Y + NUMBER_FIELD_Y, false);
+        add.accept(priority);
+        add.accept(stock);
+        tick();
     }
 
-    private EditBox makeBox(
-        int y,
-        String labelKey,
-        boolean priority,
-        int initialValue,
-        String pattern,
-        int maximumLength
-    ) {
-        EditBox box = new EditBox(font, left + VALUE_BOX_X, top + y,
-            EDIT_BOX_WIDTH, BUTTON_SIZE,
-            Component.translatable("gui.staticlogistics.label." + labelKey));
-        box.setBordered(true);
-        box.setMaxLength(maximumLength);
-        box.setFilter(value -> value.isEmpty() || value.matches(pattern));
-        box.setValue(String.valueOf(initialValue));
-        box.setResponder(value -> {
-            try {
-                int parsed = value.isEmpty() ? 0 : Integer.parseInt(value);
-                int current = priority ? menu.getPriority() : menu.getKeepStock();
-                if (parsed != current) {
-                    send(new FaceConfigurationEdit.NumberEdit(
-                        priority
-                            ? FaceConfigurationEdit.NumberField.PRIORITY
-                            : FaceConfigurationEdit.NumberField.KEEP_STOCK,
-                        parsed));
-                }
-            } catch (NumberFormatException ignored) {
+    private EditBox field(int x, int y, boolean isPriority) {
+        EditBox box = new AtlasEditBox(font, x, y, isPriority ? PRIORITY_INITIAL_WIDTH : STOCK_INITIAL_WIDTH, NUMBER_FIELD_HEIGHT, Component.empty()) {
+            @Override
+            public void setFocused(boolean focused) {
+                boolean finished = isFocused() && !focused;
+                super.setFocused(focused);
+                if (finished) normalizeNumber(this, isPriority);
             }
+        };
+        box.setMaxLength(24);
+        box.setFilter(value -> value.matches("-?[0-9]*([.][0-9]*)?[kKmMgG]?"));
+        box.setResponder(value -> {
+            if (isPriority) priorityDirty = true;
+            else stockDirty = true;
+            error = "";
         });
         return box;
     }
 
+    private void normalizeNumber(EditBox box, boolean isPriority) {
+        if (!menu.hasTarget() || !Objects.equals(target, menu.getTargetNode())) return;
+        try {
+            long value = CompactNumberInput.parse(box.getValue());
+            if (!isPriority && value < 0) throw new IllegalArgumentException();
+            String normalized = Long.toString(value);
+            if (!normalized.equals(box.getValue())) box.setValue(normalized);
+            box.moveCursorToStart(false);
+            error = "";
+            if ((isPriority ? priorityDirty : stockDirty) && menu.hasTarget() && Objects.equals(target, menu.getTargetNode())) {
+                submitNumber(isPriority, value);
+            }
+        } catch (IllegalArgumentException exception) {
+            error = tr("number_invalid").getString();
+        }
+    }
+
     public void tick() {
-        updateWidgetVisibility();
-        syncBox(priorityBox, menu.getPriority());
-        syncBox(keepStockBox, menu.getKeepStock());
+        LogisticsNode next = menu.hasTarget() ? menu.getTargetNode() : null;
+        if (!Objects.equals(target, next)) {
+            priority.setFocused(false);
+            stock.setFocused(false);
+            target = next;
+            priorityDirty = false;
+            stockDirty = false;
+            error = "";
+            channelDropdownOpen = false;
+            settingLabels = List.of();
+            settingEdits = List.of();
+        }
+        if (!menu.showsOutputSettings()) {
+            settingLabels = List.of();
+            settingEdits = List.of();
+        }
+        priority.setY(top + Y + NUMBER_FIELD_Y);
+        priority.setWidth(PRIORITY_FIELD_WIDTH);
+        stock.setX(left + STOCK_FIELD_X);
+        stock.setWidth(STOCK_FIELD_WIDTH);
+        priority.setVisible(next != null && !next.isConnectionFace() && menu.showsInputSettings());
+        if (!priority.visible) priority.setFocused(false);
+        stock.setVisible(next != null && !next.isConnectionFace() && menu.showsInputSettings());
+        if (!stock.visible) stock.setFocused(false);
+        Long pendingPriority = pendingValues.apply(next, ChannelConfigurationEdit.NumberField.PRIORITY);
+        if (batchEditing)
+            pendingPriority = preview(new ChannelConfigurationEdit.NumberEdit(ChannelConfigurationEdit.NumberField.PRIORITY, menu.getPriority())).value();
+        Long pendingStock = pendingValues.apply(next, ChannelConfigurationEdit.NumberField.KEEP_STOCK);
+        if (batchEditing)
+            pendingStock = preview(new ChannelConfigurationEdit.NumberEdit(ChannelConfigurationEdit.NumberField.KEEP_STOCK, menu.getKeepStock())).value();
+        if (!priorityDirty && !priority.isFocused()) {
+            priority.setValue(Long.toString(pendingPriority == null ? menu.getPriority() : pendingPriority));
+            priority.moveCursorToStart(false);
+            priorityDirty = false;
+        }
+        if (!stockDirty && !stock.isFocused()) {
+            stock.setValue(Long.toString(pendingStock == null ? menu.getKeepStock() : pendingStock));
+            stock.moveCursorToStart(false);
+            stockDirty = false;
+        }
     }
 
-    private void updateWidgetVisibility() {
-        boolean visible = menu.hasTarget()
-            && menu.isInputSideVisible()
-            && menu.isGlobalInputEnabled();
-        if (priorityBox != null) {
-            priorityBox.setVisible(visible);
-        }
-        if (keepStockBox != null) {
-            keepStockBox.setVisible(visible);
+    public static Component channelName(LogisticsNode node) {
+        if (node.isConnectionFace()) return tr("channel_empty");
+        var topology = ClientLinkData.INSTANCE.getTopology(node);
+        return topology != null && !topology.channelName().isBlank() ? Component.literal(topology.channelName()) : tr("channel").copy().append(" " + (node.channel() + 1));
+    }
+
+    private int rowY(int y) {
+        return menu.showsInputSettings() && !menu.showsOutputSettings() && y >= 20 && y < 100 ? y + (y / 20) * 4 : y;
+    }
+
+    public int resourceRowY() {
+        return rowY(RESOURCE_ROW_Y);
+    }
+
+    private void stepper(GuiGraphics g, EditBox box, int mx, int my) {
+        int x = box.getX() + box.getWidth(), y = box.getY();
+        for (int i = 0; i < 2; i++) {
+            int sy = y + i * STEPPER_BUTTON_HEIGHT;
+            ConfiguratorStyle.button(g, x, sy, STEPPER_WIDTH, STEPPER_BUTTON_HEIGHT, false, mx >= x && mx < x + STEPPER_WIDTH && my >= sy && my < sy + STEPPER_BUTTON_HEIGHT);
+            if (i == 0) SLGuiTextures.ARROW_DOWN.upsideDown(g, x + STEPPER_ICON_X, sy + STEPPER_ICON_Y);
+            else SLGuiTextures.ARROW_DOWN.draw(g, x + STEPPER_ICON_X, sy + STEPPER_ICON_Y);
         }
     }
 
-    private static void syncBox(EditBox box, int value) {
-        if (box == null || !box.isVisible() || box.isFocused()) {
-            return;
-        }
-        String text = String.valueOf(value);
-        if (!Objects.equals(box.getValue(), text)) {
-            box.setValue(text);
-        }
+    private void submitNumber(boolean isPriority, long value) {
+        if (isPriority) priorityDirty = false;
+        else stockDirty = false;
+        send(new ChannelConfigurationEdit.NumberEdit(isPriority
+            ? ChannelConfigurationEdit.NumberField.PRIORITY : ChannelConfigurationEdit.NumberField.KEEP_STOCK, value));
     }
 
-    public void render(GuiGraphics graphics, int mouseX, int mouseY) {
+    private static long adjustmentStep() {
+        boolean ten = SLKeyMappings.isKeyDown(SLKeyMappings.PRIORITY_X10);
+        boolean five = SLKeyMappings.isKeyDown(SLKeyMappings.PRIORITY_X5);
+        return ten && five ? 64 : ten ? 10 : five ? 5 : 1;
+    }
+
+    public boolean numberArrowClicked(double mx, double my, int button) {
+        return button == 0 && menu.hasTarget() && !menu.getTargetNode().isConnectionFace()
+            && (stepNumber(priority, true, mx, my) || stepNumber(stock, false, mx, my));
+    }
+
+    private boolean stepNumber(EditBox box, boolean isPriority, double mx, double my) {
+        if (!box.visible || mx < box.getX() + box.getWidth() || mx >= box.getX() + box.getWidth() + STEPPER_WIDTH
+            || my < box.getY() || my >= box.getY() + box.getHeight()) return false;
+        try {
+            long value = CompactNumberInput.parse(box.getValue());
+            boolean increase = my < box.getY() + box.getHeight() / 2;
+            long minimum = isPriority ? Long.MIN_VALUE : 0;
+            if (value < minimum) throw new IllegalArgumentException();
+            long step = adjustmentStep();
+            value = increase ? (value > Long.MAX_VALUE - step ? Long.MAX_VALUE : value + step)
+                : (value < minimum + step ? minimum : value - step);
+            box.setValue(Long.toString(value));
+            box.moveCursorToStart(false);
+            submitNumber(isPriority, value);
+            playClick.run();
+        } catch (IllegalArgumentException exception) {
+            error = tr("number_invalid").getString();
+        }
+        return true;
+    }
+
+    private static Component tr(String key) {
+        return Component.translatable("gui.staticlogistics.compact." + key);
+    }
+
+    private void text(GuiGraphics g, Component text, int x, int y, int color) {
+        g.drawString(font, text, left + x, top + Y + rowY(y), color, false);
+    }
+
+    private void button(GuiGraphics g, Component label, int x, int y, int width, boolean selected, boolean active) {
+        y = rowY(y);
+        ConfiguratorStyle.button(g, left + x, top + Y + y, width, CONTROL_HEIGHT, selected, false);
+        Component fitted = Component.literal(font.plainSubstrByWidth(label.getString(), width - 6));
+        g.drawString(font, fitted, left + x + (width - font.width(fitted)) / 2, top + Y + y + BUTTON_TEXT_Y, active ? ConfiguratorStyle.TEXT : 0xFF60606A, false);
+    }
+
+    private void dropdownButton(GuiGraphics g, Component label, int x, int y, int width, boolean selected, boolean active, boolean expanded) {
+        int drawY = top + Y + rowY(y);
+        ConfiguratorStyle.button(g, left + x, drawY, width, CONTROL_HEIGHT, selected, false, active);
+        String text = font.plainSubstrByWidth(label.getString(), width - 18);
+        g.drawString(font, text, left + x + (width - DROPDOWN_ARROW_TEXT_SPACE - font.width(text)) / 2, drawY + DROPDOWN_TEXT_Y,
+            active ? ConfiguratorStyle.TEXT : ConfiguratorStyle.MUTED_TEXT, false);
+        if (expanded) SLGuiTextures.ARROW_DOWN.upsideDown(g, left + x + width - 12, drawY + 6);
+        else SLGuiTextures.ARROW_DOWN.draw(g, left + x + width - 12, drawY + 6);
+    }
+
+    public void render(GuiGraphics g, int mx, int my) {
+        Component header = Component.translatable("gui.staticlogistics.node_configuration");
+        if (menu.hasTarget())
+            header = Component.translatable("gui.staticlogistics.node.configuration_target", header, menu.getPos().toShortString(), NodeDisplayText.direction(menu.getFace()));
+        if (menu.hasTarget() && batchEditing)
+            header = Component.translatable("gui.staticlogistics.batch.title", batchSize);
+        text(g, header, LABEL_X, HEADER_TEXT_Y, ConfiguratorStyle.ACCENT);
         if (!menu.hasTarget()) {
-            renderEmpty(graphics);
+            text(g, Component.translatable("gui.staticlogistics.blocks.select_face"), LABEL_X, EMPTY_SELECTION_TEXT_Y, ConfiguratorStyle.MUTED_TEXT);
             return;
         }
-        renderHeader(graphics);
-        if (menu.isInputSideVisible()) {
-            renderInputUtilityRow(graphics, mouseX, mouseY);
-            renderInputControls(graphics, mouseX, mouseY);
+        text(g, tr("face_channels"), LABEL_X, CHANNEL_LABEL_Y, ConfiguratorStyle.TEXT);
+        dropdownButton(g, channelName(menu.getTargetNode()), CHANNEL_LIST_X, CHANNEL_BUTTON_Y, CHANNEL_LIST_WIDTH, true, true, channelDropdownOpen);
+        boolean addHovered = hit(mx, my, ADD_CHANNEL_X, ADD_CHANNEL_Y, ADD_CHANNEL_WIDTH, ADD_CHANNEL_HEIGHT);
+        (addHovered ? SLGuiTextures.ADD_SELECTED : SLGuiTextures.ADD).draw(g, left + ADD_CHANNEL_X + ADD_CHANNEL_ICON_X, top + Y + rowY(ADD_CHANNEL_Y) + ADD_CHANNEL_ICON_Y);
+        if (menu.getTargetNode().isConnectionFace()) {
+            text(g, tr("channel_empty_hint"), LABEL_X, EMPTY_CHANNEL_TEXT_Y, ConfiguratorStyle.MUTED_TEXT);
+            var sharedSlot = menu.getSlot(1);
+            if (sharedSlot.isActive()) {
+                text(g, tr("upgrade"), UPGRADE_LABEL_X, UPGRADE_LABEL_Y, ConfiguratorStyle.TEXT);
+                ConfiguratorStyle.slot(g, left + sharedSlot.x, top + sharedSlot.y);
+            }
+            return;
+        }
+        button(g, Component.translatable("gui.staticlogistics.preset.save"), PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, false, true);
+        button(g, Component.translatable("gui.staticlogistics.preset.apply"), PRESET_APPLY_X, PRESET_Y, PRESET_WIDTH, false, true);
+        for (int row : new int[]{39, 59, 79, 99, 119, 139}) {
+            if (menu.showsInputSettings() && !menu.showsOutputSettings() && row == 99) continue;
+            int separator = rowY(row);
+            ConfiguratorStyle.separator(g, left + SEPARATOR_X, top + Y + separator, SEPARATOR_WIDTH);
+        }
+        text(g, tr("mode"), LABEL_X, MODE_LABEL_Y, ConfiguratorStyle.TEXT);
+        NodeRole role = preview(new ChannelConfigurationEdit.RoleEdit(currentRole())).role();
+        button(g, Component.translatable("gui.staticlogistics.blocks.extract"), EXTRACT_X, ROLE_Y, ROLE_WIDTH, role == NodeRole.SENDER, true);
+        button(g, Component.translatable("gui.staticlogistics.blocks.insert"), INSERT_X, ROLE_Y, ROLE_WIDTH, role == NodeRole.RECEIVER, true);
+        button(g, tr("both"), BOTH_X, ROLE_Y, ROLE_WIDTH, role == NodeRole.BOTH, true);
+        boolean enabled = preview(new ChannelConfigurationEdit.EnabledEdit(menu.isChannelEnabled())).enabled();
+        button(g, Component.translatable(enabled ? "gui.staticlogistics.reference.disable" : "gui.staticlogistics.reference.enable"), ENABLE_X, ROLE_Y, ENABLE_WIDTH, !enabled, true);
+        boolean outputResources = menu.showsOutputSettings();
+        text(g, Component.translatable(outputResources ? "gui.staticlogistics.reference.resources" : "gui.staticlogistics.resources.receivable"), LABEL_X, RESOURCE_LABEL_Y, ConfiguratorStyle.TEXT);
+        ConfiguratorStyle.button(g, left + RESOURCE_BUTTON_X, top + Y + resourceRowY(), RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT,
+            false, outputResources && hit(mx, my, RESOURCE_BUTTON_X, RESOURCE_ROW_Y, RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT));
+        List<ResourceLocation> types = resourceTypes();
+        int iconX = left + RESOURCE_BUTTON_X + RESOURCE_ICON_INSET_X;
+        int drawnTypes = 0;
+        int iconRight = left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - (types.size() > RESOURCE_OVERFLOW_THRESHOLD ? RESOURCE_OVERFLOW_RIGHT_INSET - 1 : RESOURCE_ARROW_RIGHT_INSET);
+        for (var type : TransferRegistries.getAllActive())
+            if (types.contains(type.typeId()) && iconX + RESOURCE_ICON_SIZE < iconRight) {
+                g.renderItem(type.getIcon(), iconX, top + Y + resourceRowY() + RESOURCE_ICON_INSET_Y);
+                if (types.size() == 1)
+                    g.drawString(font, Component.translatable(type.translationKey()), iconX + RESOURCE_TEXT_GAP, top + Y + resourceRowY() + RESOURCE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                iconX += RESOURCE_ICON_STEP;
+                drawnTypes++;
+            }
+        if (drawnTypes < types.size()) g.drawString(font, "+" + (types.size() - drawnTypes),
+            left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - RESOURCE_OVERFLOW_RIGHT_INSET, top + Y + resourceRowY() + RESOURCE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+        if (outputResources)
+            SLGuiTextures.ARROW_DOWN.draw(g, left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - RESOURCE_ARROW_RIGHT_INSET, top + Y + resourceRowY() + RESOURCE_ARROW_Y);
+        text(g, tr("redstone"), LABEL_X, REDSTONE_LABEL_Y, ConfiguratorStyle.TEXT);
+        button(g, tr("redstone_" + preview(new ChannelConfigurationEdit.RedstoneEdit(menu.getRedstoneMode())).mode().name().toLowerCase(Locale.ROOT)), REDSTONE_X, REDSTONE_Y, REDSTONE_WIDTH, false, true);
+        if (menu.showsOutputSettings()) {
+            text(g, tr("distribution"), LABEL_X, STRATEGY_LABEL_Y, ConfiguratorStyle.TEXT);
+            dropdownButton(g, preview(new ChannelConfigurationEdit.StrategyEdit(menu.getStrategy())).strategy().getDisplayName(), STRATEGY_X, STRATEGY_Y, STRATEGY_WIDTH, true, true, false);
+            text(g, tr("extraction"), RIGHT_LABEL_X, STRATEGY_LABEL_Y, ConfiguratorStyle.TEXT);
+            dropdownButton(g, preview(new ChannelConfigurationEdit.ExtractionEdit(menu.getExtractionMode())).mode().getDisplayName(), EXTRACTION_X, STRATEGY_Y, EXTRACTION_WIDTH, true, true, false);
+        }
+        if (menu.showsInputSettings()) {
+            text(g, Component.translatable("gui.staticlogistics.label.target_priority"), LABEL_X, INPUT_LABEL_Y, ConfiguratorStyle.TEXT);
+            text(g, Component.translatable("gui.staticlogistics.label.keep_stock"), RIGHT_LABEL_X, INPUT_LABEL_Y, ConfiguratorStyle.TEXT);
         } else {
-            renderOutputUtilityRow(graphics, mouseX, mouseY);
-            renderOutputControls(graphics, mouseX, mouseY);
+            text(g, Component.translatable("gui.staticlogistics.reference.interval"), LABEL_X, INTERVAL_LABEL_Y, ConfiguratorStyle.TEXT);
+            text(g, Component.literal(LogisticsCalculator.calcSpeedInterval(
+                SLConfig.getDefaultTickInterval(), menu.getSpeedMultiplier()) + " tick"), INTERVAL_VALUE_X, INTERVAL_LABEL_Y, ConfiguratorStyle.MUTED_TEXT);
         }
-        renderApplyTemplateButton(graphics, mouseX, mouseY);
+        if (priority.visible) stepper(g, priority, mx, my);
+        if (stock.visible) stepper(g, stock, mx, my);
+        var slot = menu.getSlot(0);
+        if (!batchEditing) {
+            text(g, Component.translatable("gui.staticlogistics.filter"), LABEL_X, FILTER_LABEL_Y, ConfiguratorStyle.TEXT);
+            ConfiguratorStyle.slot(g, left + slot.x, top + slot.y, hit(mx, my, slot.x, slot.y - Y, 16, 16));
+        }
+        var upgradeSlot = menu.getSlot(1);
+        if (upgradeSlot.isActive()) {
+            text(g, tr("upgrade"), UPGRADE_LABEL_X, UPGRADE_LABEL_Y, ConfiguratorStyle.TEXT);
+            ConfiguratorStyle.slot(g, left + upgradeSlot.x, top + upgradeSlot.y, hit(mx, my, upgradeSlot.x, upgradeSlot.y - Y, 16, 16));
+        }
+        if (batchEditing) {
+            text(g, Component.translatable("gui.staticlogistics.batch.pending", batchSize), LABEL_X, BATCH_LABEL_Y, ConfiguratorStyle.MUTED_TEXT);
+            button(g, Component.translatable("gui.staticlogistics.batch.reset"), BATCH_RESET_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, false, editSession.hasBatchDraft());
+            button(g, Component.translatable("gui.staticlogistics.resources.apply"),
+                BATCH_APPLY_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, editSession.hasBatchDraft(), editSession.canEdit() && editSession.hasBatchDraft());
+        }
+        if (!error.isEmpty()) text(g, Component.literal(error), LABEL_X, ERROR_LABEL_Y, 0xFF9D2525);
     }
 
-    private void renderEmpty(GuiGraphics graphics) {
-        graphics.drawString(font,
-            Component.translatable("gui.staticlogistics.node_configuration"),
-            left + HEADER_X, top + CONFIG_Y + 10, 0xFF98FB98, false);
-        graphics.drawString(font,
-            Component.translatable(
-                "gui.staticlogistics.network_preview.select_node_to_configure"),
-            left + HEADER_X, top + CONFIG_Y + 30, 0xFF888888, false);
+    private List<ResourceLocation> resourceTypes() {
+        if (menu.showsOutputSettings())
+            return preview(new ChannelConfigurationEdit.TypePatchEdit(List.of(), List.of())).apply(menu.getSelectedTypeIds());
+        var topology = ClientLinkData.INSTANCE.getTopology(menu.getTargetNode());
+        return topology == null ? List.of() : topology.presentTypeIds();
     }
 
-    private void renderHeader(GuiGraphics graphics) {
-        Component title = Component.translatable("gui.staticlogistics.node_configuration")
-            .append(Component.literal(" · " + menu.getPos().toShortString() + " · "))
-            .append(NodeDisplayText.direction(menu.getFace()));
-        int titleWidth = INPUT_SIDE_X - HEADER_X - 4;
-        String text = font.plainSubstrByWidth(title.getString(), titleWidth);
-        graphics.drawString(font, text, left + HEADER_X, top + HEADER_Y, 0xFF98FB98, false);
-        renderSideButton(graphics, left + INPUT_SIDE_X, top + SIDE_Y, Component.translatable("gui.staticlogistics.input"), menu.isInputSideVisible());
-        renderSideButton(graphics, left + OUTPUT_SIDE_X, top + SIDE_Y, Component.translatable("gui.staticlogistics.output"), menu.isOutputSideVisible());
-    }
-
-    /**
-     * 输入侧只呈现接收行为：启用状态与输入过滤器。
-     * 优先级和存量维持由下方输入控制区负责，容器升级不属于输入侧。
-     */
-    private void renderInputUtilityRow(
-        GuiGraphics graphics,
-        int mouseX,
-        int mouseY
-    ) {
-        renderEnabledState(graphics, menu.isGlobalInputEnabled());
-        renderFilterSlot(graphics, mouseX, mouseY, 0);
-    }
-
-    /**
-     * 输出侧呈现发送行为：启用状态、输出过滤器与三类容器升级。
-     */
-    private void renderOutputUtilityRow(
-        GuiGraphics graphics,
-        int mouseX,
-        int mouseY
-    ) {
-        renderEnabledState(graphics, menu.isGlobalOutputEnabled());
-        renderFilterSlot(graphics, mouseX, mouseY, 1);
-
-        if (!SLConfig.isSimpleMode()) {
-            graphics.drawString(font,
-                Component.translatable("gui.staticlogistics.upgrades"), left + UPGRADE_LABEL_X, top + UTILITY_Y + UPGRADE_LABEL_Y_OFFSET, 0xFFAAAAAA, false);
-            for (int index = 2; index < 5; index++) {
-                Slot slot = menu.getSlot(index);
-                NodeConfigControls.drawSlotBg(
-                    graphics, left + slot.x, top + slot.y);
+    public void renderTooltips(GuiGraphics g, int mx, int my) {
+        if (!menu.hasTarget()) return;
+        if (!menu.getTargetNode().isConnectionFace() && (hit(mx, my, PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT)
+            || hit(mx, my, PRESET_APPLY_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT))) {
+            boolean save = hit(mx, my, PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT);
+            g.renderComponentTooltip(font, List.of(Component.translatable(save ? "gui.staticlogistics.preset.save_hint" : "gui.staticlogistics.preset.apply_hint"),
+                Component.translatable("gui.staticlogistics.preset.contents_hint")), mx, my);
+            return;
+        }
+        if (hit(mx, my, RESOURCE_BUTTON_X, RESOURCE_ROW_Y, RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT)) {
+            List<ResourceLocation> selected = resourceTypes();
+            List<Component> names = TransferRegistries.getAllActive().stream()
+                .filter(type -> selected.contains(type.typeId()))
+                .<Component>map(type -> Component.translatable(type.translationKey())).toList();
+            if (!names.isEmpty()) g.renderComponentTooltip(font, names, mx, my);
+            return;
+        }
+        for (EditBox box : List.of(priority, stock)) {
+            if (box.visible && mx >= box.getX() + box.getWidth() && mx < box.getX() + box.getWidth() + STEPPER_WIDTH
+                && my >= box.getY() && my < box.getY() + box.getHeight()) {
+                String key = my < box.getY() + box.getHeight() / 2 ? "gui.staticlogistics.compact.number_steps_up" : "gui.staticlogistics.compact.number_steps_down";
+                g.renderTooltip(font, Component.translatable(key,
+                    SLKeyMappings.PRIORITY_X10.getTranslatedKeyMessage(), SLKeyMappings.PRIORITY_X5.getTranslatedKeyMessage()), mx, my);
+                return;
             }
         }
-    }
-
-    private void renderEnabledState(GuiGraphics graphics, boolean enabled) {
-        NodeConfigControls.renderToggle(
-            graphics, left + TOGGLE_X, top + UTILITY_Y, enabled);
-        graphics.drawString(font, Component.translatable(enabled
-                ? "gui.staticlogistics.enabled"
-                : "gui.staticlogistics.disabled"),
-            left + STATUS_X, top + UTILITY_Y + 2,
-            enabled ? 0xFF98FB98 : 0xFF888888, false);
-    }
-
-    private void renderFilterSlot(
-        GuiGraphics graphics,
-        int mouseX,
-        int mouseY,
-        int slotIndex
-    ) {
-        graphics.drawString(font,
-            Component.translatable("gui.staticlogistics.filter"),
-            left + FILTER_LABEL_X, top + UTILITY_Y + 2,
-            0xFFAAAAAA, false);
-        Slot filter = menu.getSlot(slotIndex);
-        NodeConfigControls.drawSlotBg(graphics, left + filter.x, top + filter.y);
-        if (!filter.getItem().isEmpty()) {
-            NodeConfigControls.renderFilterCfgBtn(
-                graphics, left + filter.x, top + filter.y,
-                NodeConfigControls.hitFilterCfgBtn(
-                    mouseX, mouseY, left + filter.x, top + filter.y));
+        if (hit(mx, my, ADD_CHANNEL_X, ADD_CHANNEL_Y, ADD_CHANNEL_WIDTH, ADD_CHANNEL_HEIGHT))
+            g.renderTooltip(font, tr("channel_add"), mx, my);
+        else if (hit(mx, my, CHANNEL_LIST_X, CHANNEL_BUTTON_Y, CHANNEL_LIST_WIDTH, CHANNEL_BUTTON_HEIGHT))
+            g.renderTooltip(font, tr("channel_local_hint"), mx, my);
+        else {
+            var slot = menu.getSlot(0);
+            if (hit(mx, my, slot.x, slot.y - Y, 16, 16)) g.renderTooltip(font, tr("filter_help"), mx, my);
         }
     }
 
-    private void renderSideButton(GuiGraphics graphics, int x, int y, Component label, boolean selected) {
-        int u = selected ? SLGuiTextures.Button.Middle.SELECTED_U : SLGuiTextures.Button.Middle.DISABLED_U;
-        int v = selected ? SLGuiTextures.Button.Middle.SELECTED_V : SLGuiTextures.Button.Middle.DISABLED_V;
-        int sourceWidth = selected ? SLGuiTextures.Button.Middle.SELECTED_WIDTH : SLGuiTextures.Button.Middle.DISABLED_WIDTH;
-        int height = selected ? SLGuiTextures.Button.Middle.SELECTED_HEIGHT : SLGuiTextures.Button.Middle.DISABLED_HEIGHT;
-        int drawX = selected ? x - 1 : x;
-        int drawY = selected ? y - 1 : y;
-        int drawWidth = selected ? SIDE_WIDTH + 2 : SIDE_WIDTH;
-        int capWidth = 2;
-        graphics.blit(SLGuiTextures.GUI_ATLAS, drawX, drawY, u, v, capWidth, height,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        graphics.blit(SLGuiTextures.GUI_ATLAS, drawX + drawWidth - capWidth, drawY,
-            u + sourceWidth - capWidth, v, capWidth, height,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        graphics.blit(SLGuiTextures.GUI_ATLAS, drawX + capWidth, drawY,
-            drawWidth - capWidth * 2, height, u + capWidth, v, 1, height,
-            SLGuiTextures.GUI_WIDTH, SLGuiTextures.GUI_HEIGHT);
-        graphics.drawString(font, label, x + (SIDE_WIDTH - font.width(label)) / 2, drawY + (height - font.lineHeight) / 2, selected ? 0xFF18351B : 0xFFAAAAAA, false);
+    /// 在按钮上方展开，避免选项较多时超出配置面板下边缘。
+    private int settingDropdownY() {
+        return SETTING_MENU_BOTTOM_Y - Math.min(CHANNEL_ROWS, settingLabels.size()) * CHANNEL_ROW_HEIGHT - SETTING_MENU_BOTTOM_GAP;
     }
 
-    private void renderInputControls(
-        GuiGraphics graphics,
-        int mouseX,
-        int mouseY
-    ) {
-        if (!menu.isGlobalInputEnabled()) {
-            return;
-        }
-        renderNumberRow(graphics, mouseX, mouseY, INPUT_ROW_ONE_Y, "gui.staticlogistics.label.priority");
-        renderNumberRow(graphics, mouseX, mouseY, INPUT_ROW_TWO_Y, "gui.staticlogistics.label.keep_stock");
-    }
-
-    private void renderNumberRow(GuiGraphics graphics, int mouseX, int mouseY, int rowY, String labelKey
-    ) {
-        graphics.drawString(font, Component.translatable(labelKey), left + VALUE_LABEL_X, top + rowY, 0xFFAAAAAA, false);
-        int operatorY = top + rowY - 2;
-        NodeConfigControls.renderOpBtn(graphics, left + VALUE_OPERATOR_X, operatorY, true, NodeConfigControls.hitOpBtn(mouseX, mouseY, left + VALUE_OPERATOR_X, operatorY));
-        NodeConfigControls.renderOpBtn(graphics, left + VALUE_OPERATOR_X + BUTTON_SIZE + 2, operatorY, false, NodeConfigControls.hitOpBtn(mouseX, mouseY, left + VALUE_OPERATOR_X + BUTTON_SIZE + 2, operatorY));
-    }
-
-    private void renderOutputControls(
-        GuiGraphics graphics,
-        int mouseX,
-        int mouseY
-    ) {
-        if (!menu.isGlobalOutputEnabled()) {
-            return;
-        }
-
-        boolean strategyHovered = NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY,
-            left + STRATEGY_X, top + STRATEGY_Y,
-            OUTPUT_ACTION_WIDTH);
-        NodeConfigControls.renderCycleBtn(
-            graphics, font,
-            left + STRATEGY_X, top + STRATEGY_Y,
-            OUTPUT_ACTION_WIDTH,
-            menu.getStrategy().getDisplayName(),
-            strategyHovered);
-
-        boolean extractionHovered = NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY,
-            left + EXTRACTION_X, top + EXTRACTION_Y,
-            OUTPUT_ACTION_WIDTH);
-        NodeConfigControls.renderCycleBtn(
-            graphics, font,
-            left + EXTRACTION_X, top + EXTRACTION_Y,
-            OUTPUT_ACTION_WIDTH,
-            menu.getExtractionMode().getDisplayName(),
-            extractionHovered);
-    }
-
-    private void renderApplyTemplateButton(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (selectedNodes.get().size() < 2) return;
-        boolean hovered = NodeConfigControls.hitCycleBtn(mouseX, mouseY,
-            left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y, APPLY_TEMPLATE_WIDTH);
-        NodeConfigControls.renderCycleBtn(graphics, font,
-            left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y, APPLY_TEMPLATE_WIDTH,
-            Component.translatable("gui.staticlogistics.apply_to_selected"), hovered);
-    }
-
-    public void renderTooltips(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (!menu.hasTarget()) {
-            return;
-        }
-        renderConfigSlotTooltip(graphics, mouseX, mouseY);
-
-        if (selectedNodes.get().size() > 1 && NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY, left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y,
-            APPLY_TEMPLATE_WIDTH)) {
-            graphics.renderTooltip(font, Component.translatable(
-                "gui.staticlogistics.apply_to_selected.tooltip"), mouseX, mouseY);
-            return;
-        }
-
-        if (keepStockBox != null
-            && keepStockBox.isVisible()
-            && keepStockBox.isMouseOver(mouseX, mouseY)) {
-            graphics.renderTooltip(font,
-                Component.translatable("gui.staticlogistics.keep_stock.tooltip"),
-                mouseX, mouseY);
-            return;
-        }
-
-        if (menu.isInputSideVisible() && menu.isGlobalInputEnabled()) {
-            if (isAnyOperatorHovered(mouseX, mouseY)) {
-                graphics.renderTooltip(font,
-                    Component.translatable(
-                        "gui.staticlogistics.priority.tooltip",
-                        SLKeyMappings.PRIORITY_X10.getTranslatedKeyMessage(),
-                        SLKeyMappings.PRIORITY_X5.getTranslatedKeyMessage()),
-                    mouseX, mouseY);
+    public boolean renderChannelDropdown(GuiGraphics g, int mx, int my) {
+        if (!settingLabels.isEmpty()) {
+            int x = left + (extractionDropdown ? EXTRACTION_MENU_X : STRATEGY_MENU_X), y = top + Y + settingDropdownY();
+            int rows = Math.min(CHANNEL_ROWS, settingLabels.size());
+            g.pose().pushPose();
+            g.pose().translate(0, 0, 600);
+            ConfiguratorStyle.panel(g, x, y, SETTING_MENU_WIDTH, rows * CHANNEL_ROW_HEIGHT + SETTING_MENU_INSET * 2);
+            for (int row = 0; row < rows; row++) {
+                int rowY = y + SETTING_MENU_INSET + row * CHANNEL_ROW_HEIGHT;
+                boolean hover = mx >= x + SETTING_MENU_INSET && mx < x + SETTING_MENU_WIDTH - SETTING_MENU_INSET && my >= rowY && my < rowY + CHANNEL_ROW_HEIGHT;
+                ChannelConfigurationEdit edit = settingEdits.get(settingScroll + row);
+                boolean selected = edit instanceof ChannelConfigurationEdit.StrategyEdit(
+                    DistributionStrategy strategy1
+                )
+                    ? strategy1.equals(menu.getStrategy())
+                    : ((ChannelConfigurationEdit.ExtractionEdit) edit).mode() == menu.getExtractionMode();
+                ConfiguratorStyle.row(g, x + SETTING_MENU_INSET, rowY, SETTING_MENU_WIDTH - SETTING_MENU_INSET * 2, CHANNEL_ROW_HEIGHT, selected, hover);
+                g.drawString(font, font.plainSubstrByWidth(settingLabels.get(settingScroll + row).getString(), SETTING_MENU_WIDTH - SETTING_MENU_TEXT_X - SETTING_MENU_TEXT_RIGHT_INSET), x + SETTING_MENU_TEXT_X, rowY + SETTING_MENU_TEXT_Y, ConfiguratorStyle.TEXT, false);
             }
-            return;
+            g.pose().popPose();
+            return true;
         }
-
-        if (!menu.isGlobalOutputEnabled()) {
-            return;
+        if (!channelDropdownOpen) return false;
+        int rows = Math.min(CHANNEL_ROWS, dropdownOptions.size());
+        int x = left + CHANNEL_LIST_X, y = top + Y + rowY(CHANNEL_LIST_Y);
+        boolean hasScrollbar = dropdownOptions.size() > rows;
+        int rowWidth = CHANNEL_LIST_WIDTH - CHANNEL_LIST_INSET * 2 - (hasScrollbar ? CHANNEL_LIST_SCROLL_WIDTH : 0);
+        g.pose().pushPose();
+        g.pose().translate(0, 0, 600);
+        ConfiguratorStyle.panel(g, x, y, CHANNEL_LIST_WIDTH, rows * CHANNEL_ROW_HEIGHT + CHANNEL_LIST_INSET * 2);
+        for (int row = 0; row < rows; row++) {
+            LogisticsNode node = dropdownOptions.get(channelScroll + row);
+            int rowY = y + CHANNEL_LIST_INSET + row * CHANNEL_ROW_HEIGHT;
+            boolean selected = node.equals(menu.getTargetNode());
+            boolean hovered = mx >= x + CHANNEL_LIST_INSET && mx < x + CHANNEL_LIST_INSET + rowWidth && my >= rowY && my < rowY + CHANNEL_ROW_HEIGHT;
+            ConfiguratorStyle.row(g, x + CHANNEL_LIST_INSET, rowY, rowWidth, CHANNEL_ROW_HEIGHT, selected, hovered);
+            Component label = channelName(node);
+            g.drawString(font, font.plainSubstrByWidth(label.getString(), rowWidth - CHANNEL_LIST_TEXT_INSET * 2), x + CHANNEL_LIST_INSET + CHANNEL_LIST_TEXT_INSET, rowY + CHANNEL_LIST_TEXT_Y, selected ? ConfiguratorStyle.ACCENT : ConfiguratorStyle.TEXT, false);
         }
-        if (NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY,
-            left + STRATEGY_X, top + STRATEGY_Y,
-            OUTPUT_ACTION_WIDTH)) {
-            graphics.renderComponentTooltip(font, List.of(
-                Component.translatable("gui.staticlogistics.strategy").withStyle(ChatFormatting.BLUE), menu.getStrategy().getDisplayName()
-            ), mouseX, mouseY);
-        } else if (NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY,
-            left + EXTRACTION_X, top + EXTRACTION_Y,
-            OUTPUT_ACTION_WIDTH)) {
-            graphics.renderComponentTooltip(font, List.of(
-                Component.translatable("gui.staticlogistics.extraction_mode").withStyle(ChatFormatting.BLUE), menu.getExtractionMode().getDisplayName()
-            ), mouseX, mouseY);
+        if (hasScrollbar) {
+            int track = rows * CHANNEL_ROW_HEIGHT, thumb = SLGuiTextures.Scrollbar.HEIGHT;
+            int offset = channelScroll * (track - thumb) / (dropdownOptions.size() - rows);
+            ConfiguratorStyle.scrollbar(g, x + CHANNEL_LIST_WIDTH - CHANNEL_LIST_INSET - CHANNEL_LIST_SCROLL_WIDTH, y + CHANNEL_LIST_INSET, track, offset, true);
         }
+        g.pose().popPose();
+        return true;
     }
 
-    private void renderConfigSlotTooltip(
-        GuiGraphics graphics,
-        int mouseX,
-        int mouseY
-    ) {
-        for (int index = 0; index < 5; index++) {
-            Slot slot = menu.getSlot(index);
-            if (slot == null || !slot.isActive()
-                || !hit(mouseX, mouseY, left + slot.x, top + slot.y, 16, 16)) {
-                continue;
+    public boolean channelDropdownClicked(double mx, double my, int button) {
+        if (!settingLabels.isEmpty()) {
+            int x = (extractionDropdown ? EXTRACTION_MENU_X : STRATEGY_MENU_X) + SETTING_MENU_INSET;
+            int rows = Math.min(CHANNEL_ROWS, settingLabels.size());
+            if (button == 0 && hit(mx, my, x, settingDropdownY() + SETTING_MENU_INSET, SETTING_MENU_WIDTH - SETTING_MENU_INSET * 2, rows * CHANNEL_ROW_HEIGHT)) {
+                int row = (int) (my - top - Y - settingDropdownY() - SETTING_MENU_INSET) / CHANNEL_ROW_HEIGHT;
+                send(settingEdits.get(settingScroll + row));
+                playClick.run();
             }
-            if (!slot.getItem().isEmpty()) {
-                graphics.renderTooltip(
-                    font, slot.getItem(), mouseX, mouseY);
+            settingLabels = List.of();
+            settingEdits = List.of();
+            return true;
+        }
+        if (!channelDropdownOpen) return false;
+        int rows = Math.min(CHANNEL_ROWS, dropdownOptions.size());
+        int listX = left + CHANNEL_LIST_X + CHANNEL_LIST_INSET;
+        int listY = top + Y + rowY(CHANNEL_LIST_Y) + CHANNEL_LIST_INSET;
+        int rowWidth = CHANNEL_LIST_WIDTH - CHANNEL_LIST_INSET * 2 - (dropdownOptions.size() > rows ? CHANNEL_LIST_SCROLL_WIDTH : 0);
+        if ((button == 0 || button == 1) && mx >= listX && mx < listX + rowWidth && my >= listY && my < listY + rows * CHANNEL_ROW_HEIGHT) {
+            int row = (int) (my - listY) / CHANNEL_ROW_HEIGHT;
+            LogisticsNode node = dropdownOptions.get(channelScroll + row);
+            if (button == 1) channelContext.open(node, mx, my);
+            else if (!node.equals(menu.getTargetNode())) selectChannel.accept(node);
+            playClick.run();
+        }
+        channelDropdownOpen = false;
+        return true;
+    }
+
+    public boolean channelDropdownScrolled(double amount) {
+        if (!settingLabels.isEmpty()) {
+            settingScroll = Math.clamp(settingScroll - (int) Math.signum(amount), 0, Math.max(0, settingLabels.size() - CHANNEL_ROWS));
+            return true;
+        }
+        if (!channelDropdownOpen) return false;
+        channelScroll = Math.clamp(channelScroll - (int) Math.signum(amount), 0, Math.max(0, dropdownOptions.size() - CHANNEL_ROWS));
+        return true;
+    }
+
+    public boolean isChannelDropdownOpen() {
+        return channelDropdownOpen || !settingLabels.isEmpty();
+    }
+
+    public boolean mouseClicked(double mx, double my, int button) {
+        if (!menu.hasTarget()) return false;
+        if (!menu.getTargetNode().isConnectionFace() && hit(mx, my, PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT)) {
+            if (button == 0) {
+                savePreset.run();
+                playClick.run();
+            }
+            return true;
+        }
+        if (!menu.getTargetNode().isConnectionFace() && hit(mx, my, PRESET_APPLY_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT)) {
+            if (button == 0) {
+                applyPreset.run();
+                playClick.run();
+            }
+            return true;
+        }
+        if (batchEditing && hit(mx, my, BATCH_RESET_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, CONTROL_HEIGHT)) {
+            if (button == 0 && editSession.canEdit()) {
+                unfocusEditors(-1, -1);
+                resetBatch.run();
+                tick();
+                playClick.run();
+            }
+            return true;
+        }
+        if (batchEditing && hit(mx, my, BATCH_APPLY_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, CONTROL_HEIGHT)) {
+            if (button == 0 && editSession.canEdit()) {
+                applyBatch.run();
+                playClick.run();
+            }
+            return true;
+        }
+        if (hit(mx, my, ADD_CHANNEL_X, ADD_CHANNEL_Y, ADD_CHANNEL_WIDTH, ADD_CHANNEL_HEIGHT)) {
+            if (button == 0) {
+                addChannel.run();
+                playClick.run();
+            }
+            return true;
+        }
+        if (hit(mx, my, CHANNEL_LIST_X, CHANNEL_BUTTON_Y, CHANNEL_LIST_WIDTH, CHANNEL_BUTTON_HEIGHT)) {
+            if (button == 0) {
+                dropdownOptions = List.copyOf(channelOptions.get());
+                channelScroll = Math.clamp(dropdownOptions.indexOf(menu.getTargetNode()), 0, Math.max(0, dropdownOptions.size() - CHANNEL_ROWS));
+                channelDropdownOpen = !dropdownOptions.isEmpty();
+                priority.setFocused(false);
+                stock.setFocused(false);
+                playClick.run();
+            } else if (button == 1 && !menu.getTargetNode().isConnectionFace())
+                channelContext.open(menu.getTargetNode(), mx, my);
+            return true;
+        }
+        if (menu.getTargetNode().isConnectionFace()) return false;
+        if (numberArrowClicked(mx, my, button)) return true;
+        if (button == 0 && menu.showsOutputSettings()
+            && (hit(mx, my, STRATEGY_X, STRATEGY_Y, STRATEGY_WIDTH, CONTROL_HEIGHT) || hit(mx, my, EXTRACTION_X, STRATEGY_Y, EXTRACTION_WIDTH, CONTROL_HEIGHT))) {
+            extractionDropdown = hit(mx, my, EXTRACTION_X, STRATEGY_Y, EXTRACTION_WIDTH, CONTROL_HEIGHT);
+            if (extractionDropdown) {
+                settingLabels = Arrays.stream(ExtractionMode.values()).map(ExtractionMode::getDisplayName).toList();
+                settingEdits = Arrays.stream(ExtractionMode.values())
+                    .<ChannelConfigurationEdit>map(ChannelConfigurationEdit.ExtractionEdit::new).toList();
             } else {
-                // 空过滤器槽位无需重复说明输入/输出；所在侧已经由面板页签明确表达。
-                if (index < 2) {
-                    return;
-                }
-                String key = switch (index) {
-                    case 2 -> "gui.staticlogistics.hint.speed";
-                    case 3 -> "gui.staticlogistics.hint.range";
-                    default -> "gui.staticlogistics.hint.stack";
-                };
-                graphics.renderTooltip(
-                    font, Component.translatable(key), mouseX, mouseY);
+                var strategies = DistributionStrategyRegistry.getValues();
+                settingLabels = strategies.stream().map(strategy -> strategy.getDisplayName()).toList();
+                settingEdits = strategies.stream().<ChannelConfigurationEdit>map(ChannelConfigurationEdit.StrategyEdit::new).toList();
             }
-            return;
-        }
-    }
-
-    private boolean isAnyOperatorHovered(double mouseX, double mouseY) {
-        for (int rowY : new int[]{INPUT_ROW_ONE_Y, INPUT_ROW_TWO_Y}) {
-            int y = top + rowY - 2;
-            if (NodeConfigControls.hitOpBtn(
-                mouseX, mouseY, left + VALUE_OPERATOR_X, y)
-                || NodeConfigControls.hitOpBtn(
-                mouseX, mouseY,
-                left + VALUE_OPERATOR_X + BUTTON_SIZE + 2, y)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!menu.hasTarget()) {
-            return false;
-        }
-        if (hit(mouseX, mouseY, left + INPUT_SIDE_X, top + SIDE_Y,
-            SIDE_WIDTH, SIDE_HEIGHT)) {
-            if (!menu.isInputSideVisible()) {
-                selectSide.accept(true);
-            }
+            settingScroll = 0;
+            channelDropdownOpen = false;
+            priority.setFocused(false);
+            stock.setFocused(false);
+            playClick.run();
             return true;
         }
-        if (hit(mouseX, mouseY, left + OUTPUT_SIDE_X, top + SIDE_Y,
-            SIDE_WIDTH, SIDE_HEIGHT)) {
-            if (!menu.isOutputSideVisible()) {
-                selectSide.accept(false);
-            }
+        if (hit(mx, my, REDSTONE_X, REDSTONE_Y, REDSTONE_WIDTH, CONTROL_HEIGHT)) {
+            send(new ChannelConfigurationEdit.RedstoneEdit(preview(new ChannelConfigurationEdit.RedstoneEdit(menu.getRedstoneMode())).mode().next()));
+            playClick.run();
             return true;
         }
-        if (NodeConfigControls.hitToggle(
-            mouseX, mouseY, left + TOGGLE_X, top + UTILITY_Y)) {
-            toggleCurrentSide();
+        if (hit(mx, my, EXTRACT_X, ROLE_Y, ROLE_WIDTH, CONTROL_HEIGHT)) {
+            selectRole(NodeRole.SENDER);
             return true;
         }
-        if (selectedNodes.get().size() > 1 && NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY, left + APPLY_TEMPLATE_X, top + APPLY_TEMPLATE_Y,
-            APPLY_TEMPLATE_WIDTH)) {
-            applyTemplateToSelected();
+        if (hit(mx, my, INSERT_X, ROLE_Y, ROLE_WIDTH, CONTROL_HEIGHT)) {
+            selectRole(NodeRole.RECEIVER);
             return true;
         }
-
-        Slot filter = menu.getSlot(menu.isInputSideVisible() ? 0 : 1);
-        if (!filter.getItem().isEmpty()
-            && NodeConfigControls.hitFilterCfgBtn(
-            mouseX, mouseY, left + filter.x, top + filter.y)) {
+        if (hit(mx, my, BOTH_X, ROLE_Y, ROLE_WIDTH, CONTROL_HEIGHT)) {
+            selectRole(NodeRole.BOTH);
+            return true;
+        }
+        if (hit(mx, my, ENABLE_X, ROLE_Y, ENABLE_WIDTH, CONTROL_HEIGHT)) {
+            send(new ChannelConfigurationEdit.EnabledEdit(!preview(new ChannelConfigurationEdit.EnabledEdit(menu.isChannelEnabled())).enabled()));
+            playClick.run();
+            return true;
+        }
+        var slot = menu.getSlot(0);
+        if (button == 1 && slot.isActive() && !slot.getItem().isEmpty() && hit(mx, my, slot.x, slot.y - Y, 16, 16)) {
             openFilter.run();
-            playClick.run();
-            return true;
-        }
-
-        if (menu.isInputSideVisible() && menu.isGlobalInputEnabled()) {
-            return handleInputOperatorClick(mouseX, mouseY);
-        } else if (menu.isOutputSideVisible() && menu.isGlobalOutputEnabled()) {
-            return handleOutputClick(mouseX, mouseY, button);
-        }
-        return false;
-    }
-
-    private void toggleCurrentSide() {
-        FaceConfigurationEdit.BooleanField field = menu.isInputSideVisible()
-            ? FaceConfigurationEdit.BooleanField.GLOBAL_INPUT
-            : FaceConfigurationEdit.BooleanField.GLOBAL_OUTPUT;
-        boolean current = menu.isInputSideVisible()
-            ? menu.isGlobalInputEnabled()
-            : menu.isGlobalOutputEnabled();
-        send(new FaceConfigurationEdit.BooleanEdit(field, !current));
-        playClick.run();
-    }
-
-    private boolean handleInputOperatorClick(
-        double mouseX,
-        double mouseY
-    ) {
-        int priorityY = top + INPUT_ROW_ONE_Y - 2;
-        if (NodeConfigControls.hitOpBtn(
-            mouseX, mouseY, left + VALUE_OPERATOR_X, priorityY)) {
-            adjustPriority(1);
-            return true;
-        }
-        if (NodeConfigControls.hitOpBtn(
-            mouseX, mouseY,
-            left + VALUE_OPERATOR_X + BUTTON_SIZE + 2, priorityY)) {
-            adjustPriority(-1);
-            return true;
-        }
-
-        int stockY = top + INPUT_ROW_TWO_Y - 2;
-        if (NodeConfigControls.hitOpBtn(
-            mouseX, mouseY, left + VALUE_OPERATOR_X, stockY)) {
-            adjustKeepStock(1);
-            return true;
-        }
-        if (NodeConfigControls.hitOpBtn(
-            mouseX, mouseY,
-            left + VALUE_OPERATOR_X + BUTTON_SIZE + 2, stockY)) {
-            adjustKeepStock(-1);
             return true;
         }
         return false;
     }
 
-    private boolean handleOutputClick(
-        double mouseX,
-        double mouseY,
-        int button
-    ) {
-        if (NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY, left + STRATEGY_X, top + STRATEGY_Y,
-            OUTPUT_ACTION_WIDTH)) {
-            var values = DistributionStrategyRegistry.getValues();
-            int current = Math.max(0, values.indexOf(menu.getStrategy()));
-            int next = button == 1
-                ? (current - 1 + values.size()) % values.size()
-                : (current + 1) % values.size();
-            send(new FaceConfigurationEdit.StrategyEdit(values.get(next)));
-            playClick.run();
+    private NodeRole currentRole() {
+        if (menu.isGlobalInputEnabled() && menu.isGlobalOutputEnabled()) return NodeRole.BOTH;
+        if (menu.isGlobalInputEnabled()) return NodeRole.RECEIVER;
+        return menu.isGlobalOutputEnabled() ? NodeRole.SENDER : NodeRole.NONE;
+    }
+
+    private void selectRole(NodeRole role) {
+        if (preview(new ChannelConfigurationEdit.RoleEdit(currentRole())).role() == role) return;
+        send(new ChannelConfigurationEdit.RoleEdit(role));
+        playClick.run();
+    }
+
+    private void send(ChannelConfigurationEdit edit) {
+        if (submit != null) submit.accept(edit);
+    }
+
+    private boolean hit(double mx, double my, int x, int y, int w, int h) {
+        return mx >= left + x && mx < left + x + w && my >= top + Y + rowY(y) && my < top + Y + rowY(y) + h;
+    }
+
+    public EditBox editorAt(double x, double y) {
+        if (priority.visible && priority.isMouseOver(x, y)) return priority;
+        return stock.visible && stock.isMouseOver(x, y) ? stock : null;
+    }
+
+    public EditBox focusedEditor() {
+        if (priority.canConsumeInput()) return priority;
+        return stock.canConsumeInput() ? stock : null;
+    }
+
+    public boolean keyPressed(int key) {
+        if (!settingLabels.isEmpty()) {
+            if (key == 256) {
+                settingLabels = List.of();
+                settingEdits = List.of();
+            } else if (key == 264) channelDropdownScrolled(-1);
+            else if (key == 265) channelDropdownScrolled(1);
             return true;
         }
-        if (NodeConfigControls.hitCycleBtn(
-            mouseX, mouseY, left + EXTRACTION_X, top + EXTRACTION_Y,
-            OUTPUT_ACTION_WIDTH)) {
-            ExtractionMode[] values = ExtractionMode.values();
-            int next = button == 1
-                ? (menu.getExtractionMode().ordinal() - 1 + values.length)
-                % values.length
-                : (menu.getExtractionMode().ordinal() + 1) % values.length;
-            send(new FaceConfigurationEdit.ExtractionEdit(values[next]));
-            playClick.run();
+        if (channelDropdownOpen) {
+            if (key == 256) channelDropdownOpen = false;
+            else if (key == 264) channelDropdownScrolled(-1);
+            else if (key == 265) channelDropdownScrolled(1);
+            return true;
+        }
+        if (key != 257 && key != 335) return false;
+        if (priority.isFocused() || stock.isFocused()) {
+            priority.setFocused(false);
+            stock.setFocused(false);
             return true;
         }
         return false;
     }
 
-    public boolean keyPressed(int keyCode) {
-        if (keyCode != 257 && keyCode != 335) {
-            return false;
-        }
-        if (priorityBox != null && priorityBox.isFocused()) {
-            priorityBox.setFocused(false);
-            return true;
-        }
-        if (keepStockBox != null && keepStockBox.isFocused()) {
-            keepStockBox.setFocused(false);
-            return true;
-        }
-        return false;
-    }
-
-    public void unfocusEditors(double mouseX, double mouseY) {
-        unfocus(priorityBox, mouseX, mouseY);
-        unfocus(keepStockBox, mouseX, mouseY);
-    }
-
-    private static void unfocus(EditBox box, double mouseX, double mouseY) {
-        if (box != null && box.isFocused() && !box.isMouseOver(mouseX, mouseY)) {
-            box.setFocused(false);
-        }
-    }
-
-    private void adjustPriority(int direction) {
-        int delta = direction * adjustmentMultiplier();
-        send(new FaceConfigurationEdit.NumberEdit(
-            FaceConfigurationEdit.NumberField.PRIORITY,
-            saturatedAdd(menu.getPriority(), delta)));
-        playClick.run();
-    }
-
-    private void adjustKeepStock(int direction) {
-        int delta = direction * adjustmentMultiplier();
-        send(new FaceConfigurationEdit.NumberEdit(
-            FaceConfigurationEdit.NumberField.KEEP_STOCK,
-            Math.max(0, saturatedAdd(menu.getKeepStock(), delta))));
-        playClick.run();
-    }
-
-    private static int adjustmentMultiplier() {
-        boolean timesTen = SLKeyMappings.isKeyDown(
-            SLKeyMappings.PRIORITY_X10);
-        boolean timesFive = SLKeyMappings.isKeyDown(
-            SLKeyMappings.PRIORITY_X5);
-        if (timesTen && timesFive) {
-            return 64;
-        }
-        if (timesTen) {
-            return 10;
-        }
-        if (timesFive) {
-            return 5;
-        }
-        return 1;
-    }
-
-    private static int saturatedAdd(int value, int delta) {
-        long result = (long) value + delta;
-        return (int) Math.max(
-            Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, result));
-    }
-
-    private void send(FaceConfigurationEdit edit) {
-        List<LogisticsNode> nodes = selectedNodes.get();
-        if (nodes.size() > 1) {
-            PacketDistributor.sendToServer(new C2SConfigureFacesPayload(
-                menu.getRemoteGroupKey(), nodes, edit));
-            return;
-        }
-        PacketDistributor.sendToServer(new C2SConfigureFacePayload(
-            menu.getPos(), menu.getFace(), edit));
-    }
-
-    private void applyTemplateToSelected() {
-        List<LogisticsNode> nodes = selectedNodes.get();
-        if (nodes.size() < 2 || !nodes.contains(menu.getTargetNode())) return;
-        PacketDistributor.sendToServer(new C2SApplyNodeTemplatePayload(
-            menu.getRemoteGroupKey(), menu.getTargetNode(), nodes));
-        playClick.run();
-    }
-
-    private static boolean hit(
-        double mouseX,
-        double mouseY,
-        int x,
-        int y,
-        int width,
-        int height
-    ) {
-        return mouseX >= x && mouseX < x + width
-            && mouseY >= y && mouseY < y + height;
+    public void unfocusEditors(double mx, double my) {
+        if (!priority.isMouseOver(mx, my)) priority.setFocused(false);
+        if (!stock.isMouseOver(mx, my)) stock.setFocused(false);
     }
 }

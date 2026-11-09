@@ -2,10 +2,10 @@ package com.coobird.staticlogistics.api;
 
 import net.minecraft.resources.ResourceLocation;
 
-/**
- * 传输游标提供者 —— 供 GroupSorter 获取 round-robin 游标，避免 API 层直接依赖 GlobalLogisticsManager。
- */
+import java.util.function.IntUnaryOperator;
+
+/// 传输游标提供者 —— 供 GroupSorter 获取 round-robin 游标，避免 API 层直接依赖 GlobalLogisticsManager。
 @FunctionalInterface
 public interface TransferCursorProvider {
-    int[] getCursor(LogisticsNode node, ResourceLocation cursorType);
+    int getAndUpdateCursor(LogisticsNode node, ResourceLocation cursorType, IntUnaryOperator update);
 }

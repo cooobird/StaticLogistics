@@ -11,9 +11,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.function.Predicate;
 
-/**
- * Sable Companion 适配实现；仅在 ModList 检测到 Sable 后直接加载。
- */
+/// Sable Companion 适配实现；仅在 ModList 检测到 Sable 后直接加载。
 final class SableNodeSpaceAdapter implements DynamicNodeSpace.Adapter {
     @Override
     public Vec3 toWorld(Level level, Vec3 position, float partialTick) {

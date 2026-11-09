@@ -15,14 +15,11 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.*;
 
-/**
- * 原子替换某位所有者的完整分组目录，其中同时包含空组与活跃组。
- */
+/// 原子替换某位所有者的完整分组目录，其中同时包含空组与活跃组。
 public record S2CGroupDirectoryPayload(UUID ownerId, Set<GroupRef> groups) implements CustomPacketPayload {
 
     public S2CGroupDirectoryPayload {
-        Objects.requireNonNull(ownerId, "Group directory owner must not be null");
-        groups = Set.copyOf(Objects.requireNonNull(groups, "Group directory must not be null"));
+        groups = Set.copyOf(groups);
     }
 
     public static final Type<S2CGroupDirectoryPayload> TYPE =
