@@ -565,7 +565,7 @@ public final class GroupPanel {
         SLGuiTextures.LIST_SURFACE.frame(graphics, listX - 1, listY - 1, SELECTION_WIDTH + 2, LIST_HEIGHT + 2, 1);
         if (maximum > 0) renderScrollbar(graphics, panelX + SCROLLBAR_X, topPos + SCROLLBAR_Y, mouseX, mouseY, maximum);
         String dropTarget = draggingConnections ? dropTarget(mouseX, mouseY, panelX, topPos) : null;
-        GuiScissor.enable(graphics, interfaceScale, listX - 2, listY, listX + SELECTION_WIDTH + 2, addY);
+        GuiScissor.enable(graphics, interfaceScale, listX, listY, listX + SELECTION_WIDTH, addY);
         for (int index = 0; index < directoryRows.size(); index++) {
             int rowY = rowY(index, listY);
             if (rowY + ROW_HEIGHT <= listY || rowY >= addY) continue;
@@ -576,8 +576,8 @@ public final class GroupPanel {
             boolean active = row.connection() != null ? selectedConnections.contains(row.connection().key()) && selectedDirectory.isEmpty() : row.id().equals(selectedDirectory) || row.id().equals(dropTarget);
             if (active) ConfiguratorStyle.row(graphics, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT, true, false);
             else {
-                graphics.fill(listX, rowY, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFFC2C2C2);
-                graphics.fill(listX, rowY + ROW_HEIGHT - ROW_DIVIDER_HEIGHT, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFF999999);
+                graphics.fill(listX, rowY, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFF9DA2B7);
+                graphics.fill(listX, rowY + ROW_HEIGHT - ROW_DIVIDER_HEIGHT, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFF858AA0);
             }
             if (row.connection() != null) {
                 if (inside(mouseX, mouseY, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT) && mouseY >= listY && mouseY < addY) {
@@ -587,6 +587,7 @@ public final class GroupPanel {
                     int lineX = listX + TREE_LINE_X;
                     boolean hasNextChild = index + 1 < directoryRows.size() && directoryRows.get(index + 1).depth() > 0;
                     int lineEnd = hasNextChild ? ROW_HEIGHT : ROW_HEIGHT / 2 + 1;
+                    lineEnd = Math.min(lineEnd, addY - rowY - TREE_LINE_Y);
                     for (int dy = 0; dy < lineEnd; dy += TREE_DASH_STEP)
                         graphics.fill(lineX, rowY + TREE_LINE_Y + dy, lineX + TREE_LINE_WIDTH, rowY + TREE_LINE_Y + Math.min(dy + TREE_DASH_LENGTH, lineEnd), 0xFF444444);
                     for (int dx = 0; dx < TREE_BRANCH_LENGTH; dx += TREE_DASH_STEP)
