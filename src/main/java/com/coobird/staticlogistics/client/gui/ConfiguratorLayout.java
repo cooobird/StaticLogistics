@@ -175,11 +175,11 @@ public final class ConfiguratorLayout {
         /// 搜索框宽度微调：正数加宽，负数缩短；不会移动左边缘。
         public static final int SEARCH_WIDTH_ADJUST = 1;
         /// 左上列表左右位置：正数向右，负数向左；不移动搜索框。
-        public static final int LIST_X_OFFSET = 0;
+        public static final int LIST_X_OFFSET = 1;
         /// 左上列表上下位置：正数向下，负数向上；不移动搜索框。
-        public static final int LIST_Y_OFFSET = 0;
+        public static final int LIST_Y_OFFSET = -2;
         /// 左上列表宽度：正数加宽，负数缩窄。
-        public static final int LIST_WIDTH_ADJUST = 0;
+        public static final int LIST_WIDTH_ADJUST = -1;
         /// 左上列表高度：正数加高，负数缩短。
         public static final int LIST_HEIGHT_ADJUST = 0;
         /// 列表行宽度：正数加宽，负数缩窄；滚动条仅在需要时占用空间。
@@ -508,9 +508,9 @@ public final class ConfiguratorLayout {
         /// 滚动滑块相对轨道的纵向偏移；正数下移，负数上移。
         public static final int SCROLLBAR_THUMB_Y_OFFSET = 1;
         /// 列表的高度。
-        public static final int LIST_HEIGHT = 117;
+        public static final int LIST_HEIGHT = 115;
         /// 滚动条轨道的高度。
-        public static final int SCROLLBAR_TRACK_HEIGHT = 117;
+        public static final int SCROLLBAR_TRACK_HEIGHT = LIST_OFFSET_Y + LIST_HEIGHT + 1 - SCROLLBAR_Y;
         /// 目录列表每行的高度。
         public static final int ROW_HEIGHT = 18;
         /// 文件夹和连接行内的图标、文字与树形连接线。
