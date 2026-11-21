@@ -1,7 +1,5 @@
 package com.coobird.staticlogistics.client.gui.component;
 
-import com.coobird.staticlogistics.client.gui.ConfiguratorLayout;
-
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.ChatFormatting;
@@ -26,13 +24,14 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.FilterGrid.START_X;
+import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.FilterGrid.START_Y;
+
 /// 过滤网格组件：9×4（或标签模式 1×4）的过滤槽位渲染与交互。
 public class FilterGridWidget {
 
     public static final int GRID_COLS = 9;
     public static final int GRID_ROWS = 4;
-    public static final int START_X = ConfiguratorLayout.FilterGrid.START_X;
-    public static final int START_Y = ConfiguratorLayout.FilterGrid.START_Y;
     public static final int SLOT_SIZE = 18;
 
     /// 获取指定行列的槽位索引

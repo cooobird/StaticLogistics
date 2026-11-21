@@ -104,7 +104,7 @@ public class ServerEvents {
         registrar.playToClient(S2CTopologyUpdatePayload.TYPE, S2CTopologyUpdatePayload.STREAM_CODEC, S2CTopologyUpdatePayload::handle);
         registrar.playToClient(S2CConfigSyncPayload.TYPE, S2CConfigSyncPayload.STREAM_CODEC, S2CConfigSyncPayload::handle);
         registrar.playToClient(S2CStoredSelectionPage.TYPE, S2CStoredSelectionPage.STREAM_CODEC, S2CStoredSelectionPage::handle);
-        registrar.playToClient(S2CPresetPreviewPayload.TYPE, S2CPresetPreviewPayload.STREAM_CODEC, S2CPresetPreviewPayload::handle);
+        registrar.playToClient(S2CBatchValuesPayload.TYPE, S2CBatchValuesPayload.STREAM_CODEC, S2CBatchValuesPayload::handle);
         registrar.playToClient(S2CRemoveFaceTopologyPayload.TYPE, S2CRemoveFaceTopologyPayload.STREAM_CODEC, S2CRemoveFaceTopologyPayload::handle);
         registrar.playToClient(S2CGroupDirectoryPayload.TYPE, S2CGroupDirectoryPayload.STREAM_CODEC, S2CGroupDirectoryPayload::handle);
         registrar.playToClient(S2CAccessSnapshotPayload.TYPE, S2CAccessSnapshotPayload.STREAM_CODEC, S2CAccessSnapshotPayload::handle);
@@ -113,7 +113,7 @@ public class ServerEvents {
         registrar.playToClient(S2CClearLinkEndpointPayload.TYPE, S2CClearLinkEndpointPayload.STREAM_CODEC, S2CClearLinkEndpointPayload::handle);
         registrar.playToServer(C2SConfigureFacePayload.TYPE, C2SConfigureFacePayload.STREAM_CODEC, C2SConfigureFacePayload::handle);
         registrar.playToServer(C2SBulkSelectNodesPayload.TYPE, C2SBulkSelectNodesPayload.STREAM_CODEC, C2SBulkSelectNodesPayload::handle);
-        registrar.playToServer(C2SPresetPreviewPayload.TYPE, C2SPresetPreviewPayload.STREAM_CODEC, C2SPresetPreviewPayload::handle);
+        registrar.playToServer(C2SBatchValuesPayload.TYPE, C2SBatchValuesPayload.STREAM_CODEC, C2SBatchValuesPayload::handle);
         registrar.playToServer(C2SOpenNodeFilterPayload.TYPE, C2SOpenNodeFilterPayload.STREAM_CODEC, C2SOpenNodeFilterPayload::handle);
         registrar.playToServer(C2SReturnToLinkConfiguratorPayload.TYPE, C2SReturnToLinkConfiguratorPayload.STREAM_CODEC, C2SReturnToLinkConfiguratorPayload::handle);
         registrar.playToClient(S2CToolModeResultPayload.TYPE, S2CToolModeResultPayload.STREAM_CODEC, S2CToolModeResultPayload::handle);

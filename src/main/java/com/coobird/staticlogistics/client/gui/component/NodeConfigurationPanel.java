@@ -6,21 +6,22 @@ import com.coobird.staticlogistics.api.type.DistributionStrategy;
 import com.coobird.staticlogistics.api.type.ExtractionMode;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.ConfiguratorEditSession;
-import com.coobird.staticlogistics.client.gui.ConfiguratorLayout;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.logistics.node.ChannelConfigurationEdit;
-import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
+import com.coobird.staticlogistics.network.s2c.S2CBatchValuesPayload;
 import com.coobird.staticlogistics.transfer.DistributionStrategyRegistry;
 import com.coobird.staticlogistics.transfer.LogisticsCalculator;
 import com.coobird.staticlogistics.transfer.TransferRegistries;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Arrays;
 import java.util.List;
@@ -31,20 +32,13 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.NodeConfiguration.*;
+import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.SharedScreen.NODE_CONFIG_Y;
 
 /// 紧凑节点配置。
 public final class NodeConfigurationPanel {
     // 面板基准位置与通道新增按钮。
     // 节点配置面板相对界面顶部的位置。
-    private static final int Y = SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y;
-    private Runnable savePreset = () -> {
-    }, applyPreset = () -> {
-    };
 
-    public void setPresetActions(Runnable save, Runnable apply) {
-        savePreset = save;
-        applyPreset = apply;
-    }
     private final LinkConfiguratorMenu menu;
     private final Font font;
     private final Runnable openFilter, playClick;
@@ -70,6 +64,21 @@ public final class NodeConfigurationPanel {
 
     private <T extends ChannelConfigurationEdit> T preview(T current) {
         return editSession == null ? current : editSession.preview(current);
+    }
+
+    private S2CBatchValuesPayload batchValues;
+
+    public void setBatchValues(S2CBatchValuesPayload values) {
+        batchValues = values;
+    }
+
+    private int batchPlaceholder(boolean priorityField) {
+        if (!batchEditing) return 0;
+        var field = priorityField ? ChannelConfigurationEdit.NumberField.PRIORITY : ChannelConfigurationEdit.NumberField.KEEP_STOCK;
+        if (editSession.batchEdits().stream().anyMatch(e -> e instanceof ChannelConfigurationEdit.NumberEdit n && n.field() == field))
+            return 0;
+        if (batchValues == null) return 1;
+        return (priorityField ? batchValues.mixedPriority() : batchValues.mixedStock()) ? 2 : 0;
     }
 
     private int batchSize;
@@ -134,10 +143,6 @@ public final class NodeConfigurationPanel {
     private List<Component> settingLabels = List.of();
     private List<ChannelConfigurationEdit> settingEdits = List.of();
     private int settingScroll;
-    public static final int RESOURCE_ROW_Y = ConfiguratorLayout.NodeConfiguration.RESOURCE_ROW_Y;
-    public static final int RESOURCE_BUTTON_X = ConfiguratorLayout.NodeConfiguration.RESOURCE_BUTTON_X;
-    public static final int RESOURCE_BUTTON_WIDTH = ConfiguratorLayout.NodeConfiguration.RESOURCE_BUTTON_WIDTH;
-    public static final int RESOURCE_BUTTON_HEIGHT = ConfiguratorLayout.NodeConfiguration.RESOURCE_BUTTON_HEIGHT;
     private int channelScroll;
 
     public void setChannelActions(Runnable add, Supplier<List<LogisticsNode>> options, Consumer<LogisticsNode> select) {
@@ -156,8 +161,8 @@ public final class NodeConfigurationPanel {
     public void init(int left, int top, Consumer<EditBox> add) {
         this.left = left;
         this.top = top;
-        priority = field(left + PRIORITY_FIELD_X, top + Y + NUMBER_FIELD_Y, true);
-        stock = field(left + STOCK_FIELD_X, top + Y + NUMBER_FIELD_Y, false);
+        priority = field(left + PRIORITY_FIELD_X, top + NODE_CONFIG_Y + NUMBER_FIELD_Y, true);
+        stock = field(left + RIGHT_CONTROL_X, top + NODE_CONFIG_Y + NUMBER_FIELD_Y, false);
         add.accept(priority);
         add.accept(stock);
         tick();
@@ -184,6 +189,7 @@ public final class NodeConfigurationPanel {
 
     private void normalizeNumber(EditBox box, boolean isPriority) {
         if (!menu.hasTarget() || !Objects.equals(target, menu.getTargetNode())) return;
+        if (batchEditing && !(isPriority ? priorityDirty : stockDirty)) return;
         try {
             long value = CompactNumberInput.parse(box.getValue());
             if (!isPriority && value < 0) throw new IllegalArgumentException();
@@ -196,6 +202,16 @@ public final class NodeConfigurationPanel {
             }
         } catch (IllegalArgumentException exception) {
             error = tr("number_invalid").getString();
+        }
+    }
+
+    public void updateEditorVisibility(boolean browsingFaces) {
+        boolean visible = !browsingFaces && menu.hasTarget() && !menu.getTargetNode().isConnectionFace() && menu.showsInputSettings();
+        priority.setVisible(visible);
+        stock.setVisible(visible);
+        if (!visible) {
+            priority.setFocused(false);
+            stock.setFocused(false);
         }
     }
 
@@ -216,27 +232,30 @@ public final class NodeConfigurationPanel {
             settingLabels = List.of();
             settingEdits = List.of();
         }
-        priority.setY(top + Y + NUMBER_FIELD_Y);
+        int numberY = numberRowY();
+        priority.setY(top + NODE_CONFIG_Y + numberY);
+        stock.setY(top + NODE_CONFIG_Y + numberY);
         priority.setWidth(PRIORITY_FIELD_WIDTH);
-        stock.setX(left + STOCK_FIELD_X);
+        stock.setX(left + RIGHT_CONTROL_X);
         stock.setWidth(STOCK_FIELD_WIDTH);
-        priority.setVisible(next != null && !next.isConnectionFace() && menu.showsInputSettings());
-        if (!priority.visible) priority.setFocused(false);
-        stock.setVisible(next != null && !next.isConnectionFace() && menu.showsInputSettings());
-        if (!stock.visible) stock.setFocused(false);
+        updateEditorVisibility(false);
         Long pendingPriority = pendingValues.apply(next, ChannelConfigurationEdit.NumberField.PRIORITY);
         if (batchEditing)
-            pendingPriority = preview(new ChannelConfigurationEdit.NumberEdit(ChannelConfigurationEdit.NumberField.PRIORITY, menu.getPriority())).value();
+            pendingPriority = preview(new ChannelConfigurationEdit.NumberEdit(ChannelConfigurationEdit.NumberField.PRIORITY, batchValues == null ? menu.getPriority() : batchValues.priority())).value();
         Long pendingStock = pendingValues.apply(next, ChannelConfigurationEdit.NumberField.KEEP_STOCK);
         if (batchEditing)
-            pendingStock = preview(new ChannelConfigurationEdit.NumberEdit(ChannelConfigurationEdit.NumberField.KEEP_STOCK, menu.getKeepStock())).value();
+            pendingStock = preview(new ChannelConfigurationEdit.NumberEdit(ChannelConfigurationEdit.NumberField.KEEP_STOCK, batchValues == null ? menu.getKeepStock() : batchValues.stock())).value();
         if (!priorityDirty && !priority.isFocused()) {
-            priority.setValue(Long.toString(pendingPriority == null ? menu.getPriority() : pendingPriority));
+            int placeholder = batchPlaceholder(true);
+            priority.setHint(placeholder == 2 ? Component.translatable("gui.staticlogistics.batch.mixed") : Component.literal(placeholder == 1 ? "…" : ""));
+            priority.setValue(placeholder != 0 ? "" : Long.toString(pendingPriority == null ? menu.getPriority() : pendingPriority));
             priority.moveCursorToStart(false);
             priorityDirty = false;
         }
         if (!stockDirty && !stock.isFocused()) {
-            stock.setValue(Long.toString(pendingStock == null ? menu.getKeepStock() : pendingStock));
+            int placeholder = batchPlaceholder(false);
+            stock.setHint(placeholder == 2 ? Component.translatable("gui.staticlogistics.batch.mixed") : Component.literal(placeholder == 1 ? "…" : ""));
+            stock.setValue(placeholder != 0 ? "" : Long.toString(pendingStock == null ? menu.getKeepStock() : pendingStock));
             stock.moveCursorToStart(false);
             stockDirty = false;
         }
@@ -248,12 +267,9 @@ public final class NodeConfigurationPanel {
         return topology != null && !topology.channelName().isBlank() ? Component.literal(topology.channelName()) : tr("channel").copy().append(" " + (node.channel() + 1));
     }
 
-    private int rowY(int y) {
-        return menu.showsInputSettings() && !menu.showsOutputSettings() && y >= 20 && y < 100 ? y + (y / 20) * 4 : y;
-    }
-
-    public int resourceRowY() {
-        return rowY(RESOURCE_ROW_Y);
+    private int numberRowY() {
+        if (!menu.showsOutputSettings()) return STRATEGY_Y;
+        return batchEditing ? STRATEGY_Y + CONTROL_HEIGHT + 2 : NUMBER_FIELD_Y;
     }
 
     private void stepper(GuiGraphics g, EditBox box, int mx, int my) {
@@ -288,7 +304,7 @@ public final class NodeConfigurationPanel {
         if (!box.visible || mx < box.getX() + box.getWidth() || mx >= box.getX() + box.getWidth() + STEPPER_WIDTH
             || my < box.getY() || my >= box.getY() + box.getHeight()) return false;
         try {
-            long value = CompactNumberInput.parse(box.getValue());
+            long value = box.getValue().isEmpty() && batchEditing ? 0 : CompactNumberInput.parse(box.getValue());
             boolean increase = my < box.getY() + box.getHeight() / 2;
             long minimum = isPriority ? Long.MIN_VALUE : 0;
             if (value < minimum) throw new IllegalArgumentException();
@@ -310,33 +326,50 @@ public final class NodeConfigurationPanel {
     }
 
     private void text(GuiGraphics g, Component text, int x, int y, int color) {
-        g.drawString(font, text, left + x, top + Y + rowY(y), color, false);
+        g.drawString(font, text, left + x, top + NODE_CONFIG_Y + y, color, false);
     }
 
     private void button(GuiGraphics g, Component label, int x, int y, int width, boolean selected, boolean active) {
-        y = rowY(y);
-        ConfiguratorStyle.button(g, left + x, top + Y + y, width, CONTROL_HEIGHT, selected, false);
-        Component fitted = Component.literal(font.plainSubstrByWidth(label.getString(), width - 6));
-        g.drawString(font, fitted, left + x + (width - font.width(fitted)) / 2, top + Y + y + BUTTON_TEXT_Y, active ? ConfiguratorStyle.TEXT : 0xFF60606A, false);
+        ConfiguratorStyle.button(g, left + x, top + NODE_CONFIG_Y + y, width, CONTROL_HEIGHT, selected, false);
+        ConfiguratorStyle.fittedLabel(g, font, label, left + x + 3, top + NODE_CONFIG_Y + y, width - 6, CONTROL_HEIGHT,
+            active ? ConfiguratorStyle.TEXT : ConfiguratorStyle.MUTED_TEXT, true);
     }
 
     private void dropdownButton(GuiGraphics g, Component label, int x, int y, int width, boolean selected, boolean active, boolean expanded) {
-        int drawY = top + Y + rowY(y);
+        int drawY = top + NODE_CONFIG_Y + y;
         ConfiguratorStyle.button(g, left + x, drawY, width, CONTROL_HEIGHT, selected, false, active);
-        String text = font.plainSubstrByWidth(label.getString(), width - 18);
-        g.drawString(font, text, left + x + (width - DROPDOWN_ARROW_TEXT_SPACE - font.width(text)) / 2, drawY + DROPDOWN_TEXT_Y,
-            active ? ConfiguratorStyle.TEXT : ConfiguratorStyle.MUTED_TEXT, false);
+        ConfiguratorStyle.fittedLabel(g, font, label, left + x + 3, drawY, width - 18, CONTROL_HEIGHT,
+            active ? ConfiguratorStyle.TEXT : ConfiguratorStyle.MUTED_TEXT, true);
         if (expanded) SLGuiTextures.ARROW_DOWN.upsideDown(g, left + x + width - 12, drawY + 6);
         else SLGuiTextures.ARROW_DOWN.draw(g, left + x + width - 12, drawY + 6);
     }
 
     public void render(GuiGraphics g, int mx, int my) {
-        Component header = Component.translatable("gui.staticlogistics.node_configuration");
-        if (menu.hasTarget())
-            header = Component.translatable("gui.staticlogistics.node.configuration_target", header, menu.getPos().toShortString(), NodeDisplayText.direction(menu.getFace()));
-        if (menu.hasTarget() && batchEditing)
-            header = Component.translatable("gui.staticlogistics.batch.title", batchSize);
-        text(g, header, LABEL_X, HEADER_TEXT_Y, ConfiguratorStyle.ACCENT);
+        if (menu.hasTarget()) {
+            var node = menu.getTargetNode();
+            var level = Minecraft.getInstance().level;
+            if (level != null && level.dimension().equals(node.gPos().dimension()) && level.getChunkSource().hasChunk(node.gPos().pos().getX() >> 4, node.gPos().pos().getZ() >> 4))
+                g.renderItem(new ItemStack(level.getBlockState(node.gPos().pos()).getBlock()), left + 176, top + NODE_CONFIG_Y + 6);
+            int width = menu.canEditTarget() ? 199 : 129;
+            if (batchEditing) {
+                ConfiguratorStyle.fittedLabel(g, font, Component.translatable("gui.staticlogistics.batch.title", batchSize),
+                    left + 196, top + NODE_CONFIG_Y + 6, width, 16, ConfiguratorStyle.ACCENT, false);
+            } else {
+                var pos = node.gPos().pos();
+                var location = Component.empty()
+                    .append(Component.literal("x:").withColor(0xFF0000)).append(" " + pos.getX() + "   ")
+                    .append(Component.literal("y:").withColor(0x00FF00)).append(" " + pos.getY() + "   ")
+                    .append(Component.literal("z:").withColor(0x0000FF)).append(" " + pos.getZ());
+                int locationWidth = Math.min(font.width(location), width * 3 / 5);
+                var heading = Component.translatable("gui.staticlogistics.node.face_title." + node.face().getName(), GroupContentsPanel.name(node));
+                ConfiguratorStyle.fittedLabel(g, font, heading, left + 196, top + NODE_CONFIG_Y + 6,
+                    width - locationWidth - 6, 16, ConfiguratorStyle.ACCENT, false);
+                int locationX = left + 196 + Math.min(font.width(heading), width - locationWidth - 6) + 6;
+                ConfiguratorStyle.fittedLabel(g, font, location, locationX, top + NODE_CONFIG_Y + 6, locationWidth, 16,
+                    ConfiguratorStyle.MUTED_TEXT, false);
+
+            }
+        }
         if (!menu.hasTarget()) {
             text(g, Component.translatable("gui.staticlogistics.blocks.select_face"), LABEL_X, EMPTY_SELECTION_TEXT_Y, ConfiguratorStyle.MUTED_TEXT);
             return;
@@ -344,22 +377,15 @@ public final class NodeConfigurationPanel {
         text(g, tr("face_channels"), LABEL_X, CHANNEL_LABEL_Y, ConfiguratorStyle.TEXT);
         dropdownButton(g, channelName(menu.getTargetNode()), CHANNEL_LIST_X, CHANNEL_BUTTON_Y, CHANNEL_LIST_WIDTH, true, true, channelDropdownOpen);
         boolean addHovered = hit(mx, my, ADD_CHANNEL_X, ADD_CHANNEL_Y, ADD_CHANNEL_WIDTH, ADD_CHANNEL_HEIGHT);
-        (addHovered ? SLGuiTextures.ADD_SELECTED : SLGuiTextures.ADD).draw(g, left + ADD_CHANNEL_X + ADD_CHANNEL_ICON_X, top + Y + rowY(ADD_CHANNEL_Y) + ADD_CHANNEL_ICON_Y);
+        (addHovered ? SLGuiTextures.ADD_SELECTED : SLGuiTextures.ADD).draw(g, left + ADD_CHANNEL_X + ADD_CHANNEL_ICON_X, top + NODE_CONFIG_Y + ADD_CHANNEL_Y + ADD_CHANNEL_ICON_Y);
         if (menu.getTargetNode().isConnectionFace()) {
             text(g, tr("channel_empty_hint"), LABEL_X, EMPTY_CHANNEL_TEXT_Y, ConfiguratorStyle.MUTED_TEXT);
             var sharedSlot = menu.getSlot(1);
             if (sharedSlot.isActive()) {
-                text(g, tr("upgrade"), UPGRADE_LABEL_X, UPGRADE_LABEL_Y, ConfiguratorStyle.TEXT);
+                ConfiguratorStyle.fittedLabel(g, font, tr("upgrade"), left + RIGHT_LABEL_X, top + sharedSlot.y, sharedSlot.x - RIGHT_LABEL_X - 6, 16, ConfiguratorStyle.TEXT, false);
                 ConfiguratorStyle.slot(g, left + sharedSlot.x, top + sharedSlot.y);
             }
             return;
-        }
-        button(g, Component.translatable("gui.staticlogistics.preset.save"), PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, false, true);
-        button(g, Component.translatable("gui.staticlogistics.preset.apply"), PRESET_APPLY_X, PRESET_Y, PRESET_WIDTH, false, true);
-        for (int row : new int[]{39, 59, 79, 99, 119, 139}) {
-            if (menu.showsInputSettings() && !menu.showsOutputSettings() && row == 99) continue;
-            int separator = rowY(row);
-            ConfiguratorStyle.separator(g, left + SEPARATOR_X, top + Y + separator, SEPARATOR_WIDTH);
         }
         text(g, tr("mode"), LABEL_X, MODE_LABEL_Y, ConfiguratorStyle.TEXT);
         NodeRole role = preview(new ChannelConfigurationEdit.RoleEdit(currentRole())).role();
@@ -367,10 +393,10 @@ public final class NodeConfigurationPanel {
         button(g, Component.translatable("gui.staticlogistics.blocks.insert"), INSERT_X, ROLE_Y, ROLE_WIDTH, role == NodeRole.RECEIVER, true);
         button(g, tr("both"), BOTH_X, ROLE_Y, ROLE_WIDTH, role == NodeRole.BOTH, true);
         boolean enabled = preview(new ChannelConfigurationEdit.EnabledEdit(menu.isChannelEnabled())).enabled();
-        button(g, Component.translatable(enabled ? "gui.staticlogistics.reference.disable" : "gui.staticlogistics.reference.enable"), ENABLE_X, ROLE_Y, ENABLE_WIDTH, !enabled, true);
+        button(g, Component.translatable(enabled ? "gui.staticlogistics.reference.disable" : "gui.staticlogistics.reference.enable"), ENABLE_X, CHANNEL_BUTTON_Y, ENABLE_WIDTH, !enabled, true);
         boolean outputResources = menu.showsOutputSettings();
         text(g, Component.translatable(outputResources ? "gui.staticlogistics.reference.resources" : "gui.staticlogistics.resources.receivable"), LABEL_X, RESOURCE_LABEL_Y, ConfiguratorStyle.TEXT);
-        ConfiguratorStyle.button(g, left + RESOURCE_BUTTON_X, top + Y + resourceRowY(), RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT,
+        ConfiguratorStyle.button(g, left + RESOURCE_BUTTON_X, top + NODE_CONFIG_Y + RESOURCE_ROW_Y, RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT,
             false, outputResources && hit(mx, my, RESOURCE_BUTTON_X, RESOURCE_ROW_Y, RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT));
         List<ResourceLocation> types = resourceTypes();
         int iconX = left + RESOURCE_BUTTON_X + RESOURCE_ICON_INSET_X;
@@ -378,51 +404,71 @@ public final class NodeConfigurationPanel {
         int iconRight = left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - (types.size() > RESOURCE_OVERFLOW_THRESHOLD ? RESOURCE_OVERFLOW_RIGHT_INSET - 1 : RESOURCE_ARROW_RIGHT_INSET);
         for (var type : TransferRegistries.getAllActive())
             if (types.contains(type.typeId()) && iconX + RESOURCE_ICON_SIZE < iconRight) {
-                g.renderItem(type.getIcon(), iconX, top + Y + resourceRowY() + RESOURCE_ICON_INSET_Y);
+                g.renderItem(type.getIcon(), iconX, top + NODE_CONFIG_Y + RESOURCE_ROW_Y + RESOURCE_ICON_INSET_Y);
                 if (types.size() == 1)
-                    g.drawString(font, Component.translatable(type.translationKey()), iconX + RESOURCE_TEXT_GAP, top + Y + resourceRowY() + RESOURCE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                    g.drawString(font, Component.translatable(type.translationKey()), iconX + RESOURCE_TEXT_GAP, top + NODE_CONFIG_Y + RESOURCE_ROW_Y + RESOURCE_TEXT_Y, ConfiguratorStyle.TEXT, false);
                 iconX += RESOURCE_ICON_STEP;
                 drawnTypes++;
             }
         if (drawnTypes < types.size()) g.drawString(font, "+" + (types.size() - drawnTypes),
-            left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - RESOURCE_OVERFLOW_RIGHT_INSET, top + Y + resourceRowY() + RESOURCE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+            left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - RESOURCE_OVERFLOW_RIGHT_INSET, top + NODE_CONFIG_Y + RESOURCE_ROW_Y + RESOURCE_TEXT_Y, ConfiguratorStyle.TEXT, false);
         if (outputResources)
-            SLGuiTextures.ARROW_DOWN.draw(g, left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - RESOURCE_ARROW_RIGHT_INSET, top + Y + resourceRowY() + RESOURCE_ARROW_Y);
-        text(g, tr("redstone"), LABEL_X, REDSTONE_LABEL_Y, ConfiguratorStyle.TEXT);
-        button(g, tr("redstone_" + preview(new ChannelConfigurationEdit.RedstoneEdit(menu.getRedstoneMode())).mode().name().toLowerCase(Locale.ROOT)), REDSTONE_X, REDSTONE_Y, REDSTONE_WIDTH, false, true);
+            SLGuiTextures.ARROW_DOWN.draw(g, left + RESOURCE_BUTTON_X + RESOURCE_BUTTON_WIDTH - RESOURCE_ARROW_RIGHT_INSET, top + NODE_CONFIG_Y + RESOURCE_ROW_Y + RESOURCE_ARROW_Y);
+        text(g, tr("redstone"), RIGHT_LABEL_X, REDSTONE_LABEL_Y, ConfiguratorStyle.TEXT);
+        button(g, tr("redstone_" + preview(new ChannelConfigurationEdit.RedstoneEdit(menu.getRedstoneMode())).mode().name().toLowerCase(Locale.ROOT)), RIGHT_CONTROL_X, REDSTONE_Y, RIGHT_CONTROL_WIDTH, false, true);
         if (menu.showsOutputSettings()) {
             text(g, tr("distribution"), LABEL_X, STRATEGY_LABEL_Y, ConfiguratorStyle.TEXT);
             dropdownButton(g, preview(new ChannelConfigurationEdit.StrategyEdit(menu.getStrategy())).strategy().getDisplayName(), STRATEGY_X, STRATEGY_Y, STRATEGY_WIDTH, true, true, false);
             text(g, tr("extraction"), RIGHT_LABEL_X, STRATEGY_LABEL_Y, ConfiguratorStyle.TEXT);
-            dropdownButton(g, preview(new ChannelConfigurationEdit.ExtractionEdit(menu.getExtractionMode())).mode().getDisplayName(), EXTRACTION_X, STRATEGY_Y, EXTRACTION_WIDTH, true, true, false);
+            dropdownButton(g, preview(new ChannelConfigurationEdit.ExtractionEdit(menu.getExtractionMode())).mode().getDisplayName(), RIGHT_CONTROL_X, STRATEGY_Y, RIGHT_CONTROL_WIDTH, true, true, false);
         }
         if (menu.showsInputSettings()) {
-            text(g, Component.translatable("gui.staticlogistics.label.target_priority"), LABEL_X, INPUT_LABEL_Y, ConfiguratorStyle.TEXT);
-            text(g, Component.translatable("gui.staticlogistics.label.keep_stock"), RIGHT_LABEL_X, INPUT_LABEL_Y, ConfiguratorStyle.TEXT);
-        } else {
-            text(g, Component.translatable("gui.staticlogistics.reference.interval"), LABEL_X, INTERVAL_LABEL_Y, ConfiguratorStyle.TEXT);
-            text(g, Component.literal(LogisticsCalculator.calcSpeedInterval(
-                SLConfig.getDefaultTickInterval(), menu.getSpeedMultiplier()) + " tick"), INTERVAL_VALUE_X, INTERVAL_LABEL_Y, ConfiguratorStyle.MUTED_TEXT);
+            text(g, Component.translatable("gui.staticlogistics.label.target_priority"), LABEL_X, numberRowY() + 5, ConfiguratorStyle.TEXT);
+            text(g, Component.translatable("gui.staticlogistics.label.keep_stock"), RIGHT_LABEL_X, numberRowY() + 5, ConfiguratorStyle.TEXT);
         }
         if (priority.visible) stepper(g, priority, mx, my);
         if (stock.visible) stepper(g, stock, mx, my);
         var slot = menu.getSlot(0);
         if (!batchEditing) {
-            text(g, Component.translatable("gui.staticlogistics.filter"), LABEL_X, FILTER_LABEL_Y, ConfiguratorStyle.TEXT);
-            ConfiguratorStyle.slot(g, left + slot.x, top + slot.y, hit(mx, my, slot.x, slot.y - Y, 16, 16));
+            ConfiguratorStyle.fittedLabel(g, font, Component.translatable("gui.staticlogistics.filter"), left + LABEL_X, top + slot.y, slot.x - LABEL_X - 6, 16, ConfiguratorStyle.TEXT, false);
+            ConfiguratorStyle.slot(g, left + slot.x, top + slot.y, hit(mx, my, slot.x, slot.y - NODE_CONFIG_Y, 16, 16));
         }
         var upgradeSlot = menu.getSlot(1);
         if (upgradeSlot.isActive()) {
-            text(g, tr("upgrade"), UPGRADE_LABEL_X, UPGRADE_LABEL_Y, ConfiguratorStyle.TEXT);
-            ConfiguratorStyle.slot(g, left + upgradeSlot.x, top + upgradeSlot.y, hit(mx, my, upgradeSlot.x, upgradeSlot.y - Y, 16, 16));
+            ConfiguratorStyle.fittedLabel(g, font, tr("upgrade"), left + RIGHT_LABEL_X, top + upgradeSlot.y, upgradeSlot.x - RIGHT_LABEL_X - 6, 16, ConfiguratorStyle.TEXT, false);
+            ConfiguratorStyle.slot(g, left + upgradeSlot.x, top + upgradeSlot.y, hit(mx, my, upgradeSlot.x, upgradeSlot.y - NODE_CONFIG_Y, 16, 16));
         }
         if (batchEditing) {
-            text(g, Component.translatable("gui.staticlogistics.batch.pending", batchSize), LABEL_X, BATCH_LABEL_Y, ConfiguratorStyle.MUTED_TEXT);
-            button(g, Component.translatable("gui.staticlogistics.batch.reset"), BATCH_RESET_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, false, editSession.hasBatchDraft());
-            button(g, Component.translatable("gui.staticlogistics.resources.apply"),
-                BATCH_APPLY_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, editSession.hasBatchDraft(), editSession.canEdit() && editSession.hasBatchDraft());
+            int y = top + NODE_CONFIG_Y + batchActionsY();
+            ConfiguratorStyle.fittedLabel(g, font, batchSummary(), left + LABEL_X, y,
+                BATCH_RESET_X - LABEL_X - 5, BATCH_BUTTON_HEIGHT, ConfiguratorStyle.MUTED_TEXT, false);
+            boolean pending = editSession.hasBatchDraft();
+            batchButton(g, "gui.staticlogistics.batch.reset", BATCH_RESET_X, y, false, pending && editSession.canEdit());
+            batchButton(g, "gui.staticlogistics.resources.apply", BATCH_APPLY_X, y, pending, pending && editSession.canEdit());
         }
         if (!error.isEmpty()) text(g, Component.literal(error), LABEL_X, ERROR_LABEL_Y, 0xFF9D2525);
+    }
+
+    private int batchActionsY() {
+        return menu.showsInputSettings() && menu.showsOutputSettings()
+            ? numberRowY() + NUMBER_FIELD_HEIGHT + 3 : STRATEGY_Y + CONTROL_HEIGHT + 6;
+    }
+
+    private void batchButton(GuiGraphics g, String key, int x, int y, boolean selected, boolean enabled) {
+        ConfiguratorStyle.button(g, left + x, y, BATCH_BUTTON_WIDTH, BATCH_BUTTON_HEIGHT, selected, false, enabled);
+        ConfiguratorStyle.fittedLabel(g, font, Component.translatable(key), left + x + 3, y,
+            BATCH_BUTTON_WIDTH - 6, BATCH_BUTTON_HEIGHT, enabled ? ConfiguratorStyle.TEXT : ConfiguratorStyle.MUTED_TEXT, true);
+    }
+
+    private Component batchSummary() {
+        var edits = editSession.batchEdits();
+        if (edits.isEmpty()) return Component.translatable("gui.staticlogistics.batch.pending");
+        var summary = Component.translatable("gui.staticlogistics.batch.draft_summary", edits.size());
+        if (edits.getLast() instanceof ChannelConfigurationEdit.NumberEdit n) {
+            summary.append(" · ").append(Component.translatable(n.field() == ChannelConfigurationEdit.NumberField.PRIORITY
+                ? "gui.staticlogistics.label.target_priority" : "gui.staticlogistics.label.keep_stock")).append(" " + n.value());
+        }
+        return summary;
     }
 
     private List<ResourceLocation> resourceTypes() {
@@ -434,11 +480,10 @@ public final class NodeConfigurationPanel {
 
     public void renderTooltips(GuiGraphics g, int mx, int my) {
         if (!menu.hasTarget()) return;
-        if (!menu.getTargetNode().isConnectionFace() && (hit(mx, my, PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT)
-            || hit(mx, my, PRESET_APPLY_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT))) {
-            boolean save = hit(mx, my, PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT);
-            g.renderComponentTooltip(font, List.of(Component.translatable(save ? "gui.staticlogistics.preset.save_hint" : "gui.staticlogistics.preset.apply_hint"),
-                Component.translatable("gui.staticlogistics.preset.contents_hint")), mx, my);
+        var upgrade = menu.getSlot(1);
+        if (upgrade.isActive() && hit(mx, my, upgrade.x, upgrade.y - NODE_CONFIG_Y, 16, 16) && menu.showsOutputSettings()) {
+            g.renderTooltip(font, Component.translatable("gui.staticlogistics.reference.interval").append(" " +
+                LogisticsCalculator.calcSpeedInterval(SLConfig.getDefaultTickInterval(), menu.getSpeedMultiplier()) + " tick"), mx, my);
             return;
         }
         if (hit(mx, my, RESOURCE_BUTTON_X, RESOURCE_ROW_Y, RESOURCE_BUTTON_WIDTH, RESOURCE_BUTTON_HEIGHT)) {
@@ -464,7 +509,7 @@ public final class NodeConfigurationPanel {
             g.renderTooltip(font, tr("channel_local_hint"), mx, my);
         else {
             var slot = menu.getSlot(0);
-            if (hit(mx, my, slot.x, slot.y - Y, 16, 16)) g.renderTooltip(font, tr("filter_help"), mx, my);
+            if (hit(mx, my, slot.x, slot.y - NODE_CONFIG_Y, 16, 16)) g.renderTooltip(font, tr("filter_help"), mx, my);
         }
     }
 
@@ -475,7 +520,7 @@ public final class NodeConfigurationPanel {
 
     public boolean renderChannelDropdown(GuiGraphics g, int mx, int my) {
         if (!settingLabels.isEmpty()) {
-            int x = left + (extractionDropdown ? EXTRACTION_MENU_X : STRATEGY_MENU_X), y = top + Y + settingDropdownY();
+            int x = left + (extractionDropdown ? EXTRACTION_MENU_X : STRATEGY_MENU_X), y = top + NODE_CONFIG_Y + settingDropdownY();
             int rows = Math.min(CHANNEL_ROWS, settingLabels.size());
             g.pose().pushPose();
             g.pose().translate(0, 0, 600);
@@ -497,7 +542,7 @@ public final class NodeConfigurationPanel {
         }
         if (!channelDropdownOpen) return false;
         int rows = Math.min(CHANNEL_ROWS, dropdownOptions.size());
-        int x = left + CHANNEL_LIST_X, y = top + Y + rowY(CHANNEL_LIST_Y);
+        int x = left + CHANNEL_LIST_X, y = top + NODE_CONFIG_Y + CHANNEL_LIST_Y;
         boolean hasScrollbar = dropdownOptions.size() > rows;
         int rowWidth = CHANNEL_LIST_WIDTH - CHANNEL_LIST_INSET * 2 - (hasScrollbar ? CHANNEL_LIST_SCROLL_WIDTH : 0);
         g.pose().pushPose();
@@ -513,7 +558,7 @@ public final class NodeConfigurationPanel {
             g.drawString(font, font.plainSubstrByWidth(label.getString(), rowWidth - CHANNEL_LIST_TEXT_INSET * 2), x + CHANNEL_LIST_INSET + CHANNEL_LIST_TEXT_INSET, rowY + CHANNEL_LIST_TEXT_Y, selected ? ConfiguratorStyle.ACCENT : ConfiguratorStyle.TEXT, false);
         }
         if (hasScrollbar) {
-            int track = rows * CHANNEL_ROW_HEIGHT, thumb = SLGuiTextures.Scrollbar.HEIGHT;
+            int track = rows * CHANNEL_ROW_HEIGHT, thumb = SLGuiTextures.SCROLL_THUMB.height();
             int offset = channelScroll * (track - thumb) / (dropdownOptions.size() - rows);
             ConfiguratorStyle.scrollbar(g, x + CHANNEL_LIST_WIDTH - CHANNEL_LIST_INSET - CHANNEL_LIST_SCROLL_WIDTH, y + CHANNEL_LIST_INSET, track, offset, true);
         }
@@ -526,7 +571,7 @@ public final class NodeConfigurationPanel {
             int x = (extractionDropdown ? EXTRACTION_MENU_X : STRATEGY_MENU_X) + SETTING_MENU_INSET;
             int rows = Math.min(CHANNEL_ROWS, settingLabels.size());
             if (button == 0 && hit(mx, my, x, settingDropdownY() + SETTING_MENU_INSET, SETTING_MENU_WIDTH - SETTING_MENU_INSET * 2, rows * CHANNEL_ROW_HEIGHT)) {
-                int row = (int) (my - top - Y - settingDropdownY() - SETTING_MENU_INSET) / CHANNEL_ROW_HEIGHT;
+                int row = (int) (my - top - NODE_CONFIG_Y - settingDropdownY() - SETTING_MENU_INSET) / CHANNEL_ROW_HEIGHT;
                 send(settingEdits.get(settingScroll + row));
                 playClick.run();
             }
@@ -537,7 +582,7 @@ public final class NodeConfigurationPanel {
         if (!channelDropdownOpen) return false;
         int rows = Math.min(CHANNEL_ROWS, dropdownOptions.size());
         int listX = left + CHANNEL_LIST_X + CHANNEL_LIST_INSET;
-        int listY = top + Y + rowY(CHANNEL_LIST_Y) + CHANNEL_LIST_INSET;
+        int listY = top + NODE_CONFIG_Y + CHANNEL_LIST_Y + CHANNEL_LIST_INSET;
         int rowWidth = CHANNEL_LIST_WIDTH - CHANNEL_LIST_INSET * 2 - (dropdownOptions.size() > rows ? CHANNEL_LIST_SCROLL_WIDTH : 0);
         if ((button == 0 || button == 1) && mx >= listX && mx < listX + rowWidth && my >= listY && my < listY + rows * CHANNEL_ROW_HEIGHT) {
             int row = (int) (my - listY) / CHANNEL_ROW_HEIGHT;
@@ -566,21 +611,7 @@ public final class NodeConfigurationPanel {
 
     public boolean mouseClicked(double mx, double my, int button) {
         if (!menu.hasTarget()) return false;
-        if (!menu.getTargetNode().isConnectionFace() && hit(mx, my, PRESET_SAVE_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT)) {
-            if (button == 0) {
-                savePreset.run();
-                playClick.run();
-            }
-            return true;
-        }
-        if (!menu.getTargetNode().isConnectionFace() && hit(mx, my, PRESET_APPLY_X, PRESET_Y, PRESET_WIDTH, CONTROL_HEIGHT)) {
-            if (button == 0) {
-                applyPreset.run();
-                playClick.run();
-            }
-            return true;
-        }
-        if (batchEditing && hit(mx, my, BATCH_RESET_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, CONTROL_HEIGHT)) {
+        if (batchEditing && hit(mx, my, BATCH_RESET_X, batchActionsY(), BATCH_BUTTON_WIDTH, BATCH_BUTTON_HEIGHT)) {
             if (button == 0 && editSession.canEdit()) {
                 unfocusEditors(-1, -1);
                 resetBatch.run();
@@ -589,7 +620,7 @@ public final class NodeConfigurationPanel {
             }
             return true;
         }
-        if (batchEditing && hit(mx, my, BATCH_APPLY_X, BATCH_BUTTON_Y, BATCH_BUTTON_WIDTH, CONTROL_HEIGHT)) {
+        if (batchEditing && hit(mx, my, BATCH_APPLY_X, batchActionsY(), BATCH_BUTTON_WIDTH, BATCH_BUTTON_HEIGHT)) {
             if (button == 0 && editSession.canEdit()) {
                 applyBatch.run();
                 playClick.run();
@@ -618,8 +649,8 @@ public final class NodeConfigurationPanel {
         if (menu.getTargetNode().isConnectionFace()) return false;
         if (numberArrowClicked(mx, my, button)) return true;
         if (button == 0 && menu.showsOutputSettings()
-            && (hit(mx, my, STRATEGY_X, STRATEGY_Y, STRATEGY_WIDTH, CONTROL_HEIGHT) || hit(mx, my, EXTRACTION_X, STRATEGY_Y, EXTRACTION_WIDTH, CONTROL_HEIGHT))) {
-            extractionDropdown = hit(mx, my, EXTRACTION_X, STRATEGY_Y, EXTRACTION_WIDTH, CONTROL_HEIGHT);
+            && (hit(mx, my, STRATEGY_X, STRATEGY_Y, STRATEGY_WIDTH, CONTROL_HEIGHT) || hit(mx, my, RIGHT_CONTROL_X, STRATEGY_Y, RIGHT_CONTROL_WIDTH, CONTROL_HEIGHT))) {
+            extractionDropdown = hit(mx, my, RIGHT_CONTROL_X, STRATEGY_Y, RIGHT_CONTROL_WIDTH, CONTROL_HEIGHT);
             if (extractionDropdown) {
                 settingLabels = Arrays.stream(ExtractionMode.values()).map(ExtractionMode::getDisplayName).toList();
                 settingEdits = Arrays.stream(ExtractionMode.values())
@@ -636,7 +667,7 @@ public final class NodeConfigurationPanel {
             playClick.run();
             return true;
         }
-        if (hit(mx, my, REDSTONE_X, REDSTONE_Y, REDSTONE_WIDTH, CONTROL_HEIGHT)) {
+        if (hit(mx, my, RIGHT_CONTROL_X, REDSTONE_Y, RIGHT_CONTROL_WIDTH, CONTROL_HEIGHT)) {
             send(new ChannelConfigurationEdit.RedstoneEdit(preview(new ChannelConfigurationEdit.RedstoneEdit(menu.getRedstoneMode())).mode().next()));
             playClick.run();
             return true;
@@ -653,13 +684,13 @@ public final class NodeConfigurationPanel {
             selectRole(NodeRole.BOTH);
             return true;
         }
-        if (hit(mx, my, ENABLE_X, ROLE_Y, ENABLE_WIDTH, CONTROL_HEIGHT)) {
+        if (hit(mx, my, ENABLE_X, CHANNEL_BUTTON_Y, ENABLE_WIDTH, CONTROL_HEIGHT)) {
             send(new ChannelConfigurationEdit.EnabledEdit(!preview(new ChannelConfigurationEdit.EnabledEdit(menu.isChannelEnabled())).enabled()));
             playClick.run();
             return true;
         }
         var slot = menu.getSlot(0);
-        if (button == 1 && slot.isActive() && !slot.getItem().isEmpty() && hit(mx, my, slot.x, slot.y - Y, 16, 16)) {
+        if (button == 1 && slot.isActive() && !slot.getItem().isEmpty() && hit(mx, my, slot.x, slot.y - NODE_CONFIG_Y, 16, 16)) {
             openFilter.run();
             return true;
         }
@@ -683,7 +714,7 @@ public final class NodeConfigurationPanel {
     }
 
     private boolean hit(double mx, double my, int x, int y, int w, int h) {
-        return mx >= left + x && mx < left + x + w && my >= top + Y + rowY(y) && my < top + Y + rowY(y) + h;
+        return mx >= left + x && mx < left + x + w && my >= top + NODE_CONFIG_Y + y && my < top + NODE_CONFIG_Y + y + h;
     }
 
     public EditBox editorAt(double x, double y) {

@@ -7,17 +7,17 @@ public final class MenuLayout {
     /// 物品栏整块素材为 166×82；格子边框距左上角两像素，物品再内缩一像素。
     public static final int INVENTORY_WIDTH = 166;
     public static final int INVENTORY_HEIGHT = 82;
-    public static final int LINK_INVENTORY_X = 288;
-    public static final int LINK_INVENTORY_Y = 189;
+    public static final int LINK_INVENTORY_X = 192;
+    public static final int LINK_INVENTORY_Y = 197;
     public static final int INVENTORY_SLOT_X = 3;
     public static final int INVENTORY_SLOT_Y = 3;
     public static final int HOTBAR_SLOT_Y = 63;
 
     /// 节点配置区内的真实槽位坐标，与客户端绘制共用。
-    public static final int NODE_FILTER_X = 66;
-    public static final int LINK_NODE_Y = 118;
-    public static final int NODE_SLOT_Y = LINK_NODE_Y + 144;
-    public static final int NODE_UPGRADE_X = 174;
+    public static final int NODE_FILTER_X = 203;
+    public static final int LINK_NODE_Y = 34;
+    public static final int NODE_SLOT_Y = LINK_NODE_Y + 119;
+    public static final int NODE_UPGRADE_X = 330;
 
     private MenuLayout() {
     }

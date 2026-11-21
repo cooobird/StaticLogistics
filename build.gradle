@@ -2,7 +2,7 @@ plugins {
     id 'java-library'
     id 'maven-publish'
     id 'idea'
-    id 'net.neoforged.moddev' version '2.0.140'
+    id 'net.neoforged.moddev' version '2.0.148'
 }
 
 version = mod_version
@@ -87,7 +87,10 @@ repositories {
         name = "Jared's maven"
         url = "https://maven.blamejared.com/"
     }
-    maven { url 'https://modmaven.dev/' }
+    maven {
+        name = "ModMaven"
+        url = "https://modmaven.dev"
+    }
     maven {
         url = "https://www.cursemaven.com"
         content {
@@ -141,10 +144,20 @@ repositories {
     }
 }
 
+configurations {
+    localRuntime {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+    runtimeClasspath.extendsFrom localRuntime
+}
+
 dependencies {
-    runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
-    compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
+    localRuntime("net.mezzdev.config:mezz_config-1.21.1-neoforge:$mezzConfigVersion")
+//    compileOnly("net.mezzdev.config:mezz_config-1.21.1-config-api:$mezzConfigVersion")
+    localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
+
 
     compileOnly "curse.maven:jade-324717:6011258"
     runtimeOnly "curse.maven:jade-324717:6011258"

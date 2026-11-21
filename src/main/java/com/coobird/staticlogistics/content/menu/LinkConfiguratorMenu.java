@@ -139,6 +139,12 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
     private boolean clientBatchSelection;
 
+    private boolean browsingFaces;
+
+    public void setBrowsingFaces(boolean browsing) {
+        browsingFaces = browsing;
+    }
+
     public void setClientBatchSelection(boolean batch) {
         clientBatchSelection = batch;
     }
@@ -891,7 +897,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean isActive() {
-            return !clientBatchSelection && hasTarget && channel >= 0;
+            return !browsingFaces && !clientBatchSelection && hasTarget && channel >= 0;
         }
 
         @Override
@@ -923,7 +929,7 @@ public class LinkConfiguratorMenu extends AbstractContainerMenu {
 
         @Override
         public boolean isActive() {
-            return !SLConfig.isSimpleMode() && !clientBatchSelection && hasTarget
+            return !browsingFaces && !SLConfig.isSimpleMode() && !clientBatchSelection && hasTarget
                 && (channel < 0 || showsOutputSettings());
         }
 

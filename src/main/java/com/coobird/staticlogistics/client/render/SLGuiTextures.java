@@ -1,8 +1,6 @@
 package com.coobird.staticlogistics.client.render;
 
 import com.coobird.staticlogistics.StaticLogistics;
-import com.coobird.staticlogistics.client.gui.ConfiguratorLayout;
-import com.coobird.staticlogistics.content.menu.MenuLayout;
 import com.mojang.math.Axis;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
@@ -56,9 +54,7 @@ public final class SLGuiTextures {
     public static final Region DISCLOSURE_RIGHT = new Region(53, 474, 4, 8);
     public static final Region ARROW_RIGHT = new Region(67, 476, 8, 8);
     public static final Region ARROW_LEFT = new Region(77, 476, 8, 8);
-    public static final Region SEPARATOR = new Region(1, 283, 1, 1);
     public static final Region DIRECTORY = new Region(194, 493, 16, 16);
-    public static final Region DIRECTORY_SELECTED = DIRECTORY;
     public static final Region LIST_SURFACE = new Region(379, 280, 81, 101);
     public static final Region SCROLL_TRACK = new Region(462, 280, 10, 101);
     public static final Region SCROLL_THUMB = new Region(427, 382, 8, 15);
@@ -118,28 +114,6 @@ public final class SLGuiTextures {
     }
 
     // 以下为界面布局尺寸，不是 atlas 裁剪区域。
-    public static final class LinkConfigurator {
-        public static final int GROUP_X = ConfiguratorLayout.SharedScreen.GROUP_X;
-        public static final int WIDTH = ConfiguratorLayout.SharedScreen.WIDTH, HEIGHT = ConfiguratorLayout.SharedScreen.HEIGHT, CONTENT_INSET = ConfiguratorLayout.SharedScreen.CONTENT_INSET;
-        public static final int CONTENT_WIDTH = ConfiguratorLayout.SharedScreen.CONTENT_WIDTH, CONTENT_HEIGHT = ConfiguratorLayout.SharedScreen.CONTENT_HEIGHT;
-        public static final int GROUP_CONTENT_X = ConfiguratorLayout.SharedScreen.GROUP_CONTENT_X, GROUP_CONTENT_Y = ConfiguratorLayout.SharedScreen.GROUP_CONTENT_Y;
-        public static final int GROUP_CONTENT_WIDTH = ConfiguratorLayout.SharedScreen.GROUP_CONTENT_WIDTH, GROUP_CONTENT_HEIGHT = ConfiguratorLayout.SharedScreen.GROUP_CONTENT_HEIGHT;
-        public static final int NODE_CONFIG_Y = ConfiguratorLayout.SharedScreen.NODE_CONFIG_Y, NODE_CONFIG_HEIGHT = ConfiguratorLayout.SharedScreen.NODE_CONFIG_HEIGHT;
-        public static final int INVENTORY_X = ConfiguratorLayout.SharedScreen.INVENTORY_X, INVENTORY_Y = ConfiguratorLayout.SharedScreen.INVENTORY_Y;
-    }
-
-    public static final class Background {
-        public static final int WIDTH = MenuLayout.BACKGROUND_WIDTH, HEIGHT = MenuLayout.BACKGROUND_HEIGHT;
-    }
-
-    public static final class Inventory {
-        public static final int WIDTH = MenuLayout.INVENTORY_WIDTH, HEIGHT = MenuLayout.INVENTORY_HEIGHT;
-    }
-
-    public static final class Scrollbar {
-        public static final int WIDTH = SCROLL_TRACK.width(), HEIGHT = SCROLL_THUMB.height();
-    }
-
     public static final class Icon {
         public static final int SELECTED_U = 3, NORMAL_U = 25;
         public static final int INPUT_V = 429, OUTPUT_V = 445, DISCONNECT_V = 461, WRENCH_V = 477, BLUEPRINT_V = 493;

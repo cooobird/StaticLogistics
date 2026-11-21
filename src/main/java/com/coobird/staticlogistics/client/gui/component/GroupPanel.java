@@ -1,12 +1,12 @@
 package com.coobird.staticlogistics.client.gui.component;
 
-import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.client.data.ClientConnection;
 import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel;
 import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel.Row;
 import com.coobird.staticlogistics.client.gui.ConfiguratorLayout;
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.SharedScreen;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.logistics.group.GroupHierarchy;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
@@ -39,15 +39,6 @@ import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.GroupDir
 public final class GroupPanel {
     // 面板与标题栏。
     // 右侧面板的横向位置。
-    public static final int SIDE_PANEL_X = SLGuiTextures.LinkConfigurator.GROUP_X;
-    public static final int BAR_W = ConfiguratorLayout.GroupDirectory.BAR_W;
-    public static final int BAR_X = ConfiguratorLayout.GroupDirectory.BAR_X;
-    public static final int BAR_Y = ConfiguratorLayout.GroupDirectory.BAR_Y;
-    public static final int LIST_OFFSET_X = ConfiguratorLayout.GroupDirectory.LIST_OFFSET_X;
-    public static final int LIST_OFFSET_Y = ConfiguratorLayout.GroupDirectory.LIST_OFFSET_Y;
-    public static final int SCROLLBAR_X = ConfiguratorLayout.GroupDirectory.SCROLLBAR_X;
-    public static final int SCROLLBAR_Y = ConfiguratorLayout.GroupDirectory.SCROLLBAR_Y;
-    public static final int SELECTION_WIDTH = ConfiguratorLayout.GroupDirectory.SELECTION_WIDTH;
     // 树形横向分支相对连接行顶端的纵向偏移。
     private static final int TREE_BRANCH_Y = ROW_HEIGHT / 2;
 
@@ -163,55 +154,6 @@ public final class GroupPanel {
         return dialog != null || grantDialog != null || !contextButtons.isEmpty();
     }
 
-    public void openPresetName(Consumer<String> save) {
-        contextButtons.clear();
-        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
-            "gui.staticlogistics.preset.name_title", "", true, false, "", List.of(),
-            (operation, value) -> save.accept(value.trim()), () -> dialog = null);
-    }
-
-    public void openPresetSelection(List<String> names, Consumer<String> select, Consumer<String> delete) {
-        contextButtons.clear();
-        var entries = names.stream().map(name -> new GroupHierarchyDialog.Destination(name,
-            name.isEmpty() ? Component.translatable("gui.staticlogistics.preset.legacy").getString() : name, "", true)).toList();
-        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
-            "gui.staticlogistics.preset.select_title", "", false, true, "preset_select", entries,
-            (operation, value) -> select.accept(value), () -> dialog = null);
-        dialog.onPresetDelete(name -> {
-            String displayName = name.isEmpty() ? Component.translatable("gui.staticlogistics.preset.legacy").getString() : name;
-            dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
-                "gui.staticlogistics.preset.delete_title", displayName, false, false, "delete", List.of(),
-                (operation, ignored) -> delete.accept(name), () -> dialog = null);
-        });
-    }
-
-    public void openPresetReview(List<String> labels, int targetCount, Consumer<Set<Integer>> apply) {
-        openPresetReview(labels, targetCount, apply, null);
-    }
-
-    public void openPresetReview(List<String> labels, int targetCount, Consumer<Set<Integer>> apply, Runnable back) {
-        var entries = new ArrayList<GroupHierarchyDialog.Destination>();
-        for (int i = 0; i < labels.size(); i++)
-            entries.add(new GroupHierarchyDialog.Destination(Integer.toString(i), labels.get(i), "", true));
-        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
-            targetCount > 1 ? "gui.staticlogistics.preset.review_batch_title" : "gui.staticlogistics.preset.review_title",
-            Integer.toString(targetCount), false, true, back == null ? "preset_review" : "preset_review_batch", entries,
-            (operation, value) -> {
-                if (operation.equals("back")) back.run();
-                else apply.accept(Arrays.stream(value.split(",")).map(Integer::parseInt).collect(Collectors.toSet()));
-            }, () -> dialog = null);
-    }
-
-    public void openPresetTargetSelection(List<LogisticsNode> targets, Consumer<LogisticsNode> select) {
-        var entries = new ArrayList<GroupHierarchyDialog.Destination>();
-        for (int i = 0; i < targets.size(); i++)
-            entries.add(new GroupHierarchyDialog.Destination(Integer.toString(i),
-                NodeDisplayText.details(targets.get(i)).getString(), "", true));
-        dialog = new GroupHierarchyDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
-            "gui.staticlogistics.preset.target_title", "", false, true, "preset_target", entries,
-            (operation, value) -> select.accept(targets.get(Integer.parseInt(value))), () -> dialog = null);
-    }
-
     public boolean dragDialog(double x, double y, int button, int width, int height) {
         return dialog != null && dialog.mouseDragged(x, y, button, width, height);
     }
@@ -286,6 +228,10 @@ public final class GroupPanel {
     public boolean dialogCharTyped(char character, int modifiers) {
         if (grantDialog != null) return grantDialog.typed(character, modifiers);
         return dialog != null && dialog.charTyped(character, modifiers);
+    }
+
+    public boolean overGrantButton(double x, double y) {
+        return grantButton.isMouseOver(x, y);
     }
 
     public boolean directoryMouseClicked(double x, double y, int button) {
@@ -423,7 +369,7 @@ public final class GroupPanel {
         directoryFont = font;
         originX = leftPos;
         originY = topPos;
-        directoryButtons.add(AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.directory.new_collection"), b -> openDirectoryDialog(true, true)).bounds(leftPos + SIDE_PANEL_X + ADD_GROUP_BUTTON_X, topPos + ADD_GROUP_BUTTON_Y, ADD_GROUP_BUTTON_WIDTH, ADD_GROUP_BUTTON_HEIGHT).build().icon(SLGuiTextures.ADD).iconOnly());
+        directoryButtons.add(AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.directory.new_collection"), b -> openDirectoryDialog(true, true)).bounds(leftPos + SharedScreen.GROUP_X + ADD_GROUP_BUTTON_X, topPos + ADD_GROUP_BUTTON_Y, ADD_GROUP_BUTTON_WIDTH, ADD_GROUP_BUTTON_HEIGHT).build().icon(SLGuiTextures.ADD).iconOnly());
         directoryButtons.get(0).setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.directory.new_collection_hint")));
         grantButton = AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.permissions.entry"), b -> {
             grantDialog = new PlayerGrantDialog(directoryFont, originX + DIALOG_X, originY + DIALOG_Y,
@@ -431,14 +377,14 @@ public final class GroupPanel {
                     recipient, Integer.toString(permission), ""),
                 enabled -> request("team_access", "", enabled ? "1" : "0", ""), () -> grantDialog = null);
             grantDialog.accept(hierarchy);
-        }).bounds(leftPos + SIDE_PANEL_X + GRANT_BUTTON_X, topPos + GRANT_BUTTON_Y, GRANT_BUTTON_WIDTH, GRANT_BUTTON_HEIGHT).build();
+        }).bounds(leftPos + SharedScreen.GROUP_X + GRANT_BUTTON_X, topPos + GRANT_BUTTON_Y, GRANT_BUTTON_WIDTH, GRANT_BUTTON_HEIGHT).build();
         grantButton.setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.permissions.title")));
         scopeButton = AtlasButton.atlasBuilder(Component.empty(), b -> openScopeMenu())
-            .bounds(leftPos + SIDE_PANEL_X + SCOPE_BUTTON_X, topPos + SCOPE_BUTTON_Y, SCOPE_BUTTON_WIDTH, SCOPE_BUTTON_HEIGHT).build();
+            .bounds(leftPos + SharedScreen.GROUP_X + SCOPE_BUTTON_X, topPos + SCOPE_BUTTON_Y, SCOPE_BUTTON_WIDTH, SCOPE_BUTTON_HEIGHT).build();
         scopeButton.setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.directory.scope_hint")));
-        int panelX = leftPos + SIDE_PANEL_X;
-        searchBox = new AtlasEditBox(font, panelX + BAR_X + SEARCH_TEXT_INSET, topPos + BAR_Y + SEARCH_TEXT_INSET,
-            BAR_TEXT_WIDTH, SEARCH_TEXT_HEIGHT, Component.empty());
+        int panelX = leftPos + SharedScreen.GROUP_X;
+        searchBox = new AtlasEditBox(font, panelX + LIST_OFFSET_X - 1 + ConfiguratorLayout.EditBoxStyle.FRAME_OUTSET, topPos + BAR_Y + SEARCH_TEXT_INSET,
+            SELECTION_WIDTH + 2 - 2 * ConfiguratorLayout.EditBoxStyle.FRAME_OUTSET, SEARCH_TEXT_HEIGHT, Component.empty());
         ((AtlasEditBox) searchBox).setRightInset(SEARCH_RIGHT_INSET);
         searchBox.setBordered(false);
         searchBox.setMaxLength(32);
@@ -473,7 +419,7 @@ public final class GroupPanel {
 
     private void openScopeMenu() {
         contextButtons.clear();
-        int x = originX + SIDE_PANEL_X + SCOPE_BUTTON_X;
+        int x = originX + SharedScreen.GROUP_X + SCOPE_BUTTON_X;
         int y = originY + SCOPE_BUTTON_Y + SCOPE_BUTTON_HEIGHT + SCOPE_MENU_GAP;
         var owners = ConnectionDirectoryModel.availableOwners();
         int pageCount = Math.max(1, (owners.size() + 4) / 5);
@@ -536,12 +482,12 @@ public final class GroupPanel {
                        float partialTick, double interfaceScale) {
         hoveredConnection = null;
         hoveredDirectory = null;
-        int panelX = leftPos + SIDE_PANEL_X;
+        int panelX = leftPos + SharedScreen.GROUP_X;
         String title = Component.translatable("gui.staticlogistics.directory.title").getString();
         int addX = Math.max(ADD_GROUP_BUTTON_X, TITLE_X + font.width(title) + TITLE_ADD_GAP);
         addX = Math.min(addX, SCOPE_BUTTON_X - ADD_GROUP_BUTTON_WIDTH - ADD_SCOPE_GAP);
         directoryButtons.get(0).setX(panelX + addX);
-        searchBox.setX(panelX + BAR_X + SEARCH_TEXT_INSET);
+        searchBox.setX(panelX + LIST_OFFSET_X - 1 + ConfiguratorLayout.EditBoxStyle.FRAME_OUTSET);
         searchBox.setY(topPos + BAR_Y + SEARCH_TEXT_INSET);
         searchBox.render(graphics, mouseX, mouseY, partialTick);
         renderGroups(graphics, font, panelX, topPos, mouseX, mouseY, interfaceScale);
@@ -550,7 +496,7 @@ public final class GroupPanel {
     private void renderGroups(GuiGraphics graphics, Font font,
                               int panelX, int topPos, int mouseX, int mouseY,
                               double interfaceScale) {
-        int searchIconX = panelX + BAR_X + BAR_W - SEARCH_ICON_RIGHT_INSET;
+        int searchIconX = panelX + SCROLLBAR_X - SEARCH_ICON_RIGHT_INSET;
         int searchIconY = topPos + BAR_Y + SEARCH_ICON_Y_OFFSET;
         boolean searchHovered = inside(mouseX, mouseY, searchIconX, searchIconY, SLGuiTextures.SEARCH_ICON_WIDTH, SLGuiTextures.SEARCH_ICON_HEIGHT);
         (searchHovered || searchBox.isFocused() ? SLGuiTextures.SEARCH_SELECTED : SLGuiTextures.SEARCH)
@@ -563,7 +509,9 @@ public final class GroupPanel {
         int listY = topPos + LIST_OFFSET_Y;
         int addY = addRowY(listY);
         SLGuiTextures.LIST_SURFACE.frame(graphics, listX - 1, listY - 1, SELECTION_WIDTH + 2, LIST_HEIGHT + 2, 1);
-        if (maximum > 0) renderScrollbar(graphics, panelX + SCROLLBAR_X, topPos + SCROLLBAR_Y, mouseX, mouseY, maximum);
+        if (maximum == 0)
+            SLGuiTextures.SCROLL_TRACK.frame(graphics, panelX + SCROLLBAR_X, topPos + SCROLLBAR_Y, SLGuiTextures.SCROLL_TRACK.width(), SCROLLBAR_TRACK_HEIGHT, 1);
+        else renderScrollbar(graphics, panelX + SCROLLBAR_X, topPos + SCROLLBAR_Y, mouseX, mouseY, maximum);
         String dropTarget = draggingConnections ? dropTarget(mouseX, mouseY, panelX, topPos) : null;
         GuiScissor.enable(graphics, interfaceScale, listX, listY, listX + SELECTION_WIDTH, addY);
         for (int index = 0; index < directoryRows.size(); index++) {
@@ -576,7 +524,6 @@ public final class GroupPanel {
             boolean active = row.connection() != null ? selectedConnections.contains(row.connection().key()) && selectedDirectory.isEmpty() : row.id().equals(selectedDirectory) || row.id().equals(dropTarget);
             if (active) ConfiguratorStyle.row(graphics, listX, rowY, SELECTION_WIDTH, ROW_HEIGHT, true, false);
             else {
-                graphics.fill(listX, rowY, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFF9DA2B7);
                 graphics.fill(listX, rowY + ROW_HEIGHT - ROW_DIVIDER_HEIGHT, listX + SELECTION_WIDTH, rowY + ROW_HEIGHT, 0xFF858AA0);
             }
             if (row.connection() != null) {
@@ -600,7 +547,7 @@ public final class GroupPanel {
                     listX + indent + CONNECTION_TEXT_X, rowY + DIRECTORY_TEXT_Y, ConfiguratorStyle.TEXT, false);
             } else {
                 ConfiguratorStyle.disclosure(graphics, listX + indent + FOLDER_ARROW_X, rowY + FOLDER_ARROW_Y, collapsed.contains(row.id()));
-                ConfiguratorStyle.directory(graphics, listX + indent + FOLDER_ICON_X, rowY + FOLDER_ICON_Y, active);
+                SLGuiTextures.DIRECTORY.draw(graphics, listX + indent + FOLDER_ICON_X, rowY + FOLDER_ICON_Y);
                 int textX = listX + indent + DIRECTORY_TEXT_X;
                 int textRight = listX + SELECTION_WIDTH - DIRECTORY_TEXT_RIGHT_INSET;
                 graphics.drawString(font,
@@ -634,7 +581,7 @@ public final class GroupPanel {
                                  int mouseX, int mouseY, int maximum) {
         boolean active = maximum > 0 && (scrolling
             || inside(mouseX, mouseY, x, y,
-            SLGuiTextures.Scrollbar.WIDTH, SCROLLBAR_TRACK_HEIGHT));
+            SLGuiTextures.SCROLL_TRACK.width(), SCROLLBAR_TRACK_HEIGHT));
         ConfiguratorStyle.scrollbar(graphics, x, y, SCROLLBAR_TRACK_HEIGHT, scrollKnobOffset(maximum) + SCROLLBAR_THUMB_Y_OFFSET, active);
     }
 
@@ -644,8 +591,8 @@ public final class GroupPanel {
 
 
     public boolean isSearchTriggerHit(double x, double y, int leftPos, int topPos) {
-        int panelX = leftPos + SIDE_PANEL_X;
-        int iconX = panelX + BAR_X + BAR_W - SEARCH_ICON_RIGHT_INSET;
+        int panelX = leftPos + SharedScreen.GROUP_X;
+        int iconX = panelX + SCROLLBAR_X - SEARCH_ICON_RIGHT_INSET;
         return inside(x, y, iconX, topPos + BAR_Y + SEARCH_ICON_Y_OFFSET, SLGuiTextures.SEARCH_ICON_WIDTH, SLGuiTextures.SEARCH_ICON_HEIGHT);
     }
 
@@ -662,7 +609,7 @@ public final class GroupPanel {
                                        int leftPos, int topPos) {
         refreshGroups();
         buildRows();
-        int listX = leftPos + SIDE_PANEL_X + LIST_OFFSET_X;
+        int listX = leftPos + SharedScreen.GROUP_X + LIST_OFFSET_X;
         int listY = topPos + LIST_OFFSET_Y;
         int addY = addRowY(listY);
         if (!inside(mouseX, mouseY, listX, listY,
@@ -736,17 +683,17 @@ public final class GroupPanel {
     public boolean handleScrollbarClick(double mouseX, double mouseY,
                                         int leftPos, int topPos) {
         if (maxScroll() <= 0) return false;
-        int x = leftPos + SIDE_PANEL_X + SCROLLBAR_X;
+        int x = leftPos + SharedScreen.GROUP_X + SCROLLBAR_X;
         int y = topPos + SCROLLBAR_Y;
         int hitTop = y + Math.min(0, SCROLLBAR_THUMB_Y_OFFSET);
         int hitHeight = SCROLLBAR_TRACK_HEIGHT + Math.abs(SCROLLBAR_THUMB_Y_OFFSET);
         if (!inside(mouseX, mouseY, x, hitTop,
-            SLGuiTextures.Scrollbar.WIDTH, hitHeight)) return false;
+            SLGuiTextures.SCROLL_TRACK.width(), hitHeight)) return false;
         if (maxScroll() > 0) {
             int knobY = y + scrollKnobOffset(maxScroll()) + SCROLLBAR_THUMB_Y_OFFSET;
             scrollGrabOffset = mouseY >= knobY
-                && mouseY <= knobY + SLGuiTextures.Scrollbar.HEIGHT
-                ? mouseY - knobY : SLGuiTextures.Scrollbar.HEIGHT / 2.0D;
+                && mouseY <= knobY + SLGuiTextures.SCROLL_THUMB.height()
+                ? mouseY - knobY : SLGuiTextures.SCROLL_THUMB.height() / 2.0D;
             scrolling = true;
             updateScrollFromMouse(mouseY, topPos);
         }
@@ -755,7 +702,7 @@ public final class GroupPanel {
 
     public boolean mouseScrolled(double mouseX, double mouseY, double delta,
                                  int leftPos, int topPos) {
-        int listX = leftPos + SIDE_PANEL_X + LIST_OFFSET_X;
+        int listX = leftPos + SharedScreen.GROUP_X + LIST_OFFSET_X;
         int listY = topPos + LIST_OFFSET_Y;
         if (!inside(mouseX, mouseY, listX, listY,
             SELECTION_WIDTH, LIST_HEIGHT) || maxScroll() <= 0) return false;
@@ -780,7 +727,7 @@ public final class GroupPanel {
         if (button != 0) return false;
         boolean wasDragging = draggingConnections;
         if (wasDragging) {
-            String target = dropTarget(mouseX, mouseY, originX + SIDE_PANEL_X, originY);
+            String target = dropTarget(mouseX, mouseY, originX + SharedScreen.GROUP_X, originY);
             if (target != null && dragConnections.size() <= 256) {
                 List<ConnectionKey> moved = dragConnections.stream()
                     .filter(key -> !GroupHierarchy.connectionFolder(hierarchy, key).equals(target)).toList();
@@ -848,7 +795,7 @@ public final class GroupPanel {
     }
 
     private static int scrollbarTravel() {
-        return Math.max(1, SCROLLBAR_TRACK_HEIGHT - SLGuiTextures.Scrollbar.HEIGHT - 2 * SCROLLBAR_THUMB_Y_OFFSET);
+        return Math.max(1, SCROLLBAR_TRACK_HEIGHT - SLGuiTextures.SCROLL_THUMB.height() - 2 * SCROLLBAR_THUMB_Y_OFFSET);
     }
 
     private static int addRowY(int listY) {
@@ -879,12 +826,28 @@ public final class GroupPanel {
         String direction = connection.transfersFirstToSecond()
             ? connection.transfersSecondToFirst() ? "both" : "forward"
             : connection.transfersSecondToFirst() ? "reverse" : "inactive";
-        graphics.renderComponentTooltip(font, List.of(Component.literal(connectionName(connection)),
-            Component.translatable("gui.staticlogistics.diagnostic.endpoint_a", NodeDisplayText.details(connection.first())),
-            Component.translatable("gui.staticlogistics.diagnostic.endpoint_b", NodeDisplayText.details(connection.second())),
-            Component.translatable("gui.staticlogistics.diagnostic.direction." + direction),
-            Component.translatable("gui.staticlogistics.diagnostic.topology_only"),
-            Component.translatable("gui.staticlogistics.tooltip.group_context")), mouseX, mouseY);
+        var first = connection.first();
+        var second = connection.second();
+        boolean sharedDimension = first.gPos().dimension().equals(second.gPos().dimension());
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal(connectionName(connection)).withStyle(ChatFormatting.WHITE));
+        var summary = Component.translatable("gui.staticlogistics.diagnostic.direction." + direction);
+        if (sharedDimension) summary.append("   ").append(NodeDisplayText.dimension(first.gPos().dimension()));
+        lines.add(summary.withStyle(ChatFormatting.GRAY));
+        for (var node : List.of(first, second)) {
+            var pos = node.gPos().pos();
+            var line = Component.literal(node.equals(first) ? "A   " : "B   ");
+            if (!sharedDimension) line.append(NodeDisplayText.dimension(node.gPos().dimension())).append("   ");
+            line.append(Component.literal("x:").withStyle(ChatFormatting.RED)).append(" " + pos.getX() + "   ")
+                .append(Component.literal("y:").withStyle(ChatFormatting.GREEN)).append(" " + pos.getY() + "   ")
+                .append(Component.literal("z:").withStyle(ChatFormatting.BLUE)).append(" " + pos.getZ() + "   ")
+                .append(NodeDisplayText.direction(node.face()));
+            if (!node.isConnectionFace())
+                line.append("   ").append(Component.translatable("gui.staticlogistics.compact.channel")).append(" " + (node.channel() + 1));
+            lines.add(line);
+        }
+        lines.add(Component.translatable("gui.staticlogistics.tooltip.group_context").withStyle(ChatFormatting.GRAY));
+        graphics.renderComponentTooltip(font, lines, mouseX, mouseY);
     }
 
 

@@ -2,7 +2,7 @@ package com.coobird.staticlogistics.client.gui.screen;
 
 import com.coobird.staticlogistics.client.gui.component.ConfiguratorStyle;
 import com.coobird.staticlogistics.client.gui.component.SoundUtil;
-import com.coobird.staticlogistics.client.render.SLGuiTextures;
+import com.coobird.staticlogistics.content.menu.MenuLayout;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
@@ -15,8 +15,8 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
 
     protected AbstractConfiguratorScreen(T menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        this.imageWidth = SLGuiTextures.Background.WIDTH;
-        this.imageHeight = SLGuiTextures.Background.HEIGHT + SLGuiTextures.Inventory.HEIGHT;
+        this.imageWidth = MenuLayout.BACKGROUND_WIDTH;
+        this.imageHeight = MenuLayout.BACKGROUND_HEIGHT + MenuLayout.INVENTORY_HEIGHT;
     }
 
     @Override
@@ -24,8 +24,8 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
                             int mouseX, int mouseY) {
 
         ConfiguratorStyle.window(graphics, leftPos, topPos, imageWidth, imageHeight);
-        int inventoryX = leftPos + (SLGuiTextures.Background.WIDTH - SLGuiTextures.Inventory.WIDTH) / 2;
-        int inventoryY = topPos + SLGuiTextures.Background.HEIGHT;
+        int inventoryX = leftPos + (MenuLayout.BACKGROUND_WIDTH - MenuLayout.INVENTORY_WIDTH) / 2;
+        int inventoryY = topPos + MenuLayout.BACKGROUND_HEIGHT;
         ConfiguratorStyle.inventory(graphics, inventoryX, inventoryY);
         renderCustomContent(graphics, mouseX, mouseY);
     }
@@ -47,7 +47,7 @@ public abstract class AbstractConfiguratorScreen<T extends AbstractContainerMenu
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.drawString(font, playerInventoryTitle,
-            (SLGuiTextures.Background.WIDTH - SLGuiTextures.Inventory.WIDTH) / 2,
-            SLGuiTextures.Background.HEIGHT - 12, ConfiguratorStyle.TEXT, false);
+            (MenuLayout.BACKGROUND_WIDTH - MenuLayout.INVENTORY_WIDTH) / 2,
+            MenuLayout.BACKGROUND_HEIGHT - 12, ConfiguratorStyle.TEXT, false);
     }
 }

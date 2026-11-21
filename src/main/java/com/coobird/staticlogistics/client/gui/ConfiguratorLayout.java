@@ -38,14 +38,13 @@ public final class ConfiguratorLayout {
         private SharedScreen() {
         }
 
-        public static final int GROUP_X = 288;
-        public static final int WIDTH = 458, HEIGHT = 292, CONTENT_INSET = 1;
-        public static final int CONTENT_WIDTH = 456, CONTENT_HEIGHT = 290;
-        public static final int GROUP_CONTENT_X = 6, GROUP_CONTENT_Y = 6;
-        public static final int GROUP_CONTENT_WIDTH = 274, GROUP_CONTENT_HEIGHT = 108;
+        public static final int GROUP_X = 5;
+        public static final int WIDTH = 408, HEIGHT = 284, CONTENT_INSET = 1;
+        public static final int CONTENT_WIDTH = 406, CONTENT_HEIGHT = 282;
+        public static final int GROUP_CONTENT_X = 155, GROUP_CONTENT_Y = 54;
+        public static final int GROUP_CONTENT_WIDTH = 243, GROUP_CONTENT_HEIGHT = 131;
         public static final int NODE_CONFIG_Y = MenuLayout.LINK_NODE_Y;
         public static final int NODE_CONFIG_HEIGHT = 172;
-        public static final int INVENTORY_X = 288, INVENTORY_Y = 170;
     }
 
     /// 显示过长文字的提示框。
@@ -148,11 +147,11 @@ public final class ConfiguratorLayout {
         /// 左上列表表头的高度。
         public static final int HEADER_HEIGHT = 15;
         /// “坐标”表头距离列表左边的位置；只移动表头。
-        public static final int HEADER_COORDINATE_X = 78;
+        public static final int HEADER_COORDINATE_X = 67;
         /// “输入／输出”表头距离列表左边的位置；只移动表头。
-        public static final int HEADER_ROLE_X = 148;
+        public static final int HEADER_ROLE_X = 130;
         /// “连接面朝向”表头距离列表右边的距离；数值越大越靠左，只移动表头。
-        public static final int HEADER_FACING_RIGHT = 54;
+        public static final int HEADER_FACING_RIGHT = 47;
         /// 表头“名称”文字相对列表左边的位置。
         public static final int HEADER_NAME_X = 26;
         /// 表头文字相对表头顶部的位置。
@@ -162,14 +161,12 @@ public final class ConfiguratorLayout {
         /// 分组名称相对列表左边的位置和文字最大宽度。
         public static final int GROUP_NAME_X = 18;
         public static final int GROUP_NAME_WIDTH = 120;
-        /// 朝向文字最多占用的宽度。
-        public static final int DIRECTION_TEXT_WIDTH = 43;
         /// 展开后节点名称相对普通节点名称向右缩进的距离。
         public static final int CHILD_NAME_INDENT = 8;
         /// 展开节点名称、普通节点名称和坐标文字的最大宽度。
         public static final int CHILD_NAME_WIDTH = 40;
-        public static final int NODE_NAME_WIDTH = 48;
-        public static final int COORDINATE_TEXT_WIDTH = 75;
+        public static final int NODE_NAME_WIDTH = 45;
+        public static final int COORDINATE_TEXT_WIDTH = 61;
         /// 模式文字与朝向列之间保留的距离。
         public static final int ROLE_TEXT_RIGHT_GAP = 5;
         /// 没有内容时提示文字距离列表顶部的距离。
@@ -185,7 +182,7 @@ public final class ConfiguratorLayout {
         /// 左上列表高度：正数加高，负数缩短。
         public static final int LIST_HEIGHT_ADJUST = 0;
         /// 列表行宽度：正数加宽，负数缩窄；滚动条仅在需要时占用空间。
-        public static final int LIST_ROW_WIDTH_ADJUST = 1;
+        public static final int LIST_ROW_WIDTH_ADJUST = 0;
         /// 滚动槽宽度，不改变里面滑块贴图的宽度。
         public static final int SCROLLBAR_WIDTH = 10;
         /// 滚动槽左右微调：正数向右，负数向左。
@@ -209,11 +206,11 @@ public final class ConfiguratorLayout {
         /// 列表右侧的内边距
         public static final int LIST_RIGHT_INSET = 11;
         /// 坐标列的横向位置
-        public static final int COORDINATE_COLUMN_X = 78;
+        public static final int COORDINATE_COLUMN_X = 67;
         /// 模式列的横向位置
-        public static final int ROLE_COLUMN_X = 157;
+        public static final int ROLE_COLUMN_X = 130;
         /// 朝向列的右侧
-        public static final int FACING_COLUMN_RIGHT = 54;
+        public static final int FACING_COLUMN_RIGHT = 47;
         /// 搜索框相对内容区的位置、宽度缩减量和高度；底图每侧额外延伸 3 像素
         /// 搜索框左右位置：数值越大越靠右。
         public static final int SEARCH_X = 4;
@@ -240,36 +237,18 @@ public final class ConfiguratorLayout {
         }
 
         /// 左列说明文字的横向位置；右列说明文字的位置单独设置。
-        public static final int LABEL_X = 10;
-        public static final int RIGHT_LABEL_X = 148;
-        /// 标题、未选中提示和通道名称的上下位置。
-        public static final int HEADER_TEXT_Y = 8;
+        public static final int LABEL_X = 156;
+        public static final int RIGHT_LABEL_X = 285;
         public static final int EMPTY_SELECTION_TEXT_Y = 38;
-        public static final int CHANNEL_LABEL_Y = 25;
+        public static final int CHANNEL_LABEL_Y = 29;
         public static final int EMPTY_CHANNEL_TEXT_Y = 88;
         /// 模式、资源和红石说明文字的上下位置。
-        public static final int MODE_LABEL_Y = 45;
-        public static final int RESOURCE_LABEL_Y = 65;
-        public static final int REDSTONE_LABEL_Y = 85;
+        public static final int MODE_LABEL_Y = 52;
+        public static final int RESOURCE_LABEL_Y = 75;
+        public static final int REDSTONE_LABEL_Y = 52;
         /// 策略、输入参数、传输间隔的文字上下位置。
-        public static final int STRATEGY_LABEL_Y = 105;
-        public static final int INPUT_LABEL_Y = 124;
-        public static final int INTERVAL_LABEL_Y = 126;
-        public static final int INTERVAL_VALUE_X = 64;
-        /// 过滤器、升级、批量状态和错误提示文字的位置。
-        public static final int FILTER_LABEL_Y = 146;
-        public static final int UPGRADE_LABEL_X = 112;
-        public static final int UPGRADE_LABEL_Y = 146;
-        public static final int BATCH_LABEL_Y = 147;
-        public static final int ERROR_LABEL_Y = 160;
-        /// 普通按钮及下拉按钮文字距离按钮顶部的距离。
-        public static final int BUTTON_TEXT_Y = 5;
-        public static final int DROPDOWN_TEXT_Y = 5;
-        /// 下拉按钮文字右侧为箭头预留的宽度。
-        public static final int DROPDOWN_ARROW_TEXT_SPACE = 12;
-        /// 配置区横向分隔线距离左边的位置和长度。
-        public static final int SEPARATOR_X = 10;
-        public static final int SEPARATOR_WIDTH = 258;
+        public static final int STRATEGY_LABEL_Y = 98;
+        public static final int ERROR_LABEL_Y = 155;
         /// 数字输入框右侧上下箭头的宽度和每个按钮的高度。
         public static final int STEPPER_WIDTH = 14;
         public static final int STEPPER_BUTTON_HEIGHT = 9;
@@ -277,12 +256,12 @@ public final class ConfiguratorLayout {
         public static final int STEPPER_ICON_X = 3;
         public static final int STEPPER_ICON_Y = 2;
         /// 分配策略和提取模式弹出菜单相对配置面板左边的位置。
-        public static final int STRATEGY_MENU_X = 64;
-        public static final int EXTRACTION_MENU_X = 176;
+        public static final int STRATEGY_MENU_X = 199;
+        public static final int EXTRACTION_MENU_X = 310;
         /// 两种设置菜单的宽度、边框留白和底部参考位置。
         public static final int SETTING_MENU_WIDTH = 90;
         public static final int SETTING_MENU_INSET = 2;
-        public static final int SETTING_MENU_BOTTOM_Y = 100;
+        public static final int SETTING_MENU_BOTTOM_Y = 93;
         public static final int SETTING_MENU_BOTTOM_GAP = 4;
         /// 设置菜单文字相对菜单左边和选项行顶部的位置。
         public static final int SETTING_MENU_TEXT_X = 5;
@@ -291,17 +270,17 @@ public final class ConfiguratorLayout {
         public static final int SETTING_MENU_TEXT_RIGHT_INSET = 5;
         /// 资源类型行位置相对于节点配置面板；该区域与其他节点布局常量一起调整
         /// 资源类型行相对节点配置面板顶部的纵向偏移
-        public static final int RESOURCE_ROW_Y = 60;
+        public static final int RESOURCE_ROW_Y = 70;
         /// 资源类型按钮的横向位置
-        public static final int RESOURCE_BUTTON_X = 64;
+        public static final int RESOURCE_BUTTON_X = 199;
         /// 资源类型按钮的宽度
-        public static final int RESOURCE_BUTTON_WIDTH = 176;
+        public static final int RESOURCE_BUTTON_WIDTH = 172;
         /// 资源类型按钮的高度
         public static final int RESOURCE_BUTTON_HEIGHT = 18;
         /// 新增通道按钮相对节点配置面板左边缘的横向偏移
-        public static final int ADD_CHANNEL_X = 180;
+        public static final int ADD_CHANNEL_X = 294;
         /// 新增通道按钮相对节点配置面板顶部的纵向偏移
-        public static final int ADD_CHANNEL_Y = 21;
+        public static final int ADD_CHANNEL_Y = 24;
         /// 新增通道按钮的宽度
         public static final int ADD_CHANNEL_WIDTH = 22;
         /// 新增通道按钮的高度
@@ -312,72 +291,56 @@ public final class ConfiguratorLayout {
         public static final int ADD_CHANNEL_ICON_Y = 2;
         /// 存入端数值输入框实际显示宽度由 *_FIELD_WIDTH 控制；INITIAL_WIDTH 只用于创建控件
         /// 优先级输入框的横向位置
-        public static final int PRIORITY_FIELD_X = 64;
-        /// 保留数量输入框的横向位置
-        public static final int STOCK_FIELD_X = 200;
+        public static final int PRIORITY_FIELD_X = 199;
         /// 数值输入框的纵向位置
-        public static final int NUMBER_FIELD_Y = 120;
+        public static final int NUMBER_FIELD_Y = 137;
         /// 优先级输入框初始的宽度
         public static final int PRIORITY_INITIAL_WIDTH = 78;
         /// 保留数量输入框初始的宽度
         public static final int STOCK_INITIAL_WIDTH = 58;
         /// 优先级输入框的宽度
-        public static final int PRIORITY_FIELD_WIDTH = 52;
+        public static final int PRIORITY_FIELD_WIDTH = 50;
         /// 保留数量输入框的宽度
-        public static final int STOCK_FIELD_WIDTH = 52;
+        public static final int STOCK_FIELD_WIDTH = 57;
         /// 数值输入框的高度
         public static final int NUMBER_FIELD_HEIGHT = 18;
         /// 控件的高度
         public static final int CONTROL_HEIGHT = 18;
         /// 提取、存入、双向和关闭按钮
         /// 模式按钮的纵向位置
-        public static final int ROLE_Y = 40;
+        public static final int ROLE_Y = 47;
         /// 模式按钮的宽度
-        public static final int ROLE_WIDTH = 48;
+        public static final int ROLE_WIDTH = 26;
         /// 提取按钮的横向位置
-        public static final int EXTRACT_X = 64;
+        public static final int EXTRACT_X = 199;
         /// 存入按钮的横向位置
-        public static final int INSERT_X = 115;
+        public static final int INSERT_X = 227;
         /// 双向按钮的横向位置
-        public static final int BOTH_X = 166;
+        public static final int BOTH_X = 255;
         /// 启用按钮的横向位置
-        public static final int ENABLE_X = 217;
+        public static final int ENABLE_X = 335;
         /// 启用按钮的宽度
-        public static final int ENABLE_WIDTH = 49;
+        public static final int ENABLE_WIDTH = 62;
         /// 红石控制与提取端分配策略
         /// 红石控制按钮的横向位置
-        public static final int REDSTONE_X = 64;
+        public static final int RIGHT_CONTROL_X = 326;
         /// 红石控制按钮的纵向位置
-        public static final int REDSTONE_Y = 80;
+        public static final int REDSTONE_Y = 47;
         /// 红石控制按钮的宽度
-        public static final int REDSTONE_WIDTH = 202;
+        public static final int RIGHT_CONTROL_WIDTH = 71;
         /// 分配策略按钮的横向位置
-        public static final int STRATEGY_X = 64;
+        public static final int STRATEGY_X = 199;
         /// 分配策略按钮的纵向位置
-        public static final int STRATEGY_Y = 100;
+        public static final int STRATEGY_Y = 93;
         /// 分配策略按钮的宽度
-        public static final int STRATEGY_WIDTH = 78;
-        /// 提取模式按钮的横向位置
-        public static final int EXTRACTION_X = 188;
-        /// 提取模式按钮的宽度
-        public static final int EXTRACTION_WIDTH = 78;
-        /// 批量操作与预设按钮
-        /// 批量操作按钮的纵向位置
-        public static final int BATCH_BUTTON_Y = 142;
+        public static final int STRATEGY_WIDTH = 68;
+        public static final int BATCH_BUTTON_HEIGHT = 14;
         /// 批量操作按钮的宽度
-        public static final int BATCH_BUTTON_WIDTH = 56;
+        public static final int BATCH_BUTTON_WIDTH = 50;
         /// 批量重置按钮的横向位置
-        public static final int BATCH_RESET_X = 150;
+        public static final int BATCH_RESET_X = 292;
         /// 批量应用按钮的横向位置
-        public static final int BATCH_APPLY_X = 210;
-        /// 保存预设按钮的横向位置
-        public static final int PRESET_SAVE_X = 210;
-        /// 应用预设按钮的横向位置
-        public static final int PRESET_APPLY_X = 239;
-        /// 预设按钮的纵向位置
-        public static final int PRESET_Y = 20;
-        /// 预设按钮的宽度
-        public static final int PRESET_WIDTH = 27;
+        public static final int BATCH_APPLY_X = 347;
         /// 资源类型图标的横向内缩
         public static final int RESOURCE_ICON_INSET_X = 2;
         /// 资源类型图标的纵向内缩
@@ -404,13 +367,13 @@ public final class ConfiguratorLayout {
         /// 通道选项行的高度
         public static final int CHANNEL_ROW_HEIGHT = 18;
         /// 通道列表的横向位置
-        public static final int CHANNEL_LIST_X = 64;
+        public static final int CHANNEL_LIST_X = 199;
         /// 通道列表的纵向位置
-        public static final int CHANNEL_LIST_Y = 39;
+        public static final int CHANNEL_LIST_Y = 43;
         /// 通道列表的宽度
-        public static final int CHANNEL_LIST_WIDTH = 118;
+        public static final int CHANNEL_LIST_WIDTH = 92;
         /// 通道按钮的纵向位置
-        public static final int CHANNEL_BUTTON_Y = 20;
+        public static final int CHANNEL_BUTTON_Y = 24;
         /// 通道按钮的高度
         public static final int CHANNEL_BUTTON_HEIGHT = 18;
         /// 通道列表的内边距
@@ -440,42 +403,38 @@ public final class ConfiguratorLayout {
         /// 所有者筛选下拉菜单的宽度以及底部分页按钮各自的宽度。
         public static final int SCOPE_MENU_WIDTH = 100;
         public static final int SCOPE_PREVIOUS_WIDTH = 30, SCOPE_PAGE_WIDTH = 40, SCOPE_NEXT_WIDTH = 30;
-        /// 搜索栏的宽度
-        public static final int BAR_W = 149;
-        /// 搜索栏的横向位置
-        public static final int BAR_X = 4;
         /// 搜索栏的纵向位置
-        public static final int BAR_Y = 29;
+        public static final int BAR_Y = 58;
         /// 目录列表与滚动条
         /// 列表相对右侧面板的横向偏移
         public static final int LIST_OFFSET_X = 4;
         /// 列表相对界面顶部的纵向偏移
-        public static final int LIST_OFFSET_Y = 45;
+        public static final int LIST_OFFSET_Y = 75;
         /// 滚动条的横向位置
-        public static final int SCROLLBAR_X = 154;
+        public static final int SCROLLBAR_X = 125;
         /// 滚动条顶部相对界面顶部的纵向偏移，独立于列表位置
-        public static final int SCROLLBAR_Y = 44;
+        public static final int SCROLLBAR_Y = 74;
         /// 目录列表中选中行的宽度
-        public static final int SELECTION_WIDTH = 146;
+        public static final int SELECTION_WIDTH = 117;
         /// 新建分组按钮相对右侧面板左边缘的横向偏移
         public static final int ADD_GROUP_BUTTON_X = 10;
         /// 新建分组按钮相对界面顶部的纵向偏移
-        public static final int ADD_GROUP_BUTTON_Y = 7;
+        public static final int ADD_GROUP_BUTTON_Y = 35;
         /// 新建分组按钮的宽度
         public static final int ADD_GROUP_BUTTON_WIDTH = 18;
         /// 新建分组按钮的高度
         public static final int ADD_GROUP_BUTTON_HEIGHT = 17;
         /// 范围选择按钮的横向位置
-        public static final int SCOPE_BUTTON_X = 52;
+        public static final int SCOPE_BUTTON_X = 85;
         /// 范围选择按钮的纵向位置
-        public static final int SCOPE_BUTTON_Y = 7;
+        public static final int SCOPE_BUTTON_Y = 35;
         /// 范围选择按钮的宽度
-        public static final int SCOPE_BUTTON_WIDTH = 55;
+        public static final int SCOPE_BUTTON_WIDTH = 48;
         /// 范围选择按钮的高度
         public static final int SCOPE_BUTTON_HEIGHT = 17;
         /// 授权管理按钮相对右侧面板的坐标和尺寸
-        public static final int GRANT_BUTTON_X = 111;
-        public static final int GRANT_BUTTON_Y = 7;
+        public static final int GRANT_BUTTON_X = 336;
+        public static final int GRANT_BUTTON_Y = 5;
         public static final int GRANT_BUTTON_WIDTH = 54;
         public static final int GRANT_BUTTON_HEIGHT = 17;
         /// 范围菜单的间距
@@ -489,7 +448,7 @@ public final class ConfiguratorLayout {
         /// 标题的横向位置
         public static final int TITLE_X = 6;
         /// 标题的纵向位置
-        public static final int TITLE_Y = 11;
+        public static final int TITLE_Y = 39;
         /// 标题文字与新建分组按钮之间的最小间距
         public static final int TITLE_ADD_GAP = 3;
         /// 新建分组按钮与范围按钮之间的最小间距
@@ -505,12 +464,10 @@ public final class ConfiguratorLayout {
         public static final int SEARCH_ICON_RIGHT_INSET = 2;
         /// 放大镜相对搜索栏顶部的纵向偏移
         public static final int SEARCH_ICON_Y_OFFSET = -1;
-        /// 搜索栏文字的宽度
-        public static final int BAR_TEXT_WIDTH = 143;
         /// 滚动滑块相对轨道的纵向偏移；正数下移，负数上移
         public static final int SCROLLBAR_THUMB_Y_OFFSET = 1;
         /// 列表的高度
-        public static final int LIST_HEIGHT = 115;
+        public static final int LIST_HEIGHT = 197;
         /// 滚动条轨道的高度
         public static final int SCROLLBAR_TRACK_HEIGHT = LIST_OFFSET_Y + LIST_HEIGHT + 1 - SCROLLBAR_Y;
         /// 目录列表每行的高度
@@ -798,7 +755,7 @@ public final class ConfiguratorLayout {
         /// 资源展开面板的宽度。
         public static final int RESOURCE_FLYOUT_WIDTH = 98;
         /// 页签按钮底图比实际点击区域多出的宽度。
-        public static final int TAB_DRAW_EXTRA_WIDTH = 1;
+        public static final int TAB_GAP = 4;
         /// 计算资源列表可见行数时，为窗口其他区域预留的高度。
         public static final int FLYOUT_HEIGHT_RESERVE = 32;
         /// 资源列表滚动条距离展开面板右边的距离。
@@ -807,20 +764,14 @@ public final class ConfiguratorLayout {
         public static final int TAB_HEIGHT = 19;
         /// 相邻页签顶部之间的垂直距离
         public static final int TAB_STEP = 21;
-        /// 页签的顶部位置
-        public static final int TAB_TOP = 5;
         /// 页签图标的横向位置
-        public static final int TAB_ICON_X = 1;
+        public static final int TAB_ICON_X = 3;
         /// 页签图标的纵向位置
         public static final int TAB_ICON_Y = 2;
         /// 页签文字的横向位置
-        public static final int TAB_TEXT_X = 21;
-        /// 页签文字的纵向位置
-        public static final int TAB_TEXT_Y = 5;
+        public static final int TAB_TEXT_X = 23;
         /// 页签文字与右侧边框之间的最小间距
-        public static final int TAB_TEXT_RIGHT_PADDING = 2;
-        /// 展开面板的间距
-        public static final int FLYOUT_GAP = 1;
+        public static final int TAB_TEXT_RIGHT_PADDING = 4;
         /// 展开列表的行间距
         public static final int ROW = 23;
         /// 展开列表的纵向位置
@@ -969,17 +920,10 @@ public final class ConfiguratorLayout {
         public static final int DIRECTORY_SCROLL_X_INSET = 18;
         /// 目录滚动条的右侧内缩
         public static final int DIRECTORY_SCROLL_RIGHT_INSET = 3;
-        /// 搜索框的横向位置
-        /// 右侧目录搜索框
-        public static final int SEARCH_X = 4;
         /// 搜索框的纵向位置
         public static final int SEARCH_Y = 29;
-        /// 搜索框的宽度扣减
-        public static final int SEARCH_WIDTH_INSET = 24;
         /// 搜索框的高度
         public static final int SEARCH_HEIGHT = 16;
-        /// 放大镜相对搜索框右边缘的横向内缩
-        public static final int SEARCH_ICON_RIGHT_INSET = 1;
         /// 放大镜相对搜索框顶部的纵向偏移
         public static final int SEARCH_ICON_Y_OFFSET = 2;
         /// 视口边框的横向位置
@@ -1026,7 +970,7 @@ public final class ConfiguratorLayout {
         /// 目录文字的右侧内缩
         public static final int DIRECTORY_TEXT_RIGHT_INSET = 3;
         /// 左右面板分界的横向位置
-        public static final int SPLIT_X = 286;
+        public static final int SPLIT_X = 228;
         /// 蓝图左侧面板距离整个界面左边和上边的距离
         public static final int LEFT_PANEL_X = 3;
         public static final int LEFT_PANEL_Y = 3;
@@ -1037,9 +981,6 @@ public final class ConfiguratorLayout {
         public static final int RIGHT_PANEL_Y = 3;
         public static final int RIGHT_PANEL_WIDTH_INSET = 3;
         public static final int RIGHT_PANEL_HEIGHT_INSET = 6;
-        /// 范围选择按钮相对右侧面板的横向偏移
-        /// 右侧所有者筛选及下拉菜单
-        public static final int SCOPE_X = 88;
         /// 范围选择按钮相对界面顶部的纵向偏移
         public static final int SCOPE_Y = 6;
         /// 范围选择按钮的宽度
@@ -1071,11 +1012,11 @@ public final class ConfiguratorLayout {
         /// 重置视角按钮的横向位置
         public static final int RESET_VIEW_X = 64;
         /// 重置视角按钮的宽度
-        public static final int RESET_VIEW_WIDTH = 68;
+        public static final int RESET_VIEW_WIDTH = 62;
         /// 创建按钮的右侧内缩
-        public static final int CREATE_RIGHT_INSET = 78;
+        public static final int CREATE_RIGHT_INSET = 74;
         /// 创建按钮的宽度
-        public static final int CREATE_WIDTH = 70;
+        public static final int CREATE_WIDTH = 66;
     }
 
     /// ConfiguratorScreen 的布局，修改只影响对应界面或组件
@@ -1083,41 +1024,32 @@ public final class ConfiguratorLayout {
         private ConfiguratorScreen() {
         }
 
-        /// 外框顶部相对界面原点的偏移
-        public static final int OUTER_TOP_OFFSET = 0;
         /// 标题的右侧留白
         public static final int TITLE_RIGHT_PADDING = 8;
         /// 外层边框的内边距
         public static final int OUTER_FRAME_INSET = 3;
         /// 左侧面板的横向位置
-        public static final int LEFT_PANEL_X = 1;
+        public static final int LEFT_PANEL_X = 148;
         /// 左侧面板的纵向位置
-        public static final int LEFT_PANEL_Y = 1;
+        public static final int LEFT_PANEL_Y = 29;
         /// 左侧面板的宽度
-        public static final int LEFT_PANEL_WIDTH = 282;
-        /// 上方面板的底部内缩
-        public static final int UPPER_PANEL_BOTTOM_INSET = 4;
+        public static final int LEFT_PANEL_WIDTH = 255;
         /// 左上方列表和搜索框整体相对内容区的右侧、底部内缩
         public static final int GROUP_CONTENT_RIGHT_INSET = 3;
         public static final int GROUP_CONTENT_BOTTOM_INSET = 2;
-        /// 节点配置面板的纵向偏移
-        public static final int NODE_PANEL_Y_OFFSET = -1;
-        /// 节点配置面板的高度偏移量
-        public static final int NODE_PANEL_HEIGHT_OFFSET = 1;
         /// 右侧面板的横向位置
-        public static final int RIGHT_PANEL_X = 286;
+        public static final int RIGHT_PANEL_X = 5;
         /// 右侧面板的纵向位置
-        public static final int RIGHT_PANEL_Y = 1;
+        public static final int RIGHT_PANEL_Y = 29;
         /// 右侧面板的宽度
-        public static final int RIGHT_PANEL_WIDTH = 170;
+        public static final int RIGHT_PANEL_WIDTH = 137;
         /// 目录面板的高度
-        public static final int DIRECTORY_PANEL_HEIGHT = 164;
+        public static final int DIRECTORY_PANEL_HEIGHT = 160;
         /// 物品栏外框；物品栏素材和真实槽位的位置使用 MenuLayout
-        public static final int INVENTORY_PANEL_Y = 166;
-        public static final int INVENTORY_PANEL_HEIGHT = 124;
-        public static final int INVENTORY_FRAME_BORDER = 1;
+        public static final int INVENTORY_PANEL_Y = 194;
+        public static final int INVENTORY_PANEL_HEIGHT = 89;
         /// 资源速率按钮相对界面左边缘的横向偏移
-        public static final int RESOURCE_RATES_X = 244;
+        public static final int RESOURCE_RATES_X = 375;
         /// 资源速率按钮的宽度
         public static final int RESOURCE_RATES_WIDTH = 22;
         /// 资源速率按钮的高度
@@ -1126,8 +1058,6 @@ public final class ConfiguratorLayout {
         public static final int TITLE_Y = 6;
         /// 原版物品栏标题隐藏位置的纵向位置
         public static final int HIDDEN_VANILLA_INVENTORY_LABEL_Y = 1000;
-        /// 物品栏标题相对物品栏顶部的纵向偏移
-        public static final int INVENTORY_TITLE_Y_OFFSET = 2;
     }
 
     /// FilterScreen 的布局，修改只影响对应界面或组件

@@ -10,6 +10,7 @@ import mezz.jei.api.registration.IGuiHandlerRegistration;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -23,44 +24,31 @@ public class JeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
-        registration.addGuiScreenHandler(LinkConfiguratorScreen.class, screen -> {
-            Rect2i area = screen.overlayAreas().getFirst();
-            return new IGuiProperties() {
-                public Class<? extends Screen> screenClass() {
-                    return screen.getClass();
-                }
-
-                public int guiLeft() {
-                    return area.getX();
-                }
-
-                public int guiTop() {
-                    return area.getY();
-                }
-
-                public int guiXSize() {
-                    return area.getWidth();
-                }
-
-                public int guiYSize() {
-                    return area.getHeight();
-                }
-
-                public int screenWidth() {
-                    return screen.width;
-                }
-
-                public int screenHeight() {
-                    return screen.height;
-                }
-            };
-        });
-        registration.addGuiContainerHandler(LinkConfiguratorScreen.class, new IGuiContainerHandler<LinkConfiguratorScreen>() {
+        registration.addGuiScreenHandler(LinkConfiguratorScreen.class, JeiPlugin::properties);
+        registration.addGuiScreenHandler(LinkConfiguratorScreen.Window.class, window -> properties(window.host()));
+        registration.addGuiContainerHandler(LinkConfiguratorScreen.class, new IGuiContainerHandler<>() {
             @Override
             public List<Rect2i> getGuiExtraAreas(LinkConfiguratorScreen screen) {
                 return screen.overlayAreas();
             }
         });
+        registration.addGuiContainerHandler(LinkConfiguratorScreen.Window.class, new IGuiContainerHandler<LinkConfiguratorScreen.Window>() {
+            @Override
+            public List<Rect2i> getGuiExtraAreas(LinkConfiguratorScreen.Window window) {
+                return window.host().overlayAreas();
+            }
+        });
         registration.addGhostIngredientHandler(BaseFilterScreen.class, new GhostIngredientHandler());
+    }
+
+    private static @Nullable IGuiProperties properties(LinkConfiguratorScreen screen) {
+        if (screen.width <= 0 || screen.height <= 0) return null;
+        Rect2i area = screen.overlayAreas().getFirst();
+        if (area.getWidth() <= 0 || area.getHeight() <= 0) return null;
+        return new PanelProperties(screen.getClass(), area.getX(), area.getY(), area.getWidth(), area.getHeight(), screen.width, screen.height);
+    }
+
+    private record PanelProperties(Class<? extends Screen> screenClass, int guiLeft, int guiTop, int guiXSize,
+                                   int guiYSize, int screenWidth, int screenHeight) implements IGuiProperties {
     }
 }

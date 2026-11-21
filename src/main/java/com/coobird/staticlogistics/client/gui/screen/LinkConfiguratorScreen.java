@@ -4,22 +4,21 @@ import com.coobird.staticlogistics.api.LogisticsNode;
 import com.coobird.staticlogistics.api.group.GroupKey;
 import com.coobird.staticlogistics.api.group.GroupRef;
 import com.coobird.staticlogistics.client.data.*;
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.NodeConfiguration;
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.SharedScreen;
 import com.coobird.staticlogistics.client.gui.component.*;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.content.menu.LinkConfiguratorMenu;
 import com.coobird.staticlogistics.content.menu.MenuLayout;
-import com.coobird.staticlogistics.logistics.LogisticsUpgrade;
 import com.coobird.staticlogistics.logistics.SLDataComponents;
-import com.coobird.staticlogistics.logistics.filter.FilterData;
 import com.coobird.staticlogistics.logistics.node.ChannelConfigurationEdit;
 import com.coobird.staticlogistics.logistics.node.ConnectionKey;
 import com.coobird.staticlogistics.logistics.node.EndpointTopology;
-import com.coobird.staticlogistics.logistics.node.PresetPreviewService;
 import com.coobird.staticlogistics.logistics.util.NodeDisplayText;
 import com.coobird.staticlogistics.network.c2s.*;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
+import com.coobird.staticlogistics.network.s2c.S2CBatchValuesPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -27,7 +26,6 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.renderer.Rect2i;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -38,32 +36,18 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
-import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.ConfiguratorScreen.*;
 
 /// 组织连接配置界面，协调各面板和输入事件
 public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfiguratorMenu> {
-    private long presetPreviewSequence;
-    private PendingPresetPreview pendingPresetPreview;
-
-    private record PendingPresetPreview(long requestId, LogisticsNode focus, LogisticsNode inspected,
-                                        List<ChannelConfigurationEdit> edits, Map<LogisticsNode, GroupKey> targets) {
-    }
-
     // 配置界面外框宽度
-    // 配置器外框和左右面板的布局。
-    private static final int OUTER_WIDTH = SLGuiTextures.LinkConfigurator.WIDTH;
-    // 外框底部相对界面原点的偏移
-    private static final int OUTER_BOTTOM_OFFSET = SLGuiTextures.LinkConfigurator.HEIGHT - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
     // 外框高度，由顶部和底部位置计算
-    private static final int OUTER_HEIGHT = OUTER_BOTTOM_OFFSET - OUTER_TOP_OFFSET;
+    private static final int OUTER_HEIGHT = SharedScreen.HEIGHT - SharedScreen.CONTENT_INSET;
 
     /// 区域组件分别保存自己的滚动、选择或编辑状态
+    private boolean choosingFace;
     private final GroupContentsPanel groupContents = new GroupContentsPanel();
 
     private GroupPanel groupPanel;
@@ -126,8 +110,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     /// 对外提供屏幕坐标，不把缩放前的窗口坐标交给 JEI
     public List<Rect2i> overlayAreas() {
         List<Rect2i> areas = new ArrayList<>();
-        areas.add(screenArea(new Rect2i(leftPos - tabs.width() - 6, topPos - 3,
-            OUTER_WIDTH + tabs.width() + 12, OUTER_HEIGHT + 6)));
+        areas.add(screenArea(new Rect2i(leftPos - 6, topPos - 3,
+            SharedScreen.WIDTH + 12, OUTER_HEIGHT + 6)));
         if (resourceDialog != null) areas.add(screenArea(resourceDialog.bounds()));
         if (groupPanel != null) groupPanel.dialogBounds().forEach(bounds -> areas.add(screenArea(bounds)));
         return areas;
@@ -142,21 +126,21 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     }
 
     private int horizontalOffset() {
-        return Math.max(0, tabs.width() + 7 - leftPos);
+        return Math.max(0, 7 - leftPos);
     }
 
     private int windowMinimumX() {
-        return tabs.width() + 6 - horizontalOffset();
+        return 6 - horizontalOffset();
     }
 
     private int windowMaximumX() {
         int viewportWidth = (int) Math.floor(width / interfaceScale);
-        return Math.max(windowMinimumX(), viewportWidth - horizontalOffset() - OUTER_WIDTH - 6);
+        return Math.max(windowMinimumX(), viewportWidth - horizontalOffset() - SharedScreen.WIDTH - 6);
     }
 
     private int windowMaximumY() {
         int viewportHeight = (int) Math.floor(height / interfaceScale);
-        return Math.max(OUTER_FRAME_INSET, viewportHeight - SLGuiTextures.LinkConfigurator.HEIGHT - OUTER_FRAME_INSET);
+        return Math.max(OUTER_FRAME_INSET, viewportHeight - SharedScreen.HEIGHT - OUTER_FRAME_INSET);
     }
 
     private void clampWindowOffset() {
@@ -252,20 +236,30 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     public LinkConfiguratorScreen(LinkConfiguratorMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
-        containerWindow = new ContainerWindow<>(menu, inventory, title) {
-            @Override
-            protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-                LinkConfiguratorScreen.this.renderBg(graphics, partialTick, mouseX, mouseY);
-            }
-
-            @Override
-            public void onClose() {
-                LinkConfiguratorScreen.this.onClose();
-            }
-        };
+        containerWindow = new Window(menu, inventory, title);
         editSession = new ConfiguratorEditSession(submission -> PacketDistributor.sendToServer(
             new C2SConfigureFacePayload(submission.node().gPos().pos(), submission.node().face(),
                 submission.node().channel(), List.of(submission.edit()), menu.containerId, submission.requestId(), Map.of(submission.node(), menu.getRemoteGroupKey()))));
+    }
+
+    public final class Window extends ContainerWindow<LinkConfiguratorMenu> {
+        private Window(LinkConfiguratorMenu menu, Inventory inventory, Component title) {
+            super(menu, inventory, title);
+        }
+
+        public LinkConfiguratorScreen host() {
+            return LinkConfiguratorScreen.this;
+        }
+
+        @Override
+        protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+            host().renderBg(graphics, partialTick, mouseX, mouseY);
+        }
+
+        @Override
+        public void onClose() {
+            host().onClose();
+        }
     }
 
     public void acceptHierarchy(CompoundTag data) {
@@ -303,13 +297,13 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         restoreView = groupPanel != null ? captureView() : toolSession == null ? null
             : SAVED_VIEWS.getOrDefault(Minecraft.getInstance().getConnection(), Map.of()).get(toolSession);
         restoreTicks = 0;
-        this.imageWidth = SLGuiTextures.LinkConfigurator.CONTENT_WIDTH;
-        this.imageHeight = SLGuiTextures.LinkConfigurator.CONTENT_HEIGHT;
+        this.imageWidth = SharedScreen.CONTENT_WIDTH;
+        this.imageHeight = SharedScreen.CONTENT_HEIGHT;
         updateResponsiveViewport();
         super.init();
-        this.leftPos = (virtualWidth - OUTER_WIDTH) / 2
-            + SLGuiTextures.LinkConfigurator.CONTENT_INSET;
-        this.topPos = (virtualHeight - OUTER_HEIGHT) / 2 - OUTER_TOP_OFFSET;
+        this.leftPos = (virtualWidth - SharedScreen.WIDTH) / 2
+            + SharedScreen.CONTENT_INSET;
+        this.topPos = (virtualHeight - OUTER_HEIGHT) / 2;
         clampWindowOffset();
         windowDrag.release();
         screenWidgetButton = -1;
@@ -337,7 +331,6 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         nodeConfigurationPanel.init(leftPos, topPos, containerWindow::addControl);
         nodeConfigurationPanel.setSubmission(this::submitConfiguration);
         nodeConfigurationPanel.setBatchActions(editSession, this::applyBatch, this::discardBatch);
-        nodeConfigurationPanel.setPresetActions(this::savePreset, this::applyPreset);
         nodeConfigurationPanel.setPendingValues(editSession::pendingValue);
         nodeConfigurationPanel.tick();
         nodeConfigurationPanel.setChannelActions(() -> {
@@ -358,7 +351,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         });
         resourceRatesButton = containerWindow.addControl(AtlasButton.atlasBuilder(
                 Component.empty(), ignored -> openResourceTypes(true))
-            .bounds(leftPos + RESOURCE_RATES_X, topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y + nodeConfigurationPanel.resourceRowY(), RESOURCE_RATES_WIDTH, RESOURCE_RATES_HEIGHT).build().rateIcon());
+            .bounds(leftPos + RESOURCE_RATES_X, topPos + SharedScreen.NODE_CONFIG_Y + NodeConfiguration.RESOURCE_ROW_Y, RESOURCE_RATES_WIDTH, RESOURCE_RATES_HEIGHT).build().rateIcon());
         resourceRatesButton.setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.resources.rates")));
         resourceRatesButton.visible = menu.hasTarget();
         if (resourceDialog != null) resourceDialog.layout(virtualWidth, virtualHeight);
@@ -375,23 +368,33 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+        menu.setBrowsingFaces(showingFaces());
+        nodeConfigurationPanel.updateEditorVisibility(showingFaces());
+        resourceRatesButton.visible = !showingFaces() && !menu.getTargetNode().isConnectionFace();
         updateBatchSelection();
-        ConfiguratorStyle.window(graphics, leftPos - OUTER_FRAME_INSET, topPos - OUTER_FRAME_INSET, OUTER_WIDTH + OUTER_FRAME_INSET * 2, SLGuiTextures.LinkConfigurator.HEIGHT + OUTER_FRAME_INSET * 2);
-        ConfiguratorStyle.panel(graphics, leftPos + LEFT_PANEL_X, topPos + LEFT_PANEL_Y, LEFT_PANEL_WIDTH, SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y - UPPER_PANEL_BOTTOM_INSET);
-        ConfiguratorStyle.window(graphics, leftPos + RIGHT_PANEL_X, topPos + RIGHT_PANEL_Y, RIGHT_PANEL_WIDTH, DIRECTORY_PANEL_HEIGHT);
-        ConfiguratorStyle.panel(graphics, leftPos + LEFT_PANEL_X, topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y + NODE_PANEL_Y_OFFSET, LEFT_PANEL_WIDTH, SLGuiTextures.LinkConfigurator.NODE_CONFIG_HEIGHT + NODE_PANEL_HEIGHT_OFFSET);
-        SLGuiTextures.WINDOW.frame(graphics, leftPos + RIGHT_PANEL_X, topPos + INVENTORY_PANEL_Y, RIGHT_PANEL_WIDTH, INVENTORY_PANEL_HEIGHT, INVENTORY_FRAME_BORDER);
+        ConfiguratorStyle.window(graphics, leftPos - OUTER_FRAME_INSET, topPos - OUTER_FRAME_INSET, SharedScreen.WIDTH + OUTER_FRAME_INSET * 2, SharedScreen.HEIGHT + OUTER_FRAME_INSET * 2);
+        ConfiguratorStyle.panel(graphics, leftPos + LEFT_PANEL_X, topPos + LEFT_PANEL_Y, LEFT_PANEL_WIDTH, DIRECTORY_PANEL_HEIGHT);
+        ConfiguratorStyle.window(graphics, leftPos + RIGHT_PANEL_X, topPos + RIGHT_PANEL_Y, RIGHT_PANEL_WIDTH, INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT - RIGHT_PANEL_Y);
+        ConfiguratorStyle.window(graphics, leftPos + LEFT_PANEL_X, topPos + INVENTORY_PANEL_Y, LEFT_PANEL_WIDTH, INVENTORY_PANEL_HEIGHT);
         ConfiguratorStyle.inventory(graphics, leftPos + MenuLayout.LINK_INVENTORY_X,
             topPos + MenuLayout.LINK_INVENTORY_Y);
-        renderToolbarLabels(graphics);
-        groupContents.render(graphics, font, groupContentLeft(), groupContentTop(),
-            groupContentWidth(), groupContentHeight(), mouseX, mouseY, interfaceScale);
+
         groupPanel.render(graphics, font, leftPos, topPos, mouseX, mouseY, partialTick, interfaceScale);
-        nodeConfigurationPanel.render(graphics, mouseX, mouseY);
+        if (showingFaces()) {
+            groupContents.render(graphics, font, groupContentLeft(), groupContentTop(),
+                groupContentWidth(), groupContentHeight(), mouseX, mouseY, interfaceScale);
+            graphics.drawString(font, Component.translatable("gui.staticlogistics.face_picker"), leftPos + 157, topPos + 40, ConfiguratorStyle.ACCENT, false);
+        } else {
+            nodeConfigurationPanel.render(graphics, mouseX, mouseY);
+        }
+        if (!showingFaces()) {
+            ConfiguratorStyle.button(graphics, leftPos + 155, topPos + 41, 17, 16, false, !groupPanel.hasDialog() && resourceDialog == null && overBackButton(mouseX, mouseY));
+            SLGuiTextures.ARROW_LEFT.draw(graphics, leftPos + 159, topPos + 45);
+        }
         if (menu.hasTarget() && !menu.canEditTarget()) {
             Component readOnly = Component.translatable("gui.staticlogistics.permissions.read_only");
-            graphics.drawString(font, readOnly, leftPos + LEFT_PANEL_WIDTH - font.width(readOnly) - 6,
-                topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y + 5, ConfiguratorStyle.MUTED_TEXT, false);
+            graphics.drawString(font, readOnly, leftPos + 337 - font.width(readOnly),
+                topPos + SharedScreen.NODE_CONFIG_Y + 5, ConfiguratorStyle.MUTED_TEXT, false);
         }
     }
 
@@ -427,6 +430,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     private void renderInterface(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         containerWindow.renderWithTooltip(graphics, mouseX, mouseY, partialTick);
         hoveredSlot = containerWindow.getSlotUnderMouse();
+        if (resourceDialog != null || groupPanel.hasDialog()) {
+            tabs.collapse();
+            tabs.render(graphics, font, leftPos - 3, topPos, OUTER_HEIGHT, Integer.MIN_VALUE, Integer.MIN_VALUE, false);
+        }
         if (resourceDialog != null) {
             resourceDialog.render(graphics, font, virtualWidth, virtualHeight, mouseX, mouseY, partialTick);
             return;
@@ -438,7 +445,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         /// 玩家背包和快捷栏必须完整走原版容器 Tooltip 流程，才能保留物品名称、
         /// 附魔、数据组件以及其他模组追加的 Tooltip配置槽由节点区域在原版
         /// 物品 Tooltip 后追加升级统计，因此不能在这里重复绘制
-        if (nodeConfigurationPanel.renderChannelDropdown(graphics, mouseX, mouseY)) return;
+        if (!showingFaces() && nodeConfigurationPanel.renderChannelDropdown(graphics, mouseX, mouseY)) return;
         Slot hoveredSlot = getSlotUnderMouse();
         if (hoveredSlot != null
             && !hoveredSlot.getItem().isEmpty()
@@ -448,9 +455,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         }
 
         /// Tooltip 必须最后绘制，否则会被节点区、分组区或真实槽位覆盖
-        groupContents.renderTooltip(graphics, font, mouseX, mouseY,
-            groupContentLeft(), groupContentTop(), groupContentWidth(), groupContentHeight());
-        nodeConfigurationPanel.renderTooltips(graphics, mouseX, mouseY);
+        if (showingFaces()) {
+            groupContents.renderTooltip(graphics, font, mouseX, mouseY, groupContentLeft(), groupContentTop(), groupContentWidth(), groupContentHeight());
+        } else nodeConfigurationPanel.renderTooltips(graphics, mouseX, mouseY);
         renderTopTooltips(graphics, mouseX, mouseY);
     }
 
@@ -512,20 +519,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             clearNodeTarget();
         nodeConfigurationPanel.tick();
         resourceRatesButton.visible = menu.hasTarget() && !menu.getTargetNode().isConnectionFace();
-        resourceRatesButton.setY(topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y + nodeConfigurationPanel.resourceRowY());
         if (!menu.hasTarget()) resourceDialog = null;
     }
 
-    private void renderToolbarLabels(GuiGraphics graphics) {
-        graphics.drawString(font, playerInventoryTitle,
-            leftPos + SLGuiTextures.LinkConfigurator.INVENTORY_X,
-            topPos + SLGuiTextures.LinkConfigurator.INVENTORY_Y
-                + INVENTORY_TITLE_Y_OFFSET,
-            ConfiguratorStyle.TEXT, false);
+    private boolean overBackButton(double x, double y) {
+        return x >= leftPos + 155 && x < leftPos + 172 && y >= topPos + 41 && y < topPos + 57;
     }
 
-    private Component compactNode(LogisticsNode node) {
-        return NodeDisplayText.compact(node);
+    private boolean showingFaces() {
+        return choosingFace || !menu.hasTarget();
     }
 
     private void renderTopTooltips(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -544,8 +546,15 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!groupPanel.hasDialog() && resourceDialog == null && tabs.mouseClicked(mouseX, mouseY, button)) {
+            tabPointer = true;
+            nodeConfigurationPanel.unfocusEditors(-1, -1);
+            containerWindow.setFocused(null);
+            return true;
+        }
         if (resourceDialog == null && !groupPanel.hasDialog()
             && !nodeConfigurationPanel.isChannelDropdownOpen()
+            && (blueprintVisible || !groupPanel.overGrantButton(mouseX, mouseY))
             && screenWidgets.mouseClicked(mouseX, mouseY, button)) {
             screenWidgetButton = button;
             containerWindow.setFocused(null);
@@ -560,24 +569,46 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (groupPanel.hasDialog()) return groupPanel.directoryMouseClicked(mouseX, mouseY, button);
         if (resourceDialog == null && !groupPanel.hasDialog()
             && !nodeConfigurationPanel.isChannelDropdownOpen()
+            && (blueprintVisible || !groupPanel.overGrantButton(mouseX, mouseY))
             && windowDrag.begin(mouseX + windowOffsetX, mouseY + windowOffsetY, button,
             leftPos + windowOffsetX, topPos + windowOffsetY,
             leftPos + windowOffsetX, topPos + windowOffsetY - OUTER_FRAME_INSET,
-            OUTER_WIDTH, OUTER_FRAME_INSET + 5)) return true;
-        if (!groupPanel.hasDialog() && resourceDialog == null && tabs.mouseClicked(mouseX, mouseY, button)) {
-            tabPointer = true;
-            nodeConfigurationPanel.unfocusEditors(-1, -1);
-            containerWindow.setFocused(null);
-            return true;
-        }
+            SharedScreen.WIDTH, OUTER_FRAME_INSET + LEFT_PANEL_Y)) return true;
         if (blueprintVisible) return blueprintPage.mouseClicked(mouseX, mouseY, button);
         if (restoreView != null || editSession.awaiting() && button != 0) return true;
-        if (nodeConfigurationPanel.channelDropdownClicked(mouseX, mouseY, button)) return true;
-        if (groupPanel.directoryMouseClicked(mouseX, mouseY, button)) return true;
-        if (groupContents.searchBoxMouseClicked(mouseX, mouseY, button)) {
-            containerWindow.setFocused(groupContents.getSearchBox());
+        if (!showingFaces() && button == 0 && overBackButton(mouseX, mouseY)) {
+            nodeConfigurationPanel.unfocusEditors(-1, -1);
+            containerWindow.setFocused(null);
+            SoundUtil.playClickSound();
+            choosingFace = true;
+            groupContents.getSearchBox().setFocused(false);
             return true;
         }
+        if (showingFaces() && mouseX >= groupContentLeft() && mouseX < groupContentLeft() + groupContentWidth()
+            && mouseY >= groupContentTop() && mouseY < groupContentTop() + groupContentHeight()) {
+            if (groupContents.searchBoxMouseClicked(mouseX, mouseY, button)) {
+                containerWindow.setFocused(groupContents.getSearchBox());
+                return true;
+            }
+            LogisticsNode nodeBeforeClick = groupContents.getSelectedNode();
+            if (groupContents.mouseClicked(mouseX, mouseY, button,
+                groupContentLeft(), groupContentTop(), groupContentWidth(), groupContentHeight())) {
+                LogisticsNode node = groupContents.getSelectedNode();
+                if (node != null && groupContents.clickedFaceRow()) {
+                    choosingFace = false;
+                    groupContents.getSearchBox().setFocused(false);
+                    if (!menu.hasTarget() || !node.equals(menu.getTargetNode())) openNode(node);
+                } else if (node == null && nodeBeforeClick != null) {
+                    clearNodeTarget();
+                }
+                return true;
+            }
+            choosingFace = false;
+            groupContents.getSearchBox().setFocused(false);
+            return true;
+        }
+        if (nodeConfigurationPanel.channelDropdownClicked(mouseX, mouseY, button)) return true;
+        if (groupPanel.directoryMouseClicked(mouseX, mouseY, button)) return true;
         if (groupPanel.searchBoxMouseClicked(mouseX, mouseY, button)) {
             containerWindow.setFocused(groupPanel.getSearchBox());
             return true;
@@ -598,9 +629,9 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         }
 
         if (menu.hasTarget() && !menu.canEditTarget()
-            && mouseX >= leftPos && mouseX < leftPos + LEFT_PANEL_WIDTH
-            && mouseY >= topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y
-            && mouseY < topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y + SLGuiTextures.LinkConfigurator.NODE_CONFIG_HEIGHT)
+            && mouseX >= leftPos + LEFT_PANEL_X && mouseX < leftPos + LEFT_PANEL_X + LEFT_PANEL_WIDTH
+            && mouseY >= topPos + SharedScreen.NODE_CONFIG_Y
+            && mouseY < topPos + SharedScreen.NODE_CONFIG_Y + SharedScreen.NODE_CONFIG_HEIGHT)
             return true;
 
         var numberEditor = nodeConfigurationPanel.editorAt(mouseX, mouseY);
@@ -609,21 +640,10 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
             return numberEditor.mouseClicked(mouseX, mouseY, button);
         }
         if (!editSession.canEdit()) return true;
-        LogisticsNode nodeBeforeClick = groupContents.getSelectedNode();
-        if (groupContents.mouseClicked(mouseX, mouseY, button,
-            groupContentLeft(), groupContentTop(), groupContentWidth(), groupContentHeight())) {
-            LogisticsNode node = groupContents.getSelectedNode();
-            if (node != null && (!menu.hasTarget() || !node.equals(menu.getTargetNode()) || !Objects.equals(nodeBeforeClick, node))) {
-                openNode(node);
-            } else if (node == null && nodeBeforeClick != null) {
-                clearNodeTarget();
-            }
-            return true;
-        }
-        int resourceY = topPos + SLGuiTextures.LinkConfigurator.NODE_CONFIG_Y + nodeConfigurationPanel.resourceRowY();
+        int resourceY = topPos + SharedScreen.NODE_CONFIG_Y + NodeConfiguration.RESOURCE_ROW_Y;
         if (button == 0 && menu.hasTarget() && menu.showsOutputSettings() && !menu.getTargetNode().isConnectionFace()
-            && mouseX >= leftPos + NodeConfigurationPanel.RESOURCE_BUTTON_X && mouseX < leftPos + NodeConfigurationPanel.RESOURCE_BUTTON_X + NodeConfigurationPanel.RESOURCE_BUTTON_WIDTH
-            && mouseY >= resourceY && mouseY < resourceY + NodeConfigurationPanel.RESOURCE_BUTTON_HEIGHT) {
+            && mouseX >= leftPos + NodeConfiguration.RESOURCE_BUTTON_X && mouseX < leftPos + NodeConfiguration.RESOURCE_BUTTON_X + NodeConfiguration.RESOURCE_BUTTON_WIDTH
+            && mouseY >= resourceY && mouseY < resourceY + NodeConfiguration.RESOURCE_BUTTON_HEIGHT) {
             openResourceTypes(false);
             return true;
         }
@@ -724,10 +744,13 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         mouseY = toVirtual(mouseY) - windowOffsetY;
         if (tabs.mouseScrolled(mouseX, mouseY, scrollY)) return true;
         if (blueprintVisible) return blueprintPage.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        if (showingFaces() && mouseX >= groupContentLeft()) {
+            groupContents.mouseScrolled(mouseX, mouseY, scrollY, groupContentLeft(), groupContentTop(), groupContentWidth(), groupContentHeight());
+            return true;
+        }
         if (nodeConfigurationPanel.channelDropdownScrolled(scrollY)) return true;
         if (groupPanel.mouseScrolled(mouseX, mouseY, scrollY, leftPos, topPos)) return true;
-        if (groupContents.mouseScrolled(mouseX, mouseY, scrollY,
-            groupContentLeft(), groupContentTop(), groupContentWidth(), groupContentHeight())) return true;
+
         return containerWindow.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
@@ -762,7 +785,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         dragX /= interfaceScale;
         dragY /= interfaceScale;
         if (groupPanel.mouseDragged(mouseX, mouseY, button, topPos)) return true;
-        if (groupContents.mouseDragged(mouseX, mouseY, dragX, dragY)) return true;
+        if (showingFaces() && groupContents.mouseDragged(mouseX, mouseY, dragX, dragY)) return true;
         return containerWindow.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
@@ -790,7 +813,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         LogisticsNode before = groupContents.getSelectedNode();
         if (groupContents.mouseReleased()) {
             LogisticsNode node = groupContents.getSelectedNode();
-            if (node != null && !Objects.equals(before, node)) openNode(node);
+            if (node != null && !Objects.equals(before, node)) {
+                choosingFace = false;
+                groupContents.getSearchBox().setFocused(false);
+                openNode(node);
+            }
             return true;
         }
         return containerWindow.mouseReleased(mouseX, mouseY, button);
@@ -798,8 +825,8 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
 
     /// 界面尺寸较大、逻辑窗口放不下完整配置器时，仅缩放本界面，不修改玩家的全局设置
     private void updateResponsiveViewport() {
-        interfaceScale = ConfiguratorStyle.interfaceScale(width, height, tabs.maximumWidth() + 12);
-        virtualWidth = Math.max(OUTER_WIDTH, (int) Math.floor(width / interfaceScale));
+        interfaceScale = ConfiguratorStyle.interfaceScale(width, height, 12);
+        virtualWidth = Math.max(SharedScreen.WIDTH, (int) Math.floor(width / interfaceScale));
         virtualHeight = Math.max(OUTER_HEIGHT, (int) Math.floor(height / interfaceScale));
     }
 
@@ -816,6 +843,11 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         if (resourceDialog != null) return resourceDialog.keyPressed(keyCode, scanCode, modifiers);
         if (groupPanel.hasDialog()) return groupPanel.dialogKeyPressed(keyCode, scanCode, modifiers);
         if (screenWidgets.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (choosingFace && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            choosingFace = false;
+            groupContents.getSearchBox().setFocused(false);
+            return true;
+        }
         if (tabs.isExpanded() && keyCode == GLFW.GLFW_KEY_ESCAPE) {
             tabs.collapse();
             return true;
@@ -903,7 +935,7 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         List<ResourceLocation> ids = !menu.showsOutputSettings()
             ? topology == null ? List.of() : topology.presentTypeIds()
             : editSession.preview(new ChannelConfigurationEdit.TypePatchEdit(List.of(), List.of())).apply(menu.getSelectedTypeIds());
-        Component context = Component.translatable("gui.staticlogistics.node.resource_context", compactNode(target),
+        Component context = Component.translatable("gui.staticlogistics.node.resource_context", NodeDisplayText.compact(target),
             Component.translatable(!menu.showsOutputSettings() ? "gui.staticlogistics.input" : "gui.staticlogistics.output"));
         if (!values && groupContents.hasMultipleConnections())
             context = Component.translatable("gui.staticlogistics.resources.batch_context",
@@ -941,11 +973,32 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         return targets;
     }
 
+    private Map<LogisticsNode, GroupKey> queriedTargets = Map.of();
+    private UUID valuesRequest;
+    private long nextValuesQuery;
+
+    public void acceptBatchValues(S2CBatchValuesPayload values) {
+        if (values.request().equals(valuesRequest)) nodeConfigurationPanel.setBatchValues(values);
+    }
+
     private void updateBatchSelection() {
-        int count = menu.hasTarget() ? groupContents.configurationTargets(menu.getTargetNode()).size() : 0;
-        menu.setClientBatchSelection(groupContents.hasMultipleConnections());
-        if (nodeConfigurationPanel != null)
-            nodeConfigurationPanel.setBatchSelection(groupContents.hasMultipleConnections(), count);
+        boolean batch = groupContents.hasMultipleConnections();
+        var targets = batch && menu.hasTarget() && menu.getRemoteGroupKey() != null
+            ? configurationTargets(menu.getTargetNode()) : Map.<LogisticsNode, GroupKey>of();
+        menu.setClientBatchSelection(batch);
+        nodeConfigurationPanel.setBatchSelection(batch, targets.size());
+        boolean changed = !queriedTargets.equals(targets);
+        if (changed) {
+            queriedTargets = Map.copyOf(targets);
+            valuesRequest = null;
+            nodeConfigurationPanel.setBatchValues(null);
+        }
+        long tick = minecraft.level.getGameTime();
+        if (!targets.isEmpty() && menu.showsInputSettings() && (changed || tick >= nextValuesQuery)) {
+            valuesRequest = UUID.randomUUID();
+            nextValuesQuery = tick + 40;
+            PacketDistributor.sendToServer(new C2SBatchValuesPayload(valuesRequest, menu.containerId, targets));
+        }
     }
 
     private void discardBatch() {
@@ -963,223 +1016,6 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
         }
         PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(),
             menu.getTargetNode().channel(), editSession.batchEdits(), menu.containerId, beginRequest(), batchTargets));
-    }
-
-    private void savePreset() {
-        nodeConfigurationPanel.unfocusEditors(-1, -1);
-        if (!editSession.canEdit() || !menu.hasTarget() || nodeConfigurationPanel.hasInputError() || editSession.hasBatchDraft())
-            return;
-        Long priority = editSession.pendingValue(menu.getTargetNode(), ChannelConfigurationEdit.NumberField.PRIORITY);
-        Long stock = editSession.pendingValue(menu.getTargetNode(), ChannelConfigurationEdit.NumberField.KEEP_STOCK);
-        LogisticsNode target = menu.getTargetNode();
-        long savedPriority = priority == null ? menu.getPriority() : priority;
-        long savedStock = stock == null ? menu.getKeepStock() : stock;
-        groupPanel.openPresetName(name -> savePresetNamed(name, target, savedPriority, savedStock));
-    }
-
-    private void savePresetNamed(String name, LogisticsNode target, long priority, long stock) {
-        if (!menu.hasTarget() || !target.equals(menu.getTargetNode()) || !editSession.canEdit()) return;
-        try {
-            ConfigurationPreset.save(name, menu, priority, stock);
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.saved"), true);
-        } catch (FileAlreadyExistsException e) {
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.duplicate"), true);
-        } catch (IOException | RuntimeException e) {
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.error"), true);
-        }
-    }
-
-    private void applyPreset() {
-        nodeConfigurationPanel.unfocusEditors(-1, -1);
-        if (!editSession.canEdit() || !menu.hasTarget() || nodeConfigurationPanel.hasInputError() || editSession.hasBatchDraft())
-            return;
-        LogisticsNode target = menu.getTargetNode();
-        try {
-            groupPanel.openPresetSelection(ConfigurationPreset.names(), name -> applyPresetNamed(name, target), this::deletePreset);
-        } catch (IOException | RuntimeException e) {
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.error"), true);
-        }
-    }
-
-    private void deletePreset(String name) {
-        try {
-            ConfigurationPreset.delete(name);
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.deleted"), true);
-        } catch (IOException | RuntimeException e) {
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.error"), true);
-        }
-    }
-
-    private void applyPresetNamed(String name, LogisticsNode target) {
-        if (!menu.hasTarget() || !target.equals(menu.getTargetNode()) || !editSession.canEdit() || editSession.hasBatchDraft())
-            return;
-        try {
-            var edits = ConfigurationPreset.load(name, menu);
-            if (edits.stream().anyMatch(edit -> !menu.allowsEdit(edit)))
-                throw new IllegalArgumentException("Unsupported preset");
-            var targets = Map.copyOf(configurationTargets(target));
-            if (targets.size() > 1) {
-                selectPresetInspection(target, edits, targets);
-                return;
-            }
-            var differences = edits.stream().map(this::presetDifference).toList();
-            groupPanel.openPresetReview(differences, targets.size(), selected -> {
-                if (!menu.hasTarget() || !target.equals(menu.getTargetNode()) || !editSession.canEdit()
-                    || editSession.hasBatchDraft() || !targets.equals(configurationTargets(target))
-                    || !differences.equals(edits.stream().map(this::presetDifference).toList())) {
-                    minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.changed"), true);
-                    return;
-                }
-                var chosen = IntStream.range(0, edits.size()).filter(selected::contains).mapToObj(edits::get).toList();
-                if (!chosen.isEmpty() && chosen.stream().allMatch(menu::allowsEdit))
-                    PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(),
-                        target.channel(), chosen, menu.containerId, beginRequest(), targets));
-            });
-        } catch (IOException | RuntimeException e) {
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.error"), true);
-        }
-    }
-
-    private void selectPresetInspection(LogisticsNode target, List<ChannelConfigurationEdit> edits,
-                                        Map<LogisticsNode, GroupKey> targets) {
-        var nodes = targets.keySet().stream().sorted(ConnectionKey.NODE_ORDER).toList();
-        groupPanel.openPresetTargetSelection(nodes, inspected -> {
-            if (!menu.hasTarget() || !target.equals(menu.getTargetNode())
-                || !targets.equals(configurationTargets(target)) || !editSession.canEdit()) return;
-            long requestId = ++presetPreviewSequence;
-            pendingPresetPreview = new PendingPresetPreview(requestId, target, inspected, edits, targets);
-            PacketDistributor.sendToServer(new C2SPresetPreviewPayload(
-                menu.containerId, requestId, inspected, targets.get(inspected), edits));
-        });
-    }
-
-    public void acceptPresetPreview(long requestId, LogisticsNode node,
-                                    PresetPreviewService.Snapshot snapshot) {
-        var pending = pendingPresetPreview;
-        if (pending == null || pending.requestId() != requestId || !pending.inspected().equals(node)) return;
-        pendingPresetPreview = null;
-        if (snapshot == null || !menu.hasTarget() || !pending.focus().equals(menu.getTargetNode())
-            || !pending.targets().equals(configurationTargets(pending.focus())) || !editSession.canEdit()
-            || snapshot.fields().size() != pending.edits().size()) {
-            minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.preview_unavailable"), true);
-            return;
-        }
-        var labels = new ArrayList<String>();
-        for (var field : snapshot.fields())
-            labels.add(presetDifferenceForSnapshot(pending.edits().get(field.editIndex()), field.value(), field.available()));
-        groupPanel.openPresetReview(labels, pending.targets().size(), selected -> {
-            if (!menu.hasTarget() || !pending.focus().equals(menu.getTargetNode()) || !editSession.canEdit()
-                || editSession.hasBatchDraft() || !pending.targets().equals(configurationTargets(pending.focus()))) {
-                minecraft.player.displayClientMessage(Component.translatable("gui.staticlogistics.preset.changed"), true);
-                return;
-            }
-            var chosen = IntStream.range(0, pending.edits().size()).filter(selected::contains)
-                .mapToObj(pending.edits()::get).toList();
-            if (!chosen.isEmpty() && chosen.stream().allMatch(menu::allowsEdit))
-                PacketDistributor.sendToServer(new C2SConfigureFacePayload(menu.getPos(), menu.getFace(),
-                    pending.focus().channel(), chosen, menu.containerId, beginRequest(), pending.targets(),
-                    snapshot.node(), snapshot.version()));
-        }, () -> selectPresetInspection(pending.focus(), pending.edits(), pending.targets()));
-    }
-
-    private String presetDifferenceForSnapshot(ChannelConfigurationEdit desired, ChannelConfigurationEdit current, boolean available) {
-        String before;
-        if (!available) before = Component.translatable("gui.staticlogistics.preset.filter_missing").getString();
-        else if (current instanceof ChannelConfigurationEdit.EnabledEdit value) before = presetBoolean(value.enabled());
-        else if (current instanceof ChannelConfigurationEdit.RedstoneEdit value)
-            before = Component.translatable("gui.staticlogistics.compact.redstone_" + value.mode().name().toLowerCase(Locale.ROOT)).getString();
-        else if (current instanceof ChannelConfigurationEdit.NumberEdit value) before = Long.toString(value.value());
-        else if (current instanceof ChannelConfigurationEdit.StrategyEdit value)
-            before = value.strategy().getDisplayName().getString();
-        else if (current instanceof ChannelConfigurationEdit.ExtractionEdit value)
-            before = value.mode().getDisplayName().getString();
-        else if (current instanceof ChannelConfigurationEdit.SelectedTypesEdit value)
-            before = presetTypes(value.typeIds());
-        else if (current instanceof ChannelConfigurationEdit.FilterEdit value) before = presetFilter(value.filter());
-        else throw new IllegalArgumentException("Unsupported preset snapshot");
-        String focusDifference = presetDifference(desired);
-        int separator = focusDifference.indexOf(": ");
-        if (separator < 0) throw new IllegalArgumentException("Invalid preset difference");
-        String after;
-        if (desired instanceof ChannelConfigurationEdit.EnabledEdit value) after = presetBoolean(value.enabled());
-        else if (desired instanceof ChannelConfigurationEdit.RedstoneEdit value)
-            after = Component.translatable("gui.staticlogistics.compact.redstone_" + value.mode().name().toLowerCase(Locale.ROOT)).getString();
-        else if (desired instanceof ChannelConfigurationEdit.NumberEdit value) after = Long.toString(value.value());
-        else if (desired instanceof ChannelConfigurationEdit.StrategyEdit value)
-            after = value.strategy().getDisplayName().getString();
-        else if (desired instanceof ChannelConfigurationEdit.ExtractionEdit value)
-            after = value.mode().getDisplayName().getString();
-        else if (desired instanceof ChannelConfigurationEdit.SelectedTypesEdit value)
-            after = presetTypes(value.typeIds());
-        else if (desired instanceof ChannelConfigurationEdit.FilterEdit value) after = presetFilter(value.filter());
-        else throw new IllegalArgumentException("Unsupported preset");
-        return focusDifference.substring(0, separator + 2) + before + " → " + after;
-    }
-
-    private String presetDifference(ChannelConfigurationEdit edit) {
-        String label, before, after;
-        if (edit instanceof ChannelConfigurationEdit.EnabledEdit value) {
-            label = Component.translatable("gui.staticlogistics.preset.channel_state").getString();
-            before = presetBoolean(menu.isChannelEnabled());
-            after = presetBoolean(value.enabled());
-        } else if (edit instanceof ChannelConfigurationEdit.RedstoneEdit value) {
-            label = Component.translatable("gui.staticlogistics.compact.redstone").getString();
-            before = Component.translatable("gui.staticlogistics.compact.redstone_" + menu.getRedstoneMode().name().toLowerCase(Locale.ROOT)).getString();
-            after = Component.translatable("gui.staticlogistics.compact.redstone_" + value.mode().name().toLowerCase(Locale.ROOT)).getString();
-        } else if (edit instanceof ChannelConfigurationEdit.NumberEdit value) {
-            boolean priority = value.field() == ChannelConfigurationEdit.NumberField.PRIORITY;
-            label = Component.translatable(priority ? "gui.staticlogistics.label.target_priority" : "gui.staticlogistics.label.keep_stock").getString();
-            before = Long.toString(priority ? menu.getPriority() : menu.getKeepStock());
-            after = Long.toString(value.value());
-        } else if (edit instanceof ChannelConfigurationEdit.StrategyEdit value) {
-            label = Component.translatable("gui.staticlogistics.compact.distribution").getString();
-            before = menu.getStrategy().getDisplayName().getString();
-            after = value.strategy().getDisplayName().getString();
-        } else if (edit instanceof ChannelConfigurationEdit.ExtractionEdit value) {
-            label = Component.translatable("gui.staticlogistics.compact.extraction").getString();
-            before = menu.getExtractionMode().getDisplayName().getString();
-            after = value.mode().getDisplayName().getString();
-        } else if (edit instanceof ChannelConfigurationEdit.SelectedTypesEdit value) {
-            label = Component.translatable("gui.staticlogistics.reference.resources").getString();
-            before = presetTypes(menu.getSelectedTypeIds());
-            after = presetTypes(value.typeIds());
-        } else if (edit instanceof ChannelConfigurationEdit.FilterEdit value) {
-            label = Component.translatable("gui.staticlogistics.filter").getString();
-            var stack = menu.getSlot(0).getItem();
-            before = stack.getItem() instanceof LogisticsUpgrade upgrade && upgrade.isFilterUpgrade()
-                ? presetFilter(stack.getOrDefault(SLDataComponents.FILTER_DATA.get(), FilterData.EMPTY))
-                : Component.translatable("gui.staticlogistics.preset.filter_missing").getString();
-            after = presetFilter(value.filter());
-        } else throw new IllegalArgumentException("Unsupported preset field");
-        return label + ": " + before + " → " + after;
-    }
-
-    private String presetBoolean(boolean enabled) {
-        return Component.translatable(enabled ? "gui.staticlogistics.reference.enable" : "gui.staticlogistics.reference.disable").getString();
-    }
-
-    private String presetFilter(FilterData data) {
-        var labels = new TreeMap<String, String>();
-        data.items().forEach((slot, stack) -> labels.put(slot, stack.getHoverName().getString()));
-        data.fluids().forEach((slot, fluid) -> labels.put(slot, BuiltInRegistries.FLUID.getKey(fluid).toString()));
-        if (labels.isEmpty()) return "—";
-        return labels.entrySet().stream().map(entry -> {
-            String slot = entry.getKey();
-            var rules = data.rules().getOrDefault(slot, List.of());
-            String details = rules.stream().map(rule -> Component.translatable("gui.staticlogistics.filter.rule." + rule.kind().name().toLowerCase(Locale.ROOT)).getString()
-                + " " + Component.translatable("gui.staticlogistics.filter.rule." + rule.mode().name().toLowerCase(Locale.ROOT)).getString()
-                + (rule.key().isEmpty() ? "" : " " + rule.key())).collect(Collectors.joining(", "));
-            return Component.translatable("gui.staticlogistics.preset.filter_entry", Integer.parseInt(slot) + 1, entry.getValue(),
-                Component.translatable(data.blacklist().getOrDefault(slot, false) ? "gui.staticlogistics.preset.block" : "gui.staticlogistics.preset.allow"), details.isEmpty() ? "—" : details).getString();
-        }).collect(Collectors.joining("; "));
-    }
-
-    private String presetTypes(List<ResourceLocation> ids) {
-        if (ids.isEmpty()) return "—";
-        return ids.stream().map(id -> {
-            var type = TransferRegistries.get(id);
-            return type == null ? id.toString() : Component.translatable(type.translationKey()).getString();
-        }).collect(Collectors.joining(", "));
     }
 
     private void submitConfiguration(ChannelConfigurationEdit edit) {
@@ -1250,19 +1086,19 @@ public class LinkConfiguratorScreen extends AbstractConfiguratorScreen<LinkConfi
     }
 
     private int groupContentLeft() {
-        return leftPos + SLGuiTextures.LinkConfigurator.GROUP_CONTENT_X;
+        return leftPos + SharedScreen.GROUP_CONTENT_X;
     }
 
     private int groupContentTop() {
-        return topPos + SLGuiTextures.LinkConfigurator.GROUP_CONTENT_Y;
+        return topPos + SharedScreen.GROUP_CONTENT_Y;
     }
 
     private int groupContentWidth() {
-        return SLGuiTextures.LinkConfigurator.GROUP_CONTENT_WIDTH - GROUP_CONTENT_RIGHT_INSET;
+        return SharedScreen.GROUP_CONTENT_WIDTH - GROUP_CONTENT_RIGHT_INSET;
     }
 
     private int groupContentHeight() {
-        return SLGuiTextures.LinkConfigurator.GROUP_CONTENT_HEIGHT - GROUP_CONTENT_BOTTOM_INSET;
+        return SharedScreen.GROUP_CONTENT_HEIGHT - GROUP_CONTENT_BOTTOM_INSET;
     }
 
     @Override
