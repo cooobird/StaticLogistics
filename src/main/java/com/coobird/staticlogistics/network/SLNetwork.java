@@ -6,7 +6,7 @@ import com.coobird.staticlogistics.network.s2c.*;
 import org.mesdag.portlib.network.PortPayloadHandler;
 
 public final class SLNetwork {
-    private static final PortPayloadHandler registrar = new PortPayloadHandler(StaticLogistics.MODID, "58");
+    private static final PortPayloadHandler registrar = new PortPayloadHandler(StaticLogistics.MODID, "59");
 
     private SLNetwork() {
     }
@@ -25,8 +25,8 @@ public final class SLNetwork {
         registrar.registerInGameS2C(S2CTopologyUpdatePayload.class, S2CTopologyUpdatePayload.ID, S2CTopologyUpdatePayload.STREAM_CODEC);
         registrar.registerInGameS2C(S2CConfigSyncPayload.class, S2CConfigSyncPayload.ID, S2CConfigSyncPayload.STREAM_CODEC);
         registrar.registerInGameS2C(S2CStoredSelectionPage.class, S2CStoredSelectionPage.ID, S2CStoredSelectionPage.STREAM_CODEC);
-        registrar.registerInGameS2C(S2CPresetPreviewPayload.class, S2CPresetPreviewPayload.ID, S2CPresetPreviewPayload.STREAM_CODEC);
-        registrar.registerInGameC2S(C2SPresetPreviewPayload.class, C2SPresetPreviewPayload.ID, C2SPresetPreviewPayload.STREAM_CODEC);
+        registrar.registerInGameS2C(S2CBatchValuesPayload.class, S2CBatchValuesPayload.ID, S2CBatchValuesPayload.STREAM_CODEC);
+        registrar.registerInGameC2S(C2SBatchValuesPayload.class, C2SBatchValuesPayload.ID, C2SBatchValuesPayload.STREAM_CODEC);
         registrar.registerInGameS2C(S2CRemoveFaceTopologyPayload.class, S2CRemoveFaceTopologyPayload.ID, S2CRemoveFaceTopologyPayload.STREAM_CODEC);
         registrar.registerInGameS2C(S2CGroupDirectoryPayload.class, S2CGroupDirectoryPayload.ID, S2CGroupDirectoryPayload.STREAM_CODEC);
         registrar.registerInGameS2C(S2CAccessSnapshotPayload.class, S2CAccessSnapshotPayload.ID, S2CAccessSnapshotPayload.STREAM_CODEC);

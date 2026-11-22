@@ -73,10 +73,9 @@ public final class AtlasButton extends Button {
             return;
         }
         var font = Minecraft.getInstance().font;
-        String text = font.plainSubstrByWidth(getMessage().getString(), width - textInset - 3);
-        int x = textInset > 6 ? getX() + textInset : getX() + (width - font.width(text)) / 2;
-        graphics.drawString(font, text, x, contentY(font.lineHeight),
-            active ? ConfiguratorStyle.TEXT : 0xFF686873, false);
+        int inset = textInset > 6 ? textInset : 3;
+        ConfiguratorStyle.fittedLabel(graphics, font, getMessage(), getX() + inset, getY(),
+            width - inset - 3, height, active ? ConfiguratorStyle.TEXT : 0xFF686873, textInset <= 6);
     }
 
     public static AtlasBuilder atlasBuilder(Component text, OnPress press) {

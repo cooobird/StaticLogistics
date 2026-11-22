@@ -272,8 +272,7 @@ public final class GroupContentsPanel {
     private void renderGroups(GuiGraphics g, Font font, int x, int y, int width, int height, double scale) {
         ConfiguratorStyle.row(g, x, y, width, HEADER_HEIGHT, false, false);
         g.drawString(font, tr("column_name"), x + HEADER_NAME_X, y + HEADER_TEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
-        g.drawString(font, tr("column_position"), x + HEADER_COORDINATE_X, y + HEADER_TEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
-        g.drawString(font, tr("column_role"), x + HEADER_ROLE_X, y + HEADER_TEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
+        g.drawString(font, tr("count"), x + HEADER_ROLE_X, y + HEADER_TEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
         g.drawString(font, tr("column_direction"), x + width - HEADER_FACING_RIGHT, y + HEADER_TEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
         String query = searchBox.getValue().trim().toLowerCase(Locale.ROOT);
         Map<GroupId, List<LogisticsNode>> grouped = new LinkedHashMap<>();
@@ -319,7 +318,8 @@ public final class GroupContentsPanel {
                 g.drawString(font, Integer.toString(members.size()), x + ROLE_COLUMN_X, rowY + NODE_TEXT_Y, ConfiguratorStyle.TEXT, false);
                 String directions = members.stream().map(LogisticsNode::face).distinct()
                     .map(d -> NodeDisplayText.direction(d).getString()).collect(Collectors.joining(" "));
-                g.drawString(font, font.plainSubstrByWidth(directions, DIRECTION_TEXT_WIDTH), x + width - FACING_COLUMN_RIGHT, rowY + NODE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                g.drawString(font, font.plainSubstrByWidth(directions, Math.max(1, rowWidth - width + FACING_COLUMN_RIGHT - 12)), x + width - FACING_COLUMN_RIGHT, rowY + NODE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                SLGuiTextures.ARROW_RIGHT.draw(g, x + rowWidth - 11, rowY + 5);
                 groupHits.add(hit);
             }
             rowY += NODE_ROW_STEP;
@@ -348,7 +348,7 @@ public final class GroupContentsPanel {
         if (groups.isEmpty())
             centered(g, font, tr("empty").getString(), x, top + EMPTY_TEXT_Y, width, ConfiguratorStyle.MUTED_TEXT);
         if (listMaximum > 0) {
-            int track = scrollbarHeight, knob = SLGuiTextures.Scrollbar.HEIGHT;
+            int track = scrollbarHeight, knob = SLGuiTextures.SCROLL_THUMB.height();
             int offset = SCROLLBAR_THUMB_VERTICAL_INSET + listScroll * Math.max(0, track - knob - 2 * SCROLLBAR_THUMB_VERTICAL_INSET) / listMaximum;
             ConfiguratorStyle.scrollbar(g, scrollbarX, scrollbarY, SCROLLBAR_WIDTH, track, offset, SCROLLBAR_THUMB_X_OFFSET, true);
         }
@@ -389,7 +389,8 @@ public final class GroupContentsPanel {
                     g.drawString(font, font.plainSubstrByWidth(coordinates(node), COORDINATE_TEXT_WIDTH), coordinateX, rowY + NODE_TEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
                     g.drawString(font, font.plainSubstrByWidth(tr(role == 1 ? "extract" : role == 2 ? "insert" : role == 3 ? "both" : "unknown").getString(), facesX - roleX - ROLE_TEXT_RIGHT_GAP), roleX, rowY + NODE_TEXT_Y, color, false);
                     String directions = blockFaces.getOrDefault(node.connectionFace(), Set.of()).stream().map(d -> NodeDisplayText.direction(d).getString()).collect(Collectors.joining(" "));
-                    g.drawString(font, font.plainSubstrByWidth(directions, DIRECTION_TEXT_WIDTH), facesX, rowY + NODE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                    g.drawString(font, font.plainSubstrByWidth(directions, Math.max(1, x + rowWidth - 12 - facesX)), facesX, rowY + NODE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                    SLGuiTextures.ARROW_RIGHT.draw(g, x + rowWidth - 11, rowY + 5);
                     hits.add(hit);
                 }
                 rowY += NODE_ROW_STEP;
@@ -401,7 +402,7 @@ public final class GroupContentsPanel {
         if (nodes.isEmpty())
             centered(g, font, tr("empty").getString(), x, top + EMPTY_TEXT_Y, width, ConfiguratorStyle.MUTED_TEXT);
         if (listMaximum > 0) {
-            int track = scrollbarHeight, knob = SLGuiTextures.Scrollbar.HEIGHT;
+            int track = scrollbarHeight, knob = SLGuiTextures.SCROLL_THUMB.height();
             int offset = SCROLLBAR_THUMB_VERTICAL_INSET + listScroll * Math.max(0, track - knob - 2 * SCROLLBAR_THUMB_VERTICAL_INSET) / listMaximum;
             ConfiguratorStyle.scrollbar(g, scrollbarX, scrollbarY, SCROLLBAR_WIDTH, track, offset, SCROLLBAR_THUMB_X_OFFSET, true);
         }
@@ -410,17 +411,24 @@ public final class GroupContentsPanel {
     private void updateScrollbar(int x, int width, int top, int bottom) {
         scrollbarX = x + width - SCROLLBAR_RIGHT_INSET + SCROLLBAR_X_OFFSET;
         scrollbarY = top + SCROLLBAR_Y_OFFSET;
-        scrollbarHeight = Math.max(SLGuiTextures.Scrollbar.HEIGHT + 2 * SCROLLBAR_THUMB_VERTICAL_INSET,
+        scrollbarHeight = Math.max(SLGuiTextures.SCROLL_THUMB.height() + 2 * SCROLLBAR_THUMB_VERTICAL_INSET,
             bottom - top + SCROLLBAR_HEIGHT_ADJUST);
     }
 
     private int scrollFromMouse(double mouseY) {
-        int travel = Math.max(1, scrollbarHeight - SLGuiTextures.Scrollbar.HEIGHT - 2 * SCROLLBAR_THUMB_VERTICAL_INSET);
-        double offset = mouseY - scrollbarY - SCROLLBAR_THUMB_VERTICAL_INSET - SLGuiTextures.Scrollbar.HEIGHT / 2.0;
+        int travel = Math.max(1, scrollbarHeight - SLGuiTextures.SCROLL_THUMB.height() - 2 * SCROLLBAR_THUMB_VERTICAL_INSET);
+        double offset = mouseY - scrollbarY - SCROLLBAR_THUMB_VERTICAL_INSET - SLGuiTextures.SCROLL_THUMB.height() / 2.0;
         return Math.max(0, Math.min(listMaximum, (int) Math.round(offset * listMaximum / travel)));
     }
 
+    private boolean faceRowClicked;
+
+    public boolean clickedFaceRow() {
+        return faceRowClicked;
+    }
+
     public boolean mouseClicked(double mx, double my, int button, int x, int y, int width, int height) {
+        faceRowClicked = false;
         if (mx < x || mx >= x + width || my < y || my >= y + height) return false;
         if (button != 0) return true;
         if (mx >= scrollbarX && mx < scrollbarX + SCROLLBAR_WIDTH && my >= scrollbarY && my < scrollbarY + scrollbarHeight && listMaximum > 0) {
@@ -432,13 +440,17 @@ public final class GroupContentsPanel {
             if (!hit.contains(mx, my)) continue;
             if (mx < hit.x() + 16) {
                 if (!expandedGroups.add(hit.id())) expandedGroups.remove(hit.id());
-            } else selectNode(hit.node());
+            } else {
+                selectNode(hit.node());
+                faceRowClicked = true;
+            }
             SoundUtil.playClickSound();
             return true;
         }
         for (Hit hit : List.copyOf(hits))
             if (hit.contains(mx, my)) {
                 selectNode(hit.node());
+                faceRowClicked = true;
                 SoundUtil.playClickSound();
                 return true;
             }
@@ -475,7 +487,7 @@ public final class GroupContentsPanel {
             }
     }
 
-    private static String name(LogisticsNode node) {
+    static String name(LogisticsNode node) {
         var level = Minecraft.getInstance().level;
         if (level == null || !level.dimension().equals(node.gPos().dimension())
             || !level.getChunkSource().hasChunk(node.gPos().pos().getX() >> 4,

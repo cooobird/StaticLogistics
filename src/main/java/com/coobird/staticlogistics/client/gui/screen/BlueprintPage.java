@@ -6,6 +6,7 @@ import com.coobird.staticlogistics.client.data.ClientLinkData;
 import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel;
 import com.coobird.staticlogistics.client.data.ConnectionDirectoryModel.Row;
 import com.coobird.staticlogistics.client.data.SelectedWorldLinks;
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.SharedScreen;
 import com.coobird.staticlogistics.client.gui.component.*;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
@@ -126,14 +127,15 @@ public final class BlueprintPage extends Screen {
         directoryDragging = false;
         String query = search == null ? "" : search.getValue();
         interfaceScale = host.interfaceScale();
-        panelWidth = SLGuiTextures.LinkConfigurator.WIDTH;
-        panelHeight = SLGuiTextures.LinkConfigurator.HEIGHT - SLGuiTextures.LinkConfigurator.CONTENT_INSET;
+        panelWidth = SharedScreen.WIDTH;
+        panelHeight = SharedScreen.HEIGHT - SharedScreen.CONTENT_INSET;
         left = host.contentLeft();
-        top = host.contentTop();
+        top = host.contentTop() + 23;
+        panelHeight -= 23;
         split = left + SPLIT_X;
         scopeOpen = false;
         scopeButton = addRenderableWidget(AtlasButton.atlasBuilder(Component.empty(), b -> scopeOpen = !scopeOpen)
-            .bounds(split + SCOPE_X, top + SCOPE_Y, SCOPE_WIDTH, BUTTON_HEIGHT).build());
+            .bounds(left + panelWidth - DIRECTORY_SCROLL_X_INSET + SLGuiTextures.SCROLL_TRACK.width() - SCOPE_WIDTH, top + SCOPE_Y, SCOPE_WIDTH, BUTTON_HEIGHT).build());
         scopeButton.setTooltip(Tooltip.create(Component.translatable("gui.staticlogistics.directory.scope_hint")));
         int footerY = top + panelHeight - FOOTER_BOTTOM;
         selectAllButton = addRenderableWidget(AtlasButton.atlasBuilder(tr("select_all"), b -> viewport.selectAll())
@@ -143,7 +145,7 @@ public final class BlueprintPage extends Screen {
         createButton = addRenderableWidget(AtlasButton.atlasBuilder(tr("create"), b -> {
             copy(true);
         }).bounds(split - CREATE_RIGHT_INSET, footerY, CREATE_WIDTH, BUTTON_HEIGHT).build().selection(() -> true));
-        search = new AtlasEditBox(font, split + SEARCH_X, top + SEARCH_Y, left + panelWidth - split - SEARCH_WIDTH_INSET, SEARCH_HEIGHT, Component.translatable("gui.staticlogistics.directory.search"));
+        search = new AtlasEditBox(font, split + DIRECTORY_LIST_X + DIRECTORY_FRAME_X_OFFSET, top + SEARCH_Y, left + panelWidth - DIRECTORY_SCROLL_X_INSET - DIRECTORY_SCROLL_GAP - (split + DIRECTORY_LIST_X) + DIRECTORY_FRAME_WIDTH_ADJUST, SEARCH_HEIGHT, Component.translatable("gui.staticlogistics.directory.search"));
         ((AtlasEditBox) search).setRightInset(12);
         search.setMaxLength(64);
         search.setHint(Component.translatable("gui.staticlogistics.directory.search"));
@@ -240,7 +242,7 @@ public final class BlueprintPage extends Screen {
     }
 
     private void renderInterface(GuiGraphics g, int mx, int my, float partialTick) {
-        ConfiguratorStyle.window(g, left, top, panelWidth, panelHeight);
+        ConfiguratorStyle.window(g, left - 3, top - 26, panelWidth + 6, panelHeight + 29);
         ConfiguratorStyle.window(g, left + LEFT_PANEL_X, top + LEFT_PANEL_Y,
             split - left - LEFT_PANEL_WIDTH_INSET, panelHeight - LEFT_PANEL_HEIGHT_INSET);
         ConfiguratorStyle.window(g, split, top + RIGHT_PANEL_Y,
@@ -268,8 +270,8 @@ public final class BlueprintPage extends Screen {
             boolean hovered = mx >= listX && mx < listRight && my >= ry && my < ry + DIRECTORY_ROW_HEIGHT;
             if (selected) ConfiguratorStyle.row(g, listX, ry, listRight - listX, DIRECTORY_ROW_HEIGHT, true, false);
             else {
-                g.fill(listX, ry, listRight, ry + DIRECTORY_ROW_HEIGHT, 0xFFC2C2C2);
-                g.fill(listX, ry + DIRECTORY_ROW_HEIGHT - DIRECTORY_DIVIDER_HEIGHT, listRight, ry + DIRECTORY_ROW_HEIGHT, 0xFF999999);
+                g.fill(listX, ry, listRight, ry + DIRECTORY_ROW_HEIGHT, 0xFF9DA2B7);
+                g.fill(listX, ry + DIRECTORY_ROW_HEIGHT - DIRECTORY_DIVIDER_HEIGHT, listRight, ry + DIRECTORY_ROW_HEIGHT, 0xFF858AA0);
             }
             if (row.connection() != null && row.depth() > 0) {
                 int lineX = listX + DIRECTORY_TREE_X;
@@ -283,7 +285,7 @@ public final class BlueprintPage extends Screen {
             }
             if (row.connection() == null) {
                 ConfiguratorStyle.disclosure(g, rx + FOLDER_ARROW_X, ry + FOLDER_ARROW_Y, collapsed.contains(row.id()));
-                ConfiguratorStyle.directory(g, rx + FOLDER_ICON_X, ry + FOLDER_ICON_Y, selected);
+                SLGuiTextures.DIRECTORY.draw(g, rx + FOLDER_ICON_X, ry + FOLDER_ICON_Y);
             } else
                 g.renderItem(ConnectionDirectoryModel.connectionIcon(row.connection()), rx + CONNECTION_ICON_X, ry + CONNECTION_ICON_Y);
             int textX = rx + (row.connection() == null ? DIRECTORY_FOLDER_TEXT_X : DIRECTORY_CONNECTION_TEXT_X);
@@ -301,20 +303,20 @@ public final class BlueprintPage extends Screen {
                 && mx < left + panelWidth - DIRECTORY_SCROLL_RIGHT_INSET && my >= scrollbarY && my < scrollbarY + track;
             ConfiguratorStyle.scrollbar(g, left + panelWidth - DIRECTORY_SCROLL_X_INSET, scrollbarY, track, knobY - scrollbarY, active);
         }
-        int titleWidth = Math.max(0, SCOPE_X - DIRECTORY_TITLE_X - DIRECTORY_TITLE_GAP);
+        int titleWidth = Math.max(0, scopeButton.getX() - split - DIRECTORY_TITLE_X - DIRECTORY_TITLE_GAP);
         String directoryTitle = font.plainSubstrByWidth(Component.translatable("gui.staticlogistics.directory.title").getString(), titleWidth);
         g.drawString(font, directoryTitle, split + DIRECTORY_TITLE_X, top + DIRECTORY_TITLE_Y, ConfiguratorStyle.TEXT, false);
         scopeButton.setMessage(ConnectionDirectoryModel.scopeLabel());
         super.render(g, mx, my, partialTick);
         (search.isFocused() || isSearchButtonHit(mx, my) ? SLGuiTextures.SEARCH_SELECTED : SLGuiTextures.SEARCH)
-            .draw(g, search.getX() + search.getWidth() - SEARCH_ICON_RIGHT_INSET, search.getY() + SEARCH_ICON_Y_OFFSET);
-        SLGuiTextures.ARROW_DOWN.draw(g, split + SCOPE_X + SCOPE_WIDTH - SCOPE_ARROW_RIGHT_INSET, top + SCOPE_Y + SCOPE_ARROW_Y_OFFSET);
+            .draw(g, left + panelWidth - DIRECTORY_SCROLL_X_INSET, search.getY() + SEARCH_ICON_Y_OFFSET);
+        SLGuiTextures.ARROW_DOWN.draw(g, scopeButton.getX() + scopeButton.getWidth() - SCOPE_ARROW_RIGHT_INSET, top + SCOPE_Y + SCOPE_ARROW_Y_OFFSET);
         if (scopeOpen) {
             var owners = ConnectionDirectoryModel.availableOwners();
             int pages = Math.max(1, (owners.size() + 4) / 5);
             scopePage = Math.max(0, Math.min(scopePage, pages - 1));
             int visible = Math.min(5, owners.size() - scopePage * 5);
-            int menuX = split + SCOPE_X - SCOPE_MENU_LEFT_OFFSET;
+            int menuX = scopeButton.getX() - SCOPE_MENU_LEFT_OFFSET;
             Component ownerTip = null;
             g.pose().pushPose();
             g.pose().translate(0, 0, 600);
@@ -366,7 +368,7 @@ public final class BlueprintPage extends Screen {
     public boolean mouseClicked(double mx, double my, int button) {
         if (pendingCopy != null) return true;
         if (scopeOpen) {
-            int menuX = split + SCOPE_X - SCOPE_MENU_LEFT_OFFSET;
+            int menuX = scopeButton.getX() - SCOPE_MENU_LEFT_OFFSET;
             int menuY = top + SCOPE_Y + BUTTON_HEIGHT + SCOPE_MENU_GAP;
             var owners = ConnectionDirectoryModel.availableOwners();
             int pages = Math.max(1, (owners.size() + 4) / 5);
@@ -486,7 +488,7 @@ public final class BlueprintPage extends Screen {
     }
 
     private boolean isSearchButtonHit(double mx, double my) {
-        int x = search.getX() + search.getWidth() - SEARCH_ICON_RIGHT_INSET;
+        int x = left + panelWidth - DIRECTORY_SCROLL_X_INSET;
         int y = search.getY() + SEARCH_ICON_Y_OFFSET;
         return mx >= x && mx < x + SLGuiTextures.SEARCH_ICON_WIDTH
             && my >= y && my < y + SLGuiTextures.SEARCH_ICON_HEIGHT;
@@ -497,7 +499,7 @@ public final class BlueprintPage extends Screen {
     }
 
     private int scrollThumbHeight() {
-        return SLGuiTextures.Scrollbar.HEIGHT;
+        return SLGuiTextures.SCROLL_THUMB.height();
     }
 
     private int scrollThumbY() {

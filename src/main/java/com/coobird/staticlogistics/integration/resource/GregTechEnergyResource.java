@@ -5,10 +5,9 @@ import com.coobird.staticlogistics.api.transfer.TransactionCapabilities;
 import com.coobird.staticlogistics.config.SLConfig;
 import com.coobird.staticlogistics.transfer.CapabilityCache;
 import com.coobird.staticlogistics.transfer.LogisticsResource;
-import com.gregtechceu.gtceu.api.capability.GTCapability;
 import com.gregtechceu.gtceu.api.capability.IEnergyContainer;
+import com.gregtechceu.gtceu.api.capability.forge.GTCapability;
 import com.gregtechceu.gtceu.api.data.tag.TagPrefix;
-import com.gregtechceu.gtceu.common.blockentity.CableBlockEntity;
 import com.gregtechceu.gtceu.common.data.GTMaterials;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
@@ -18,7 +17,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -27,7 +25,7 @@ import java.util.function.Supplier;
 
 /// GregTech EU 能量资源适配器 (Forge 1.20.1)。
 ///
-/// <p>通过 {@code GTCapabilityHelper.getEnergyContainer()} 获取 {@link IEnergyContainer}。
+/// <p>通过 {@link CapabilityCache} 获取 {@link IEnergyContainer}。
 /// GregTech 的 EU 系统使用 long 值，电压/安培概念。
 ///
 /// <p>设计决策：
@@ -96,15 +94,7 @@ public class GregTechEnergyResource implements LogisticsResource<IEnergyContaine
 
     @Override
     public @Nullable IEnergyContainer resolve(ServerLevel level, BlockPos pos, Direction face) {
-        BlockEntity be = level.getBlockEntity(pos);
-        if (be == null) return null;
-        IEnergyContainer cap = CapabilityCache.get(
-            level, pos, face, GTCapability.CAPABILITY_ENERGY_CONTAINER);
-        if (cap != null) return cap;
-        if (be instanceof CableBlockEntity cable) {
-            return cable.getEnergyContainer(face);
-        }
-        return null;
+        return CapabilityCache.get(level, pos, face, GTCapability.CAPABILITY_ENERGY_CONTAINER);
     }
 
     @Override

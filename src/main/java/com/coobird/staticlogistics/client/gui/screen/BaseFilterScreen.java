@@ -1,5 +1,6 @@
 package com.coobird.staticlogistics.client.gui.screen;
 
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.FilterGrid;
 import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.Tooltip;
 import com.coobird.staticlogistics.client.gui.component.ConfiguratorStyle;
 import com.coobird.staticlogistics.client.gui.component.FilterGridWidget;
@@ -81,8 +82,8 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
     protected void renderFilterGrid(GuiGraphics graphics) {
         FilterGridWidget.render(graphics, leftPos, topPos, this, false);
         for (int slot : selectedSlots) {
-            int x = leftPos + FilterGridWidget.START_X + slot % FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE;
-            int y = topPos + FilterGridWidget.START_Y + slot / FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE;
+            int x = leftPos + FilterGrid.START_X + slot % FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE;
+            int y = topPos + FilterGrid.START_Y + slot / FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE;
             graphics.renderOutline(x, y, FilterGridWidget.SLOT_SIZE, FilterGridWidget.SLOT_SIZE, slot == selectedSlot ? 0xFFFFFF55 : 0xFF66DDFF);
         }
         renderControls(graphics);
@@ -542,7 +543,7 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
             return true;
         }
         if (windowDrag.begin(mx, my, button, leftPos, topPos,
-            leftPos, topPos, imageWidth, FilterGridWidget.START_Y)) return true;
+            leftPos, topPos, imageWidth, FilterGrid.START_Y)) return true;
         if (button == 0 && hasShiftDown()) {
             var slot = getSlotUnderMouse();
             if (slot != null && !slot.getItem().isEmpty()) {
@@ -654,9 +655,9 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
                 return true;
             }
         }
-        int col = (int) (mx - leftPos - FilterGridWidget.START_X) / FilterGridWidget.SLOT_SIZE;
-        int row = (int) (my - topPos - FilterGridWidget.START_Y) / FilterGridWidget.SLOT_SIZE;
-        if (hit(mx, my, FilterGridWidget.START_X, FilterGridWidget.START_Y, FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE, FilterGridWidget.GRID_ROWS * FilterGridWidget.SLOT_SIZE)) {
+        int col = (int) (mx - leftPos - FilterGrid.START_X) / FilterGridWidget.SLOT_SIZE;
+        int row = (int) (my - topPos - FilterGrid.START_Y) / FilterGridWidget.SLOT_SIZE;
+        if (hit(mx, my, FilterGrid.START_X, FilterGrid.START_Y, FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE, FilterGridWidget.GRID_ROWS * FilterGridWidget.SLOT_SIZE)) {
             int slot = row * FilterGridWidget.GRID_COLS + col;
             ItemStack carried = menu.getCarried();
             if (!canChangeSelection()) return true;
@@ -770,8 +771,8 @@ public abstract class BaseFilterScreen<T extends AbstractFilterMenu>
     }
 
     public Rect2i getFilterSlotArea(int slot) {
-        return new Rect2i(leftPos + FilterGridWidget.START_X + slot % FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE,
-            topPos + FilterGridWidget.START_Y + slot / FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE, 16, 16);
+        return new Rect2i(leftPos + FilterGrid.START_X + slot % FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE,
+            topPos + FilterGrid.START_Y + slot / FilterGridWidget.GRID_COLS * FilterGridWidget.SLOT_SIZE, 16, 16);
     }
 
     public void acceptGhostIngredient(int slot, ItemStack stack) {

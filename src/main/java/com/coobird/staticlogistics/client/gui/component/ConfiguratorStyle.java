@@ -1,9 +1,11 @@
 package com.coobird.staticlogistics.client.gui.component;
 
+import com.coobird.staticlogistics.client.gui.ConfiguratorLayout.SharedScreen;
 import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 
 /// 配置窗口统一使用 atlas 底板与按钮。
@@ -14,6 +16,19 @@ public final class ConfiguratorStyle {
     private static final long TEXT_SCROLL_STEP_MS = 180L;
 
     private ConfiguratorStyle() {
+    }
+
+    public static void fittedLabel(GuiGraphics g, Font font, Component label,
+                                   int x, int y, int width, int height, int color, boolean centered) {
+        int naturalWidth = font.width(label);
+        if (width <= 0 || naturalWidth == 0) return;
+        float scale = Math.min(1f, (float) width / naturalWidth);
+        float offset = centered ? (width - naturalWidth * scale) / 2f : 0;
+        g.pose().pushPose();
+        g.pose().translate(x + offset, y + (height - font.lineHeight * scale) / 2f, 0);
+        g.pose().scale(scale, scale, 1);
+        g.drawString(font, label, 0, 0, color, false);
+        g.pose().popPose();
     }
 
     public static String scrollingText(Font font, String text, int width, boolean hovered) {
@@ -41,8 +56,8 @@ public final class ConfiguratorStyle {
     }
 
     public static double interfaceScale(int width, int height, int extraWidth) {
-        return Mth.clamp(Math.min((width - 8.0) / (SLGuiTextures.LinkConfigurator.WIDTH + extraWidth),
-            (height - 8.0) / (SLGuiTextures.LinkConfigurator.HEIGHT - SLGuiTextures.LinkConfigurator.CONTENT_INSET)), 0.1, 1.0);
+        return Mth.clamp(Math.min((width - 8.0) / (SharedScreen.WIDTH + extraWidth),
+            (height - 8.0) / (SharedScreen.HEIGHT - SharedScreen.CONTENT_INSET)), 0.1, 1.0);
     }
 
     public static void slot(GuiGraphics graphics, int x, int y) {
@@ -93,10 +108,6 @@ public final class ConfiguratorStyle {
         surface.frame(g, x, y, w, h, 3);
     }
 
-    public static void directory(GuiGraphics g, int x, int y, boolean selected) {
-        (selected ? SLGuiTextures.DIRECTORY_SELECTED : SLGuiTextures.DIRECTORY).draw(g, x, y);
-    }
-
     public static void row(GuiGraphics g, int x, int y, int w, int h, boolean selected, boolean hovered) {
         button(g, x, y, w, h, selected, hovered);
     }
@@ -107,16 +118,12 @@ public final class ConfiguratorStyle {
     }
 
     public static void scrollbar(GuiGraphics g, int x, int y, int h, int offset, boolean active) {
-        scrollbar(g, x, y, SLGuiTextures.Scrollbar.WIDTH, h, offset, 1, active);
+        scrollbar(g, x, y, SLGuiTextures.SCROLL_TRACK.width(), h, offset, 1, active);
     }
 
     public static void scrollbar(GuiGraphics g, int x, int y, int width, int height, int offset, int thumbXOffset, boolean active) {
         SLGuiTextures.SCROLL_TRACK.frame(g, x, y, width, height, 1);
         (active ? SLGuiTextures.SCROLL_THUMB : SLGuiTextures.SCROLL_THUMB_IDLE).draw(g, x + thumbXOffset, y + offset);
-    }
-
-    public static void separator(GuiGraphics g, int x, int y, int w) {
-        SLGuiTextures.SEPARATOR.surface(g, x, y, w, 1);
     }
 
     public static void shade(GuiGraphics g, int x, int y, int w, int h, float opacity) {
@@ -127,4 +134,5 @@ public final class ConfiguratorStyle {
         g.setColor(1, 1, 1, 1);
         RenderSystem.disableBlend();
     }
+
 }

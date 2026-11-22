@@ -15,7 +15,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import static com.coobird.staticlogistics.client.gui.ConfiguratorLayout.HierarchyDialog.*;
 
@@ -33,23 +32,14 @@ public final class GroupHierarchyDialog {
 
     private final List<Destination> destinations;
     private final Set<String> collapsed = new HashSet<>();
-    private Consumer<String> presetDelete = ignored -> {
-    };
-
-    public void onPresetDelete(Consumer<String> handler) {
-        presetDelete = handler;
-    }
-
     private final boolean moving;
-    private final boolean reviewing;
-    private final Set<String> selectedFields = new HashSet<>();
     private String selectedDestination;
     private int scroll;
     private AtlasButton moveButton;
     private final EditBox name;
     private final List<AtlasButton> buttons = new ArrayList<>();
     private final Component title;
-    private final String chooseHint;
+
     private final Runnable close;
     private int x, y;
     private final WindowDrag drag = new WindowDrag();
@@ -62,13 +52,10 @@ public final class GroupHierarchyDialog {
         this.x = x;
         this.y = y;
         this.close = close;
-        reviewing = operation.equals("preset_review") || operation.equals("preset_review_batch");
-        chooseHint = reviewing ? "gui.staticlogistics.preset.choose_fields" : operation.equals("preset_target") ? "gui.staticlogistics.preset.target_hint" : operation.equals("preset_select") ? "gui.staticlogistics.preset.choose" : "gui.staticlogistics.directory.choose_destination";
         this.destinations = List.copyOf(destinations);
-        if (reviewing) destinations.forEach(row -> selectedFields.add(row.id()));
-        moving = operation.equals("move") || operation.equals("preset_select") || operation.equals("preset_target") || reviewing;
-        String resolvedTitle = operation.isEmpty() || operation.equals("preset_select") || operation.equals("preset_target") || reviewing || titleKey.startsWith("gui.staticlogistics.compact.channel_") || titleKey.equals("gui.staticlogistics.preset.delete_title") || titleKey.contains(".batch_") ? titleKey : "gui.staticlogistics.directory." + operation;
-        title = reviewing ? Component.translatable(resolvedTitle, initialName) : Component.translatable(resolvedTitle);
+        moving = operation.equals("move");
+        String resolvedTitle = operation.isEmpty() || titleKey.startsWith("gui.staticlogistics.compact.channel_") || titleKey.contains(".batch_") ? titleKey : "gui.staticlogistics.directory." + operation;
+        title = Component.translatable(resolvedTitle);
         showName = create || operation.isEmpty() || operation.equals("rename");
         name = showName ? new AtlasEditBox(font, x + NAME_X, y + NAME_Y, NAME_WIDTH, NAME_INPUT_HEIGHT, Component.empty()) : null;
         if (showName) {
@@ -77,9 +64,7 @@ public final class GroupHierarchyDialog {
             name.setFocused(true);
         }
         if (operation.equals("delete")) {
-            Component warning = titleKey.equals("gui.staticlogistics.preset.delete_title")
-                ? Component.translatable("gui.staticlogistics.preset.confirm_delete", initialName)
-                : titleKey.contains(".channel_")
+            Component warning = titleKey.contains(".channel_")
                 ? Component.translatable("gui.staticlogistics.directory.confirm_delete_channel", initialName)
                 : titleKey.endsWith("batch_delete")
                 ? Component.translatable("gui.staticlogistics.directory.confirm_delete_links")
@@ -106,23 +91,18 @@ public final class GroupHierarchyDialog {
                     close.run();
                 }
             }).bounds(x + PADDING, y + NAME_BUTTON_Y, BUTTON_WIDTH, CONTROL_HEIGHT).build());
-        buttons.add(AtlasButton.atlasBuilder(Component.translatable(operation.equals("preset_review_batch") ? "gui.back" : "gui.cancel"), b -> {
+        buttons.add(AtlasButton.atlasBuilder(Component.translatable("gui.cancel"), b -> {
             close.run();
-            if (operation.equals("preset_review_batch")) action.accept("back", "");
         }).bounds(x + PADDING + BUTTON_WIDTH + BUTTON_GAP, y + (moving ? MOVE_BUTTON_Y : NAME_BUTTON_Y), BUTTON_WIDTH, CONTROL_HEIGHT).build());
         if (moving) {
-            moveButton = AtlasButton.atlasBuilder(Component.translatable(operation.equals("preset_target") ? "gui.staticlogistics.preset.preview" : reviewing || operation.equals("preset_select") ? "gui.staticlogistics.preset.apply" : "gui.staticlogistics.directory.move"), b -> {
-                if (reviewing && !selectedFields.isEmpty()) {
-                    String selected = String.join(",", selectedFields);
-                    close.run();
-                    action.accept("apply", selected);
-                } else if (!reviewing && selectedDestination != null) {
+            moveButton = AtlasButton.atlasBuilder(Component.translatable("gui.staticlogistics.directory.move"), b -> {
+                if (selectedDestination != null) {
                     String selected = selectedDestination;
                     close.run();
                     action.accept("move", selected);
                 }
             }).bounds(x + PADDING, y + MOVE_BUTTON_Y, BUTTON_WIDTH, CONTROL_HEIGHT).build();
-            moveButton.active = reviewing && !selectedFields.isEmpty();
+            moveButton.active = false;
             buttons.add(moveButton);
         }
 
@@ -137,7 +117,7 @@ public final class GroupHierarchyDialog {
         for (int line = 0; line < deleteWarning.size(); line++)
             graphics.drawString(font, deleteWarning.get(line), x + PADDING, y + WARNING_Y + line * font.lineHeight, ConfiguratorStyle.TEXT, false);
         if (moving) {
-            graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(chooseHint).getString(), WIDTH - PADDING * 2), x + PADDING, y + DESTINATION_HINT_Y, ConfiguratorStyle.MUTED_TEXT, false);
+            graphics.drawString(font, font.plainSubstrByWidth(Component.translatable("gui.staticlogistics.directory.choose_destination").getString(), WIDTH - PADDING * 2), x + PADDING, y + DESTINATION_HINT_Y, ConfiguratorStyle.MUTED_TEXT, false);
             ConfiguratorStyle.panel(graphics, x + LIST_PANEL_X, y + LIST_PANEL_Y, LIST_PANEL_WIDTH, LIST_PANEL_HEIGHT);
             List<Destination> rows = visibleDestinations();
             scroll = Mth.clamp(scroll, 0, Math.max(0, rows.size() - LIST_VISIBLE_ROWS));
@@ -146,52 +126,33 @@ public final class GroupHierarchyDialog {
                 int ry = y + LIST_Y + (i - scroll) * LIST_ROW_HEIGHT;
                 boolean root = row.parent().isEmpty();
                 int indent = root ? 0 : DESTINATION_INDENT;
-                boolean selected = reviewing ? selectedFields.contains(row.id()) : row.id().equals(selectedDestination);
+                boolean selected = row.id().equals(selectedDestination);
                 if (selected)
                     ConfiguratorStyle.row(graphics, x + LIST_X, ry, DESTINATION_ROW_WIDTH, DESTINATION_ROW_HEIGHT, true, false);
-                if (reviewing)
-                    graphics.drawString(font, selected ? "[x]" : "[ ]", x + DESTINATION_ICON_X, ry + DESTINATION_TEXT_Y, ConfiguratorStyle.TEXT, false);
-                else
-                    ConfiguratorStyle.directory(graphics, x + DESTINATION_ICON_X + indent, ry + DESTINATION_ICON_Y, selected);
+                SLGuiTextures.DIRECTORY.draw(graphics, x + DESTINATION_ICON_X + indent, ry + DESTINATION_ICON_Y);
                 graphics.drawString(font, font.plainSubstrByWidth(row.name(), DESTINATION_TEXT_WIDTH - indent), x + DESTINATION_TEXT_X + indent, ry + DESTINATION_TEXT_Y, ConfiguratorStyle.TEXT, false);
             }
             if (rows.isEmpty())
                 graphics.drawString(font, Component.translatable("gui.staticlogistics.directory.no_destination"), x + EMPTY_MESSAGE_X, y + EMPTY_MESSAGE_Y, ConfiguratorStyle.MUTED_TEXT, false);
             if (rows.size() > LIST_VISIBLE_ROWS) {
-                int knob = SLGuiTextures.Scrollbar.HEIGHT;
+                int knob = SLGuiTextures.SCROLL_THUMB.height();
                 int offset = scroll * (LIST_HEIGHT - knob) / (rows.size() - LIST_VISIBLE_ROWS);
                 ConfiguratorStyle.scrollbar(graphics, x + LIST_X + LIST_WIDTH, y + LIST_Y, LIST_HEIGHT, offset, true);
             }
         }
         for (AtlasButton button : buttons) button.render(graphics, mouseX, mouseY, 0);
-        if (reviewing && mouseX >= x + LIST_X && mouseX < x + LIST_X + LIST_WIDTH
-            && mouseY >= y + LIST_Y && mouseY < y + LIST_Y + LIST_HEIGHT) {
-            int index = scroll + (mouseY - y - LIST_Y) / LIST_ROW_HEIGHT;
-            if (index < destinations.size())
-                graphics.renderTooltip(font, Component.literal(destinations.get(index).name()), mouseX, mouseY);
-        }
         graphics.pose().popPose();
     }
 
     public boolean mouseClicked(double x, double y, int button) {
         if (drag.begin(x, y, button, this.x, this.y, this.x + DRAG_INSET, this.y + DRAG_INSET, WIDTH - DRAG_INSET * 2, CONTROL_HEIGHT))
             return true;
-        if (moving && button == 1 && x >= this.x + LIST_X && x < this.x + LIST_X + LIST_WIDTH
-            && y >= this.y + LIST_Y && y < this.y + LIST_Y + LIST_HEIGHT) {
-            List<Destination> rows = visibleDestinations();
-            int index = scroll + (int) (y - this.y - LIST_Y) / LIST_ROW_HEIGHT;
-            if (index < rows.size()) presetDelete.accept(rows.get(index).id());
-            return true;
-        }
         if (moving && button == 0 && x >= this.x + LIST_X && x < this.x + LIST_X + LIST_WIDTH && y >= this.y + LIST_Y && y < this.y + LIST_Y + LIST_HEIGHT) {
             List<Destination> rows = visibleDestinations();
             int index = scroll + (int) (y - this.y - LIST_Y) / LIST_ROW_HEIGHT;
             if (index < rows.size()) {
                 Destination row = rows.get(index);
-                if (reviewing) {
-                    if (!selectedFields.add(row.id())) selectedFields.remove(row.id());
-                    moveButton.active = !selectedFields.isEmpty();
-                } else if (!row.selectable()) {
+                if (!row.selectable()) {
                     if (!collapsed.add(row.id())) collapsed.remove(row.id());
                 } else {
                     selectedDestination = row.id();

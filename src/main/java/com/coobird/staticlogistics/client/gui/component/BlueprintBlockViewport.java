@@ -198,8 +198,10 @@ public final class BlueprintBlockViewport {
             linkRadius = radius;
             topologyGeometryDirty = true;
         }
+        double extent = Math.hypot(Math.hypot((double) maxX - minX + 1, (double) maxZ - minZ + 1), (double) maxY - minY + 1);
+        float depthScale = (float) Math.min(scale, 100.0 / extent);
         Matrix4f scene = new Matrix4f().translation(x + width / 2f + panX - (projectedMinX + projectedMaxX) * scale / 2,
-            y + height / 2f + panY + (projectedMinY + projectedMaxY) * scale / 2, 400).scale(scale, -scale, scale).mul(rotation);
+            y + height / 2f + panY + (projectedMinY + projectedMaxY) * scale / 2, 400).scale(scale, -scale, depthScale).mul(rotation);
         GuiScissor.enable(graphics, interfaceScale, x, y, x + width, y + height);
         try {
             float floor = (float) (minY - centerY - 0.02);

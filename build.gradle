@@ -147,6 +147,14 @@ repositories {
     }
 }
 
+configurations {
+    localRuntime {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+    runtimeClasspath.extendsFrom localRuntime
+}
+
 dependencies {
     modImplementation("org.mesdag:PortLib:${portlib_version}")
     interfaceInjectionData("org.mesdag:PortLib:${portlib_version}")
@@ -156,6 +164,7 @@ dependencies {
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     modRuntimeOnly "mezz.jei:jei-${minecraft_version}-forge:${jei_version}"
+    compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-forge-api:${jei_version}"
 
     modCompileOnly "curse.maven:jade-324717:6855440"
@@ -191,7 +200,6 @@ dependencies {
 
     modCompileOnly "com.tterrag.registrate:Registrate:MC1.20-1.3.11"
     modCompileOnly "com.gregtechceu.gtceu:gtceu-${minecraft_version}:${gtm_version}"
-    modRuntimeOnly "com.gregtechceu.gtceu:gtceu-${minecraft_version}:${gtm_version}"
 }
 
 tasks.named('processResources', ProcessResources) {
