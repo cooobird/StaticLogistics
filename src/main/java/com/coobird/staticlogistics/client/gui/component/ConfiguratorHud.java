@@ -79,6 +79,8 @@ public final class ConfiguratorHud {
                 case BLUEPRINT -> "blueprint_open";
             };
             hints.add(hint(operation, keys(options.keyUse)));
+            if (mode == ToolMode.LINK_AS_EXTRACT && !SLKeyMappings.QUICK_EXTRACTION_TYPES.isUnbound())
+                hints.add(hint("quick_types", keys(SLKeyMappings.QUICK_EXTRACTION_TYPES)));
             if (mode == ToolMode.WRENCH) {
                 var dismantle = new ArrayList<>(keys(options.keyShift));
                 dismantle.addAll(keys(options.keyUse));

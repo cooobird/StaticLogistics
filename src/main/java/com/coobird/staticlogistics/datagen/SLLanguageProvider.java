@@ -408,6 +408,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("key.staticlogistics.blueprint_undo", "Undo Blueprint Paste", "撤销蓝图粘贴");
         add("key.staticlogistics.quick_filter_mark", "Quickly Add Filter Entry", "快速添加过滤项");
         add("key.staticlogistics.group_details_and_export", "Show Group Details / Export Coordinates", "显示分组详情 / 导出坐标");
+        add("key.staticlogistics.quick_extraction_types", "Choose Extraction Types", "选择提取类型");
         add("key.staticlogistics.bulk_node_selection", "Select Connected Blocks", "选取相连同类方块");
         add("tooltip.staticlogistics.bulk_select_hint", "Hold %s + right-click: select connected blocks of the same type", "按住 %s 右键，批量选取相连同类方块");
         add("tooltip.staticlogistics.stored_faces", "%s connection faces selected", "已选 %s 个连接面");
@@ -423,6 +424,7 @@ public class SLLanguageProvider extends LanguageProvider {
         add("gui.staticlogistics.hud.select_insert", "Block face: mark as destination", "方块面：设为存入端");
         add("gui.staticlogistics.hud.connect_extract", "Block face: connect source", "方块面：连接提取端");
         add("gui.staticlogistics.hud.connect_insert", "Block face: connect destination", "方块面：连接存入端");
+        add("gui.staticlogistics.hud.quick_types", "Choose extraction types", "选择提取类型");
         add("gui.staticlogistics.hud.bulk", "Select faces in bulk", "批量选择连接面");
         add("gui.staticlogistics.hud.clear", "Clear selected faces", "清空已选连接面");
         add("gui.staticlogistics.hud.switch", "Switch mode", "切换模式");

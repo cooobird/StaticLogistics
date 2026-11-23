@@ -797,7 +797,6 @@ public final class ConfiguratorLayout {
         /// 选项文字允许显示的最大宽度
         public static final int FLYOUT_TEXT_WIDTH = 43;
         /// 选项文字在垂直居中基础上的偏移
-        public static final int FLYOUT_TEXT_Y_OFFSET = 0;
         /// 勾选框左边缘到面板右边缘的距离
         public static final int FLYOUT_CHECKBOX_RIGHT_INSET = 24;
         /// 勾选框在垂直居中基础上的偏移

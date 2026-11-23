@@ -1,9 +1,11 @@
 package com.coobird.staticlogistics.client.key;
 
+import com.coobird.staticlogistics.client.data.ToolModeSession;
 import com.coobird.staticlogistics.client.gui.screen.BaseFilterScreen;
 import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
 import com.coobird.staticlogistics.content.item.BlueprintModeHandler;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
+import com.coobird.staticlogistics.content.item.ToolMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -20,6 +22,14 @@ final class SLKeyConflictContexts {
         mainHandItem() instanceof LinkConfiguratorItem || offhandItem() instanceof LinkConfiguratorItem);
     static final IKeyConflictContext LINK_CONFIGURATOR_IN_GAME = inGame(Domain.LINK_CONFIGURATOR, () ->
         (mainHandItem() instanceof LinkConfiguratorItem || offhandItem() instanceof LinkConfiguratorItem) && !BLUEPRINT_IN_GAME.isActive());
+    static final IKeyConflictContext EXTRACT_IN_GAME = inGame(Domain.LINK_CONFIGURATOR, () -> {
+        var player = Minecraft.getInstance().player;
+        if (player == null) return false;
+        var stack = player.getMainHandItem();
+        if (!(stack.getItem() instanceof LinkConfiguratorItem)) stack = player.getOffhandItem();
+        return stack.getItem() instanceof LinkConfiguratorItem
+            && ToolModeSession.currentMode(stack) == ToolMode.LINK_AS_EXTRACT;
+    });
     static final IKeyConflictContext LINK_ENDPOINT_GUI = inGui(Domain.LINK_CONFIGURATOR, () ->
         Minecraft.getInstance().screen instanceof LinkConfiguratorScreen);
     static final IKeyConflictContext FILTER_GUI = inGui(Domain.FILTER, () ->
