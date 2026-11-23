@@ -9,6 +9,7 @@ import com.coobird.staticlogistics.client.gui.component.ConfiguratorHud;
 import com.coobird.staticlogistics.client.gui.screen.FilterConfiguratorScreen;
 import com.coobird.staticlogistics.client.gui.screen.HandFilterScreen;
 import com.coobird.staticlogistics.client.gui.screen.LinkConfiguratorScreen;
+import com.coobird.staticlogistics.client.gui.screen.QuickExtractionTypeScreen;
 import com.coobird.staticlogistics.client.key.SLKeyMappings;
 import com.coobird.staticlogistics.content.item.*;
 import com.coobird.staticlogistics.content.registry.SLMenuTypes;
@@ -40,6 +41,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 @EventBusSubscriber(modid = StaticLogistics.MODID, value = Dist.CLIENT)
 public class ClientEvents {
@@ -86,6 +88,7 @@ public class ClientEvents {
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_ROTATE);
         event.register(SLKeyMappings.BLUEPRINT_PREVIEW_MOVE_Y);
         event.register(SLKeyMappings.BULK_NODE_SELECTION);
+        event.register(SLKeyMappings.QUICK_EXTRACTION_TYPES);
         event.register(SLKeyMappings.BLUEPRINT_UNDO);
         event.register(SLKeyMappings.BLUEPRINT_PASTE);
         event.register(SLKeyMappings.CLEAR_STORED_NODES);
@@ -181,6 +184,46 @@ public class ClientEvents {
         } else {
             mc.player.displayClientMessage(Component.translatable("msg.staticlogistics.mode_pending"), true);
         }
+    }
+
+    @SubscribeEvent
+    public static void onQuickExtractionShortcut(ClientTickEvent.Pre event) {
+        var shortcut = SLKeyMappings.QUICK_EXTRACTION_TYPES;
+        if (!shortcut.consumeClick()) return;
+        while (shortcut.consumeClick()) {
+            // 合并同一游戏刻积累的多次按键。
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen == null && mc.getOverlay() == null && mc.isWindowActive()
+            && shortcut.getKeyConflictContext().isActive()) openQuickExtractionTypes(mc);
+    }
+
+    private static void openQuickExtractionTypes(Minecraft mc) {
+        var player = mc.player;
+        ItemStack held = player.getMainHandItem();
+        if (!(held.getItem() instanceof LinkConfiguratorItem)) held = player.getOffhandItem();
+        if (!(held.getItem() instanceof LinkConfiguratorItem item)
+            || ToolModeSession.currentMode(held) != ToolMode.LINK_AS_EXTRACT) return;
+
+        ItemStack original = held;
+        int slot = ToolModeSession.heldSlot(original);
+        UUID toolId = original.get(SLDataComponents.TOOL_SESSION.get());
+        var inventory = player.getInventory();
+        BooleanSupplier stillHoldingTool = () -> {
+            if (mc.player != player || (slot != 40 && slot != inventory.selected)
+                || (slot == 40 && player.getMainHandItem().getItem() instanceof LinkConfiguratorItem)) return false;
+            ItemStack current = inventory.getItem(slot);
+            return current.getItem() == item && (toolId == null ? current == original
+                : toolId.equals(current.get(SLDataComponents.TOOL_SESSION.get())))
+                && item.getSettings(current).mode() == ToolMode.LINK_AS_EXTRACT;
+        };
+        ToolModeSession.afterConfirmation(original, () -> {
+            if (mc.screen == null && stillHoldingTool.getAsBoolean()) {
+                mc.setScreen(new QuickExtractionTypeScreen(
+                    item.getSettings(inventory.getItem(slot)).selectedTypeIds(), stillHoldingTool));
+            }
+        });
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

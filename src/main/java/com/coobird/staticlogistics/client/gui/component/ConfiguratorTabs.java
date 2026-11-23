@@ -5,20 +5,14 @@ import com.coobird.staticlogistics.client.render.SLGuiTextures;
 import com.coobird.staticlogistics.content.item.LinkConfiguratorItem;
 import com.coobird.staticlogistics.content.item.ToolMode;
 import com.coobird.staticlogistics.network.c2s.C2SUpdateToolTypesPayload;
-import com.coobird.staticlogistics.transfer.LogisticsResource;
-import com.coobird.staticlogistics.transfer.TransferRegistries;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -29,10 +23,9 @@ public final class ConfiguratorTabs {
     private final Supplier<ItemStack> tool;
     private final Consumer<ToolMode> selectMode;
     private final Runnable selectBlueprint;
-    private final List<LogisticsResource<?>> types = new ArrayList<>(TransferRegistries.getAllActive());
-    private final Set<ResourceLocation> selected = new LinkedHashSet<>();
-    private boolean expanded, typesInitialized;
-    private int left, top, visibleRows, scroll;
+    private ExtractionTypePicker picker;
+    private boolean expanded;
+    private int left, top;
 
     public ConfiguratorTabs(Supplier<ItemStack> tool, Consumer<ToolMode> selectMode, Runnable selectBlueprint) {
         this.tool = tool;
@@ -60,7 +53,6 @@ public final class ConfiguratorTabs {
         int tabWidth = tabWidth();
         left = mainLeft + 7;
         top = mainTop + 2;
-        visibleRows = Math.clamp((height - FLYOUT_HEIGHT_RESERVE - FLYOUT_LIST_Y - FLYOUT_BOTTOM_PADDING) / ROW, 1, Math.max(1, types.size()));
         ToolMode mode = ToolModeSession.currentMode(tool.get());
         for (int index = 0; index < 5; index++) {
             int x = left + index * (tabWidth + TAB_GAP);
@@ -84,27 +76,12 @@ public final class ConfiguratorTabs {
         }
         if (!expanded) return;
         int x = left + tabWidth() + TAB_GAP, y = top + TAB_STEP;
-        ConfiguratorStyle.panel(g, x, y, RESOURCE_FLYOUT_WIDTH, flyoutHeight());
-        g.drawString(font, Component.translatable("gui.staticlogistics.tabs.types"), x + FLYOUT_TITLE_X, y + FLYOUT_TITLE_Y, ConfiguratorStyle.ACCENT, false);
-        for (int i = 0; i < visibleRows && i + scroll < types.size(); i++) {
-            var type = types.get(i + scroll);
-            int rowY = y + FLYOUT_LIST_Y + i * ROW;
-            boolean checked = selected.contains(type.typeId());
-            ConfiguratorStyle.button(g, x + FLYOUT_ROW_X, rowY, RESOURCE_FLYOUT_WIDTH - FLYOUT_ROW_WIDTH_INSET, ROW - FLYOUT_ROW_HEIGHT_INSET, checked,
-                inside(mx, my, x + FLYOUT_ROW_X, rowY, RESOURCE_FLYOUT_WIDTH - FLYOUT_ROW_WIDTH_INSET, ROW - FLYOUT_ROW_HEIGHT_INSET));
-            g.renderFakeItem(type.getIcon(), x + FLYOUT_ICON_X, rowY + FLYOUT_ICON_Y);
-            g.drawString(font, font.plainSubstrByWidth(Component.translatable(type.translationKey()).getString(), FLYOUT_TEXT_WIDTH), x + FLYOUT_TEXT_X, rowY + (ROW - FLYOUT_ROW_HEIGHT_INSET - font.lineHeight) / 2 + FLYOUT_TEXT_Y_OFFSET, ConfiguratorStyle.TEXT, false);
-            int checkboxX = x + RESOURCE_FLYOUT_WIDTH - FLYOUT_CHECKBOX_RIGHT_INSET;
-            int checkboxY = rowY + (ROW - FLYOUT_ROW_HEIGHT_INSET - SLGuiTextures.CONFIRM.height()) / 2 + FLYOUT_CHECKBOX_Y_OFFSET;
-            if (checked) SLGuiTextures.CONFIRM.draw(g, checkboxX, checkboxY);
-            else SLGuiTextures.BUTTON.frame(g, checkboxX, checkboxY,
-                SLGuiTextures.CONFIRM.width(), SLGuiTextures.CONFIRM.height(), 3);
-        }
-        if (types.size() > visibleRows) {
-            int track = visibleRows * ROW, thumb = SLGuiTextures.SCROLL_THUMB.height();
-            int thumbY = y + FLYOUT_LIST_Y + (track - thumb) * scroll / (types.size() - visibleRows);
-            ConfiguratorStyle.scrollbar(g, x + RESOURCE_FLYOUT_WIDTH - FLYOUT_SCROLL_RIGHT_INSET, y + FLYOUT_LIST_Y, track, thumbY - y - FLYOUT_LIST_Y, true);
-        }
+        picker.resize(height - FLYOUT_HEIGHT_RESERVE, 1);
+        picker.setPosition(x, y);
+        ConfiguratorStyle.panel(g, x, y, picker.width(), picker.height());
+        g.drawString(font, Component.translatable("gui.staticlogistics.tabs.types"),
+            x + FLYOUT_TITLE_X, y + FLYOUT_TITLE_Y, ConfiguratorStyle.ACCENT, false);
+        picker.render(g, font, mx, my);
     }
 
     public boolean mouseClicked(double x, double y, int button) {
@@ -119,10 +96,10 @@ public final class ConfiguratorTabs {
             } else {
                 ToolMode mode = ToolMode.ORDER.get(index);
                 if (mode == ToolMode.LINK_AS_EXTRACT) {
-                    if (!typesInitialized && tool.get().getItem() instanceof LinkConfiguratorItem item) {
-                        selected.clear();
-                        selected.addAll(item.getSettings(tool.get()).selectedTypeIds());
-                        typesInitialized = true;
+                    if (picker == null) {
+                        ItemStack stack = tool.get();
+                        picker = new ExtractionTypePicker(stack.getItem() instanceof LinkConfiguratorItem item
+                            ? item.getSettings(stack).selectedTypeIds() : List.of());
                     }
                     expanded = !expanded;
                 } else expanded = false;
@@ -132,15 +109,9 @@ public final class ConfiguratorTabs {
             return true;
         }
         if (!expanded) return false;
-        int popupX = left + tabWidth() + TAB_GAP, popupY = top + TAB_STEP;
-        if (inside(x, y, popupX, popupY, RESOURCE_FLYOUT_WIDTH, flyoutHeight())) {
-            int index = (int) (y - popupY - FLYOUT_LIST_Y) / ROW + scroll;
-            if (y >= popupY + FLYOUT_LIST_Y && index >= scroll && index < Math.min(types.size(), scroll + visibleRows)) {
-                ResourceLocation id = types.get(index).typeId();
-                if (!selected.add(id)) selected.remove(id);
-                PacketDistributor.sendToServer(new C2SUpdateToolTypesPayload(List.copyOf(selected)));
-                SoundUtil.playClickSound();
-            }
+        if (picker.contains(x, y)) {
+            if (picker.toggleAt(x, y, button))
+                PacketDistributor.sendToServer(new C2SUpdateToolTypesPayload(picker.selectedTypes()));
             return true;
         }
         /// 收起时吞掉本次点击，避免界面平移后误点节点或背包。
@@ -149,14 +120,7 @@ public final class ConfiguratorTabs {
     }
 
     public boolean mouseScrolled(double x, double y, double delta) {
-        if (!expanded || !inside(x, y, left + tabWidth() + TAB_GAP, top + TAB_STEP, RESOURCE_FLYOUT_WIDTH, flyoutHeight()))
-            return false;
-        scroll = Math.clamp(scroll - (int) Math.signum(delta), 0, Math.max(0, types.size() - visibleRows));
-        return true;
-    }
-
-    private int flyoutHeight() {
-        return FLYOUT_LIST_Y + visibleRows * ROW + FLYOUT_BOTTOM_PADDING;
+        return expanded && picker.mouseScrolled(x, y, delta);
     }
 
     private static boolean inside(double x, double y, int left, int top, int width, int height) {

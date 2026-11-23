@@ -16,6 +16,9 @@ public final class SLKeyMappings {
         SLKeyNames.BLUEPRINT_PREVIEW_ROTATE, SLKeyConflictContexts.BLUEPRINT_IN_GAME, GLFW.GLFW_KEY_LEFT_CONTROL);
     public static final KeyMapping BLUEPRINT_PREVIEW_MOVE_Y = heldKey(
         SLKeyNames.BLUEPRINT_PREVIEW_MOVE_Y, SLKeyConflictContexts.BLUEPRINT_IN_GAME, GLFW.GLFW_KEY_LEFT_ALT);
+    public static final KeyMapping QUICK_EXTRACTION_TYPES = new KeyMapping(
+        SLKeyNames.QUICK_EXTRACTION_TYPES, SLKeyConflictContexts.EXTRACT_IN_GAME, KeyModifier.ALT,
+        InputConstants.Type.MOUSE.getOrCreate(GLFW.GLFW_MOUSE_BUTTON_RIGHT), SLKeyNames.CATEGORY);
     public static final KeyMapping BULK_NODE_SELECTION = heldKey(
         SLKeyNames.BULK_NODE_SELECTION, SLKeyConflictContexts.LINK_CONFIGURATOR_IN_GAME, GLFW.GLFW_KEY_LEFT_CONTROL);
     public static final KeyMapping CLEAR_STORED_NODES = modifiedKey(
