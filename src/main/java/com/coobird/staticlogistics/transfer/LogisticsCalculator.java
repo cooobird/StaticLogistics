@@ -29,7 +29,7 @@ public final class LogisticsCalculator {
 
     /// 是否支持跨维度
     public static boolean isDimensionEffective(ContainerConfig container) {
-        return container != null && container.isDimensionEffective();
+        return SLConfig.isSimpleMode() || (container != null && container.isDimensionEffective());
     }
 
     /// 返回整数格范围。范围倍率溢出时使用 Integer#MAX_VALUE 表示无限。

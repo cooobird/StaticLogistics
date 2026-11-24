@@ -136,14 +136,13 @@ See [the integration guide](docs/INTEGRATION.md).
 
 ## Upgrades
 
-Speed, range, and stack upgrades have Iron, Gold, Diamond, Netherite, and Nether Star tiers. Dimension is a separate
-single-tier upgrade.
+Combined upgrades have Iron, Gold, Diamond, Netherite, and Nether Star tiers.
 
-| Container capability | Effect                                                                                                      |
-|----------------------|-------------------------------------------------------------------------------------------------------------|
-| Speed                | Reduces transfer activation interval                                                                        |
-| Range / Dimension    | Increases maximum distance; Dimension permits cross-dimensional transfer and removes normal distance limits |
-| Stack                | Increases transferable amount per activation                                                                |
+| Container capability | Effect                                                                                                             |
+|----------------------|--------------------------------------------------------------------------------------------------------------------|
+| Speed                | Reduces transfer activation interval                                                                               |
+| Range / Dimension    | Cross-dimensional transfer needs no upgrade in Simple mode. Advanced mode requires a Nether Star combined upgrade. |
+| Stack                | Increases transferable amount per activation                                                                       |
 
 Upgrades belong to the container. They remain while another link uses the same container and return after the last
 relevant link is removed or the container is dismantled. Hot-reloaded base amounts and multipliers apply to existing

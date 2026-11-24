@@ -572,7 +572,6 @@ public final class ConfiguratorLayout {
         /// 对端名称距离行左边和顶部的距离、名称右侧保留宽度。
         public static final int DETAIL_PEER_TEXT_X = 5;
         public static final int DETAIL_PEER_TEXT_Y = 7;
-        public static final int DETAIL_PEER_NAME_WIDTH_INSET = 120;
         /// 对端速率文字距离窗口右边的距离。
         public static final int DETAIL_PEER_RATE_RIGHT_INSET = 105;
         /// 两种速率窗口的页码文字位置。

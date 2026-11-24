@@ -114,7 +114,7 @@ public class SLCommands {
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.speed", container.getSpeedMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.range", container.getRangeMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.stack", container.getStackMultiplier()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
-            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.dimension", container.isDimensionEffective()).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+            source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.dimension", LogisticsCalculator.isDimensionEffective(container)).withStyle(ChatFormatting.LIGHT_PURPLE), false);
             source.sendSuccess(() -> Component.translatable("commands.staticlogistics.info.upgrades_title").withStyle(ChatFormatting.YELLOW), false);
             for (int i = 0; i < container.getUpgrades().getSlots(); i++) {
                 ItemStack stack = container.getUpgrades().getStackInSlot(i);
