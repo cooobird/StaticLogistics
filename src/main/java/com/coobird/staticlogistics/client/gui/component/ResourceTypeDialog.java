@@ -228,9 +228,14 @@ public final class ResourceTypeDialog {
         graphics.drawString(font, font.plainSubstrByWidth(detail.getString(), panelWidth - CONTEXT_WIDTH_INSET), left + TITLE_X, top + CONTEXT_Y, ConfiguratorStyle.MUTED_TEXT, false);
         if (batch && !readOnly && stackMultiplier == null)
             graphics.drawString(font, font.plainSubstrByWidth(Component.translatable("gui.staticlogistics.resources.batch_hint").getString(), panelWidth - CONTEXT_WIDTH_INSET), left + TITLE_X, top + HINT_Y, ConfiguratorStyle.MUTED_TEXT, false);
+        int sentX = left + VALUE_COLUMN_X * panelWidth / MIN_PANEL_WIDTH;
+        int receivedX = left + panelWidth - LAST_COLUMN_WIDTH * panelWidth / MIN_PANEL_WIDTH;
+        int receivedRight = left + (panelWidth + cell) / 2 - 3;
         if (stackMultiplier != null) {
-            graphics.drawString(font, text("sent_rate"), left + VALUE_COLUMN_X, top + COLUMN_Y, ConfiguratorStyle.MUTED_TEXT, false);
-            graphics.drawString(font, text("received_rate"), left + panelWidth - LAST_COLUMN_WIDTH, top + COLUMN_Y, ConfiguratorStyle.MUTED_TEXT, false);
+            graphics.drawString(font, ConfiguratorStyle.scrollingText(font, text("sent_rate").getString(), receivedX - sentX - 4, false),
+                sentX, top + COLUMN_Y, ConfiguratorStyle.MUTED_TEXT, false);
+            graphics.drawString(font, ConfiguratorStyle.scrollingText(font, text("received_rate").getString(), receivedRight - receivedX, false),
+                receivedX, top + COLUMN_Y, ConfiguratorStyle.MUTED_TEXT, false);
         }
         for (Button widget : buttons) widget.render(graphics, mouseX, mouseY, partialTick);
         int visible = Math.min(types.size() - page * pageSize, pageSize);
@@ -239,10 +244,13 @@ public final class ResourceTypeDialog {
             Button widget = buttons.get(i);
             graphics.renderFakeItem(type.getIcon(), widget.getX() + TYPE_ICON_X, widget.getY() + TYPE_ICON_Y);
             if (stackMultiplier != null) {
-                graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(type.translationKey()).getString(), VALUE_COLUMN_X - TYPE_COLUMN_X), left + TYPE_COLUMN_X, widget.getY() + RATE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                int typeX = left + TYPE_COLUMN_X;
+                String name = ConfiguratorStyle.scrollingText(font, Component.translatable(type.translationKey()).getString(),
+                    sentX - typeX - 4, false);
+                graphics.drawString(font, name, typeX, widget.getY() + RATE_TEXT_Y, ConfiguratorStyle.TEXT, false);
                 var rate = rates == null ? LiveTransferRates.Rate.ZERO : rates.apply(type.typeId());
-                graphics.drawString(font, TransferTypeDisplay.rate(type, rate.sent()), left + VALUE_COLUMN_X, widget.getY() + RATE_TEXT_Y, ConfiguratorStyle.TEXT, false);
-                graphics.drawString(font, TransferTypeDisplay.rate(type, rate.received()), left + panelWidth - LAST_COLUMN_WIDTH, widget.getY() + RATE_TEXT_Y, ConfiguratorStyle.TEXT, false);
+                drawRate(graphics, font, type, rate.sent(), sentX, receivedX - 4, widget.getY() + RATE_TEXT_Y);
+                drawRate(graphics, font, type, rate.received(), receivedX, receivedRight, widget.getY() + RATE_TEXT_Y);
                 if (widget.isMouseOver(mouseX, mouseY)) {
                     List<Component> hints = new ArrayList<>();
                     hints.add(text("sent_rate").copy().append(": " + TransferTypeDisplay.rate(type, rate.sent())));
@@ -262,6 +270,16 @@ public final class ResourceTypeDialog {
             && mouseY >= top + CONTEXT_Y && mouseY < top + CONTEXT_Y + font.lineHeight)
             graphics.renderTooltip(font, detail, mouseX, mouseY);
         graphics.pose().popPose();
+    }
+
+    private static void drawRate(GuiGraphics graphics, Font font, LogisticsResource<?> type, double rate,
+                                 int x, int right, int y) {
+        int width = right - x;
+        String label = TransferTypeDisplay.rate(type, rate);
+        /// 完整单位放不下时先保留数值和每秒标识，完整文本仍在悬停提示里。
+        if (font.width(label) > width) label = TransferTypeDisplay.rateValue(rate) + "/s";
+        graphics.drawString(font, ConfiguratorStyle.scrollingText(font, label, width, false),
+            x, y, ConfiguratorStyle.TEXT, false);
     }
 
     private void rebuildDetailButtons() {
@@ -330,12 +348,28 @@ public final class ResourceTypeDialog {
                 boolean hovered = mouseX >= left + DETAIL_PEER_X && mouseX < left + panelWidth - DETAIL_PEER_RIGHT_INSET && mouseY >= y && mouseY < y + DETAIL_PEER_HEIGHT;
                 ConfiguratorStyle.button(graphics, left + DETAIL_PEER_X, y, panelWidth - DETAIL_PEER_X - DETAIL_PEER_RIGHT_INSET, DETAIL_PEER_HEIGHT, false, hovered);
                 var rate = type == null ? LiveTransferRates.Rate.ZERO : entries.get(peer).getOrDefault(type.typeId(), LiveTransferRates.Rate.ZERO);
-                String amount = unavailablePeers.get().contains(peer)
-                    ? Component.translatable("gui.staticlogistics.resources.unloaded").getString()
-                    : type == null ? "—" : TransferTypeDisplay.rate(type, sourceDerived ? rate.received() : rate.sent());
-                graphics.drawString(font, font.plainSubstrByWidth(peerLabel(peer), panelWidth - DETAIL_PEER_NAME_WIDTH_INSET), left + DETAIL_PEER_X + DETAIL_PEER_TEXT_X, y + DETAIL_PEER_TEXT_Y, ConfiguratorStyle.TEXT, false);
-                graphics.drawString(font, amount, left + panelWidth - DETAIL_PEER_RATE_RIGHT_INSET, y + DETAIL_PEER_TEXT_Y, ConfiguratorStyle.TEXT, false);
-                if (hovered) graphics.renderTooltip(font, NodeDisplayText.details(peer), mouseX, mouseY);
+                boolean unavailable = unavailablePeers.get().contains(peer);
+                double amount = sourceDerived ? rate.received() : rate.sent();
+                int nameX = left + DETAIL_PEER_X + DETAIL_PEER_TEXT_X;
+                int rateX = Math.max(nameX, left + panelWidth - DETAIL_PEER_RATE_RIGHT_INSET);
+                int rateRight = left + panelWidth - DETAIL_PEER_RIGHT_INSET - DETAIL_PEER_TEXT_X;
+                int textY = y + DETAIL_PEER_TEXT_Y;
+                graphics.drawString(font, ConfiguratorStyle.scrollingText(font, peerLabel(peer), rateX - nameX - 4, false),
+                    nameX, textY, ConfiguratorStyle.TEXT, false);
+                if (unavailable || type == null) {
+                    String label = unavailable ? text("unloaded").getString() : "—";
+                    graphics.drawString(font, ConfiguratorStyle.scrollingText(font, label, rateRight - rateX, false),
+                        rateX, textY, ConfiguratorStyle.TEXT, false);
+                } else {
+                    drawRate(graphics, font, type, amount, rateX, rateRight, textY);
+                }
+                if (hovered) {
+                    var details = NodeDisplayText.details(peer);
+                    if (unavailable || type == null) graphics.renderTooltip(font, details, mouseX, mouseY);
+                    else
+                        graphics.renderComponentTooltip(font, List.of(details, Component.literal(TransferTypeDisplay.rate(type, amount))),
+                            mouseX, mouseY);
+                }
             }
             int footer = top + DETAIL_GRID_Y + rows * DETAIL_ROW_HEIGHT + DETAIL_FOOTER_GAP;
             detailPrevious.active = detailPage > 0;

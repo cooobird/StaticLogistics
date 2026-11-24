@@ -119,7 +119,7 @@ public final class SLConfig {
         builder.push("general");
         GAMEPLAY_MODE = builder
             .translation("config.staticlogistics.gameplay_mode")
-            .comment("SIMPLE uses a transfer interval of 1 tick, sets every resource transfer amount to 9223372036854775807, and removes distance limits. Cross-dimensional transfer requires a nether-star combined upgrade in both modes. ADVANCED uses the configured base values and installed upgrades.")
+            .comment("SIMPLE attempts transfers every tick, removes Static Logistics' amount and distance limits, and allows cross-dimensional transfer without an upgrade. ADVANCED uses configured values and requires a nether-star combined upgrade for cross-dimensional transfer.")
             .defineEnum("gameplay_mode", gameplayMode);
         DEFAULT_RADIUS = builder
             .translation("config.staticlogistics.default_radius")

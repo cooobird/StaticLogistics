@@ -174,15 +174,14 @@ capabilities.
 ## Upgrades
 
 The combined upgrade card has Iron, Gold, Diamond, Netherite, and Nether Star tiers. One container-wide upgrade affects
-activation interval, connection range, and per-activation transfer amount. Only the Nether Star tier permits
-cross-dimensional transfer.
+activation interval, connection range, and per-activation transfer amount in Advanced mode.
 
-| Container capability  | Effect                                                              |
-|-----------------------|---------------------------------------------------------------------|
-| Activation interval   | Higher tiers let the container participate in scheduling more often |
-| Connection range      | Higher tiers allow longer same-dimensional connections              |
-| Per-activation amount | Higher tiers increase the transferable resource amount              |
-| Cross-dimensional     | Available only at the Nether Star tier                              |
+| Container capability  | Effect                                                                   |
+|-----------------------|--------------------------------------------------------------------------|
+| Activation interval   | Higher tiers let the container participate in scheduling more often      |
+| Connection range      | Higher tiers allow longer same-dimensional connections                   |
+| Per-activation amount | Higher tiers increase the transferable resource amount                   |
+| Cross-dimensional     | Available in Simple mode, or with a Nether Star upgrade in Advanced mode |
 
 Upgrades belong to the container, not to one connection. They remain while the same container still has another valid
 link and are returned when the last relevant link is removed or the container is dismantled.

@@ -10,6 +10,8 @@ import java.util.Locale;
 
 /// 将服务端确定的资源类型标识转换为统一的玩家可读文本。
 public final class TransferTypeDisplay {
+    private static final String[] RATE_SUFFIXES = {"", "k", "M", "G", "T", "P", "E", "Z", "Y"};
+
     private TransferTypeDisplay() {
     }
 
@@ -40,20 +42,28 @@ public final class TransferTypeDisplay {
     }
 
     public static String rate(LogisticsResource<?> type, double value) {
-        String suffix = "";
-        if (value >= 1_000_000_000) {
-            value /= 1_000_000_000;
-            suffix = "G";
-        } else if (value >= 1_000_000) {
-            value /= 1_000_000;
-            suffix = "M";
-        } else if (value >= 1_000) {
-            value /= 1_000;
-            suffix = "k";
+        return rateValue(value) + " " + unit(type) + "/s";
+    }
+
+    public static String rateValue(double value) {
+        if (!Double.isFinite(value)) return "—";
+        double magnitude = Math.abs(value);
+        int unit = 0;
+        while (magnitude >= 1_000 && unit < RATE_SUFFIXES.length - 1) {
+            magnitude /= 1_000;
+            unit++;
         }
-        String number = value == Math.rint(value) ? String.format(Locale.ROOT, "%.0f", value)
-            : String.format(Locale.ROOT, "%.1f", value);
-        return number + suffix + " " + unit(type) + "/s";
+        long tenths = Math.round(magnitude * 10);
+        /// 显示值四舍五入到 1000 时也进位，避免出现 1000G 之类的写法。
+        if (tenths >= 10_000) {
+            if (unit == RATE_SUFFIXES.length - 1) return String.format(Locale.ROOT, "%.1e", value);
+            unit++;
+            tenths = 10;
+        }
+        String sign = value < 0 && tenths != 0 ? "-" : "";
+        long fraction = tenths % 10;
+        String number = sign + tenths / 10;
+        return (fraction == 0 ? number : number + "." + fraction) + RATE_SUFFIXES[unit];
     }
 
     private static String unit(LogisticsResource<?> type) {

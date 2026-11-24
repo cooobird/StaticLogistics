@@ -548,8 +548,8 @@ public class SLLanguageProvider extends LanguageProvider {
         add("config.staticlogistics.default_radius", "Default Link Radius", "默认连接半径");
         add("config.staticlogistics.gameplay_mode", "Gameplay Mode", "玩法模式");
         add("config.staticlogistics.gameplay_mode.tooltip",
-            "SIMPLE uses a 1-tick interval, maximum long transfer allowance and unlimited distance. Both modes require a nether-star combined upgrade for cross-dimensional transfer. Actual transfer is bounded by container APIs and the shared work budget. ADVANCED uses configured values and upgrades.",
-            "SIMPLE（简易）间隔为 1 Tick，传输额度为 long 最大值，无视距离。两种模式跨维度均需下界之星综合升级卡。实际传输受容器接口与共享工作预算约束；ADVANCED（进阶）使用配置值和升级。");
+            "Simple: Attempts transfers every tick, removes Static Logistics' amount and distance limits, and allows cross-dimensional transfers without an upgrade.\nAdvanced: Uses configured values and upgrades. Cross-dimensional transfers require a Nether Star combined upgrade.",
+            "简易：每 tick 尝试传输，取消物流自身的传输额度和距离限制，跨维度无需升级卡。\n进阶：按配置值和升级效果传输，跨维度需要下界之星综合升级卡。");
         add("config.staticlogistics.default_radius.tooltip", "Maximum default link distance before combined upgrades are applied.", "应用综合升级前的默认最大连接距离。");
         add("config.staticlogistics.default_tick_interval", "Base Tick Interval (Ticks)", "基础传输间隔(Tick)");
         add("config.staticlogistics.default_tick_interval.tooltip", "Base number of ticks between transfer attempts.", "两次传输尝试之间的基础 Tick 数。");

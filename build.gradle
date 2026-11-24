@@ -134,7 +134,10 @@ repositories {
             includeGroup("dev.ryanhcode.sable-companion")
         }
     }
-    maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
+    maven {
+        url = "https://maven.gegy.dev/releases"
+        content { includeModule("com.tterrag.registrate", "Registrate") }
+    }
     maven {
         name = "Refined Storage"
         url = uri("https://maven.creeperhost.net")
@@ -207,6 +210,11 @@ dependencies {
 
     compileOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}:api"
     runtimeOnly "org.appliedenergistics:appliedenergistics2:${appliedenergistics2_version}"
+    runtimeOnly "curse.maven:ex-pattern-provider-892005:9391213"
+    runtimeOnly "curse.maven:glodium-957920:5821676"
+    runtimeOnly "curse.maven:omni-cells-1359517:8050965"
+    runtimeOnly "curse.maven:neo-eco-ae-extension-1460639:9651586"
+    runtimeOnly "curse.maven:ldlib-626676:9384249"
 
     runtimeOnly "curse.maven:titanium-287342:7951516"
     runtimeOnly "curse.maven:functional-storage-556861:7061714"
